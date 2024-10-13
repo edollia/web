@@ -82,7 +82,6 @@ a:hover {
     z-index: 10; /* Ensure it is on top */
 }
 
-
 .glitter-overlay img {
     width: 100%; /* Cover the full width of the screen */
     height: auto; /* Maintain aspect ratio */
@@ -92,4 +91,22 @@ a:hover {
 /* Audio Control */
 audio {
     display: none; /* Hides the audio controls */
+}
+
+#close-popup img {
+    transition: transform 1s ease; /* Smooth transition for the scale effect */
+}
+
+#close-popup img:hover {
+    transform: scale(1.5); /* Increase the size of the image on hover */
+}
+
+.paw-image {
+    width: 100px; /* Set your default size */
+    height: auto; /* Maintain aspect ratio */
+    transition: transform 0.2s; /* Smooth transition */
+}
+
+.paw-image.grow {
+    transform: scale(1.1); /* Slightly enlarge when tapped */
 }
