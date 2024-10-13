@@ -20,10 +20,12 @@
             align-items: center;
             justify-content: center;
             z-index: 1000;
+            opacity: 1; /* Start with full opacity */
+            transition: opacity 0.5s ease; /* Smooth fade in/out transition */
         }
 
         .popup-content {
-            background-color: #f192be3d;
+            background-color: #f192be00;
             padding: 20px;
             border-radius: 10px;
             text-align: center;
@@ -31,11 +33,25 @@
 
         #close-popup {
             margin-top: 2px;
-            padding: 10px 20px;
-            background-color: #f192be00;
-            color: white;
+            padding: 0; /* Remove padding to fit the image */
             border: none;
             cursor: pointer;
+            background-color: transparent; /* Make background transparent */
+        }
+
+        .paw-image {
+            width: 100px; /* Set a base width for the paw image */
+            height: auto; /* Maintain aspect ratio */
+            transition: transform 0.2s ease; /* Smooth transition for hover */
+        }
+
+        .paw-image:hover {
+            transform: scale(1.1); /* Grow slightly on hover */
+        }
+
+        /* Added style for clicked state */
+        .paw-image:active {
+            transform: scale(1.2); /* Grow more when clicked */
         }
 
     </style>
@@ -95,7 +111,9 @@
 
     <div class="popup" id="popup">
         <div class="popup-content">
-            <button id="close-popup">tap here ᯓ★</button>
+            <button id="close-popup">
+                <img src="paw1.png" alt="Paw Image" class="paw-image" id="paw-image">
+            </button>
         </div>
     </div>
 
@@ -104,7 +122,11 @@
         document.addEventListener("DOMContentLoaded", function() {
             // Function to close the pop-up and play audio
             document.getElementById("close-popup").onclick = function() {
-                document.getElementById("popup").style.display = "none"; // Hide the pop-up
+                const popup = document.getElementById("popup");
+                popup.style.opacity = 0; // Fade out the popup
+                setTimeout(() => {
+                    popup.style.display = "none"; // Hide the popup after fade-out
+                }, 500); // Match this to the CSS transition duration
                 const audio = new Audio('hehe.mp3'); // Create an audio object
                 audio.play(); // Play the audio
             };
