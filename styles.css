@@ -1,0 +1,95 @@
+/* General Reset */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+/* Ensure html takes full height */
+html {
+    height: 100%;
+}
+
+/* Body Styling */
+body {
+    background-color: #ffffff; /* Fully white background */
+    font-family: 'Arial', sans-serif;
+    color: #333;
+    text-align: center;
+    min-height: 100vh; /* Ensure body takes at least full viewport height */
+    position: relative; /* Ensure the body has a relative position */
+}
+
+/* Header and Footer Lace Borders */
+.header, .footer {
+    width: 100%;
+}
+
+/* Responsive Profile Image */
+.profile-image img,
+.lala-image img {
+    width: 100%; /* Make the images scale with the container */
+}
+
+.lace-border {
+    width: 100%;
+    height: auto;
+}
+
+/* Links Styling */
+a {
+    color: #f192bf;
+    text-decoration: none;
+}
+
+a:hover {
+    text-decoration: underline;
+}
+
+/* Social Icons */
+.social-icons {
+    display: flex; /* Use flexbox for horizontal alignment */
+    justify-content: center; /* Center the icons */
+    gap: 20px; /* Space between icons */
+    margin: 5px 0; /* Space above and below */
+}
+
+.social-icon {
+    width: 60px; /* Set width for icons */
+    height: auto; /* Maintain aspect ratio */
+    filter: hue-rotate(1deg); /* Example filter */
+    transition: transform 0.2s; /* Smooth hover effect */
+    width: 10vw; /* Width will be 10% of the viewport width */
+    height: auto; /* Maintain aspect ratio */
+    display: flex; /* Use flexbox for horizontal alignment */
+    justify-content: center; /* Center the icons */
+    gap: 10px; /* Space between icons */
+    flex-wrap: wrap; /* Allow icons to wrap on smaller screens */
+}
+
+.social-icon:hover {
+    transform: scale(0.75); /* Scale up slightly on hover */
+}
+
+/* Glitter Overlay */
+.glitter-overlay {
+    position: absolute; /* Position the overlay absolutely */
+    top: 0; /* Align it to the top */
+    left: 0; /* Align it to the left */
+    width: 100%; /* Cover the full width */
+    height: 100%; /* Cover the full height */
+    pointer-events: none; /* Allow clicks to pass through */
+    z-index: 10; /* Ensure it is on top */
+}
+
+
+.glitter-overlay img {
+    width: 100%; /* Cover the full width of the screen */
+    height: auto; /* Maintain aspect ratio */
+    opacity: 0.3; /* Adjust the transparency */
+}
+
+/* Audio Control */
+audio {
+    display: none; /* Hides the audio controls */
+}
