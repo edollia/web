@@ -22,7 +22,7 @@ body {
 
 /* Set a maximum width for the entire content aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa */ 
 body {
-    max-width: 400px; /* Adjust this value as per your desired maximum width */
+    max-width: 500px; /* Adjust this value as per your desired maximum width */
     margin: 0 auto; /* Center the content horizontally */
     padding: 0 2px; /* Add padding for better readability on smaller screens */
 }
@@ -127,7 +127,7 @@ audio {
 
 .gif-overlay {
     position: absolute;
-    top: 370px; /* Adjust this value as needed */
+    top: 330px; /* Adjust this value as needed */
     left: 0; /* Adjust left/right as needed */
     width: 100%; /* Full width of the container */
     height: auto; /* Maintain aspect ratio */
