@@ -110,3 +110,13 @@ audio {
 .paw-image.grow {
     transform: scale(1.1); /* Slightly enlarge when tapped */
 }
+
+.gif-overlay {
+    position: absolute;
+    top: 450px; /* Adjust this value to position it */
+    left: 0; /* Adjust left/right as needed */
+    width: 100%; /* Full width of the container */
+    height: auto; /* Maintain aspect ratio */
+    z-index: 10; /* Ensure it is above other elements */
+    opacity: 0.2; /* Set the transparency level (0.0 to 1.0) */
+}
