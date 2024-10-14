@@ -1,137 +1,137 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dollia⋆౨ৎ˚⟡</title>
-    <link rel="stylesheet" href="styles.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
-    <style>
-        /* Pop-up Styles */
-        .popup {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(78, 75, 75, 0.788);
-            backdrop-filter: blur(5px);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 1000;
-            opacity: 1; /* Start with full opacity */
-            transition: opacity 0.5s ease; /* Smooth fade in/out transition */
-        }
+/* General Reset */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
 
-        .popup-content {
-            background-color: #f192be00;
-            padding: 20px;
-            border-radius: 10px;
-            text-align: center;
-        }
+/* Ensure html takes full height */
+html {
+    height: 100%;
+}
 
-        #close-popup {
-            margin-top: 2px;
-            padding: 0; /* Remove padding to fit the image */
-            border: none;
-            cursor: pointer;
-            background-color: transparent; /* Make background transparent */
-        }
+/* Body Styling */
+body {
+    background-color: #ffffff; /* Fully white background */
+    font-family: 'Arial', sans-serif;
+    color: #333;
+    text-align: center;
+    min-height: 100vh; /* Ensure body takes at least full viewport height */
+    position: relative; /* Ensure the body has a relative position */
+}
 
-        .paw-image {
-            width: 100px; /* Set a base width for the paw image */
-            height: auto; /* Maintain aspect ratio */
-            transition: transform 0.2s ease; /* Smooth transition for hover */
-        }
+/* Set a maximum width for the entire content */
+body {
+    max-width: 600px; /* Adjust this value as per your desired maximum width */
+    margin: 0 auto; /* Center the content horizontally */
+    padding: 0 2px; /* Add padding for better readability on smaller screens */
+}
 
-        .paw-image:hover {
-            transform: scale(1.1); /* Grow slightly on hover */
-        }
-
-        /* Added style for clicked state */
-        .paw-image:active {
-            transform: scale(1.2); /* Grow more when clicked */
-        }
-
-    </style>
-</head>
-<body>
-    <div class="header">
-        <img src="header1.png" alt="Top Lace Border" class="lace-border">
-    </div>
-
-    <div class="profile-section">
-        <div class="profile-image">
-            <img src="pfp1.png" alt="Profile Art">
-        </div>
-        <div class="profile-text">
-            <div class="social-icons">
-                <a href="https://www.snapchat.com/add/dumidoll" target="_blank">
-                    <img src="snap.png" alt="Snapchat" class="social-icon">
-                </a>
-                <a href="https://www.instagram.com/pawswirl" target="_blank">
-                    <img src="insta.png" alt="Instagram" class="social-icon">
-                </a>
-                <a href="https://venmo.com/u/dumidoll" target="_blank">
-                    <img src="venmo.png" alt="Venmo" class="social-icon">
-                </a>
-                <a href="https://cash.app/$dumidoll" target="_blank">
-                    <img src="cashapp.png" alt="Cashapp" class="social-icon">
-                </a>
-                <a href="https://www.paypal.com/paypalme/mimiscry" target="_blank">
-                    <img src="ppl.png" alt="Paypal" class="social-icon">
-                </a>
-            </div>
-        </div>
-    </div>
-
-    <div class="lala-image">
-        <img src="lala.png" alt="Lala Image">
-    </div>
-
-    <div class="footer">
-        <img src="bottom1.png" alt="Bottom Lace Border" class="lace-border">
-    </div>
-
-    <div class="glitter-overlay">
-        <img src="glitter.gif" alt="Shiny glitter overlay on the website">
-    </div>
-
-    <div class="gif-overlay">
-        <img src="giffy2.gif" alt="Giffy Overlay" style="width: 100%; height: 100%; object-fit: cover;">
-    </div>
+/* Ensure images and other media do not exceed the max-width */
+img, .gif-overlay {
+    max-width: 100%; /* Make sure all images and GIFs are responsive */
+    height: auto; /* Maintain aspect ratio */
+}
 
 
-    <audio autoplay loop>
-        <source src="hehe.mp3" type="audio/mpeg">
-        Your browser does not support the audio element.
-    </audio>
+/* Header and Footer Lace Borders */
+.header, .footer {
+    width: 100%;
+}
 
-    <script type="text/javascript" src="//counter.websiteout.com/js/36/3/0/0"></script>
+/* Responsive Profile Image */
+.profile-image img,
+.lala-image img {
+    width: 100%; /* Make the images scale with the container */
+}
 
-    <div class="popup" id="popup">
-        <div class="popup-content">
-            <button id="close-popup">
-                <img src="paw1.png" alt="Paw Image" class="paw-image" id="paw-image">
-            </button>
-        </div>
-    </div>
+.lace-border {
+    width: 100%;
+    height: auto;
+}
 
-    <script>
-        // Wait for the document to fully load
-        document.addEventListener("DOMContentLoaded", function() {
-            // Function to close the pop-up and play audio
-            document.getElementById("close-popup").onclick = function() {
-                const popup = document.getElementById("popup");
-                popup.style.opacity = 0; // Fade out the popup
-                setTimeout(() => {
-                    popup.style.display = "none"; // Hide the popup after fade-out
-                }, 500); // Match this to the CSS transition duration
-                const audio = new Audio('hehe.mp3'); // Create an audio object
-                audio.play(); // Play the audio
-            };
-        });
-    </script>
-</body>
-</html>
+/* Links Styling */
+a {
+    color: #f192bf;
+    text-decoration: none;
+}
+
+a:hover {
+    text-decoration: underline;
+}
+
+/* Social Icons */
+.social-icons {
+    display: flex; /* Use flexbox for horizontal alignment */
+    justify-content: center; /* Center the icons */
+    gap: 20px; /* Space between icons */
+    margin: 5px 0; /* Space above and below */
+}
+
+.social-icon {
+    width: 60px; /* Set width for icons */
+    height: auto; /* Maintain aspect ratio */
+    filter: hue-rotate(1deg); /* Example filter */
+    transition: transform 0.2s; /* Smooth hover effect */
+    width: 10vw; /* Width will be 10% of the viewport width */
+    height: auto; /* Maintain aspect ratio */
+    display: flex; /* Use flexbox for horizontal alignment */
+    justify-content: center; /* Center the icons */
+    gap: 10px; /* Space between icons */
+    flex-wrap: wrap; /* Allow icons to wrap on smaller screens */
+}
+
+.social-icon:hover {
+    transform: scale(0.75); /* Scale up slightly on hover */
+}
+
+/* Glitter Overlay */
+.glitter-overlay {
+    position: absolute; /* Position the overlay absolutely */
+    top: 0; /* Align it to the top */
+    left: 0; /* Align it to the left */
+    width: 100%; /* Cover the full width */
+    height: 100%; /* Cover the full height */
+    pointer-events: none; /* Allow clicks to pass through */
+    z-index: 10; /* Ensure it is on top */
+}
+
+.glitter-overlay img {
+    width: 100%; /* Cover the full width of the screen */
+    height: auto; /* Maintain aspect ratio */
+    opacity: 0.3; /* Adjust the transparency */
+}
+
+/* Audio Control */
+audio {
+    display: none; /* Hides the audio controls */
+}
+
+#close-popup img {
+    transition: transform 1s ease; /* Smooth transition for the scale effect */
+}
+
+#close-popup img:hover {
+    transform: scale(1.5); /* Increase the size of the image on hover */
+}
+
+.paw-image {
+    width: 100px; /* Set your default size */
+    height: auto; /* Maintain aspect ratio */
+    transition: transform 0.2s; /* Smooth transition */
+}
+
+.paw-image.grow {
+    transform: scale(1.1); /* Slightly enlarge when tapped */
+}
+
+.gif-overlay {
+    position: absolute;
+    top: 450px; /* Adjust this value as needed */
+    left: 0; /* Adjust left/right as needed */
+    width: 100%; /* Full width of the container */
+    height: auto; /* Maintain aspect ratio */
+    z-index: 10; /* Ensure it is above other elements */
+    opacity: 0.2; /* Set the transparency level (0.0 to 1.0) */
+    pointer-events: none; /* Allow clicks to pass through */
+}
