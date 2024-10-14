@@ -121,11 +121,17 @@ audio {
 .paw-image {
     width: 100px; /* Set your default size */
     height: auto; /* Maintain aspect ratio */
+    animation: continuousZoom 4s ease-in-out infinite; /* Apply animation */
     transition: transform 0.2s; /* Smooth transition */
 }
 
 .paw-image.grow {
     transform: scale(1.1); /* Slightly enlarge when tapped */
+}
+
+.paw-image:hover {
+    animation-play-state: paused; /* Pauses the animation on hover */
+    transform: scale(1.75); /* Enlarges the image more when hovered */
 }
 
 /* GIF Overlay */
