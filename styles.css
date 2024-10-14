@@ -28,6 +28,11 @@ body {
     padding: 0 1px; /* Padding for better readability on smaller screens */
 }
 
+.fixed-content {
+    overflow: hidden; /* Prevent scrolling for this specific element */
+    height: 100vh; /* Ensure it takes full viewport height */
+}
+
 /* Ensure images and other media do not exceed the max-width */
 img, .gif-overlay {
     max-width: 100%; /* Make sure all images and GIFs are responsive */
@@ -64,7 +69,7 @@ a:hover {
 .social-icons {
     display: flex; /* Use flexbox for horizontal alignment */
     justify-content: center; /* Center the icons */
-    gap: 20px; /* Space between icons */
+    gap: 16px; /* Space between icons */
     margin: 5px 0; /* Space above and below */
 }
 
