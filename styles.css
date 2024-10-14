@@ -20,6 +20,20 @@ body {
     position: relative; /* Ensure the body has a relative position */
 }
 
+/* Set a maximum width for the entire content */
+body {
+    max-width: 600px; /* Adjust this value as per your desired maximum width */
+    margin: 0 auto; /* Center the content horizontally */
+    padding: 0 2px; /* Add padding for better readability on smaller screens */
+}
+
+/* Ensure images and other media do not exceed the max-width */
+img, .gif-overlay {
+    max-width: 100%; /* Make sure all images and GIFs are responsive */
+    height: auto; /* Maintain aspect ratio */
+}
+
+
 /* Header and Footer Lace Borders */
 .header, .footer {
     width: 100%;
@@ -113,10 +127,11 @@ audio {
 
 .gif-overlay {
     position: absolute;
-    top: 450px; /* Adjust this value to position it */
+    top: 450px; /* Adjust this value as needed */
     left: 0; /* Adjust left/right as needed */
     width: 100%; /* Full width of the container */
     height: auto; /* Maintain aspect ratio */
     z-index: 10; /* Ensure it is above other elements */
     opacity: 0.2; /* Set the transparency level (0.0 to 1.0) */
+    pointer-events: none; /* Allow clicks to pass through */
 }
