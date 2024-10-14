@@ -127,7 +127,7 @@ audio {
 
 .gif-overlay {
     position: absolute;
-    top: 400px; /* Adjust this value as needed */
+    top: 370px; /* Adjust this value as needed */
     left: 0; /* Adjust left/right as needed */
     width: 100%; /* Full width of the container */
     height: auto; /* Maintain aspect ratio */
