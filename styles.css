@@ -70,7 +70,7 @@ a:hover {
     display: flex; /* Use flexbox for horizontal alignment */
     justify-content: center; /* Center the icons */
     gap: 5px; /* Space between icons */
-    margin: 3px 0; /* Space above and below */
+    margin: 0px 0; /* Space above and below */
 }
 
 .social-icon {
