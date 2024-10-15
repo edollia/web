@@ -69,8 +69,8 @@ a:hover {
 .social-icons {
     display: flex; /* Use flexbox for horizontal alignment */
     justify-content: center; /* Center the icons */
-    gap: 16px; /* Space between icons */
-    margin: 5px 0; /* Space above and below */
+    gap: 5px; /* Space between icons */
+    margin: 3px 0; /* Space above and below */
 }
 
 .social-icon {
@@ -149,13 +149,13 @@ audio {
 /* Keyframes for continuous zoom in and out */
 @keyframes continuousZoom {
     0% {
-        transform: scale(0.9); /* Start at original size */
+        transform: scale(0.7); /* Start at original size */
     }
     50% {
-        transform: scale(1.1); /* Zoom in slightly */
+        transform: scale(0.8); /* Zoom in slightly */
     }
     100% {
-        transform: scale(0.9); /* Back to original size */
+        transform: scale(0.7); /* Back to original size */
     }
 }
 
