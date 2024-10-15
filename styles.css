@@ -172,10 +172,28 @@ body {
     width: 100%;
     height: 100%;
     background-color: rgba(78, 75, 75, 0.788);
-    backdrop-filter: blur(5px);
+    backdrop-filter: blur(12px);
     align-items: center;
     justify-content: center;
     z-index: 1000;
     opacity: 1; /* Start with full opacity */
     transition: opacity 0.5s ease; /* Smooth fade in/out transition */
+}
+
+/* Loading GIF Styling */
+.loading-gif {
+    width: 80px; /* Set the size of the GIF */
+    height: auto; /* Maintain aspect ratio */
+    margin-top: 10px; /* Space between text and GIF */
+}
+
+/* Small Loading Text in Upper Left Corner */
+.corner-text {
+    position: absolute;
+    top: 10px; /* Adjust this value to control vertical positioning */
+    left: 10px; /* Adjust this value to control horizontal positioning */
+    font-size: 12px; /* Make the text small */
+    color: #555; /* Slightly darker shade for contrast */
+    font-family: 'Arial', sans-serif; /* Ensure a clean, readable font */
+    opacity: 0.7; /* Slightly transparent for subtle effect */
 }
