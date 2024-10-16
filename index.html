@@ -6,32 +6,147 @@
     <title>Dollia⋆౨ৎ˚⟡</title>
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        /* Loading Screen Styles */
+        .loading-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #f8e9ec; /* White background */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999; /* Ensure it sits above all other content */
+            visibility: visible; /* Show by default */
+        }
+
+        /* Pop-up Styles */
+        .popup {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(78, 75, 75, 0.788);
+            backdrop-filter: blur(5px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            opacity: 1; /* Start with full opacity */
+            transition: opacity 0.5s ease; /* Smooth fade in/out transition */
+        }
+
+        .popup-content {
+            background-color: #f192be00;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+        }
+
+        #close-popup {
+            margin-top: 2px;
+            padding: 0; /* Remove padding to fit the image */
+            border: none;
+            cursor: pointer;
+            background-color: transparent; /* Make background transparent */
+        }
+
+        .paw-image {
+            width: 100px; /* Set a base width for the paw image */
+            height: auto; /* Maintain aspect ratio */
+            transition: transform 0.2s ease; /* Smooth transition for hover */
+        }
+
+        .paw-image:hover {
+            transform: scale(1.1); /* Grow slightly on hover */
+        }
+
+        .paw-image:active {
+            transform: scale(1.2); /* Grow more when clicked */
+        }
+
+        /* Ensure the body is hidden initially */
+        body {
+            visibility: hidden; /* Hide body content until it's fully loaded */
+        }
+
+        /* Footer Styles */
+        .footer {
+            position: relative; /* Allow positioning for child elements */
+        }
+    </style>
 </head>
 <body>
     <div class="loading-screen" id="loading-screen">
         <div class="corner-text">..ᵍᵒᵗᵗᵃ ˡᵒᵃᵈ ⁱᵗ ⁱⁿ ᵘ</div>
         <div>
-            <p>𝘎𝘪𝘷𝘦 𝘮𝘦 𝘰𝘯𝘦 ❽𝘳𝘪𝘤𝘬𝘪𝘯𝘨 𝘴𝘦𝘤𝘰𝘯𝘥..</p> 
+            <p>𝘎𝘪𝘷𝘦 𝘮𝘦 𝘰𝘯𝘦 𝘧𝘳𝘪𝘤𝘬𝘪𝘯 𝘴𝘦𝘤𝘰𝘯𝘥......</p> 
             <img src="loading.gif" alt="Loading animation" class="loading-gif">
         </div>
     </div>    
 
-    <div class="main-screen" id="main-screen">
-        <header>
-            <img src="dropdown.png" alt="Dropdown Header" class="header-image">
-        </header>        
-        <!-- Add more content here like navigation, text, or sections -->
-    </div>    
+    <div class="header">
+        <img src="header1.png" alt="Top Lace Border" class="lace-border">
+    </div>
+
+    <div class="profile-section">
+        <div class="profile-image">
+            <img src="pfp1.png" alt="Profile Art">
+        </div>
+        <div class="profile-text">
+            <div class="social-icons">
+                <a href="https://www.snapchat.com/add/dumidoll" target="_blank">
+                    <img src="snap.png" alt="Snapchat" class="social-icon">
+                </a>
+                <a href="https://www.instagram.com/pawswirl" target="_blank">
+                    <img src="insta.png" alt="Instagram" class="social-icon">
+                </a>
+                <a href="https://venmo.com/u/dumidoll" target="_blank">
+                    <img src="venmo.png" alt="Venmo" class="social-icon">
+                </a>
+                <a href="https://cash.app/$dumidoll" target="_blank">
+                    <img src="cashapp.png" alt="Cashapp" class="social-icon">
+                </a>
+                <a href="https://www.paypal.com/paypalme/mimiscry" target="_blank">
+                    <img src="ppl.png" alt="Paypal" class="social-icon">
+                </a>
+                <a href="https://www.amazon.com/registries/gl/guest-view/38P79LSAILU95" target="_blank">
+                    <img src="amz.png" alt="Amazon" class="social-icon">
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <div class="lala-image">
+        <img src="lala.png" alt="Lala Image">
+    </div>
+
+    <div class="footer">
+        <img src="bottom1.png" alt="Bottom Lace Border" class="lace-border">
+    </div>
+        
+    <div class="glitter-overlay">
+        <img src="glitter.gif" alt="Shiny glitter overlay on the website">
+    </div>
+
+    <div class="gif-overlay">
+        <img src="giffy2.gif" alt="Giffy Overlay" style="width: 100%; height: 100%; object-fit: cover;">
+    </div>
 
     <audio autoplay loop>
         <source src="hehe.mp3" type="audio/mpeg">
         Your browser does not support the audio element.
     </audio>
 
+    <script type="text/javascript" src="//counter.websiteout.com/js/36/3/0/0"></script>
+
     <div class="popup" id="popup">
         <div class="popup-content">
             <button id="close-popup">
-                <img src="paw1.png" alt="Paw Image" class="paw-image">
+                <img src="paw1.png" alt="Paw Image" class="paw-image" id="paw-image">
             </button>
         </div>
     </div>
@@ -40,25 +155,23 @@
         document.addEventListener("DOMContentLoaded", function() {
             const loadingScreen = document.getElementById("loading-screen");
             const popup = document.getElementById("popup");
-            const mainScreen = document.getElementById("main-screen");
 
-            // Show the popup initially
-            popup.style.display = "flex";
+            // Show the popup immediately
+            popup.style.display = "flex"; // Ensure popup is displayed
 
-            // Hide loading screen after a short delay
+            // Hide loading screen after a short delay or once content is ready
             setTimeout(() => {
-                loadingScreen.style.display = "none";
-                document.body.style.visibility = "visible";
+                loadingScreen.style.display = "none"; // Hide loading screen
+                document.body.style.visibility = "visible"; // Show content
             }, 1000); // Adjust this timing as necessary
 
             // Close popup function
             document.getElementById("close-popup").onclick = function() {
                 popup.style.opacity = 0; // Fade out the popup
-                mainScreen.style.display = "block"; // Show main screen immediately
                 setTimeout(() => {
                     popup.style.display = "none"; // Hide the popup after fade-out
                 }, 500); // Match this to the CSS transition duration
-                const audio = new Audio('hehe.mp3');
+                const audio = new Audio('hehe.mp3'); // Create an audio object
                 audio.play(); // Play the audio
             };
         });
