@@ -177,3 +177,10 @@ button {
     height: auto; /* Maintain aspect ratio */
     margin-top: 10px; /* Space between text and GIF */
 }
+
+@media (max-width: 600px) {
+    .main-screen {
+        max-width: 100%; /* Ensure it takes full width on small screens */
+        padding: 0 10px; /* Add padding for better readability */
+    }
+}
