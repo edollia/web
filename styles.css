@@ -10,6 +10,11 @@ html {
     height: 100%;
 }
 
+html, body {
+    overflow: hidden; /* Prevent scrolling */
+    height: 100%; /* Ensure the height is 100% */
+}
+
 /* Body Styling */
 body {
     background-color: #ffffff; /* Fully white background */
@@ -21,57 +26,144 @@ body {
     max-width: 600px; /* Maximum width for content */
     margin: 0 auto; /* Center the content horizontally */
     padding: 0 1px; /* Padding for better readability on smaller screens */
-    overflow: hidden; /* Prevent scrolling */
 }
 
-/* Loading Screen Styles */
-.loading-screen {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background-color: #f8e9ec; /* White background */
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 9999; /* Ensure it sits above all other content */
+.fixed-content {
+    overflow: hidden; /* Prevent scrolling for this specific element */
+    height: 100vh; /* Ensure it takes full viewport height */
 }
 
-/* Small Loading Text in Upper Left Corner */
-.corner-text {
-    position: absolute;
-    top: 10px; /* Adjust this value to control vertical positioning */
-    left: 10px; /* Adjust this value to control horizontal positioning */
-    font-size: 12px; /* Make the text small */
-    color: #555; /* Slightly darker shade for contrast */
-    opacity: 0.7; /* Slightly transparent for subtle effect */
-}
-
-/* Main Screen Styles */
-.main-screen {
-    display: none; /* Initially hidden until pop-up is closed */
-    text-align: center;
-    padding: 0px;
-    background-color: #f8f8f8; /* Light background for content */
-    min-height: 100vh; /* Take full viewport height */
-}
-
-/* Header Styles */
-header {
-    position: relative; /* Set the header to relative positioning */
-}
-
-/* Header Image Styles */
-.header-image {
-    width: 100%; /* Make the header responsive */
-    max-width: 600px; /* Limit width on larger screens */
+/* Ensure images and other media do not exceed the max-width */
+img, .gif-overlay {
+    max-width: 100%; /* Make sure all images and GIFs are responsive */
     height: auto; /* Maintain aspect ratio */
-    margin: 0 auto; /* Center the image */
-    display: block; /* Ensure the image is displayed as a block element */
 }
 
-/* Popup Styles */
+/* Header and Footer Lace Borders */
+.header, .footer {
+    width: 100%;
+}
+
+/* Responsive Profile Image */
+.profile-image img,
+.lala-image img {
+    width: 100%; /* Scale with the container */
+}
+
+.lace-border {
+    width: 100%;
+    height: auto;
+}
+
+/* Links Styling */
+a {
+    color: #f192bf;
+    text-decoration: none;
+}
+
+a:hover {
+    text-decoration: underline;
+}
+
+/* Social Icons */
+.social-icons {
+    display: flex; /* Use flexbox for horizontal alignment */
+    justify-content: center; /* Center the icons */
+    gap: 5px; /* Space between icons */
+    margin: 0px 0; /* Space above and below */
+}
+
+.social-icon {
+    width: 60px; /* Set base width for icons */
+    height: auto; /* Maintain aspect ratio */
+    animation: continuousZoom 4s ease-in-out infinite; /* Apply animation */
+    transition: transform 0.2s; /* Smooth transition */
+    filter: hue-rotate(1deg); /* Example filter */
+}
+
+.social-icon:hover {
+    animation-play-state: paused; /* Pause animation on hover */
+    transform: scale(1.75); /* Enlarge icon on hover */
+}
+
+/* Glitter Overlay */
+.glitter-overlay {
+    position: absolute; /* Position the overlay absolutely */
+    top: 0; /* Align it to the top */
+    left: 0; /* Align it to the left */
+    width: 100%; /* Cover the full width */
+    height: 100%; /* Cover the full height */
+    pointer-events: none; /* Allow clicks to pass through */
+    z-index: 10; /* Ensure it is on top */
+}
+
+.glitter-overlay img {
+    width: 100%; /* Cover the full width of the screen */
+    height: auto; /* Maintain aspect ratio */
+    opacity: 0.3; /* Adjust the transparency */
+}
+
+/* Audio Control */
+audio {
+    display: none; /* Hides the audio controls */
+}
+
+/* Popup Image */
+#close-popup img {
+    transition: transform 1s ease; /* Smooth transition for the scale effect */
+}
+
+#close-popup img:hover {
+    transform: scale(1.5); /* Increase size on hover */
+}
+
+/* Paw Image */
+.paw-image {
+    width: 100px; /* Set your default size */
+    height: auto; /* Maintain aspect ratio */
+    animation: continuousZoom 4s ease-in-out infinite; /* Apply animation */
+    transition: transform 0.2s; /* Smooth transition */
+}
+
+.paw-image.grow {
+    transform: scale(1.1); /* Slightly enlarge when tapped */
+}
+
+.paw-image:hover {
+    animation-play-state: paused; /* Pauses the animation on hover */
+    transform: scale(1.75); /* Enlarges the image more when hovered */
+}
+
+/* GIF Overlay */
+.gif-overlay {
+    position: absolute;
+    top: 300px; /* Adjust this value as needed */
+    left: 0; /* Adjust left/right as needed */
+    width: 100%; /* Full width of the container */
+    height: auto; /* Maintain aspect ratio */
+    z-index: 10; /* Ensure it is above other elements */
+    opacity: 0.2; /* Set the transparency level (0.0 to 1.0) */
+    pointer-events: none; /* Allow clicks to pass through */
+}
+
+/* Keyframes for continuous zoom in and out */
+@keyframes continuousZoom {
+    0% {
+        transform: scale(0.7); /* Start at original size */
+    }
+    50% {
+        transform: scale(0.8); /* Zoom in slightly */
+    }
+    100% {
+        transform: scale(0.7); /* Back to original size */
+    }
+}
+
+/* Hide body initially */
+body {
+    visibility: hidden; /* Hide content initially */
+}
+
 .popup {
     display: flex; /* Ensure popup is displayed as flex */
     position: fixed;
@@ -88,39 +180,24 @@ header {
     transition: opacity 0.5s ease; /* Smooth fade in/out transition */
 }
 
-/* Popup Image Styles */
-#close-popup img {
-    transition: transform 1s ease; /* Smooth transition for the scale effect */
-}
-
-#close-popup img:hover {
-    transform: scale(1.5); /* Increase size on hover */
-}
-
-/* Remove default button styles */
-button {
-    border: none; /* Remove border */
-    background: transparent; /* Make background transparent */
-    padding: 0; /* Remove padding */
-    cursor: pointer; /* Change cursor to pointer */
-}
-
-/* Paw Image Styles */
-.paw-image {
-    width: 100px; /* Set your default size */
-    height: auto; /* Maintain aspect ratio */
-    animation: continuousZoom 4s ease-in-out infinite; /* Apply animation */
-    transition: transform 0.2s; /* Smooth transition */
-}
-
-.paw-image:hover {
-    animation-play-state: paused; /* Pauses the animation on hover */
-    transform: scale(1.75); /* Enlarges the image more when hovered */
-}
-
 /* Loading GIF Styling */
 .loading-gif {
     width: 80px; /* Set the size of the GIF */
     height: auto; /* Maintain aspect ratio */
     margin-top: 10px; /* Space between text and GIF */
+}
+
+/* Small Loading Text in Upper Left Corner */
+.corner-text {
+    position: absolute;
+    top: 10px; /* Adjust this value to control vertical positioning */
+    left: 10px; /* Adjust this value to control horizontal positioning */
+    font-size: 12px; /* Make the text small */
+    color: #555; /* Slightly darker shade for contrast */
+    font-family: 'Arial', sans-serif; /* Ensure a clean, readable font */
+    opacity: 0.7; /* Slightly transparent for subtle effect */
+}
+
+.profile-section {
+    margin: 0; /* Set to zero to remove space above and below */
 }
