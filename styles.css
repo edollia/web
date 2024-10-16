@@ -31,7 +31,7 @@ body {
     left: 0;
     width: 100%;
     height: 100%;
-    background-color: #f8e9ec; /* Light pink background */
+    background-color: #f8e9ec; /* White background */
     display: flex;
     align-items: center;
     justify-content: center;
@@ -52,13 +52,10 @@ body {
 .main-screen {
     display: none; /* Initially hidden until pop-up is closed */
     text-align: center;
-    padding: 0; /* Remove padding */
+    padding: 0px;
     background-color: #f8f8f8; /* Light background for content */
     min-height: 100vh; /* Take full viewport height */
-    width: 600px; /* Set a fixed width */
-    margin: 0 auto; /* Center the main screen */
 }
-
 
 /* Header Styles */
 header {
@@ -72,31 +69,6 @@ header {
     height: auto; /* Maintain aspect ratio */
     margin: 0 auto; /* Center the image */
     display: block; /* Ensure the image is displayed as a block element */
-}
-
-/* Paw Swirl Image Styles */
-.pawswirl-image {
-    position: absolute; /* Position it absolutely within the header */
-    top: -4%; /* Center it vertically */
-    left: 8%; /* Center it horizontally */
-    transform: translate(-50%, -50%); /* Center it correctly */
-    width: 500px; /* Set a fixed size for the pawswirl image */
-    height: auto; /* Maintain aspect ratio */
-    animation: continuousZoom 6s ease-in-out infinite; /* Apply zoom animation */
-    pointer-events: none; /* Allow clicks to pass through */
-}
-
-/* Keyframes for continuous zoom in and out */
-@keyframes continuousZoom {
-    0% {
-        transform: scale(0.7); /* Start at original size */
-    }
-    50% {
-        transform: scale(0.73); /* Zoom in slightly */
-    }
-    100% {
-        transform: scale(0.7); /* Back to original size */
-    }
 }
 
 /* Popup Styles */
@@ -141,31 +113,6 @@ button {
     transition: transform 0.2s; /* Smooth transition */
 }
 
-/* Keyframes for continuous zoom for paw1.png */
-@keyframes continuousZoomPaw1 {
-    0% {
-        transform: scale(0.9); /* Start at a slightly larger size */
-    }
-    50% {
-        transform: scale(1.1); /* Zoom in slightly more */
-    }
-    100% {
-        transform: scale(0.9); /* Back to slightly larger size */
-    }
-}
-
-/* Paw Image Styles */
-.paw-image {
-    width: 100px; /* Set your default size */
-    height: auto; /* Maintain aspect ratio */
-    animation: continuousZoomPaw1 3s ease-in-out infinite; /* Apply new zoom animation */
-    transition: transform 0.2s; /* Smooth transition */
-}
-
-.paw-image:hover {
-    transform: scale(1.75); /* Enlarges the image more when hovered */
-}
-
 .paw-image:hover {
     animation-play-state: paused; /* Pauses the animation on hover */
     transform: scale(1.75); /* Enlarges the image more when hovered */
@@ -176,11 +123,4 @@ button {
     width: 80px; /* Set the size of the GIF */
     height: auto; /* Maintain aspect ratio */
     margin-top: 10px; /* Space between text and GIF */
-}
-
-@media (max-width: 600px) {
-    .main-screen {
-        max-width: 100%; /* Ensure it takes full width on small screens */
-        padding: 0 10px; /* Add padding for better readability */
-    }
 }
