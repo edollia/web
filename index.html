@@ -32,9 +32,17 @@
 
         <img src="notee.jpg" alt="Note" class="note-image"> <!-- Note image added here -->
 
-        <a href="#" id="email-icon"><img src="mail.png" alt="Email" class="social-icon"></a> <!-- Email icon below image -->
+        <!-- Email Icon -->
+        <a href="#" id="email-icon"><img src="mail.png" alt="Email" class="social-icon"></a> 
+
+        <!-- Legal Notice Section -->
+        <div class="legal-notice">
+            <button id="legalNoticeBtn">Legal Notice</button>
+        </div>
+
     </div>  
 
+    <!-- Confirmation Popup for Email -->
     <div class="confirmation-popup" id="confirmation-popup">
         <div class="popup-content">
             <p>You should only request my email if you are:</p>
@@ -46,20 +54,35 @@
         </div>
     </div>   
 
+    <!-- Email Popup -->
     <div class="email-popup" id="email-popup">
         <div class="popup-content">
             <p>email: <strong>dumidollia@gmail.com</strong></p>
             <button id="close-email-popup">Close</button>
-            <!-- Gatito GIF added below the email -->
             <img src="gatito.gif" alt="Cute Cat GIF" style="max-width: 70px; max-height: 70px; margin-top: 10px;">
         </div>
     </div>    
 
+    <!-- Legal Notice Popup -->
+    <div class="popup" id="legalNoticePopup" style="display:none;">
+        <div class="popup-content">
+            <p>Please read:</p>
+            <p>Unauthorized use of my images will lead to immediate legal action. Social media platforms retain location data and much more, and I will obtain the necessary information to protect my rights. Do not steal or misuse my content.
+
+                This applies to all my artwork, as well as photos of my face or body that I've taken myself. If you appreciate my work, feel free to DM me, and I may create something for you at no cost. Please don’t steal; it’s in your best interest.
+                
+                I have established direct contacts with local law enforcement due to the frequency of incidents. (𝐎𝐜𝐭 𝟐𝟏𝐬𝐭 𝐮𝐩𝐝𝐚𝐭𝐞: 𝐛𝐚𝐜𝐤𝐠𝐫𝐨𝐮𝐧𝐝 𝐬𝐨𝐧𝐠, 𝐧𝐨𝐭𝐞 𝐩𝐡𝐨𝐭𝐨 𝐚𝐧𝐝 𝐦𝐚𝐢𝐥 𝐢𝐜𝐨𝐧 𝐝𝐨 𝐧𝐨𝐭 𝐛𝐞𝐥𝐨𝐧𝐠 𝐭𝐨 𝐦𝐞, 𝐞𝐯𝐞𝐫𝐲𝐭𝐡𝐢𝐧𝐠 𝐞𝐥𝐬𝐞 𝐝𝐨𝐞𝐬)</p>
+            <button id="closeLegalNotice" class="close-button">Close</button> <!-- Enlarged Close Button -->
+        </div>
+    </div>
+
+    <!-- Background Audio -->
     <audio autoplay loop>
         <source src="hehe.mp3" type="audio/mpeg">
         Your browser does not support the audio element.
     </audio>
 
+    <!-- Paw Popup -->
     <div class="popup" id="popup">
         <div class="popup-content">
             <button id="close-popup">
@@ -74,80 +97,60 @@
             const popup = document.getElementById("popup");
             const emailPopup = document.getElementById("email-popup");
             const confirmationPopup = document.getElementById("confirmation-popup");
+            const legalNoticePopup = document.getElementById("legalNoticePopup");
             const mainScreen = document.getElementById("main-screen");
-            const iconContainer = document.querySelector('.icon-container'); // Select the icon container
+            const iconContainer = document.querySelector('.icon-container');
 
-            // Force the loading screen to display for at least 2 seconds
-            const minLoadingTime = new Promise((resolve) => {
-                setTimeout(() => {
-                    resolve();
-                }, 2000); // 2000 milliseconds = 2 seconds
-            });
-
-            // Listen for when the page has fully loaded
-            const pageLoaded = new Promise((resolve) => {
-                window.onload = () => {
-                    resolve();
-                };
-            });
-
-            // When both promises (minLoadingTime and pageLoaded) are resolved, hide the loading screen
+            // Loading screen functionality
+            const minLoadingTime = new Promise((resolve) => setTimeout(resolve, 2000));
+            const pageLoaded = new Promise((resolve) => window.onload = resolve);
             Promise.all([minLoadingTime, pageLoaded]).then(() => {
                 loadingScreen.style.display = "none";
-                document.body.style.visibility = "visible"; // Show main content
-                iconContainer.style.visibility = "visible"; // Show the icon container
-                iconContainer.style.opacity = 1; // Fade in effect for the icons
+                document.body.style.visibility = "visible";
+                iconContainer.style.visibility = "visible";
+                iconContainer.style.opacity = 1;
             });
 
-            // Show the popup initially
+            // Paw Popup
             popup.style.display = "flex";
-
-            // Close main popup function
             document.getElementById("close-popup").onclick = function() {
-                popup.style.opacity = 0; // Fade out the popup
-                mainScreen.style.display = "block"; // Show main screen immediately
-                setTimeout(() => {
-                    popup.style.display = "none"; // Hide the popup after fade-out
-                }, 500); // Match this to the CSS transition duration
-                const audio = new Audio('hehe.mp3');
-                audio.play(); // Play the audio
+                popup.style.opacity = 0;
+                mainScreen.style.display = "block";
+                setTimeout(() => popup.style.display = "none", 500);
+                new Audio('hehe.mp3').play();
             };
 
-            // Show confirmation popup when email icon is clicked
+            // Email Confirmation Popup
             document.getElementById("email-icon").onclick = function(event) {
-                event.preventDefault(); // Prevent default anchor action
-                confirmationPopup.style.display = "flex"; // Show confirmation popup
-                setTimeout(() => {
-                    confirmationPopup.style.opacity = 1; // Fade in effect
-                }, 10); // Delay for smooth transition
+                event.preventDefault();
+                confirmationPopup.style.display = "flex";
+                setTimeout(() => confirmationPopup.style.opacity = 1, 10);
             };
-
-            // Close confirmation popup function
             document.getElementById("cancel-email-request").onclick = function() {
-                confirmationPopup.style.opacity = 0; // Fade out the confirmation popup
-                setTimeout(() => {
-                    confirmationPopup.style.display = "none"; // Hide the confirmation popup after fade-out
-                }, 500); // Match this to the CSS transition duration
+                confirmationPopup.style.opacity = 0;
+                setTimeout(() => confirmationPopup.style.display = "none", 500);
             };
-
-            // Show email popup if confirmed
             document.getElementById("confirm-email-request").onclick = function() {
-                confirmationPopup.style.opacity = 0; // Fade out the confirmation popup
+                confirmationPopup.style.opacity = 0;
                 setTimeout(() => {
-                    confirmationPopup.style.display = "none"; // Hide the confirmation popup after fade-out
-                    emailPopup.style.display = "flex"; // Show email popup
-                    setTimeout(() => {
-                        emailPopup.style.opacity = 1; // Fade in effect
-                    }, 10); // Delay for smooth transition
-                }, 500); // Match this to the CSS transition duration
+                    confirmationPopup.style.display = "none";
+                    emailPopup.style.display = "flex";
+                    setTimeout(() => emailPopup.style.opacity = 1, 10);
+                }, 500);
+            };
+            document.getElementById("close-email-popup").onclick = function() {
+                emailPopup.style.opacity = 0;
+                setTimeout(() => emailPopup.style.display = "none", 500);
             };
 
-            // Close email popup function
-            document.getElementById("close-email-popup").onclick = function() {
-                emailPopup.style.opacity = 0; // Fade out the email popup
-                setTimeout(() => {
-                    emailPopup.style.display = "none"; // Hide the email popup after fade-out
-                }, 500); // Match this to the CSS transition duration
+            // Legal Notice Popup
+            document.getElementById("legalNoticeBtn").onclick = function() {
+                legalNoticePopup.style.display = "flex";
+                setTimeout(() => legalNoticePopup.style.opacity = 1, 10);
+            };
+            document.getElementById("closeLegalNotice").onclick = function() {
+                legalNoticePopup.style.opacity = 0;
+                setTimeout(() => legalNoticePopup.style.display = "none", 500);
             };
         });
     </script>        
