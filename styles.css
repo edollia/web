@@ -273,3 +273,19 @@ button {
     max-height: 300px; /* Set a maximum height */
     margin: -3px 0; /* Add padding above and below */
 }
+
+/* Legal Notice Popup Close Button */
+.close-button {
+    background-color: pink; /* Pink background to match the other popups */
+    color: #333; /* Dark text color */
+    border: none; /* Remove default border */
+    padding: 10px 20px; /* Make the button bigger */
+    font-size: 16px; /* Increase font size */
+    cursor: pointer; /* Change cursor to pointer */
+    border-radius: 5px; /* Rounded corners */
+    transition: background-color 0.3s ease; /* Smooth hover transition */
+}
+
+.close-button:hover {
+    background-color: #ff9fcf; /* Lighter pink on hover */
+}
