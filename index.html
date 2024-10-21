@@ -6,147 +6,62 @@
     <title>Dollia⋆౨ৎ˚⟡</title>
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
-    <style>
-        /* Loading Screen Styles */
-        .loading-screen {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: #f8e9ec; /* White background */
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 9999; /* Ensure it sits above all other content */
-            visibility: visible; /* Show by default */
-        }
-
-        /* Pop-up Styles */
-        .popup {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(78, 75, 75, 0.788);
-            backdrop-filter: blur(5px);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 1000;
-            opacity: 1; /* Start with full opacity */
-            transition: opacity 0.5s ease; /* Smooth fade in/out transition */
-        }
-
-        .popup-content {
-            background-color: #f192be00;
-            padding: 20px;
-            border-radius: 10px;
-            text-align: center;
-        }
-
-        #close-popup {
-            margin-top: 2px;
-            padding: 0; /* Remove padding to fit the image */
-            border: none;
-            cursor: pointer;
-            background-color: transparent; /* Make background transparent */
-        }
-
-        .paw-image {
-            width: 100px; /* Set a base width for the paw image */
-            height: auto; /* Maintain aspect ratio */
-            transition: transform 0.2s ease; /* Smooth transition for hover */
-        }
-
-        .paw-image:hover {
-            transform: scale(1.1); /* Grow slightly on hover */
-        }
-
-        .paw-image:active {
-            transform: scale(1.2); /* Grow more when clicked */
-        }
-
-        /* Ensure the body is hidden initially */
-        body {
-            visibility: hidden; /* Hide body content until it's fully loaded */
-        }
-
-        /* Footer Styles */
-        .footer {
-            position: relative; /* Allow positioning for child elements */
-        }
-    </style>
 </head>
 <body>
     <div class="loading-screen" id="loading-screen">
-        <div class="corner-text">..ᵍᵒᵗᵗᵃ ˡᵒᵃᵈ ⁱᵗ ⁱⁿ ᵘ</div>
+        <div class="corner-text">.. ᵍᵒᵗᵗᵃ ˡᵒᵃᵈ ⁱᵗ ⁱⁿ ᵘ</div>
         <div>
-            <p>𝘎𝘪𝘷𝘦 𝘮𝘦 𝘰𝘯𝘦 𝘧𝘳𝘪𝘤𝘬𝘪𝘯 𝘴𝘦𝘤𝘰𝘯𝘥......</p> 
+            <p>𝘎𝘪𝘷𝘦 𝘮𝘦 𝘰𝘯𝘦 𝘧𝘳𝘪𝘤𝘬𝘪𝘯𝘨 𝘴𝘦𝘤𝘰𝘯𝘥..</p> 
             <img src="loading.gif" alt="Loading animation" class="loading-gif">
         </div>
     </div>    
 
-    <div class="header">
-        <img src="header1.png" alt="Top Lace Border" class="lace-border">
-    </div>
-
-    <div class="profile-section">
-        <div class="profile-image">
-            <img src="pfp1.png" alt="Profile Art">
-        </div>
-        <div class="profile-text">
-            <div class="social-icons">
-                <a href="https://www.snapchat.com/add/dumidoll" target="_blank">
-                    <img src="snap.png" alt="Snapchat" class="social-icon">
-                </a>
-                <a href="https://www.instagram.com/pawswirl" target="_blank">
-                    <img src="insta.png" alt="Instagram" class="social-icon">
-                </a>
-                <a href="https://venmo.com/u/dumidoll" target="_blank">
-                    <img src="venmo.png" alt="Venmo" class="social-icon">
-                </a>
-                <a href="https://cash.app/$dumidoll" target="_blank">
-                    <img src="cashapp.png" alt="Cashapp" class="social-icon">
-                </a>
-                <a href="https://www.paypal.com/paypalme/mimiscry" target="_blank">
-                    <img src="ppl.png" alt="Paypal" class="social-icon">
-                </a>
-                <a href="https://www.amazon.com/registries/gl/guest-view/38P79LSAILU95" target="_blank">
-                    <img src="amz.png" alt="Amazon" class="social-icon">
-                </a>
-            </div>
-        </div>
-    </div>
-
-    <div class="lala-image">
-        <img src="lala.png" alt="Lala Image">
-    </div>
-
-    <div class="footer">
-        <img src="bottom1.png" alt="Bottom Lace Border" class="lace-border">
-    </div>
+    <div class="main-screen" id="main-screen">
+        <header>
+            <img src="dropdown.png" alt="Dropdown Header" class="header-image">
+        </header>
         
-    <div class="glitter-overlay">
-        <img src="glitter.gif" alt="Shiny glitter overlay on the website">
-    </div>
+        <div class="icon-container">
+            <a href="https://www.snapchat.com/add/dumidoll" target="_blank"><img src="snap.png" alt="Snapchat" class="social-icon"></a>
+            <a href="https://www.instagram.com/pawswirl" target="_blank"><img src="insta.png" alt="Instagram" class="social-icon"></a>
+            <a href="https://cash.app/$dumidoll" target="_blank"><img src="cashi.png" alt="Cash App" class="social-icon"></a>
+            <a href="https://www.paypal.com/paypalme/mimiscry" target="_blank"><img src="pp.png" alt="PayPal" class="social-icon"></a>
+            <a href="https://venmo.com/u/dumidoll" target="_blank"><img src="ven.png" alt="Venmo" class="social-icon"></a>
+            <a href="https://www.amazon.com/registries/gl/guest-view/38P79LSAILU95" target="_blank"><img src="amz.png" alt="Amazon" class="social-icon"></a>
+        </div>
 
-    <div class="gif-overlay">
-        <img src="giffy2.gif" alt="Giffy Overlay" style="width: 100%; height: 100%; object-fit: cover;">
-    </div>
+        <img src="notee.jpg" alt="Note" class="note-image"> <!-- New image added here -->
+
+        <a href="#" id="email-icon"><img src="mail.png" alt="Email" class="social-icon"></a> <!-- Email icon below image -->
+    </div>  
+
+    <div class="confirmation-popup" id="confirmation-popup">
+        <div class="popup-content">
+            <p>You should only request my email if you are:</p>
+                <p>☆An agency</p>
+                <p>☆Obsessed with me and you have a 2 pages+ paragraph for me</p>
+                <p>☆Need to let me know something super mega duper important</p>
+            <button id="cancel-email-request">Cancel</button>
+            <button id="confirm-email-request">Continue?</button>
+        </div>
+    </div>   
+
+    <div class="email-popup" id="email-popup">
+        <div class="popup-content">
+            <p>email: <strong>dumidollia@gmail.com</strong></p>
+            <button id="close-email-popup">Close</button>
+        </div>
+    </div>    
 
     <audio autoplay loop>
         <source src="hehe.mp3" type="audio/mpeg">
         Your browser does not support the audio element.
     </audio>
 
-    <script type="text/javascript" src="//counter.websiteout.com/js/36/3/0/0"></script>
-
     <div class="popup" id="popup">
         <div class="popup-content">
             <button id="close-popup">
-                <img src="paw1.png" alt="Paw Image" class="paw-image" id="paw-image">
+                <img src="paw1.png" alt="Paw Image" class="paw-image">
             </button>
         </div>
     </div>
@@ -155,26 +70,74 @@
         document.addEventListener("DOMContentLoaded", function() {
             const loadingScreen = document.getElementById("loading-screen");
             const popup = document.getElementById("popup");
+            const emailPopup = document.getElementById("email-popup");
+            const confirmationPopup = document.getElementById("confirmation-popup");
+            const mainScreen = document.getElementById("main-screen");
+            const iconContainer = document.querySelector('.icon-container'); // Select the icon container
 
-            // Show the popup immediately
-            popup.style.display = "flex"; // Ensure popup is displayed
+            // Show the popup initially
+            popup.style.display = "flex";
 
-            // Hide loading screen after a short delay or once content is ready
+            // Hide loading screen after a short delay
             setTimeout(() => {
-                loadingScreen.style.display = "none"; // Hide loading screen
-                document.body.style.visibility = "visible"; // Show content
+                loadingScreen.style.display = "none";
+                document.body.style.visibility = "visible";
+
+                // Show the icon container after another delay (0.5 seconds)
+                setTimeout(() => {
+                    iconContainer.style.visibility = "visible"; // Set visibility to visible
+                    iconContainer.style.opacity = 1; // Change opacity to 1 to fade in
+                }, 500); // 500 milliseconds = 0.5 seconds
             }, 1000); // Adjust this timing as necessary
 
-            // Close popup function
+            // Close main popup function
             document.getElementById("close-popup").onclick = function() {
                 popup.style.opacity = 0; // Fade out the popup
+                mainScreen.style.display = "block"; // Show main screen immediately
                 setTimeout(() => {
                     popup.style.display = "none"; // Hide the popup after fade-out
                 }, 500); // Match this to the CSS transition duration
-                const audio = new Audio('hehe.mp3'); // Create an audio object
+                const audio = new Audio('hehe.mp3');
                 audio.play(); // Play the audio
             };
+
+            // Show confirmation popup when email icon is clicked
+            document.getElementById("email-icon").onclick = function(event) {
+                event.preventDefault(); // Prevent default anchor action
+                confirmationPopup.style.display = "flex"; // Show confirmation popup
+                setTimeout(() => {
+                    confirmationPopup.style.opacity = 1; // Fade in effect
+                }, 10); // Delay for smooth transition
+            };
+
+            // Close confirmation popup function
+            document.getElementById("cancel-email-request").onclick = function() {
+                confirmationPopup.style.opacity = 0; // Fade out the confirmation popup
+                setTimeout(() => {
+                    confirmationPopup.style.display = "none"; // Hide the confirmation popup after fade-out
+                }, 500); // Match this to the CSS transition duration
+            };
+
+            // Show email popup if confirmed
+            document.getElementById("confirm-email-request").onclick = function() {
+                confirmationPopup.style.opacity = 0; // Fade out the confirmation popup
+                setTimeout(() => {
+                    confirmationPopup.style.display = "none"; // Hide the confirmation popup after fade-out
+                    emailPopup.style.display = "flex"; // Show email popup
+                    setTimeout(() => {
+                        emailPopup.style.opacity = 1; // Fade in effect
+                    }, 10); // Delay for smooth transition
+                }, 500); // Match this to the CSS transition duration
+            };
+
+            // Close email popup function
+            document.getElementById("close-email-popup").onclick = function() {
+                emailPopup.style.opacity = 0; // Fade out the email popup
+                setTimeout(() => {
+                    emailPopup.style.display = "none"; // Hide the email popup after fade-out
+                }, 500); // Match this to the CSS transition duration
+            };
         });
-    </script>
+    </script>        
 </body>
 </html>
