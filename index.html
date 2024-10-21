@@ -34,12 +34,6 @@
 
         <!-- Email Icon -->
         <a href="#" id="email-icon"><img src="mail.png" alt="Email" class="social-icon"></a> 
-
-        <!-- Legal Notice Section -->
-        <div class="legal-notice">
-            <button id="legalNoticeBtn">Legal Notice</button>
-        </div>
-
     </div>  
 
     <!-- Confirmation Popup for Email -->
@@ -59,22 +53,27 @@
         <div class="popup-content">
             <p>email: <strong>dumidollia@gmail.com</strong></p>
             <button id="close-email-popup">Close</button>
+            <button id="legal-notice-button">Legal Notice 10/20/24</button>
+            <p id="legal-notice" style="display: none; margin-top: 20px;">Unauthorized use of my images will lead to immediate legal action.<br>
+                Social media platforms retain location data and much more, and <br>
+                I will obtain the necessary information to protect my rights.<br>
+                Do not steal or misuse my content. This applies to all my artwork<br>
+                as well as photos of my face or body that I've taken myself.<br>
+                If you appreciate my work, feel free to DM me<br>
+                and I may create something for you at no cost.<br>
+                Please don’t steal; it’s in your best interest.<br>
+                I have established direct contacts with local law enforcement due<br>
+                to the frequency of incidents. I watermark my images due to past<br>
+                impersonation incidents. Some individuals have attempted to catfish<br>
+                as me, posing as a minor for illegal activities and to befriend minors,<br>
+                which is concerning. Currently, only 2 out of 5 related cases remain open,<br>
+                and those responsible will be pursued if they haven't already been apprehended.<br>
+                (𝐎𝐜𝐭 𝟐𝟏𝐬𝐭 𝐮𝐩𝐝𝐚𝐭𝐞: 𝐛𝐚𝐜𝐤𝐠𝐫𝐨𝐮𝐧𝐝 𝐬𝐨𝐧𝐠, 𝐧𝐨𝐭𝐞 𝐩𝐡𝐨𝐭𝐨 𝐚𝐧𝐝 𝐦𝐚𝐢𝐥 𝐢𝐜𝐨𝐧 𝐝𝐨 𝐧𝐨𝐭 𝐛𝐞𝐥𝐨𝐧𝐠 𝐭𝐨 𝐦𝐞, 𝐞𝐯𝐞𝐫𝐲𝐭𝐡𝐢𝐧𝐠 𝐞𝐥𝐬𝐞 𝐝𝐨𝐞𝐬)
+            </p>
+            <button id="go-back-button" style="display: none;">Go Back to Main Screen</button>
             <img src="gatito.gif" alt="Cute Cat GIF" style="max-width: 70px; max-height: 70px; margin-top: 10px;">
         </div>
-    </div>    
-
-    <!-- Legal Notice Popup -->
-    <div class="popup" id="legalNoticePopup" style="display:none;">
-        <div class="popup-content">
-            <p>Please read:</p>
-            <p>Unauthorized use of my images will lead to immediate legal action. Social media platforms retain location data and much more, and I will obtain the necessary information to protect my rights. Do not steal or misuse my content.
-
-                This applies to all my artwork, as well as photos of my face or body that I've taken myself. If you appreciate my work, feel free to DM me, and I may create something for you at no cost. Please don’t steal; it’s in your best interest.
-                
-                I have established direct contacts with local law enforcement due to the frequency of incidents. I watermark my images due to past impersonation incidents. Some individuals have attempted to catfish as me, posing as a minor for illegal activities and to befriend minors, which is concerning. Currently, only 2 out of 5 related cases remain open, and those responsible will be pursued if they haven't already been apprehended. (𝐎𝐜𝐭 𝟐𝟏𝐬𝐭 𝐮𝐩𝐝𝐚𝐭𝐞: 𝐛𝐚𝐜𝐤𝐠𝐫𝐨𝐮𝐧𝐝 𝐬𝐨𝐧𝐠, 𝐧𝐨𝐭𝐞 𝐩𝐡𝐨𝐭𝐨 𝐚𝐧𝐝 𝐦𝐚𝐢𝐥 𝐢𝐜𝐨𝐧 𝐝𝐨 𝐧𝐨𝐭 𝐛𝐞𝐥𝐨𝐧𝐠 𝐭𝐨 𝐦𝐞, 𝐞𝐯𝐞𝐫𝐲𝐭𝐡𝐢𝐧𝐠 𝐞𝐥𝐬𝐞 𝐝𝐨𝐞𝐬)</p>
-            <button id="closeLegalNotice" class="close-button">Close</button> <!-- Enlarged Close Button -->
-        </div>
-    </div>
+    </div>     
 
     <!-- Background Audio -->
     <audio autoplay loop>
@@ -97,9 +96,11 @@
             const popup = document.getElementById("popup");
             const emailPopup = document.getElementById("email-popup");
             const confirmationPopup = document.getElementById("confirmation-popup");
-            const legalNoticePopup = document.getElementById("legalNoticePopup");
             const mainScreen = document.getElementById("main-screen");
             const iconContainer = document.querySelector('.icon-container');
+            const legalNoticeButton = document.getElementById("legal-notice-button");
+            const legalNotice = document.getElementById("legal-notice");
+            const goBackButton = document.getElementById("go-back-button");
 
             // Loading screen functionality
             const minLoadingTime = new Promise((resolve) => setTimeout(resolve, 2000));
@@ -143,14 +144,18 @@
                 setTimeout(() => emailPopup.style.display = "none", 500);
             };
 
-            // Legal Notice Popup
-            document.getElementById("legalNoticeBtn").onclick = function() {
-                legalNoticePopup.style.display = "flex";
-                setTimeout(() => legalNoticePopup.style.opacity = 1, 10);
+            // Legal Notice Button Functionality
+            legalNoticeButton.onclick = function() {
+                legalNotice.style.display = "block";
+                goBackButton.style.display = "block";
+                legalNoticeButton.style.display = "none";
             };
-            document.getElementById("closeLegalNotice").onclick = function() {
-                legalNoticePopup.style.opacity = 0;
-                setTimeout(() => legalNoticePopup.style.display = "none", 500);
+
+            // Go Back Button Functionality
+            goBackButton.onclick = function() {
+                legalNotice.style.display = "none";
+                goBackButton.style.display = "none";
+                legalNoticeButton.style.display = "block";
             };
         });
     </script>        
