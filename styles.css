@@ -77,7 +77,7 @@ header {
         transform: translateY(0px) rotate(0deg); /* Slide down slightly */
     }
     100% {
-        transform: translateY(-53px) rotate(0deg); /* End 30 pixels higher */
+        transform: translateY(-50px) rotate(0deg); /* End 30 pixels higher */
         opacity: 1; /* Fully visible */
     }
 }
