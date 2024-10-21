@@ -268,8 +268,9 @@ button {
 }
 
 .note-image {
-    width: 80%; /* Limit the width */
+    width: 300px; /* Limit the width */
     height: auto; /* Maintain aspect ratio */
-    max-height: 420px; /* Set a maximum height */
-    margin: 5px 0; /* Add padding above and below */
+    max-height: 300px; /* Set a maximum height */
+    margin: -3px 0; /* Add padding above and below */
 }
+
