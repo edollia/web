@@ -30,7 +30,7 @@
             <a href="https://www.amazon.com/registries/gl/guest-view/38P79LSAILU95" target="_blank"><img src="amz.png" alt="Amazon" class="social-icon"></a>
         </div>
 
-        <img src="notee.jpg" alt="Note" class="note-image"> <!-- New image added here -->
+        <img src="notee.jpg" alt="Note" class="note-image"> <!-- Note image added here -->
 
         <a href="#" id="email-icon"><img src="mail.png" alt="Email" class="social-icon"></a> <!-- Email icon below image -->
     </div>  
@@ -38,9 +38,9 @@
     <div class="confirmation-popup" id="confirmation-popup">
         <div class="popup-content">
             <p>You should only request my email if you are:</p>
-                <p>☆An agency</p>
-                <p>☆Obsessed with me and you have a 2 pages+ paragraph for me</p>
-                <p>☆Need to let me know something super mega duper important</p>
+            <p>☆An agency</p>
+            <p>☆Obsessed with me and you have a 2 pages+ paragraph for me</p>
+            <p>☆Need to let me know something super mega duper important</p>
             <button id="cancel-email-request">Cancel</button>
             <button id="confirm-email-request">Continue?</button>
         </div>
@@ -50,6 +50,8 @@
         <div class="popup-content">
             <p>email: <strong>dumidollia@gmail.com</strong></p>
             <button id="close-email-popup">Close</button>
+            <!-- Gatito GIF added below the email -->
+            <img src="gatito.gif" alt="Cute Cat GIF" style="max-width: 70px; max-height: 70px; margin-top: 10px;">
         </div>
     </div>    
 
@@ -75,20 +77,30 @@
             const mainScreen = document.getElementById("main-screen");
             const iconContainer = document.querySelector('.icon-container'); // Select the icon container
 
+            // Force the loading screen to display for at least 2 seconds
+            const minLoadingTime = new Promise((resolve) => {
+                setTimeout(() => {
+                    resolve();
+                }, 2000); // 2000 milliseconds = 2 seconds
+            });
+
+            // Listen for when the page has fully loaded
+            const pageLoaded = new Promise((resolve) => {
+                window.onload = () => {
+                    resolve();
+                };
+            });
+
+            // When both promises (minLoadingTime and pageLoaded) are resolved, hide the loading screen
+            Promise.all([minLoadingTime, pageLoaded]).then(() => {
+                loadingScreen.style.display = "none";
+                document.body.style.visibility = "visible"; // Show main content
+                iconContainer.style.visibility = "visible"; // Show the icon container
+                iconContainer.style.opacity = 1; // Fade in effect for the icons
+            });
+
             // Show the popup initially
             popup.style.display = "flex";
-
-            // Hide loading screen after a short delay
-            setTimeout(() => {
-                loadingScreen.style.display = "none";
-                document.body.style.visibility = "visible";
-
-                // Show the icon container after another delay (0.5 seconds)
-                setTimeout(() => {
-                    iconContainer.style.visibility = "visible"; // Set visibility to visible
-                    iconContainer.style.opacity = 1; // Change opacity to 1 to fade in
-                }, 500); // 500 milliseconds = 0.5 seconds
-            }, 1000); // Adjust this timing as necessary
 
             // Close main popup function
             document.getElementById("close-popup").onclick = function() {
