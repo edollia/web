@@ -181,7 +181,7 @@ button {
 .social-icon {
     width: 50px; /* Adjust size as needed */
     height: auto; /* Maintain aspect ratio */
-    margin: 10px; /* Space between icons */
+    margin: 6px; /* Space between icons */
     transition: transform 0.3s; /* Smooth scaling on hover */
     animation: zoom 4s infinite; /* Slowed down zoom animation */
 }
