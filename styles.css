@@ -237,7 +237,7 @@ button {
     margin-top: 10px; /* Space above button */
     padding: 5px 10px; /* Button padding */
     cursor: pointer; /* Change cursor to pointer */
-    background-color: #f8e9ec; /* Button color */
+    background-color: #fdedf5; /* Button color */
     border: none; /* No border */
     border-radius: 5px; /* Rounded button */
 }
@@ -260,7 +260,7 @@ button {
 }
 
 .confirmation-popup .popup-content {
-    background: rgba(255, 255, 255, 0.9); /* Light background for popup */
+    background: #fdedf5; /* Light background for popup */
     padding: 20px; /* Padding for content */
     border-radius: 10px; /* Rounded corners */
     text-align: center; /* Center text */
@@ -288,4 +288,44 @@ button {
     height: auto; /* Maintain aspect ratio */
     max-height: 300px; /* Set a maximum height */
     margin: -3px 0; /* Add padding above and below */
+}
+
+/* Dropdown Menu Styles */
+.dropdown {
+    position: relative;
+    display: inline-block;
+}
+
+.dropdown-button {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+}
+
+.dropdown-content {
+    display: none; /* Hidden by default */
+    position: absolute;
+    top: 80%; /* Position below the button */
+    left: 50%;
+    transform: translateX(90%);
+    background-color: #fdedf57c; /* Light background */
+    border-radius: 10px; /* Rounded corners */
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2); /* Subtle shadow */
+    z-index: 1000; /* Ensure it's above other content */
+    padding: 10px;
+    min-width: 60px; /* Minimum width for the dropdown */
+    text-align: center;
+}
+
+/* Show dropdown content on hover or click */
+.dropdown-content,
+.dropdown:focus-within .dropdown-content {
+    display: block;
+}
+
+/* Style dropdown icons */
+.dropdown-content .social-icon {
+    margin: 5px 0; /* Space between icons */
+    display: block; /* Stack icons vertically */
 }
