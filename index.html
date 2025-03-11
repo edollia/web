@@ -22,12 +22,22 @@
         </header>
         
         <div class="icon-container">
+            <!-- Snapchat -->
             <a href="https://www.snapchat.com/add/dumidoll" target="_blank"><img src="snap.png" alt="Snapchat" class="social-icon"></a>
+            
+            <!-- Instagram -->
             <a href="https://www.instagram.com/pawswirl" target="_blank"><img src="insta.png" alt="Instagram" class="social-icon"></a>
-            <a href="https://cash.app/$dumidoll" target="_blank"><img src="cashi.png" alt="Cash App" class="social-icon"></a>
-            <a href="https://www.paypal.com/paypalme/mimiscry" target="_blank"><img src="pp.png" alt="PayPal" class="social-icon"></a>
-            <a href="https://venmo.com/u/dumidoll" target="_blank"><img src="ven.png" alt="Venmo" class="social-icon"></a>
-            <a href="https://www.amazon.com/registries/gl/guest-view/38P79LSAILU95" target="_blank"><img src="amz.png" alt="Amazon" class="social-icon"></a>
+            
+            <!-- Dropdown Menu -->
+            <div class="dropdown">
+                <button class="dropdown-button"><img src="dropdown-icon.png" alt="Menu" class="social-icon"></button>
+                <div class="dropdown-content">
+                    <a href="https://cash.app/$dumidoll" target="_blank"><img src="cashi.png" alt="Cash App" class="social-icon"></a>
+                    <a href="https://www.paypal.com/paypalme/mimiscry" target="_blank"><img src="pp.png" alt="PayPal" class="social-icon"></a>
+                    <a href="https://venmo.com/u/dumidoll" target="_blank"><img src="ven.png" alt="Venmo" class="social-icon"></a>
+                    <a href="https://www.amazon.com/registries/gl/guest-view/38P79LSAILU95" target="_blank"><img src="amz.png" alt="Amazon" class="social-icon"></a>
+                </div>
+            </div>
         </div>
 
         <img src="notee.jpg" alt="Note" class="note-image"> <!-- Note image added here -->
@@ -53,11 +63,6 @@
         <div class="popup-content">
             <p>email: <strong>dumidollia@gmail.com</strong></p>
             <button id="close-email-popup">Close</button>
-            <!-- <button id="legal-notice-button">Legal Notice 10/20/24</button>
-            <p id="legal-notice" style="display: none; margin-top: 20px;">Social media platforms retain location data and much more, and I will obtain the necessary information to protect my rights. Do not steal or misuse my content. This applies to all my artwork as well as photos of my face or body that I've taken myself. If you appreciate my work, feel free to DM me and I may create something for you at no cost. Please don’t steal; it’s in your best interest. I have established direct contacts with local law enforcement due to the frequency of incidents. I watermark my images due to past impersonation incidents. Some individuals have attempted to catfish as me, posing as a minor for illegal activities and to befriend minors, which is concerning. Currently, only 2 out of 5 related cases remain open, and those responsible will be pursued if they haven't already been apprehended.
-                (𝐎𝐜𝐭 𝟐𝟏𝐬𝐭 𝐮𝐩𝐝𝐚𝐭𝐞: 𝐛𝐚𝐜𝐤𝐠𝐫𝐨𝐮𝐧𝐝 𝐬𝐨𝐧𝐠, 𝐧𝐨𝐭𝐞 𝐩𝐡𝐨𝐭𝐨 𝐚𝐧𝐝 𝐦𝐚𝐢𝐥 𝐢𝐜𝐨𝐧 𝐝𝐨 𝐧𝐨𝐭 𝐛𝐞𝐥𝐨𝐧𝐠 𝐭𝐨 𝐦𝐞, 𝐞𝐯𝐞𝐫𝐲𝐭𝐡𝐢𝐧𝐠 𝐞𝐥𝐬𝐞 𝐝𝐨𝐞𝐬)
-            </p>
-            <button id="go-back-button" style="display: none;">Go Back to Main Screen</button>-->
             <img src="gatito.gif" alt="Cute Cat GIF" style="max-width: 70px; max-height: 70px; margin-top: 10px;">
         </div>
     </div>     
@@ -77,74 +82,7 @@
         </div>
     </div>
 
-    <script>
-        document.addEventListener("DOMContentLoaded", function() {
-            const loadingScreen = document.getElementById("loading-screen");
-            const popup = document.getElementById("popup");
-            const emailPopup = document.getElementById("email-popup");
-            const confirmationPopup = document.getElementById("confirmation-popup");
-            const mainScreen = document.getElementById("main-screen");
-            const iconContainer = document.querySelector('.icon-container');
-            const legalNoticeButton = document.getElementById("legal-notice-button");
-            const legalNotice = document.getElementById("legal-notice");
-            const goBackButton = document.getElementById("go-back-button");
-
-            // Loading screen functionality
-            const minLoadingTime = new Promise((resolve) => setTimeout(resolve, 2000));
-            const pageLoaded = new Promise((resolve) => window.onload = resolve);
-            Promise.all([minLoadingTime, pageLoaded]).then(() => {
-                loadingScreen.style.display = "none";
-                document.body.style.visibility = "visible";
-                iconContainer.style.visibility = "visible";
-                iconContainer.style.opacity = 1;
-            });
-
-            // Paw Popup
-            popup.style.display = "flex";
-            document.getElementById("close-popup").onclick = function() {
-                popup.style.opacity = 0;
-                mainScreen.style.display = "block";
-                setTimeout(() => popup.style.display = "none", 500);
-                new Audio('hehe.mp3').play();
-            };
-
-            // Email Confirmation Popup
-            document.getElementById("email-icon").onclick = function(event) {
-                event.preventDefault();
-                confirmationPopup.style.display = "flex";
-                setTimeout(() => confirmationPopup.style.opacity = 1, 10);
-            };
-            document.getElementById("cancel-email-request").onclick = function() {
-                confirmationPopup.style.opacity = 0;
-                setTimeout(() => confirmationPopup.style.display = "none", 500);
-            };
-            document.getElementById("confirm-email-request").onclick = function() {
-                confirmationPopup.style.opacity = 0;
-                setTimeout(() => {
-                    confirmationPopup.style.display = "none";
-                    emailPopup.style.display = "flex";
-                    setTimeout(() => emailPopup.style.opacity = 1, 10);
-                }, 500);
-            };
-            document.getElementById("close-email-popup").onclick = function() {
-                emailPopup.style.opacity = 0;
-                setTimeout(() => emailPopup.style.display = "none", 500);
-            };
-
-            // Legal Notice Button Functionality
-            legalNoticeButton.onclick = function() {
-                legalNotice.style.display = "block";
-                goBackButton.style.display = "block";
-                legalNoticeButton.style.display = "none";
-            };
-
-            // Go Back Button Functionality
-            goBackButton.onclick = function() {
-                legalNotice.style.display = "none";
-                goBackButton.style.display = "none";
-                legalNoticeButton.style.display = "block";
-            };
-        });
-    </script>        
+    <!-- Link to External JavaScript -->
+    <script src="script.js"></script>
 </body>
 </html>
