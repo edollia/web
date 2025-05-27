@@ -191,21 +191,6 @@ button {
     animation-play-state: paused; /* Pause the zoom animation on hover */
 }
 
-/* Legal Notice Styles */
-#legal-notice {
-    background-color: rgba(255, 255, 255, 0.9); /* Light background for contrast */
-    padding: 20px; /* Padding for content */
-    border-radius: 10px; /* Rounded corners */
-    color: #333; /* Text color */
-    margin-top: 20px; /* Space above the legal notice */
-    font-size: 14px; /* Font size for better readability */
-    line-height: 1.6; /* Line height for better spacing */
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2); /* Subtle shadow for depth */
-    max-height: 300px; /* Set a maximum height for the notice */
-    overflow-y: auto; /* Enable vertical scrolling if content overflows */
-    overflow-x: hidden; /* Prevent horizontal scrolling */
-}
-
 /* Email Popup Styles */
 .email-popup {
     display: none; /* Initially hidden */
@@ -225,7 +210,7 @@ button {
 }
 
 .email-popup .popup-content {
-    background: rgba(255, 255, 255, 0.9); /* Light background for popup */
+    background: #fdedf5; /* Light background for popup */
     padding: 20px; /* Padding for content */
     border-radius: 10px; /* Rounded corners */
     text-align: center; /* Center text */
@@ -237,7 +222,7 @@ button {
     margin-top: 10px; /* Space above button */
     padding: 5px 10px; /* Button padding */
     cursor: pointer; /* Change cursor to pointer */
-    background-color: #fdedf5; /* Button color */
+    background-color: #f7e9ee; /* Button color */
     border: none; /* No border */
     border-radius: 5px; /* Rounded button */
 }
@@ -272,7 +257,7 @@ button {
     margin-top: 10px; /* Space above button */
     padding: 5px 10px; /* Button padding */
     cursor: pointer; /* Change cursor to pointer */
-    background-color: #f8e9ec; /* Button color */
+    background-color: #fdedf5; /* Button color */
     border: none; /* No border */
     border-radius: 5px; /* Rounded button */
 }
