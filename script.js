@@ -71,7 +71,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             showingNote = !showingNote;
             noteImage.classList.toggle('hidden', !showingNote);
             drawingWidget.classList.toggle('active', !showingNote);
-            toggleButton.textContent = showingNote ? ':3' : '↻';
+            toggleButton.textContent = showingNote ? ':3' : '✖';
         });
     }
 
@@ -135,7 +135,7 @@ document.addEventListener("DOMContentLoaded", async function() {
 
         function initCanvas() {
             canvas.width = 330;
-            canvas.height = 273;
+            canvas.height = 260;
             ctx.fillStyle = "#ffffff";
             ctx.fillRect(0, 0, canvas.width, canvas.height);
             saveState();
@@ -269,7 +269,7 @@ document.addEventListener("DOMContentLoaded", async function() {
 
                 if (error) throw error;
                 
-                alert("Drawing submitted for approval!");
+                alert("Submitted! ᵇᵘᵗ ᵈᶦᵈ ʸᵒᵘ ˢᵘᵇᵐᶦᵗ ᵗᵒ ᵐᵉ ʸᵉᵗ...");
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
                 ctx.fillStyle = "#ffffff";
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -328,7 +328,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                     charCount.textContent = '0/200';
                     askFormContainer.style.display = 'none';
                     askButton.textContent = 'Ask me anything!';
-                    alert("Question received! I'll answer it soon.");
+                    alert("Got it! ^-^");
                 } catch (error) {
                     console.error("Error saving question:", error);
                     alert("Failed to submit question. Please try again.");
