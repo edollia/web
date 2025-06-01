@@ -5,95 +5,82 @@
     box-sizing: border-box;
 }
 
-/* Ensure html takes full height */
 html {
     height: 100%;
 }
 
-/* Body Styling */
+body.loading {
+    overflow: hidden;
+}
+
 body {
-    background-image: url('background1.png'); /* Your background image */
-    background-size: cover; /* Ensures the image covers the whole page */
-    background-position: center; /* Centers the background image */
-    background-repeat: no-repeat; /* Prevents the image from repeating */
+    background-image: url('background1.png');
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
     font-family: 'Arial', sans-serif;
     color: #333;
     text-align: center;
-    min-height: 100vh; /* Ensure body takes at least full viewport height */
+    min-height: 100vh;
     position: relative;
-    max-width: 600px; /* Maximum width for content */
-    margin: 0 auto; /* Center the content horizontally */
-    padding: 0 1px; /* Padding for better readability on smaller screens */
-    overflow: hidden; /* Prevent scrolling */
+    max-width: 600px;
+    margin: 0 auto;
+    padding: 0 1px;
+    overflow: hidden;
+    -webkit-tap-highlight-color: transparent;
 }
 
-/* Loading Screen Styles */
 .loading-screen {
     position: fixed;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
-    background-color: #f8e9ec; /* Light background */
+    background-color: #f8e9ec;
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 9999; /* Ensure it sits above all other content */
+    z-index: 9999;
 }
 
-/* Main Screen Styles */
 .main-screen {
     display: none;
     text-align: center;
     padding: 0;
-    background-color: transparent; /* Remove background color */
+    background-color: transparent;
     min-height: 100vh;
 }
 
-/* Small Loading Text in Upper Left Corner */
 .corner-text {
     position: absolute;
-    top: 10px; /* Adjust this value to control vertical positioning */
-    left: 10px; /* Adjust this value to control horizontal positioning */
-    font-size: 12px; /* Make the text small */
-    color: #555; /* Slightly darker shade for contrast */
-    opacity: 0.7; /* Slightly transparent for subtle effect */
+    top: 10px;
+    left: 10px;
+    font-size: 12px;
+    color: #555;
+    opacity: 0.7;
 }
 
-/* Header Styles */
 header {
-    position: relative; /* Set the header to relative positioning */
-    animation: slideDown 0.75s ease forwards; /* Apply the dropdown animation */
+    position: relative;
+    animation: slideDown 0.75s ease forwards;
 }
 
-/* Keyframes for sliding down animation */
 @keyframes slideDown {
-    0% {
-        transform: translateY(-100%) rotate(0deg); /* Start off-screen */
-        opacity: 0; /* Start invisible */
-    }
-    50% {
-        opacity: 0.5; /* Half visible */
-        transform: translateY(0px) rotate(0deg); /* Slide down slightly */
-    }
-    100% {
-        transform: translateY(-48px) rotate(0deg); /* End 30 pixels higher */
-        opacity: 1; /* Fully visible */
-    }
+    0% { transform: translateY(-100%) rotate(0deg); opacity: 0; }
+    50% { opacity: 0.5; transform: translateY(0px) rotate(0deg); }
+    100% { transform: translateY(-48px) rotate(0deg); opacity: 1; }
 }
 
-/* Header Image Styles */
 .header-image {
-    width: 100%; /* Make the header responsive */
-    max-width: 600px; /* Limit width on larger screens */
-    height: auto; /* Maintain aspect ratio */
-    margin: 0 auto; /* Center the image */
-    display: block; /* Ensure the image is displayed as a block element */
+    width: 100%;
+    max-width: 600px;
+    height: auto;
+    margin: 0 auto;
+    display: block;
 }
 
-/* Popup Styles */
 .popup {
-    display: flex; /* Ensure popup is displayed as flex */
+    display: flex;
     position: fixed;
     top: 0;
     left: 0;
@@ -104,178 +91,164 @@ header {
     align-items: center;
     justify-content: center;
     z-index: 1000;
-    opacity: 1; /* Start with full opacity */
-    transition: opacity 0.5s ease; /* Smooth fade in/out transition */
+    opacity: 1;
+    transition: opacity 0.5s ease;
 }
 
-/* Popup Image Styles */
 #close-popup img {
-    transition: transform 1s ease; /* Smooth transition for the scale effect */
+    transition: transform 1s ease;
 }
 
 #close-popup img:hover {
-    transform: scale(1.5); /* Increase size on hover */
+    transform: scale(1.5);
 }
 
-/* Remove default button styles */
 button {
-    border: none; /* Remove border */
-    background: transparent; /* Make background transparent */
-    padding: 0; /* Remove padding */
-    cursor: pointer; /* Change cursor to pointer */
+    border: none;
+    background: transparent;
+    padding: 0;
+    cursor: pointer;
 }
 
-/* Paw Image Styles */
 .paw-image {
-    width: 100px; /* Set your default size */
-    height: auto; /* Maintain aspect ratio */
-    animation: continuousZoom 4s ease-in-out infinite; /* Apply animation */
-    transition: transform 0.2s; /* Smooth transition */
+    width: 100px;
+    height: auto;
+    animation: continuousZoom 4s ease-in-out infinite;
+    transition: transform 0.2s;
 }
 
 .paw-image:hover {
-    animation-play-state: paused; /* Pauses the animation on hover */
-    transform: scale(1.75); /* Enlarges the image more when hovered */
+    animation-play-state: paused;
+    transform: scale(1.75);
 }
 
-/* Loading GIF Styling */
 .loading-gif {
-    width: 80px; /* Set the size of the GIF */
-    height: auto; /* Maintain aspect ratio */
-    margin-top: 10px; /* Space between text and GIF */
+    width: 80px;
+    height: auto;
+    margin-top: 10px;
 }
 
-/* Keyframes for continuous zoom in and out */
 @keyframes continuousZoom {
-    0% {
-        transform: scale(0.7); /* Start at original size */
-    }
-    50% {
-        transform: scale(0.85); /* Zoom in slightly */
-    }
-    100% {
-        transform: scale(0.7); /* Back to original size */
-    }
+    0% { transform: scale(0.7); }
+    50% { transform: scale(0.85); }
+    100% { transform: scale(0.7); }
 }
 
-/* Keyframes for zoom effect */
 @keyframes zoom {
-    0%, 100% {
-        transform: scale(1); /* Original size */
-    }
-    50% {
-        transform: scale(1.1); /* Zoom in */
-    }
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.1); }
 }
 
 .icon-container {
-    display: flex; /* Align items in a row */
-    justify-content: center; /* Center the icons */
-    flex-wrap: wrap; /* Wrap icons if they overflow */
-    margin-top: -50px; /* Space between header and icons */
-    opacity: 0; /* Start with opacity 0 */
-    transition: opacity 3s ease; /* Smooth transition for opacity */
-    visibility: hidden; /* Hide the container initially */
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-top: -50px;
+    opacity: 0;
+    transition: opacity 3s ease;
+    visibility: hidden;
 }
 
 .social-icon {
-    width: 50px; /* Adjust size as needed */
-    height: auto; /* Maintain aspect ratio */
-    margin: 6px; /* Space between icons */
-    transition: transform 0.3s; /* Smooth scaling on hover */
-    animation: zoom 4s infinite; /* Slowed down zoom animation */
+    width: 50px;
+    height: auto;
+    margin: 6px;
+    transition: transform 0.3s;
+    animation: zoom 4s infinite;
 }
 
 .social-icon:hover {
-    transform: scale(1.9); /* Slightly enlarge on hover */
-    animation-play-state: paused; /* Pause the zoom animation on hover */
+    transform: scale(1.9);
+    animation-play-state: paused;
 }
 
-/* Email Popup Styles */
 .email-popup {
-    display: none; /* Initially hidden */
+    display: none;
     position: fixed;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
-    background-color: rgba(0, 0, 0, 0.7); /* Semi-transparent background */
-    backdrop-filter: blur(8px); /* Optional blur effect */
+    background-color: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(8px);
     align-items: center;
     justify-content: center;
     z-index: 1000;
-    opacity: 1; /* Start with full opacity */
-    transition: opacity 0.5s ease; /* Smooth fade in/out transition */
-    color: rgb(7, 6, 6); /* Text color */
+    opacity: 1;
+    transition: opacity 0.5s ease;
+    color: rgb(7, 6, 6);
+}
+
+.email-popup button:hover, 
+.confirmation-popup button:hover {
+    background: #ffccd5 !important;
+    transform: scale(1.05);
 }
 
 .email-popup .popup-content {
-    background: #fdedf5; /* Light background for popup */
-    padding: 20px; /* Padding for content */
-    border-radius: 10px; /* Rounded corners */
-    text-align: center; /* Center text */
-    max-width: 400px; /* Maximum width for email popup */
-    width: 90%; /* Width will be responsive, taking 90% of the parent container */
+    background: #fdedf5;
+    padding: 20px;
+    border-radius: 10px;
+    text-align: center;
+    max-width: 400px;
+    width: 90%;
 }
 
 .email-popup button {
-    margin-top: 10px; /* Space above button */
-    padding: 5px 10px; /* Button padding */
-    cursor: pointer; /* Change cursor to pointer */
-    background-color: #f7e9ee; /* Button color */
-    border: none; /* No border */
-    border-radius: 5px; /* Rounded button */
+    margin-top: 10px;
+    padding: 5px 10px;
+    cursor: pointer;
+    background-color: #f7e9ee;
+    border: none;
+    border-radius: 5px;
 }
 
-/* Confirmation Popup Styles */
 .confirmation-popup {
-    display: none; /* Initially hidden */
+    display: none;
     position: fixed;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
-    background-color: rgba(0, 0, 0, 0.7); /* Semi-transparent background */
-    backdrop-filter: blur(8px); /* Optional blur effect */
+    background-color: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(8px);
     align-items: center;
     justify-content: center;
     z-index: 1000;
-    opacity: 1; /* Start with full opacity */
-    transition: opacity 0.5s ease; /* Smooth fade in/out transition */
+    opacity: 1;
+    transition: opacity 0.5s ease;
 }
 
 .confirmation-popup .popup-content {
-    background: #fdedf5; /* Light background for popup */
-    padding: 20px; /* Padding for content */
-    border-radius: 10px; /* Rounded corners */
-    text-align: center; /* Center text */
-    max-width: 400px; /* Maximum width for confirmation popup */
-    width: 90%; /* Width will be responsive, taking 90% of the parent container */
+    background: #fdedf5;
+    padding: 20px;
+    border-radius: 10px;
+    text-align: center;
+    max-width: 400px;
+    width: 90%;
 }
 
 .confirmation-popup button {
-    margin-top: 10px; /* Space above button */
-    padding: 5px 10px; /* Button padding */
-    cursor: pointer; /* Change cursor to pointer */
-    background-color: #fdedf5; /* Button color */
-    border: none; /* No border */
-    border-radius: 5px; /* Rounded button */
+    margin-top: 10px;
+    padding: 5px 10px;
+    cursor: pointer;
+    background-color: #fdedf5;
+    border: none;
+    border-radius: 5px;
 }
 
 .email-container {
-    display: flex; /* Use flexbox for alignment */
-    justify-content: center; /* Center the icon */
-    margin-top: 10px; /* Space above the email icon */
+    display: flex;
+    justify-content: center;
+    margin-top: 10px;
 }
 
-.note-image {
-    width: 300px; /* Limit the width */
-    height: auto; /* Maintain aspect ratio */
-    max-height: 300px; /* Set a maximum height */
-    margin: -3px 0; /* Add padding above and below */
+.email-button img {
+    width: 100%;
+    height: auto;
+    filter: brightness(0.9);
 }
 
-/* Dropdown Menu Styles */
 .dropdown {
     position: relative;
     display: inline-block;
@@ -289,28 +262,477 @@ button {
 }
 
 .dropdown-content {
-    display: none; /* Hidden by default */
+    display: none;
     position: absolute;
-    top: 80%; /* Position below the button */
+    top: 80%;
     left: 50%;
     transform: translateX(90%);
-    background-color: #fdedf57c; /* Light background */
-    border-radius: 10px; /* Rounded corners */
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2); /* Subtle shadow */
-    z-index: 1000; /* Ensure it's above other content */
+    background-color: #fdedf5fb;
+    border-radius: 10px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    z-index: 1000;
     padding: 10px;
-    min-width: 60px; /* Minimum width for the dropdown */
+    min-width: 60px;
     text-align: center;
 }
 
-/* Show dropdown content on hover or click */
-.dropdown-content,
 .dropdown:focus-within .dropdown-content {
     display: block;
 }
 
-/* Style dropdown icons */
 .dropdown-content .social-icon {
-    margin: 5px 0; /* Space between icons */
-    display: block; /* Stack icons vertically */
+    margin: 5px 0;
+    display: block;
+}
+
+/* ===== Drawing Widget (Original Working Version) ===== */
+
+.drawing-controls {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+
+
+
+
+
+
+#brush-size {
+    width: 120px;
+    cursor: pointer;
+    -webkit-appearance: none;
+    background: #f3a4e200; /* White track */
+    border-radius: 3px;
+    outline: none;
+}
+
+/* Brush slider thumb (knob) */
+#brush-size::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #ffdbed; /* Pink thumb */
+    cursor: pointer;
+    border: 2px solid white;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+/* Firefox support */
+#brush-size::-moz-range-thumb {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #ffdbed;
+    cursor: pointer;
+    border: 2px solid white;
+}
+
+#brush-size::-moz-range-track {
+    height: 6px;
+    background: #f5e5e5bb;
+    border-radius: 3px;
+}
+
+
+
+
+
+#color-picker-button {
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: border-color 0.2s;
+}
+
+#color-picker-button:hover {
+    border-color: #000;
+}
+
+
+.send-button {
+    width: 100%;
+    background: linear-gradient(to right, #fcdee3, #ff8dc6) !important;
+    border: none;
+    padding: 8px;
+    width: 85%;
+    border-radius: 20px;
+    color: white;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+#color-picker-popup {
+    display: none;
+    position: absolute;
+    background: rgba(255, 255, 255, 0.9);
+    border-radius: 10px;
+    padding: 15px;
+    z-index: 1000;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+#color-picker-popup input[type="color"] {
+    width: 100%;
+    height: 40px;
+    border: none;
+    cursor: pointer;
+}
+
+#close-color-picker {
+    margin-top: 10px;
+    padding: 5px 10px;
+    background: #ffccd5;
+    border: none;
+    border-radius: 5px;
+}
+
+@media (max-width: 600px) {
+    .note-and-widget-container {
+        flex-direction: column;
+        align-items: center;
+    }
+}
+
+
+.note-image.hidden {
+    opacity: 0;
+    pointer-events: none;
+    transform: translateX(-50%) translateY(-20px);
+}
+
+.drawing-widget.active {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+
+.next-button {
+    background: linear-gradient(to right, #fdeef5, #ffdbee);
+    border: none;
+    padding: 8px 20px;
+    border-radius: 20px;
+    color: white;
+    font-weight: bold;
+    cursor: pointer;
+    margin: 10px auto;
+    display: block;
+    transition: all 0.3s;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+.next-button:hover {
+    transform: scale(1.05);
+    background: linear-gradient(to right, #fdeef5, #ffdbee);
+}
+
+.toggle-container {
+    position: relative;
+    min-height: 350px;
+    margin: 0 auto;
+    width: fit-content;
+}
+
+.content-area {
+    position: relative;
+    width: 100%;
+}
+
+/* Update note image positioning */
+.note-image {
+    transition: opacity 0.5s ease, transform 0.5s ease;
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 300px;
+    height: auto;
+    max-height: 350px;
+    margin: -2px 0; /* Optional, keep if needed */
+}
+
+/* Update drawing widget positioning */
+.drawing-widget {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.5s ease, transform 0.5s ease;
+}
+
+/* Ensure canvas has fixed dimensions */
+#drawing-canvas {
+    width: 330px;
+    height: 273px;
+    background-color: white;
+    border-radius: 5px;
+    cursor: crosshair;
+    margin: 10px 0;
+    touch-action: none;
+}
+
+#undo-button,
+#send-drawing,
+#clear-canvas {
+    background-color: #f8e9ec;
+    border: none;
+    padding: 5px 10px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.2s;
+}
+
+#undo-button:hover,
+#send-drawing:hover,
+#clear-canvas:hover {
+    background-color: #ffccd5;
+    transform: scale(1.05);
+}
+
+
+
+.canvas-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 15px;
+    background-color: rgba(255, 255, 255, 0.7);
+    border-radius: 10px;
+    backdrop-filter: blur(5px);
+}
+
+/* Container for both buttons */
+.button-group {
+    display: flex;
+    align-items: center; /* Vertical alignment */
+    gap: 8px; /* Space between icon and button */
+    margin-bottom: 15px; /* Space below the button group */
+}
+
+/* Email icon styling */
+.email-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    background: linear-gradient(to right, #fdeef5, #ffdbee);
+    border-radius: 50%;
+    padding: 8px;
+    transition: transform 0.3s;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+/* Mobile responsiveness */
+@media (max-width: 500px) {
+    .button-group {
+        gap: 5px;
+    }
+    .email-button {
+        width: 36px;
+        height: 36px;
+        padding: 6px;
+    }
+}
+
+/* Add hover effects */
+.email-button:hover {
+    transform: scale(1.1);
+    background: linear-gradient(to right, #ffdbee, #fdeef5);
+}
+
+/* Add glow effect when active */
+.email-button:active {
+    box-shadow: 0 0 8px rgba(255, 182, 193, 0.8);
+}
+
+
+
+
+/* Ask Me Anything Styles */
+#ask-button {
+    background: linear-gradient(to right, #fdeef5, #ffdbee);
+    border: none;
+    padding: 8px 15px;
+    border-radius: 20px;
+    color: white;
+    font-weight: bold;
+    cursor: pointer;
+    margin-left: 8px;
+    transition: all 0.3s;
+    font-size: 14px;
+}
+
+.ask-form-container {
+    display: none;
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 300px;
+    background: rgba(255, 255, 255, 0.9);
+    border-radius: 10px;
+    padding: 15px;
+    margin-top: 10px;
+    backdrop-filter: blur(5px);
+    z-index: 10;
+}
+
+#ask-textarea {
+    width: 100%;
+    height: 100px;
+    outline: none; /* Removes the blue focus ring */
+    border: 2px solid #ffb6c1 !important; /* Light pink border */
+    border-radius: 8px;
+    padding: 10px;
+    resize: none;
+    font-family: inherit;
+    margin-bottom: 8px;
+    transition: border-color 0.3s ease;
+}
+
+#ask-textarea:focus {
+    border-color: #ff69b4 !important; /* Brighter pink when focused */
+    box-shadow: 0 0 0 2px rgba(255, 182, 193, 0.3); /* Soft pink glow */
+}
+
+.ask-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+#char-count {
+    font-size: 12px;
+    color: #888;
+}
+
+.send-button:hover {
+    background: linear-gradient(to right, #fcdee3, #ff8dc6) !important;
+    transform: scale(1.05);
+}
+
+/* Posts Popup Styles */
+.posts-popup {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(8px);
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    opacity: 1;
+    transition: opacity 0.5s ease;
+}
+
+.posts-popup .popup-content {
+    background: #fdedf5;
+    padding: 20px;
+    border-radius: 15px;
+    max-width: 90%;
+    width: 500px;
+    max-height: 80vh;
+    overflow-y: auto;
+    position: relative;
+}
+
+.posts-tabs {
+    display: flex;
+    margin-bottom: 15px;
+    border-bottom: 1px solid #ffb6c1;
+}
+
+.tab-button {
+    background: none;
+    border: none;
+    padding: 8px 15px;
+    cursor: pointer;
+    color: #888;
+    font-weight: bold;
+}
+
+.tab-button.active {
+    color: #ff69b4;
+    border-bottom: 2px solid #ff69b4;
+}
+
+.tab-content {
+    display: none;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+.posts-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 15px;
+    padding: 10px 0;
+}
+
+.post-item {
+    background: white;
+    border-radius: 10px;
+    padding: 10px;
+    position: relative;
+}
+
+.post-item img {
+    width: 100%;
+    border-radius: 5px;
+}
+
+.post-item .delete-btn {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    background: #ff6b6b;
+    color: white;
+    border: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.question-item {
+    background: white;
+    padding: 15px;
+    border-radius: 10px;
+    margin-bottom: 10px;
+}
+
+.question-text {
+    font-style: italic;
+    color: #555;
+}
+
+.answer-text {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px dashed #ffb6c1;
+    color: #ff69b4;
+    font-weight: bold;
+}
+
+.close-button {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: none;
+    border: none;
+    font-size: 20px;
+    cursor: pointer;
+    color: #ff69b4;
 }
