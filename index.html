@@ -8,82 +8,143 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
 </head>
 <body>
+    <!-- Loading Screen -->
     <div class="loading-screen" id="loading-screen">
         <div class="corner-text">.. ᵍᵒᵗᵗᵃ ˡᵒᵃᵈ ⁱᵗ ⁱⁿ ᵘ</div>
-        <div>
+        <div class="loading-content">
             <p>𝘎𝘪𝘷𝘦 𝘮𝘦 𝘰𝘯𝘦 𝘧𝘳𝘪𝘤𝘬𝘪𝘯𝘨 𝘴𝘦𝘤𝘰𝘯𝘥..</p> 
             <img src="loading.gif" alt="Loading animation" class="loading-gif">
         </div>
     </div>    
 
+    <!-- Main Content -->
     <div class="main-screen" id="main-screen">
         <header>
             <img src="dropdown1.png" alt="Dropdown Header" class="header-image">
         </header>
         
+        <!-- Social Icons -->
         <div class="icon-container">
-            <!-- Snapchat -->
             <a href="https://www.snapchat.com/add/dumidoll" target="_blank"><img src="snap.png" alt="Snapchat" class="social-icon"></a>
-            
-            <!-- Instagram -->
             <a href="https://www.instagram.com/pawswirl" target="_blank"><img src="insta.png" alt="Instagram" class="social-icon"></a>
-            
-            <!-- Dropdown Menu -->
             <div class="dropdown">
-                <button class="dropdown-button"><img src="dropdown-icon.png" alt="Menu" class="social-icon"></button>
+                <button class="dropdown-button" aria-label="Menu">
+                    <img src="dropdown-icon.png" alt="Menu" class="social-icon">
+                </button>
                 <div class="dropdown-content">
-                    <!-- <a href="https://cash.app/" target="_blank"><img src="cashi.png" alt="Cash App" class="social-icon"></a>
-                    <a href="https://www.paypal.com/paypalme/" target="_blank"><img src="pp.png" alt="PayPal" class="social-icon"></a>
-                    <a href="https://venmo.com/u/" target="_blank"><img src="ven.png" alt="Venmo" class="social-icon"></a> -->
-                    <a href="https://www.amazon.com/registries/gl/guest-view/38P79LSAILU95" target="_blank"><img src="amz.png" alt="Amazon" class="social-icon"></a>
-                    <a href="https://ko-fi.com/edoll" target="_blank"><img src="kofi.png" alt="Ko-fi" class="social-icon"></a>
+                    <a href="https://www.amazon.com/registries/gl/guest-view/38P79LSAILU95" target="_blank">
+                        <img src="amz.png" alt="Amazon" class="social-icon">
+                    </a>
+                    <a href="https://ko-fi.com/edoll" target="_blank">
+                        <img src="kofi.png" alt="Ko-fi" class="social-icon">
+                    </a>
                 </div>
             </div>
         </div>
 
-        <img src="notee.jpg" alt="Note" class="note-image"> <!-- Note image added here -->
+        <!-- Interactive Content Area -->
+        <div class="toggle-container">
+            <div class="button-group">
+                <a href="#" id="email-icon" class="email-button">
+                    <img src="mail.png" alt="Email">
+                </a>
+                <button id="toggle-button" class="next-button">:3</button>
+                <button id="ask-button" class="next-button">Ask me anything!</button>
+                <button id="posts-button" class="next-button">Posts</button>
+                <div class="posts-popup" id="posts-popup">
+    <div class="popup-content">
+        <button id="close-posts-popup" class="close-button">✕</button>
+        <h3>Posts</h3>
+        
+        <div class="posts-tabs">
+            <button class="tab-button active" data-tab="drawings">Doodles</button>
+            <button class="tab-button" data-tab="questions">Q&A</button>
+        </div>
+        
+        <div class="posts-container">
+            <!-- Drawings will appear here -->
+            <div id="drawings-tab" class="tab-content active">
+                <div class="posts-list" id="drawings-list"></div>
+            </div>
+            
+            <!-- Questions will appear here -->
+            <div id="questions-tab" class="tab-content">
+                <div class="posts-list" id="questions-list"></div>
+            </div>
+        </div>
+    </div>
+</div>
+            </div>
+            <div id="ask-form-container" class="ask-form-container">
+    <textarea id="ask-textarea" maxlength="200" placeholder="Type your question here... don't be nasty ty.."></textarea>
+    <div class="ask-footer">
+        <span id="char-count">0/200</span>
+        <button id="send-question" class="send-button">Send</button>
+    </div>
+</div>
+            
+            <!-- Single content-area div (removed duplicate) -->
+            <div class="content-area">
+                <!-- Note Image -->
+                <img src="notee.jpg" alt="Note" class="note-image active-content">
+                
+                <!-- Drawing Widget -->
+                <div class="drawing-widget">
+                    <div class="canvas-container">
+                        <div class="drawing-controls">
+                            <button id="undo-button" title="Undo last action">↻</button>
+                            <button id="clear-canvas" title="Clear drawing">✖</button>
+                            <input type="range" id="brush-size" min="1" max="20" value="5" title="Brush size">
+                            <button id="color-picker-button" title="Color picker" 
+                                    style="background: #000; width: 20px; height: 20px; border-radius: 50%;"></button>
+                        </div>
 
-        <!-- Email Icon -->
-        <a href="#" id="email-icon"><img src="mail.png" alt="Email" class="social-icon"></a> 
-    </div>  
+                        <div id="color-picker-popup" class="drawing-popup">
+                            <div class="drawing-popup-content">
+                                <input type="color" id="rgb-color-picker" value="#000000">
+                                <button id="close-color-picker">Done</button>
+                            </div>
+                        </div>
 
-    <!-- Confirmation Popup for Email -->
+                        <canvas id="drawing-canvas" width="330" height="273"></canvas>
+                        <button id="send-drawing" class="send-button">Send anonymously</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Popup Modals -->
     <div class="confirmation-popup" id="confirmation-popup">
         <div class="popup-content">
-            <p>You should only request my email if you are:</p>
+            <p>Only request my email if you are:</p>
             <p>☆An agency</p>
-            <p>☆Obsessed with me and you have a 2 pages+ paragraph for me</p>
-            <p>☆Need to let me know something super mega duper important</p>
-            <button id="cancel-email-request">Cancel</button>
-            <button id="confirm-email-request">Continue?</button>
+            <p>☆Obsessed & you have a 2 pages+ paragraph ready</p>
+            <p>☆Need to lmk something super mega duper important</p>
+            <div class="button-group">
+                <button id="cancel-email-request">Cancel</button>
+                <button id="confirm-email-request">Continue?</button>
+            </div>
         </div>
     </div>   
 
-    <!-- Email Popup -->
     <div class="email-popup" id="email-popup">
         <div class="popup-content">
             <p>email: <strong>dumidollia@gmail.com</strong></p>
             <button id="close-email-popup">Close</button>
-            <img src="gatito.gif" alt="Cute Cat GIF" style="max-width: 70px; max-height: 70px; margin-top: 10px;">
+            <img src="gatito.gif" alt="Cute Cat GIF" class="cat-gif">
         </div>
     </div>     
-
-<!-- Background Audio (autoplay removed) -->
-<audio loop>
-    <source src="hehe.mp3" type="audio/mpeg">
-    Your browser does not support the audio element.
-</audio>
     
-    <!-- Paw Popup -->
     <div class="popup" id="popup">
         <div class="popup-content">
-            <button id="close-popup">
+            <button id="close-popup" aria-label="Close">
                 <img src="paw1.png" alt="Paw Image" class="paw-image">
             </button>
         </div>
     </div>
 
-    <!-- Link to External JavaScript -->
-    <script src="script.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="script.js"></script>
 </body>
 </html>
