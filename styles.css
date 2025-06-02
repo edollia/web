@@ -279,47 +279,73 @@ button {
     display: block;
 }
 
-/* ===== Drawing Widget (Fixed Color Picker and Slider) ===== */
+/* ===== UNIFORM DRAWING CONTROLS STYLING ===== */
 
 .drawing-controls {
     display: flex;
-    gap: 15px;
+    gap: 10px;
     margin-bottom: 10px;
     flex-wrap: wrap;
     justify-content: center;
     align-items: center;
 }
 
-/* FIXED: Brush Slider - Enhanced Mobile Visibility */
+/* Uniform button styling for drawing controls */
+.drawing-controls button {
+    background: linear-gradient(to right, #fdeef5, #ffdbee);
+    border: none;
+    padding: 8px 12px;
+    border-radius: 20px;
+    color: #666;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 36px;
+    min-width: 36px;
+    font-size: 14px;
+}
+
+.drawing-controls button:hover {
+    transform: scale(1.05);
+    background: linear-gradient(to right, #ffdbee, #fdeef5);
+}
+
+/* Brush size slider with uniform styling */
 #brush-size {
-    width: 120px;
-    height: 6px;
+    background: linear-gradient(to right, #fdeef5, #ffdbee);
+    border: 2px solid #ffb6c1;
+    border-radius: 20px;
+    padding: 6px 12px;
+    height: 36px;
+    width: 130px;
     cursor: pointer;
     -webkit-appearance: none;
     -moz-appearance: none;
     appearance: none;
-    background: linear-gradient(to right, #f5e5e5, #ffccd5);
-    border-radius: 3px;
     outline: none;
-    border: 1px solid #ffb6c1;
-    /* Force visibility on mobile */
-    display: block !important;
-    visibility: visible !important;
-    opacity: 1 !important;
+    transition: all 0.3s;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
 }
 
-/* Webkit browsers (Chrome, Safari) - Enhanced visibility */
+#brush-size:hover {
+    transform: scale(1.02);
+    background: linear-gradient(to right, #ffdbee, #fdeef5);
+}
+
+/* Webkit browsers (Chrome, Safari) */
 #brush-size::-webkit-slider-thumb {
     -webkit-appearance: none;
-    width: 20px;
-    height: 20px;
+    width: 18px;
+    height: 18px;
     border-radius: 50%;
     background: #ff69b4;
     cursor: pointer;
-    border: 3px solid white;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.2);
-    /* Enhanced mobile interaction */
-    transform: scale(1);
+    border: 2px solid white;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
     transition: transform 0.2s ease;
 }
 
@@ -329,64 +355,45 @@ button {
     background: #ff1493;
 }
 
-/* Firefox support - Enhanced visibility */
+/* Firefox support */
 #brush-size::-moz-range-thumb {
-    width: 20px;
-    height: 20px;
+    width: 18px;
+    height: 18px;
     border-radius: 50%;
     background: #ff69b4;
     cursor: pointer;
-    border: 3px solid white;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.2);
-    /* Remove default styling */
+    border: 2px solid white;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
     -moz-appearance: none;
     appearance: none;
 }
 
 #brush-size::-moz-range-track {
-    height: 6px;
-    background: linear-gradient(to right, #f5e5e5, #ffccd5);
-    border-radius: 3px;
-    border: 1px solid #ffb6c1;
+    height: 4px;
+    background: transparent;
+    border-radius: 20px;
 }
 
-/* Mobile-specific enhancements for slider */
-@media (max-width: 768px) {
-    #brush-size {
-        width: 100px;
-        height: 8px;
-        /* Force higher specificity for mobile */
-        background: linear-gradient(to right, #f5e5e5, #ffccd5) !important;
-        border: 2px solid #ffb6c1 !important;
-    }
-    
-    #brush-size::-webkit-slider-thumb {
-        width: 24px;
-        height: 24px;
-        border: 4px solid white;
-    }
-    
-    #brush-size::-moz-range-thumb {
-        width: 24px;
-        height: 24px;
-        border: 4px solid white;
-    }
-}
-
-/* Fixed Color Picker - Mobile Friendly */
+/* Color picker with uniform styling */
 #color-picker {
-    width: 30px;
-    height: 30px;
-    border: none;
+    background: linear-gradient(to right, #fdeef5, #ffdbee);
+    border: 2px solid #ffb6c1;
     border-radius: 50%;
+    padding: 2px;
+    width: 36px;
+    height: 36px;
     cursor: pointer;
     outline: none;
-    background: none;
-    padding: 0;
     -webkit-appearance: none;
     -moz-appearance: none;
     appearance: none;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    transition: all 0.3s;
+}
+
+#color-picker:hover {
+    transform: scale(1.05);
+    background: linear-gradient(to right, #ffdbee, #fdeef5);
 }
 
 /* Webkit browsers (Chrome, Safari) */
@@ -397,34 +404,83 @@ button {
 }
 
 #color-picker::-webkit-color-swatch {
-    border: 2px solid white;
+    border: none;
     border-radius: 50%;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
 /* Firefox */
 #color-picker::-moz-color-swatch {
-    border: 2px solid white;
+    border: none;
     border-radius: 50%;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
-/* Hover effects */
-#color-picker:hover {
-    transform: scale(1.1);
-    transition: transform 0.2s ease;
-}
-
-.send-button {
-    width: 100%;
+/* UNIFIED SEND BUTTON STYLING - Both drawing and ask form */
+#send-drawing,
+#send-question {
+    width: 85%;
     background: linear-gradient(to right, #fcdee3, #ff8dc6) !important;
     border: none;
-    padding: 8px;
-    width: 85%;
+    padding: 8px 12px;
     border-radius: 20px;
     color: white;
     font-weight: bold;
     cursor: pointer;
+    transition: all 0.3s;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 40px;
+    min-width: 36px;
+    font-size: 14px;
+    margin-top: 8px;
+}
+
+#send-drawing:hover,
+#send-question:hover {
+    background: linear-gradient(to right, #fcdee3, #ff8dc6) !important;
+    transform: scale(1.05);
+}
+
+/* Mobile responsiveness for drawing controls */
+@media (max-width: 768px) {
+    .drawing-controls {
+        gap: 8px;
+    }
+    
+    .drawing-controls button {
+        padding: 6px 10px;
+        height: 32px;
+        min-width: 32px;
+        font-size: 12px;
+    }
+    
+    #brush-size {
+        width: 100px;
+        height: 32px;
+        padding: 4px 10px;
+    }
+    
+    #color-picker {
+        width: 32px;
+        height: 32px;
+    }
+    
+    #brush-size::-webkit-slider-thumb {
+        width: 16px;
+        height: 16px;
+    }
+    
+    #brush-size::-moz-range-thumb {
+        width: 16px;
+        height: 16px;
+    }
+    
+    #send-drawing,
+    #send-question {
+        height: 36px;
+        font-size: 13px;
+    }
 }
 
 @media (max-width: 600px) {
@@ -488,25 +544,6 @@ button {
     cursor: crosshair;
     margin: 10px 0;
     touch-action: none;
-}
-
-#undo-button,
-#send-drawing,
-#clear-canvas {
-    background-color: #f8e9ec;
-    border: none;
-    padding: 5px 10px;
-    border-radius: 5px;
-    cursor: pointer;
-    font-size: 14px;
-    transition: all 0.2s;
-}
-
-#undo-button:hover,
-#send-drawing:hover,
-#clear-canvas:hover {
-    background-color: #ffccd5;
-    transform: scale(1.05);
 }
 
 .canvas-container {
@@ -657,11 +694,6 @@ button {
     color: #888;
 }
 
-.send-button:hover {
-    background: linear-gradient(to right, #fcdee3, #ff8dc6) !important;
-    transform: scale(1.05);
-}
-
 /* Posts Popup Styles */
 .posts-popup {
     display: none;
@@ -803,11 +835,5 @@ button {
     
     .email-button img {
         width: 18px;
-    }
-    
-    /* Make color picker slightly larger on mobile */
-    #color-picker {
-        width: 35px;
-        height: 35px;
     }
 }
