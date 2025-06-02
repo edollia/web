@@ -457,47 +457,6 @@ button {
     transform: scale(1.05);
 }
 
-/* MOBILE RESPONSIVE FIXES - Drawing controls spacing */
-@media (max-width: 768px) {
-    .drawing-controls {
-        gap: 12px !important;
-    }
-    
-    .drawing-controls button {
-        padding: 6px 10px !important;
-        height: 32px !important;
-        min-width: 32px !important;
-        font-size: 12px !important;
-    }
-    
-    #brush-size {
-        width: 120px !important;
-        height: 32px !important;
-        padding: 4px 10px !important;
-    }
-    
-    #color-picker {
-        width: 32px !important;
-        height: 32px !important;
-    }
-    
-    #brush-size::-webkit-slider-thumb {
-        width: 16px !important;
-        height: 16px !important;
-    }
-    
-    #brush-size::-moz-range-thumb {
-        width: 16px !important;
-        height: 16px !important;
-    }
-    
-    #send-drawing,
-    #send-question {
-        height: 36px !important;
-        font-size: 13px !important;
-    }
-}
-
 @media (max-width: 600px) {
     .note-and-widget-container {
         flex-direction: column;
@@ -683,22 +642,6 @@ button {
     font-size: 16px !important;
 }
 
-/* Additional mobile viewport meta enforcement */
-@media screen and (max-width: 768px) {
-    #ask-textarea {
-        font-size: 16px !important;
-        /* Force no zoom behavior */
-        transform: scale(1);
-        zoom: 1;
-    }
-    
-    #ask-textarea:focus {
-        font-size: 16px !important;
-        transform: scale(1);
-        zoom: 1;
-    }
-}
-
 .ask-footer {
     display: flex;
     justify-content: space-between;
@@ -830,6 +773,62 @@ button {
     font-size: 20px;
     cursor: pointer;
     color: #ff69b4;
+}
+
+/* MOBILE RESPONSIVE FIXES - Drawing controls spacing */
+/* FIXED: Moved mobile styles to the END to ensure they override desktop styles */
+@media (max-width: 768px) {
+    .drawing-controls {
+        gap: 12px !important;
+    }
+    
+    .drawing-controls button {
+        padding: 6px 10px !important;
+        height: 32px !important;
+        min-width: 32px !important;
+        font-size: 12px !important;
+    }
+    
+    #brush-size {
+        width: 120px !important;
+        height: 32px !important;
+        padding: 4px 10px !important;
+    }
+    
+    #color-picker {
+        width: 32px !important;
+        height: 32px !important;
+    }
+    
+    #brush-size::-webkit-slider-thumb {
+        width: 16px !important;
+        height: 16px !important;
+    }
+    
+    #brush-size::-moz-range-thumb {
+        width: 16px !important;
+        height: 16px !important;
+    }
+    
+    #send-drawing,
+    #send-question {
+        height: 36px !important;
+        font-size: 13px !important;
+    }
+    
+    /* Additional mobile viewport meta enforcement */
+    #ask-textarea {
+        font-size: 16px !important;
+        /* Force no zoom behavior */
+        transform: scale(1);
+        zoom: 1;
+    }
+    
+    #ask-textarea:focus {
+        font-size: 16px !important;
+        transform: scale(1);
+        zoom: 1;
+    }
 }
 
 /* MOBILE RESPONSIVE FIXES - Button group spacing */
