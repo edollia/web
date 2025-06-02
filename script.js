@@ -135,7 +135,7 @@ document.addEventListener("DOMContentLoaded", async function() {
 
         function initCanvas() {
             canvas.width = 330;
-            canvas.height = 260;
+            canvas.height = 230;
             ctx.fillStyle = "#ffffff";
             ctx.fillRect(0, 0, canvas.width, canvas.height);
             saveState();
@@ -222,15 +222,23 @@ document.addEventListener("DOMContentLoaded", async function() {
         document.getElementById("brush-size")?.addEventListener("input", e => brushSize = e.target.value);
 
         const colorPickerBtn = document.getElementById("color-picker-button");
-        const colorPickerPopup = document.getElementById("color-picker-popup");
+        const rgbColorPicker = document.getElementById("rgb-color-picker");
 
-        if (colorPickerBtn && colorPickerPopup) {
-            colorPickerBtn.addEventListener("click", () => colorPickerPopup.style.display = "block");
-            document.getElementById("close-color-picker").addEventListener("click", () => colorPickerPopup.style.display = "none");
-            document.getElementById("rgb-color-picker").addEventListener("input", e => {
+        if (colorPickerBtn && rgbColorPicker) {
+            // Direct color picker implementation
+            colorPickerBtn.addEventListener("click", function(e) {
+                e.preventDefault();
+                rgbColorPicker.click(); // Trigger native color picker
+            });
+
+            rgbColorPicker.addEventListener("input", e => {
                 currentColor = e.target.value;
                 colorPickerBtn.style.background = currentColor;
             });
+
+            // Hide the popup elements completely
+            document.getElementById("color-picker-popup").style.display = "none";
+            document.getElementById("close-color-picker").style.display = "none";
         }
 
         document.getElementById("clear-canvas")?.addEventListener("click", () => {
@@ -262,9 +270,8 @@ document.addEventListener("DOMContentLoaded", async function() {
                 const { error } = await window.supabase
                     .from('drawings')
                     .insert([{ 
-                        imageData: base64Data,  // Changed to match your column name
+                        imageData: base64Data,
                         ip_address: ipAddress
-                        // created_at and approved will use their default values
                     }]);
 
                 if (error) throw error;
@@ -382,30 +389,8 @@ document.addEventListener("DOMContentLoaded", async function() {
                 drawings.forEach((drawing) => {
                     const el = document.createElement('div');
                     el.className = 'post-item';
-                    el.innerHTML = `
-                        <img src="data:image/png;base64,${drawing.imageData}" alt="User drawing">
-                        <button class="delete-btn" data-id="${drawing.id}">✕</button>
-                    `;
+                    el.innerHTML = `<img src="data:image/png;base64,${drawing.imageData}" alt="User drawing">`;
                     drawingsList.appendChild(el);
-                });
-
-                document.querySelectorAll('.delete-btn').forEach(btn => {
-                    btn.addEventListener('click', async function() {
-                        if (confirm("Are you sure you want to delete this drawing?")) {
-                            try {
-                                const { error } = await window.supabase
-                                    .from('drawings')
-                                    .delete()
-                                    .eq('id', this.dataset.id);
-                                
-                                if (error) throw error;
-                                await renderDrawings();
-                            } catch (error) {
-                                console.error("Error deleting drawing:", error);
-                                alert("Failed to delete drawing.");
-                            }
-                        }
-                    });
                 });
             } catch (error) {
                 console.error("Error loading drawings:", error);
@@ -430,28 +415,8 @@ document.addEventListener("DOMContentLoaded", async function() {
                     el.innerHTML = `
                         <p class="question-text">"${q.question}"</p>
                         <p class="answer-text">${q.answer}</p>
-                        <button class="delete-btn" data-id="${q.id}">✕</button>
                     `;
                     questionsList.appendChild(el);
-                });
-
-                document.querySelectorAll('.delete-btn').forEach(btn => {
-                    btn.addEventListener('click', async function() {
-                        if (confirm("Are you sure you want to delete this Q&A?")) {
-                            try {
-                                const { error } = await window.supabase
-                                    .from('questions')
-                                    .delete()
-                                    .eq('id', this.dataset.id);
-                                
-                                if (error) throw error;
-                                await renderQuestions();
-                            } catch (error) {
-                                console.error("Error deleting question:", error);
-                                alert("Failed to delete Q&A.");
-                            }
-                        }
-                    });
                 });
             } catch (error) {
                 console.error("Error loading questions:", error);
