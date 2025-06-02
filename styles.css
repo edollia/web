@@ -542,7 +542,7 @@ button {
 .button-group {
     display: flex;
     align-items: center;
-    gap: 20px;
+    gap: 16px;
     margin-bottom: 15px;
     justify-content: center;
     flex-wrap: wrap;
