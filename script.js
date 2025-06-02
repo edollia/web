@@ -127,11 +127,13 @@ document.addEventListener("DOMContentLoaded", async function() {
 
     // ===== DRAWING WIDGET =====
     let canvas, ctx, drawingHistory = [], historyIndex = -1, currentColor = "#000000", brushSize = 5;
+    let isDrawing = false;
+    let lastX = 0;
+    let lastY = 0;
 
     if (document.getElementById("drawing-canvas")) {
         canvas = document.getElementById("drawing-canvas");
         ctx = canvas.getContext("2d");
-        let isDrawing = false;
 
         function initCanvas() {
             canvas.width = 330;
@@ -161,52 +163,74 @@ document.addEventListener("DOMContentLoaded", async function() {
             e.preventDefault();
             isDrawing = true;
             const pos = getCursorPos(e);
+            lastX = pos.x;
+            lastY = pos.y;
             ctx.beginPath();
-            ctx.moveTo(pos.x, pos.y);
-            draw(e);
+            ctx.moveTo(lastX, lastY);
         }
 
         function draw(e) {
             if (!isDrawing) return;
             e.preventDefault();
+            
+            const pos = getCursorPos(e);
+            const currentX = pos.x;
+            const currentY = pos.y;
+            
             ctx.lineCap = "round";
             ctx.lineJoin = "round";
             ctx.strokeStyle = currentColor;
             ctx.lineWidth = brushSize;
-            const pos = getCursorPos(e);
-            ctx.lineTo(pos.x, pos.y);
-            ctx.stroke();
+            
             ctx.beginPath();
-            ctx.moveTo(pos.x, pos.y);
+            ctx.moveTo(lastX, lastY);
+            ctx.lineTo(currentX, currentY);
+            ctx.stroke();
+            
+            lastX = currentX;
+            lastY = currentY;
         }
 
         function stopDrawing() {
             if (isDrawing) {
                 isDrawing = false;
-                ctx.beginPath();
                 saveState();
             }
         }
 
         function setupEventListeners() {
+            // Mouse events
             canvas.addEventListener("mousedown", startDrawing);
             canvas.addEventListener("mousemove", draw);
             canvas.addEventListener("mouseup", stopDrawing);
             canvas.addEventListener("mouseout", stopDrawing);
 
-            canvas.addEventListener("touchstart", e => {
-                const t = e.touches[0];
-                startDrawing(new MouseEvent("mousedown", { clientX: t.clientX, clientY: t.clientY }));
+            // Touch events
+            canvas.addEventListener("touchstart", function(e) {
+                const touch = e.touches[0];
+                const mouseEvent = new MouseEvent("mousedown", {
+                    clientX: touch.clientX,
+                    clientY: touch.clientY
+                });
+                startDrawing(mouseEvent);
             }, { passive: false });
 
-            canvas.addEventListener("touchmove", e => {
-                const t = e.touches[0];
-                draw(new MouseEvent("mousemove", { clientX: t.clientX, clientY: t.clientY }));
+            canvas.addEventListener("touchmove", function(e) {
+                const touch = e.touches[0];
+                const mouseEvent = new MouseEvent("mousemove", {
+                    clientX: touch.clientX,
+                    clientY: touch.clientY
+                });
+                draw(mouseEvent);
             }, { passive: false });
 
-            canvas.addEventListener("touchend", () => stopDrawing(new MouseEvent("mouseup")));
+            canvas.addEventListener("touchend", function() {
+                const mouseEvent = new MouseEvent("mouseup");
+                stopDrawing(mouseEvent);
+            });
         }
 
+        // Undo functionality
         document.getElementById("undo-button")?.addEventListener("click", () => {
             if (historyIndex > 0) {
                 historyIndex--;
@@ -219,28 +243,28 @@ document.addEventListener("DOMContentLoaded", async function() {
             }
         });
 
-        document.getElementById("brush-size")?.addEventListener("input", e => brushSize = e.target.value);
+        // Brush size control
+        document.getElementById("brush-size")?.addEventListener("input", e => {
+            brushSize = e.target.value;
+        });
 
+        // Color picker implementation
         const colorPickerBtn = document.getElementById("color-picker-button");
         const rgbColorPicker = document.getElementById("rgb-color-picker");
 
         if (colorPickerBtn && rgbColorPicker) {
-            // Direct color picker implementation
             colorPickerBtn.addEventListener("click", function(e) {
                 e.preventDefault();
-                rgbColorPicker.click(); // Trigger native color picker
+                rgbColorPicker.click();
             });
 
-            rgbColorPicker.addEventListener("input", e => {
+            rgbColorPicker.addEventListener("input", function(e) {
                 currentColor = e.target.value;
                 colorPickerBtn.style.background = currentColor;
             });
-
-            // Hide the popup elements completely
-            document.getElementById("color-picker-popup").style.display = "none";
-            document.getElementById("close-color-picker").style.display = "none";
         }
 
+        // Clear canvas
         document.getElementById("clear-canvas")?.addEventListener("click", () => {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             ctx.fillStyle = "#ffffff";
@@ -248,6 +272,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             saveState();
         });
 
+        // Send drawing
         document.getElementById("send-drawing")?.addEventListener("click", async function() {
             const dataUrl = canvas.toDataURL("image/png");
             const base64Data = dataUrl.split(',')[1];
