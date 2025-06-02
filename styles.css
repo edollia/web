@@ -442,54 +442,6 @@ button {
     transform: scale(1.05);
 }
 
-/* Mobile responsiveness for drawing controls */
-@media (max-width: 768px) {
-    .drawing-controls {
-        gap: 8px;
-    }
-    
-    .drawing-controls button {
-        padding: 6px 10px;
-        height: 32px;
-        min-width: 32px;
-        font-size: 12px;
-    }
-    
-    #brush-size {
-        width: 100px;
-        height: 32px;
-        padding: 4px 10px;
-    }
-    
-    #color-picker {
-        width: 32px;
-        height: 32px;
-    }
-    
-    #brush-size::-webkit-slider-thumb {
-        width: 16px;
-        height: 16px;
-    }
-    
-    #brush-size::-moz-range-thumb {
-        width: 16px;
-        height: 16px;
-    }
-    
-    #send-drawing,
-    #send-question {
-        height: 36px;
-        font-size: 13px;
-    }
-}
-
-@media (max-width: 600px) {
-    .note-and-widget-container {
-        flex-direction: column;
-        align-items: center;
-    }
-}
-
 .note-image.hidden {
     opacity: 0;
     pointer-events: none;
@@ -624,18 +576,23 @@ button {
     justify-content: center;
 }
 
+/* FIXED: Ask form container positioning to prevent viewport shift */
 .ask-form-container {
     display: none;
-    position: absolute;
+    position: fixed;
     left: 50%;
-    transform: translateX(-50%);
+    top: 50%;
+    transform: translate(-50%, -50%);
     width: 300px;
-    background: rgba(255, 255, 255, 0.9);
+    background: rgba(255, 255, 255, 0.95);
     border-radius: 10px;
     padding: 15px;
-    margin-top: 10px;
-    backdrop-filter: blur(5px);
-    z-index: 10;
+    backdrop-filter: blur(10px);
+    z-index: 1000;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+    /* Prevent any layout shifts */
+    max-height: 80vh;
+    overflow-y: auto;
 }
 
 /* FIXED: Prevent zoom on mobile input focus */
@@ -665,22 +622,6 @@ button {
     box-shadow: 0 0 0 2px rgba(255, 182, 193, 0.3);
     /* Maintain font size on focus to prevent zoom */
     font-size: 16px !important;
-}
-
-/* Additional mobile viewport meta enforcement */
-@media screen and (max-width: 768px) {
-    #ask-textarea {
-        font-size: 16px !important;
-        /* Force no zoom behavior */
-        transform: scale(1);
-        zoom: 1;
-    }
-    
-    #ask-textarea:focus {
-        font-size: 16px !important;
-        transform: scale(1);
-        zoom: 1;
-    }
 }
 
 .ask-footer {
@@ -816,14 +757,31 @@ button {
     color: #ff69b4;
 }
 
-/* Mobile responsiveness for uniform buttons */
-@media (max-width: 500px) {
-    .button-group {
-        gap: 5px;
-        flex-wrap: wrap;
-        justify-content: center;
+/* FIXED: Mobile responsiveness with consistent breakpoints and better targeting */
+@media screen and (max-width: 768px) {
+    /* Prevent keyboard viewport shifts */
+    html {
+        position: fixed;
+        width: 100%;
+        height: 100%;
     }
     
+    body {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+    
+    /* Mobile button group spacing */
+    .button-group {
+        gap: 8px;
+        margin-bottom: 12px;
+        padding: 0 5px;
+    }
+    
+    /* All buttons consistent mobile sizing */
     .email-button,
     .next-button,
     #ask-button {
@@ -831,9 +789,152 @@ button {
         height: 36px;
         min-width: 36px;
         font-size: 13px;
+        margin: 2px;
     }
     
     .email-button img {
         width: 18px;
+    }
+    
+    /* Drawing controls mobile responsiveness */
+    .drawing-controls {
+        gap: 6px;
+        padding: 0 5px;
+    }
+    
+    .drawing-controls button {
+        padding: 6px 10px;
+        height: 32px;
+        min-width: 32px;
+        font-size: 12px;
+    }
+    
+    #brush-size {
+        width: 100px;
+        height: 32px;
+        padding: 4px 10px;
+    }
+    
+    #color-picker {
+        width: 32px;
+        height: 32px;
+    }
+    
+    #brush-size::-webkit-slider-thumb {
+        width: 16px;
+        height: 16px;
+    }
+    
+    #brush-size::-moz-range-thumb {
+        width: 16px;
+        height: 16px;
+    }
+    
+    #send-drawing,
+    #send-question {
+        height: 36px;
+        font-size: 13px;
+        padding: 6px 10px;
+    }
+    
+    /* Ask form mobile positioning */
+    .ask-form-container {
+        width: 90%;
+        max-width: 280px;
+        position: fixed;
+        top: 40%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+    }
+    
+    #ask-textarea {
+        font-size: 16px !important;
+        height: 80px;
+        padding: 8px;
+    }
+    
+    #ask-textarea:focus {
+        font-size: 16px !important;
+    }
+    
+    /* Social icons mobile spacing */
+    .social-icon {
+        width: 45px;
+        margin: 4px;
+    }
+    
+    /* Icon container mobile spacing */
+    .icon-container {
+        margin-top: -45px;
+        padding: 0 10px;
+    }
+}
+
+/* Smaller mobile devices */
+@media screen and (max-width: 480px) {
+    .button-group {
+        gap: 6px;
+        margin-bottom: 10px;
+        padding: 0 2px;
+    }
+    
+    .email-button,
+    .next-button,
+    #ask-button {
+        padding: 5px 10px;
+        height: 34px;
+        min-width: 34px;
+        font-size: 12px;
+        margin: 1px;
+    }
+    
+    .drawing-controls {
+        gap: 4px;
+        padding: 0 2px;
+    }
+    
+    .drawing-controls button {
+        padding: 5px 8px;
+        height: 30px;
+        min-width: 30px;
+        font-size: 11px;
+    }
+    
+    #brush-size {
+        width: 80px;
+        height: 30px;
+    }
+    
+    #color-picker {
+        width: 30px;
+        height: 30px;
+    }
+    
+    .ask-form-container {
+        width: 95%;
+        max-width: 260px;
+        padding: 12px;
+    }
+    
+    #ask-textarea {
+        height: 70px;
+        padding: 6px;
+    }
+    
+    .social-icon {
+        width: 40px;
+        margin: 3px;
+    }
+}
+
+/* Landscape orientation fixes */
+@media screen and (orientation: landscape) and (max-height: 600px) {
+    .ask-form-container {
+        top: 30%;
+        max-height: 60vh;
+    }
+    
+    #ask-textarea {
+        height: 60px;
     }
 }
