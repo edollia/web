@@ -736,3 +736,11 @@ button {
     cursor: pointer;
     color: #ff69b4;
 }
+
+#rgb-color-picker {
+    position: absolute !important;
+    opacity: 0 !important;
+    width: 20px !important;
+    height: 20px !important;
+    cursor: pointer !important;
+}
