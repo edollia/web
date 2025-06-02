@@ -96,9 +96,9 @@
                             <button id="clear-canvas" title="Clear drawing">✖</button>
                             <input type="range" id="brush-size" min="1" max="20" value="5" title="Brush size">
                             <!-- Modified Color Picker - now uses native browser picker -->
-                            <input type="color" id="rgb-color-picker" value="#000000" style="display: none;">
-                            <button id="color-picker-button" title="Color picker" 
-                                    style="background: #000; width: 20px; height: 20px; border-radius: 50%;"></button>
+<input type="color" id="rgb-color-picker" value="#000000" style="opacity: 0; position: absolute; width: 20px; height: 20px;">
+<button id="color-picker-button" title="Color picker" 
+        style="background: #000; width: 20px; height: 20px; border-radius: 50%;"></button>
                         </div>
 
                         <canvas id="drawing-canvas" width="330" height="230"></canvas>
