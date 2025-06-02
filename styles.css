@@ -781,17 +781,3 @@ button {
     cursor: pointer;
     color: #ff69b4;
 }
-
- /* Additional mobile viewport meta enforcement */
-#ask-textarea {
-        font-size: 16px !important;
-        /* Force no zoom behavior */
-        transform: scale(1);
-        zoom: 1;
-}
-    
-#ask-textarea:focus {
-        font-size: 16px !important;
-        transform: scale(1);
-        zoom: 1;
-}
