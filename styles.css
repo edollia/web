@@ -294,15 +294,19 @@ button {
     display: block;
 }
 
-/* ===== UNIFORM DRAWING CONTROLS STYLING ===== */
+/* ===== FIXED RESPONSIVE DRAWING CONTROLS STYLING ===== */
 
 .drawing-controls {
     display: flex;
-    gap: 17px;
+    gap: 15px;
     margin-bottom: 10px;
     flex-wrap: wrap;
     justify-content: center;
     align-items: center;
+    width: 100%;
+    max-width: 330px;
+    margin-left: auto;
+    margin-right: auto;
 }
 
 /* Uniform button styling for drawing controls */
@@ -322,6 +326,7 @@ button {
     height: 36px;
     min-width: 36px;
     font-size: 14px;
+    flex-shrink: 0;
 }
 
 .drawing-controls button:hover {
@@ -336,7 +341,7 @@ button {
     border-radius: 20px;
     padding: 6px 12px;
     height: 36px;
-    width: 165px;
+    width: 140px;
     cursor: pointer;
     -webkit-appearance: none;
     -moz-appearance: none;
@@ -344,6 +349,7 @@ button {
     outline: none;
     transition: all 0.3s;
     box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    flex-shrink: 0;
 }
 
 #brush-size:hover {
@@ -404,6 +410,7 @@ button {
     appearance: none;
     box-shadow: 0 2px 5px rgba(0,0,0,0.1);
     transition: all 0.3s;
+    flex-shrink: 0;
 }
 
 #color-picker:hover {
@@ -775,45 +782,57 @@ button {
     color: #ff69b4;
 }
 
-/* MOBILE RESPONSIVE FIXES - Drawing controls spacing */
-/* FIXED: Moved mobile styles to the END to ensure they override desktop styles */
+/* ===== RESPONSIVE BREAKPOINTS - MOBILE OVERRIDES ===== */
+
+/* Medium screens and below */
 @media (max-width: 768px) {
     .drawing-controls {
-        gap: 12px !important;
+        gap: 10px;
+        max-width: 300px;
     }
     
     .drawing-controls button {
-        padding: 6px 10px !important;
-        height: 32px !important;
-        min-width: 32px !important;
-        font-size: 12px !important;
+        padding: 6px 10px;
+        height: 32px;
+        min-width: 32px;
+        font-size: 12px;
     }
     
     #brush-size {
-        width: 120px !important;
-        height: 32px !important;
-        padding: 4px 10px !important;
+        width: 100px;
+        height: 32px;
+        padding: 4px 8px;
     }
     
     #color-picker {
-        width: 32px !important;
-        height: 32px !important;
+        width: 32px;
+        height: 32px;
     }
     
     #brush-size::-webkit-slider-thumb {
-        width: 16px !important;
-        height: 16px !important;
+        width: 16px;
+        height: 16px;
     }
     
     #brush-size::-moz-range-thumb {
-        width: 16px !important;
-        height: 16px !important;
+        width: 16px;
+        height: 16px;
     }
     
     #send-drawing,
     #send-question {
-        height: 36px !important;
-        font-size: 13px !important;
+        height: 36px;
+        font-size: 13px;
+    }
+    
+    /* Canvas responsive adjustments */
+    #drawing-canvas {
+        width: 280px;
+        height: 200px;
+    }
+    
+    .canvas-container {
+        padding: 10px;
     }
     
     /* Additional mobile viewport meta enforcement */
@@ -831,10 +850,10 @@ button {
     }
 }
 
-/* MOBILE RESPONSIVE FIXES - Button group spacing */
+/* Small screens */
 @media (max-width: 600px) {
     .button-group {
-        gap: 15px !important;
+        gap: 15px;
         flex-wrap: wrap;
         justify-content: center;
     }
@@ -842,33 +861,76 @@ button {
     .email-button,
     .next-button,
     #ask-button {
-        padding: 6px 12px !important;
-        height: 36px !important;
-        min-width: 36px !important;
-        font-size: 13px !important;
-        margin: 2px !important;
+        padding: 6px 12px;
+        height: 36px;
+        min-width: 36px;
+        font-size: 13px;
+        margin: 2px;
     }
     
     .email-button img {
-        width: 18px !important;
+        width: 18px;
+    }
+    
+    .drawing-controls {
+        gap: 15px;
+        max-width: 280px;
+    }
+    
+    #brush-size {
+        width: 120px;
     }
 }
 
+/* Very small screens */
 @media (max-width: 480px) {
     .button-group {
-        gap: 12px !important;
+        gap: 12px;
     }
     
     .email-button,
     .next-button,
     #ask-button {
-        padding: 5px 10px !important;
-        height: 34px !important;
-        min-width: 34px !important;
-        font-size: 12px !important;
+        padding: 5px 10px;
+        height: 34px;
+        min-width: 34px;
+        font-size: 12px;
     }
     
     .email-button img {
-        width: 16px !important;
+        width: 16px;
+    }
+    
+    .drawing-controls {
+        gap: 6px;
+        max-width: 260px;
+        justify-content: space-around;
+    }
+    
+    .drawing-controls button {
+        padding: 5px 8px;
+        height: 30px;
+        min-width: 30px;
+        font-size: 11px;
+    }
+    
+    #brush-size {
+        width: 70px;
+        height: 30px;
+        padding: 3px 6px;
+    }
+    
+    #color-picker {
+        width: 30px;
+        height: 30px;
+    }
+    
+    #drawing-canvas {
+        width: 250px;
+        height: 180px;
+    }
+    
+    .canvas-container {
+        padding: 8px;
     }
 }
