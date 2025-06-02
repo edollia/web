@@ -639,23 +639,19 @@ button {
     justify-content: center;
 }
 
-/* KEYBOARD FIX: Fixed positioning for ask form to prevent movement */
+/* RESTORED ORIGINAL POSITIONING - Fixed the floating popup issue */
 .ask-form-container {
     display: none;
-    position: fixed;
+    position: absolute;
     left: 50%;
-    top: 50%;
-    transform: translate(-50%, -50%);
+    transform: translateX(-50%);
     width: 300px;
-    max-width: 90vw;
     background: rgba(255, 255, 255, 0.9);
     border-radius: 10px;
     padding: 15px;
+    margin-top: 10px;
     backdrop-filter: blur(5px);
-    z-index: 1001;
-    /* KEYBOARD FIX: Prevent any viewport-based positioning issues */
-    max-height: 80vh;
-    overflow-y: auto;
+    z-index: 10;
 }
 
 /* FIXED: Prevent zoom on mobile input focus */
@@ -700,15 +696,6 @@ button {
         font-size: 16px !important;
         transform: scale(1);
         zoom: 1;
-    }
-    
-    /* KEYBOARD FIX: Adjust ask form positioning on mobile */
-    .ask-form-container {
-        position: fixed;
-        top: 40%;
-        transform: translate(-50%, -50%);
-        width: 280px;
-        max-width: 85vw;
     }
 }
 
