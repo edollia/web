@@ -153,9 +153,12 @@ document.addEventListener("DOMContentLoaded", async function() {
 
         function getCursorPos(e) {
             const rect = canvas.getBoundingClientRect();
+            const isTouch = e.type.includes('touch');
+            const clientX = isTouch ? e.touches[0].clientX : e.clientX;
+            const clientY = isTouch ? e.touches[0].clientY : e.clientY;
             return {
-                x: (e.clientX - rect.left) * (canvas.width / rect.width),
-                y: (e.clientY - rect.top) * (canvas.height / rect.height)
+                x: (clientX - rect.left) * (canvas.width / rect.width),
+                y: (clientY - rect.top) * (canvas.height / rect.height)
             };
         }
 
@@ -207,30 +210,16 @@ document.addEventListener("DOMContentLoaded", async function() {
 
             // Touch events
             canvas.addEventListener("touchstart", function(e) {
-                const touch = e.touches[0];
-                const mouseEvent = new MouseEvent("mousedown", {
-                    clientX: touch.clientX,
-                    clientY: touch.clientY
-                });
-                startDrawing(mouseEvent);
+                startDrawing(e);
             }, { passive: false });
 
             canvas.addEventListener("touchmove", function(e) {
-                const touch = e.touches[0];
-                const mouseEvent = new MouseEvent("mousemove", {
-                    clientX: touch.clientX,
-                    clientY: touch.clientY
-                });
-                draw(mouseEvent);
+                draw(e);
             }, { passive: false });
 
-            canvas.addEventListener("touchend", function() {
-                const mouseEvent = new MouseEvent("mouseup");
-                stopDrawing(mouseEvent);
-            });
+            canvas.addEventListener("touchend", stopDrawing);
         }
 
-        // Undo functionality
         document.getElementById("undo-button")?.addEventListener("click", () => {
             if (historyIndex > 0) {
                 historyIndex--;
@@ -243,28 +232,21 @@ document.addEventListener("DOMContentLoaded", async function() {
             }
         });
 
-        // Brush size control
         document.getElementById("brush-size")?.addEventListener("input", e => {
             brushSize = e.target.value;
         });
 
-        // Color picker implementation
-        const colorPickerBtn = document.getElementById("color-picker-button");
-        const rgbColorPicker = document.getElementById("rgb-color-picker");
+        // Replace any existing color picker code with this:
+        document.getElementById('color-picker-button').addEventListener('click', function() {
+            document.getElementById('rgb-color-picker').click(); // Trigger native color picker
+        });
+        // Update color preview button when a color is picked
+        document.getElementById('rgb-color-picker').addEventListener('input', function() {
+            const color = this.value;
+            currentColor = color; // Update the drawing color
+            document.getElementById('color-picker-button').style.background = color;
+        });
 
-        if (colorPickerBtn && rgbColorPicker) {
-            colorPickerBtn.addEventListener("click", function(e) {
-                e.preventDefault();
-                rgbColorPicker.click();
-            });
-
-            rgbColorPicker.addEventListener("input", function(e) {
-                currentColor = e.target.value;
-                colorPickerBtn.style.background = currentColor;
-            });
-        }
-
-        // Clear canvas
         document.getElementById("clear-canvas")?.addEventListener("click", () => {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             ctx.fillStyle = "#ffffff";
@@ -272,7 +254,6 @@ document.addEventListener("DOMContentLoaded", async function() {
             saveState();
         });
 
-        // Send drawing
         document.getElementById("send-drawing")?.addEventListener("click", async function() {
             const dataUrl = canvas.toDataURL("image/png");
             const base64Data = dataUrl.split(',')[1];
