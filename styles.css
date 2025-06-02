@@ -466,7 +466,7 @@ button {
 /* Ensure canvas has fixed dimensions */
 #drawing-canvas {
     width: 330px;
-    height: 260px;
+    height: 230px;
     background-color: white;
     border-radius: 5px;
     cursor: crosshair;
