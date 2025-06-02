@@ -236,16 +236,36 @@ document.addEventListener("DOMContentLoaded", async function() {
             brushSize = e.target.value;
         });
 
-        // Replace any existing color picker code with this:
-        document.getElementById('color-picker-button').addEventListener('click', function() {
-            document.getElementById('rgb-color-picker').click(); // Trigger native color picker
-        });
-        // Update color preview button when a color is picked
-        document.getElementById('rgb-color-picker').addEventListener('input', function() {
-            const color = this.value;
-            currentColor = color; // Update the drawing color
-            document.getElementById('color-picker-button').style.background = color;
-        });
+        // Fixed color picker - works on both desktop and mobile
+        const colorPicker = document.getElementById("color-picker");
+        if (colorPicker) {
+            colorPicker.addEventListener("change", function(e) {
+                currentColor = e.target.value;
+            });
+
+            colorPicker.addEventListener("input", function(e) {
+                currentColor = e.target.value;
+            });
+
+            // For mobile devices, ensure the color picker opens properly
+            colorPicker.addEventListener("click", function(e) {
+                // Force the color picker to open on mobile
+                this.focus();
+            });
+
+            // Prevent any parent element clicks from interfering
+            colorPicker.addEventListener("touchstart", function(e) {
+                e.stopPropagation();
+            });
+
+            colorPicker.addEventListener("touchend", function(e) {
+                e.stopPropagation();
+                // Small delay to ensure mobile color picker opens
+                setTimeout(() => {
+                    this.click();
+                }, 10);
+            });
+        }
 
         document.getElementById("clear-canvas")?.addEventListener("click", () => {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
