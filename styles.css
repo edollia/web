@@ -243,12 +243,6 @@ button {
     margin-top: 10px;
 }
 
-.email-button img {
-    width: 100%;
-    height: auto;
-    filter: brightness(0.9);
-}
-
 .dropdown {
     position: relative;
     display: inline-block;
@@ -451,25 +445,6 @@ button {
     pointer-events: auto;
 }
 
-.next-button {
-    background: linear-gradient(to right, #fdeef5, #ffdbee);
-    border: none;
-    padding: 8px 20px;
-    border-radius: 20px;
-    color: white;
-    font-weight: bold;
-    cursor: pointer;
-    margin: 10px auto;
-    display: block;
-    transition: all 0.3s;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-}
-
-.next-button:hover {
-    transform: scale(1.05);
-    background: linear-gradient(to right, #fdeef5, #ffdbee);
-}
-
 .toggle-container {
     position: relative;
     min-height: 350px;
@@ -544,53 +519,52 @@ button {
     backdrop-filter: blur(5px);
 }
 
-/* Container for both buttons */
+/* ===== UNIFORM BUTTON GROUP STYLING ===== */
+/* Container for buttons */
 .button-group {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 15px;
     margin-bottom: 15px;
+    justify-content: center;
+    flex-wrap: wrap;
 }
 
-/* Email icon styling */
-.email-button {
+/* Uniform styling for all buttons in the group */
+.email-button,
+.next-button {
+    background: linear-gradient(to right, #fdeef5, #ffdbee);
+    border: none;
+    padding: 8px 15px;
+    border-radius: 20px;
+    color: white;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 40px;
     height: 40px;
-    background: linear-gradient(to right, #fdeef5, #ffdbee);
-    border-radius: 50%;
-    padding: 8px;
-    transition: transform 0.3s;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    min-width: 40px;
+    font-size: 14px;
 }
 
-/* Mobile responsiveness */
-@media (max-width: 500px) {
-    .button-group {
-        gap: 5px;
-    }
-    .email-button {
-        width: 36px;
-        height: 36px;
-        padding: 6px;
-    }
-    
-    /* Make color picker slightly larger on mobile */
-    #color-picker {
-        width: 35px;
-        height: 35px;
-    }
+/* Email button specific - only for the icon inside */
+.email-button img {
+    width: 20px;
+    height: auto;
+    filter: brightness(0.9);
 }
 
-/* Add hover effects */
-.email-button:hover {
-    transform: scale(1.1);
+/* Hover effects for all buttons */
+.email-button:hover,
+.next-button:hover {
+    transform: scale(1.05);
     background: linear-gradient(to right, #ffdbee, #fdeef5);
 }
 
-/* Add glow effect when active */
+/* Active state for email button */
 .email-button:active {
     box-shadow: 0 0 8px rgba(255, 182, 193, 0.8);
 }
@@ -604,9 +578,13 @@ button {
     color: white;
     font-weight: bold;
     cursor: pointer;
-    margin-left: 8px;
     transition: all 0.3s;
     font-size: 14px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .ask-form-container {
@@ -804,4 +782,32 @@ button {
     font-size: 20px;
     cursor: pointer;
     color: #ff69b4;
+}
+
+/* Mobile responsiveness for uniform buttons */
+@media (max-width: 500px) {
+    .button-group {
+        gap: 5px;
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+    
+    .email-button,
+    .next-button,
+    #ask-button {
+        padding: 6px 12px;
+        height: 36px;
+        min-width: 36px;
+        font-size: 13px;
+    }
+    
+    .email-button img {
+        width: 18px;
+    }
+    
+    /* Make color picker slightly larger on mobile */
+    #color-picker {
+        width: 35px;
+        height: 35px;
+    }
 }
