@@ -52,38 +52,37 @@
                 <button id="ask-button" class="next-button">Ask me anything!</button>
                 <button id="posts-button" class="next-button">Posts</button>
                 <div class="posts-popup" id="posts-popup">
-    <div class="popup-content">
-        <button id="close-posts-popup" class="close-button">✕</button>
-        <h3>Posts</h3>
-        
-        <div class="posts-tabs">
-            <button class="tab-button active" data-tab="drawings">Doodles</button>
-            <button class="tab-button" data-tab="questions">Q&A</button>
-        </div>
-        
-        <div class="posts-container">
-            <!-- Drawings will appear here -->
-            <div id="drawings-tab" class="tab-content active">
-                <div class="posts-list" id="drawings-list"></div>
-            </div>
-            
-            <!-- Questions will appear here -->
-            <div id="questions-tab" class="tab-content">
-                <div class="posts-list" id="questions-list"></div>
-            </div>
-        </div>
-    </div>
-</div>
+                    <div class="popup-content">
+                        <button id="close-posts-popup" class="close-button">✕</button>
+                        <h3>Posts</h3>
+                        
+                        <div class="posts-tabs">
+                            <button class="tab-button active" data-tab="drawings">Doodles</button>
+                            <button class="tab-button" data-tab="questions">Q&A</button>
+                        </div>
+                        
+                        <div class="posts-container">
+                            <!-- Drawings will appear here -->
+                            <div id="drawings-tab" class="tab-content active">
+                                <div class="posts-list" id="drawings-list"></div>
+                            </div>
+                            
+                            <!-- Questions will appear here -->
+                            <div id="questions-tab" class="tab-content">
+                                <div class="posts-list" id="questions-list"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
             <div id="ask-form-container" class="ask-form-container">
-    <textarea id="ask-textarea" maxlength="200" placeholder="Type your question here... don't be nasty ty.."></textarea>
-    <div class="ask-footer">
-        <span id="char-count">0/200</span>
-        <button id="send-question" class="send-button">Send</button>
-    </div>
-</div>
+                <textarea id="ask-textarea" maxlength="200" placeholder="Type your question here... don't be nasty ty.."></textarea>
+                <div class="ask-footer">
+                    <span id="char-count">0/200</span>
+                    <button id="send-question" class="send-button">Send</button>
+                </div>
+            </div>
             
-            <!-- Single content-area div (removed duplicate) -->
             <div class="content-area">
                 <!-- Note Image -->
                 <img src="notee.jpg" alt="Note" class="note-image active-content">
@@ -95,15 +94,10 @@
                             <button id="undo-button" title="Undo last action">↻</button>
                             <button id="clear-canvas" title="Clear drawing">✖</button>
                             <input type="range" id="brush-size" min="1" max="20" value="5" title="Brush size">
+                            <!-- Updated Color Picker Button -->
                             <button id="color-picker-button" title="Color picker" 
                                     style="background: #000; width: 20px; height: 20px; border-radius: 50%;"></button>
-                        </div>
-
-                        <div id="color-picker-popup" class="drawing-popup">
-                            <div class="drawing-popup-content">
-                                <input type="color" id="rgb-color-picker" value="#000000">
-                                <button id="close-color-picker">Done</button>
-                            </div>
+                            <input type="color" id="rgb-color-picker" style="display: none;">
                         </div>
 
                         <canvas id="drawing-canvas" width="330" height="230"></canvas>
@@ -144,7 +138,33 @@
         </div>
     </div>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="script.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>
+        // Temporary fix for color picker - will be properly integrated in your script.js
+        document.addEventListener('DOMContentLoaded', function() {
+            const colorPickerBtn = document.getElementById('color-picker-button');
+            const rgbColorPicker = document.getElementById('rgb-color-picker');
+            
+            if (colorPickerBtn && rgbColorPicker) {
+                colorPickerBtn.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    rgbColorPicker.click();
+                });
+                
+                rgbColorPicker.addEventListener('input', function(e) {
+                    colorPickerBtn.style.background = e.target.value;
+                });
+                
+                // Mobile-specific touch support
+                colorPickerBtn.addEventListener('touchend', function(e) {
+                    if (/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)) {
+                        e.preventDefault();
+                        rgbColorPicker.click();
+                    }
+                });
+            }
+        });
+    </script>
+    <script src="script.js"></script>
 </body>
 </html>
