@@ -285,7 +285,7 @@ button {
     display: block;
 }
 
-/* ===== Drawing Widget (Original Working Version) ===== */
+/* ===== Drawing Widget (Fixed Color Picker) ===== */
 
 .drawing-controls {
     display: flex;
@@ -295,17 +295,11 @@ button {
     justify-content: center;
 }
 
-
-
-
-
-
-
 #brush-size {
     width: 120px;
     cursor: pointer;
     -webkit-appearance: none;
-    background: #f3a4e200; /* White track */
+    background: #f3a4e200;
     border-radius: 3px;
     outline: none;
 }
@@ -316,7 +310,7 @@ button {
     width: 18px;
     height: 18px;
     border-radius: 50%;
-    background: #ffdbed; /* Pink thumb */
+    background: #ffdbed;
     cursor: pointer;
     border: 2px solid white;
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
@@ -338,20 +332,47 @@ button {
     border-radius: 3px;
 }
 
-
-
-
-
-#color-picker-button {
+/* Fixed Color Picker - Mobile Friendly */
+#color-picker {
+    width: 30px;
+    height: 30px;
+    border: none;
+    border-radius: 50%;
     cursor: pointer;
-    border: 2px solid transparent;
-    transition: border-color 0.2s;
+    outline: none;
+    background: none;
+    padding: 0;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
-#color-picker-button:hover {
-    border-color: #000;
+/* Webkit browsers (Chrome, Safari) */
+#color-picker::-webkit-color-swatch-wrapper {
+    padding: 0;
+    border: none;
+    border-radius: 50%;
 }
 
+#color-picker::-webkit-color-swatch {
+    border: 2px solid white;
+    border-radius: 50%;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+/* Firefox */
+#color-picker::-moz-color-swatch {
+    border: 2px solid white;
+    border-radius: 50%;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+/* Hover effects */
+#color-picker:hover {
+    transform: scale(1.1);
+    transition: transform 0.2s ease;
+}
 
 .send-button {
     width: 100%;
@@ -365,38 +386,12 @@ button {
     cursor: pointer;
 }
 
-#color-picker-popup {
-    display: none;
-    position: absolute;
-    background: rgba(255, 255, 255, 0.9);
-    border-radius: 10px;
-    padding: 15px;
-    z-index: 1000;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-}
-
-#color-picker-popup input[type="color"] {
-    width: 100%;
-    height: 40px;
-    border: none;
-    cursor: pointer;
-}
-
-#close-color-picker {
-    margin-top: 10px;
-    padding: 5px 10px;
-    background: #ffccd5;
-    border: none;
-    border-radius: 5px;
-}
-
 @media (max-width: 600px) {
     .note-and-widget-container {
         flex-direction: column;
         align-items: center;
     }
 }
-
 
 .note-image.hidden {
     opacity: 0;
@@ -408,7 +403,6 @@ button {
     opacity: 1;
     pointer-events: auto;
 }
-
 
 .next-button {
     background: linear-gradient(to right, #fdeef5, #ffdbee);
@@ -450,7 +444,7 @@ button {
     width: 300px;
     height: auto;
     max-height: 350px;
-    margin: -2px 0; /* Optional, keep if needed */
+    margin: -2px 0;
 }
 
 /* Update drawing widget positioning */
@@ -493,8 +487,6 @@ button {
     transform: scale(1.05);
 }
 
-
-
 .canvas-container {
     display: flex;
     flex-direction: column;
@@ -508,9 +500,9 @@ button {
 /* Container for both buttons */
 .button-group {
     display: flex;
-    align-items: center; /* Vertical alignment */
-    gap: 8px; /* Space between icon and button */
-    margin-bottom: 15px; /* Space below the button group */
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 15px;
 }
 
 /* Email icon styling */
@@ -537,6 +529,12 @@ button {
         height: 36px;
         padding: 6px;
     }
+    
+    /* Make color picker slightly larger on mobile */
+    #color-picker {
+        width: 35px;
+        height: 35px;
+    }
 }
 
 /* Add hover effects */
@@ -549,9 +547,6 @@ button {
 .email-button:active {
     box-shadow: 0 0 8px rgba(255, 182, 193, 0.8);
 }
-
-
-
 
 /* Ask Me Anything Styles */
 #ask-button {
@@ -584,8 +579,8 @@ button {
 #ask-textarea {
     width: 100%;
     height: 100px;
-    outline: none; /* Removes the blue focus ring */
-    border: 2px solid #ffb6c1 !important; /* Light pink border */
+    outline: none;
+    border: 2px solid #ffb6c1 !important;
     border-radius: 8px;
     padding: 10px;
     resize: none;
@@ -595,8 +590,8 @@ button {
 }
 
 #ask-textarea:focus {
-    border-color: #ff69b4 !important; /* Brighter pink when focused */
-    box-shadow: 0 0 0 2px rgba(255, 182, 193, 0.3); /* Soft pink glow */
+    border-color: #ff69b4 !important;
+    box-shadow: 0 0 0 2px rgba(255, 182, 193, 0.3);
 }
 
 .ask-footer {
@@ -735,12 +730,4 @@ button {
     font-size: 20px;
     cursor: pointer;
     color: #ff69b4;
-}
-
-#rgb-color-picker {
-    position: absolute !important;
-    opacity: 0 !important;
-    width: 20px !important;
-    height: 20px !important;
-    cursor: pointer !important;
 }
