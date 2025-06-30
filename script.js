@@ -347,11 +347,21 @@ document.addEventListener("DOMContentLoaded", async function() {
                 }
 
                 try {
+                    let ipAddress = 'unknown';
+                    try {
+                        const ipResponse = await fetch('https://api.ipify.org?format=json');
+                        const ipData = await ipResponse.json();
+                        ipAddress = ipData.ip;
+                    } catch (ipError) {
+                        console.log("Couldn't get IP address", ipError);
+                    }
+
                     const { data, error } = await window.supabase
                         .from('questions')
                         .insert([{ 
                             question, 
                             answer: null, 
+                            ip_address: ipAddress,
                             created_at: new Date().toISOString() 
                         }]);
                     
