@@ -135,7 +135,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                         <input type="email" id="contact-email" placeholder="Email" maxlength="30">
                     </div>
                     <div class="form-group">
-                        <input type="tel" id="contact-phone" placeholder="Phone Number" maxlength="30">
+                        <input type="tel" id="contact-phone" placeholder="Phone" maxlength="30">
                     </div>
                     <div class="form-group social-group">
                         <div class="social-selector">
@@ -149,10 +149,10 @@ document.addEventListener("DOMContentLoaded", async function() {
                                 <img src="ytpf.png" alt="YouTube" data-social="youtube" class="social-option">
                             </div>
                         </div>
-                        <input type="text" id="contact-username" placeholder="Username (Optional)" maxlength="30">
+                        <input type="text" id="contact-username" placeholder="Username" maxlength="30">
                     </div>
                     <div class="form-group">
-                        <textarea id="contact-notes" placeholder="Notes (Optional)" maxlength="200"></textarea>
+                        <textarea id="contact-notes" placeholder="Notes" maxlength="200"></textarea>
                         <div class="attachment-icons">
                             <img src="attpf.png" alt="Attachments" class="attachment-icon">
                             <img src="campf.png" alt="Camera" class="attachment-icon">

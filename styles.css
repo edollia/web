@@ -1016,6 +1016,7 @@ button {
     background: rgba(255, 255, 255, 0.95);
     border-radius: 20px;
     padding: 30px;
+    padding-top: 60px; /* Extra padding to accommodate profile photo coming out */
     max-width: 400px;
     width: 90%;
     max-height: 80vh;
@@ -1035,17 +1036,23 @@ button {
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    min-height: 80px;
+    min-height: 60px; /* Reduced from 80px */
+    padding-top: 48px; /* Space for the profile photo that comes out */
 }
 
 .contact-profile-pic {
-    width: 80px;
-    height: 80px;
+    width: 96px; /* 20% bigger than 80px */
+    height: 96px; /* 20% bigger than 80px */
     border-radius: 50%;
     object-fit: cover;
     border: 3px solid rgba(255, 182, 193, 0.5);
     box-shadow: 0 4px 15px rgba(255, 182, 193, 0.3);
-    margin-bottom: 15px;
+    margin-bottom: 10px; /* Reduced from 15px */
+    position: absolute;
+    top: -48px; /* Half the height to make it come out of the popup */
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
 }
 
 .contact-close-btn {
@@ -1099,6 +1106,7 @@ button {
     background: rgba(255, 255, 255, 0.9);
     transition: all 0.3s ease;
     box-sizing: border-box;
+    max-width: 100%;
 }
 
 .form-group input:focus,
@@ -1119,7 +1127,7 @@ button {
 .social-group {
     display: flex;
     gap: 10px;
-    align-items: center;
+    align-items: flex-start; /* Changed from center to align items to top */
 }
 
 .social-selector {
@@ -1318,27 +1326,37 @@ button {
 @media (max-width: 768px) {
     .contact-form {
         padding: 20px;
+        padding-top: 50px; /* Extra padding for profile photo */
         margin: 20px;
         max-width: calc(100% - 40px);
     }
     
     .contact-profile-pic {
-        width: 60px;
-        height: 60px;
+        width: 80px; /* Keep bigger size on mobile */
+        height: 80px;
+        top: -40px; /* Half the height for mobile */
     }
     
     .contact-title {
         font-size: 16px;
+        margin-top: 5px; /* Reduce space above title */
     }
     
     .social-group {
-        flex-direction: column;
+        flex-direction: row; /* Keep horizontal layout */
         align-items: flex-start;
         gap: 8px;
     }
     
     .social-selector {
         align-self: flex-start;
+        flex-shrink: 0;
+    }
+    
+    .form-group input,
+    .form-group textarea {
+        font-size: 13px; /* Smaller font for mobile */
+        padding: 10px 12px; /* Smaller padding */
     }
     
     .attachment-icons {
