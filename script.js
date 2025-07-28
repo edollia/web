@@ -187,12 +187,6 @@ document.addEventListener("DOMContentLoaded", async function() {
         
         // Close modal functions
         function closeModal() {
-            // Clear the cycling interval
-            const intervalId = modal.dataset.intervalId;
-            if (intervalId) {
-                clearInterval(parseInt(intervalId));
-            }
-            
             // Advance to next photo for next time form opens
             if (globalProfilePhotos.length > 0) {
                 globalProfileIndex = (globalProfileIndex + 1) % globalProfilePhotos.length;
@@ -427,15 +421,6 @@ document.addEventListener("DOMContentLoaded", async function() {
             
             // Set current media (advances to next photo each time form opens)
             setProfileMedia();
-            
-            // Cycle through media every 3 seconds
-            const intervalId = setInterval(() => {
-                globalProfileIndex = (globalProfileIndex + 1) % globalProfilePhotos.length;
-                setProfileMedia();
-            }, 3000);
-            
-            // Store interval ID to clear it when modal closes
-            modal.dataset.intervalId = intervalId;
             
         } catch (error) {
             console.error('Error loading profile photos:', error);

@@ -1127,7 +1127,7 @@ button {
     flex-shrink: 0;
 }
 
-.social-icon {
+.contact-form .social-icon {
     width: 35px;
     height: 35px;
     border-radius: 50%;
@@ -1136,7 +1136,7 @@ button {
     border: 2px solid rgba(255, 182, 193, 0.3);
 }
 
-.social-icon:hover {
+.contact-form .social-icon:hover {
     transform: scale(1.1);
     border-color: rgba(255, 182, 193, 0.8);
 }
