@@ -8,10 +8,39 @@ document.addEventListener("DOMContentLoaded", async function() {
     const loadingScreen = document.getElementById("loading-screen");
     const minLoadingTime = 2000;
 
-    // Wait for both min time and window load event
+    // Enhanced loading logic: wait for min time, window load, AND all critical resources
     Promise.all([
         new Promise(resolve => setTimeout(resolve, minLoadingTime)),
-        new Promise(resolve => window.addEventListener('load', resolve))
+        new Promise(resolve => window.addEventListener('load', resolve)),
+        // Wait for critical images to load
+        new Promise(resolve => {
+            const criticalImages = [
+                'background1.png',
+                'dropdown1.png',
+                'notee.jpg',
+                'loading.gif'
+            ];
+            let loadedCount = 0;
+            const totalImages = criticalImages.length;
+            
+            if (totalImages === 0) {
+                resolve();
+                return;
+            }
+            
+            criticalImages.forEach(src => {
+                const img = new Image();
+                img.onload = () => {
+                    loadedCount++;
+                    if (loadedCount === totalImages) resolve();
+                };
+                img.onerror = () => {
+                    loadedCount++;
+                    if (loadedCount === totalImages) resolve();
+                };
+                img.src = src;
+            });
+        })
     ]).then(async () => {
         // Load Supabase only after the initial loading is complete
         const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
@@ -75,36 +104,516 @@ document.addEventListener("DOMContentLoaded", async function() {
         });
     }
 
-    // ===== EMAIL POPUPS =====
+    // ===== CONTACT FORM =====
     const emailIcon = document.getElementById("email-icon");
-    const confirmPopup = document.getElementById("confirmation-popup");
-    const emailPopup = document.getElementById("email-popup");
 
-    if (emailIcon && confirmPopup && emailPopup) {
+    if (emailIcon) {
         emailIcon.addEventListener("click", function(e) {
             e.preventDefault();
-            confirmPopup.style.display = "flex";
-            setTimeout(() => confirmPopup.style.opacity = 1, 10);
+            showContactForm();
         });
+    }
 
-        document.getElementById("cancel-email-request")?.addEventListener("click", function() {
-            confirmPopup.style.opacity = 0;
-            setTimeout(() => confirmPopup.style.display = "none", 500);
-        });
+    // Contact form functionality
+    function showContactForm() {
+        // Create contact form modal
+        const contactModal = document.createElement('div');
+        contactModal.className = 'contact-modal';
+        contactModal.innerHTML = `
+            <div class="contact-overlay"></div>
+            <div class="contact-form">
+                <div class="contact-header">
+                    <img src="" alt="Profile" class="contact-profile-pic" id="dynamic-profile-pic">
+                    <button class="contact-close-btn">×</button>
+                </div>
+                <h3 class="contact-title">Share your info with me</h3>
+                <form class="contact-form-content">
+                    <div class="form-group">
+                        <input type="text" id="contact-name" placeholder="Name" maxlength="30">
+                    </div>
+                    <div class="form-group">
+                        <input type="email" id="contact-email" placeholder="Email" maxlength="30">
+                    </div>
+                    <div class="form-group">
+                        <input type="tel" id="contact-phone" placeholder="Phone Number" maxlength="30">
+                    </div>
+                    <div class="form-group social-group">
+                        <div class="social-selector">
+                            <img src="igpf.png" alt="Instagram" class="social-icon active" data-social="instagram">
+                            <div class="social-dropdown">
+                                <img src="igpf.png" alt="Instagram" data-social="instagram" class="social-option active">
+                                <img src="fbpf.png" alt="Facebook" data-social="facebook" class="social-option">
+                                <img src="ttpf.png" alt="TikTok" data-social="tiktok" class="social-option">
+                                <img src="scpf.png" alt="Snapchat" data-social="snapchat" class="social-option">
+                                <img src="twtpf.png" alt="X" data-social="x" class="social-option">
+                                <img src="ytpf.png" alt="YouTube" data-social="youtube" class="social-option">
+                            </div>
+                        </div>
+                        <input type="text" id="contact-username" placeholder="Username (Optional)" maxlength="30">
+                    </div>
+                    <div class="form-group">
+                        <textarea id="contact-notes" placeholder="Notes (Optional)" maxlength="200"></textarea>
+                        <div class="attachment-icons">
+                            <img src="attpf.png" alt="Attachments" class="attachment-icon">
+                            <img src="campf.png" alt="Camera" class="attachment-icon">
+                        </div>
+                    </div>
+                    <button type="submit" class="connect-btn">CONNECT</button>
+                </form>
+                <p class="contact-disclaimer">By selecting "connect" you acknowledge that you have read, understood, and agree to be bound by our <span class="clickable-link" data-link="privacy">Privacy Policy</span> and <span class="clickable-link" data-link="terms">Terms & Conditions</span>.</p>
+            </div>
+        </div>
+        `;
+        
+        document.body.appendChild(contactModal);
+        
+        // Load and cycle through profile photos
+        loadProfilePhotos(contactModal);
+        
+        // Initialize contact form functionality
+        initContactForm(contactModal);
+    }
 
-        document.getElementById("confirm-email-request")?.addEventListener("click", function() {
-            confirmPopup.style.opacity = 0;
+    function initContactForm(modal) {
+        const overlay = modal.querySelector('.contact-overlay');
+        const closeBtn = modal.querySelector('.contact-close-btn');
+        const form = modal.querySelector('.contact-form-content');
+        const socialSelector = modal.querySelector('.social-selector');
+        const socialDropdown = modal.querySelector('.social-dropdown');
+        const socialIcon = modal.querySelector('.social-icon');
+        const socialOptions = modal.querySelectorAll('.social-option');
+        
+        let selectedSocial = 'instagram';
+        
+        // Close modal functions
+        function closeModal() {
+            // Clear the cycling interval
+            const intervalId = modal.dataset.intervalId;
+            if (intervalId) {
+                clearInterval(parseInt(intervalId));
+            }
+            
+            // Advance to next photo for next time form opens
+            if (globalProfilePhotos.length > 0) {
+                globalProfileIndex = (globalProfileIndex + 1) % globalProfilePhotos.length;
+            }
+            
+            modal.style.opacity = '0';
             setTimeout(() => {
-                confirmPopup.style.display = "none";
-                emailPopup.style.display = "flex";
-                setTimeout(() => emailPopup.style.opacity = 1, 10);
-            }, 500);
+                document.body.removeChild(modal);
+            }, 300);
+        }
+        
+        // Close on overlay click
+        overlay.addEventListener('click', closeModal);
+        
+        // Close on X button
+        closeBtn.addEventListener('click', closeModal);
+        
+        // Social media dropdown
+        socialSelector.addEventListener('click', function(e) {
+            e.stopPropagation();
+            socialDropdown.classList.toggle('active');
         });
+        
+        // Select social media option
+        socialOptions.forEach(option => {
+            option.addEventListener('click', function(e) {
+                e.stopPropagation();
+                const social = this.dataset.social;
+                selectedSocial = social;
+                
+                // Update main icon
+                socialIcon.src = this.src;
+                socialIcon.dataset.social = social;
+                
+                // Update active state
+                socialOptions.forEach(opt => opt.classList.remove('active'));
+                this.classList.add('active');
+                
+                // Close dropdown
+                socialDropdown.classList.remove('active');
+            });
+        });
+        
+        // Close dropdown when clicking outside
+        document.addEventListener('click', function() {
+            socialDropdown.classList.remove('active');
+        });
+        
+        // Form submission with validation
+        form.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const name = document.getElementById('contact-name').value.trim();
+            const email = document.getElementById('contact-email').value.trim();
+            const phone = document.getElementById('contact-phone').value.trim();
+            const username = document.getElementById('contact-username').value.trim();
+            const notes = document.getElementById('contact-notes').value.trim();
+            
+            // Check if at least one field has 2+ characters
+            const filledFields = [name, email, phone, username, notes].filter(field => field.length >= 2);
+            
+            if (filledFields.length === 0) {
+                showConfirmation('Please fill at least one field with 2 or more characters.');
+                return;
+            }
+            
+            const formData = {
+                name: name,
+                email: email,
+                phone: phone,
+                social_media: selectedSocial,
+                username: username,
+                notes: notes,
+                ip_address: await getIPAddress(),
+                created_at: new Date().toISOString()
+            };
+            
+            try {
+                const { data, error } = await window.supabase
+                    .from('contacts')
+                    .insert([formData]);
+                
+                if (error) throw error;
+                
+                // Show success message
+                showConfirmation('Contact information sent successfully!');
+                closeModal();
+                
+            } catch (error) {
+                console.error('Error saving contact:', error);
+                showConfirmation('Error sending contact information. Please try again.');
+            }
+        });
+        
+        // Clickable links functionality
+        modal.querySelectorAll('.clickable-link').forEach(link => {
+            link.addEventListener('click', function(e) {
+                e.preventDefault();
+                showTermsPrivacyPopup();
+            });
+        });
+        
+        // Attachment and camera functionality
+        const attachmentIcon = modal.querySelector('.attachment-icon[alt="Attachments"]');
+        const cameraIcon = modal.querySelector('.attachment-icon[alt="Camera"]');
+        
+        // Create hidden file input for attachments
+        const fileInput = document.createElement('input');
+        fileInput.type = 'file';
+        fileInput.accept = 'image/*,.pdf,.doc,.docx,.txt';
+        fileInput.style.display = 'none';
+        document.body.appendChild(fileInput);
+        
+        // Create hidden camera input (supports both camera and camera roll)
+        const cameraInput = document.createElement('input');
+        cameraInput.type = 'file';
+        cameraInput.accept = 'image/*';
+        cameraInput.style.display = 'none';
+        document.body.appendChild(cameraInput);
+        
+        // Attachment icon click handler
+        attachmentIcon.addEventListener('click', function() {
+            fileInput.click();
+        });
+        
+        // Camera icon click handler
+        cameraIcon.addEventListener('click', function() {
+            cameraInput.click();
+        });
+        
+        // Handle file selection
+        fileInput.addEventListener('change', async function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                await handleFileUpload(file, 'attachment');
+            }
+        });
+        
+        // Handle camera capture
+        cameraInput.addEventListener('change', async function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                await handleFileUpload(file, 'camera');
+            }
+        });
+    }
 
-        document.getElementById("close-email-popup")?.addEventListener("click", function() {
-            emailPopup.style.opacity = 0;
-            setTimeout(() => emailPopup.style.display = "none", 500);
+    // Helper function to get IP address
+    async function getIPAddress() {
+        try {
+            const ipResponse = await fetch('https://api.ipify.org?format=json');
+            const ipData = await ipResponse.json();
+            return ipData.ip;
+        } catch (ipError) {
+            console.log("Couldn't get IP address", ipError);
+            return 'unknown';
+        }
+    }
+
+    // Global variable to track current profile photo index
+    let globalProfileIndex = 0;
+    let globalProfilePhotos = [];
+
+    // Profile photo cycling functionality
+    async function loadProfilePhotos(modal) {
+        try {
+            console.log('Loading profile photos...');
+            
+            // Get list of profile photos from pfps folder
+            if (globalProfilePhotos.length === 0) {
+                globalProfilePhotos = await getProfilePhotosList();
+                console.log('Found profile photos:', globalProfilePhotos);
+            }
+            
+            if (globalProfilePhotos.length === 0) {
+                console.log('No profile photos found, using fallback');
+                // Fallback if no photos found
+                const profilePic = modal.querySelector('#dynamic-profile-pic');
+                profilePic.src = 'pfp.png'; // Fallback to original
+                return;
+            }
+            
+            const profilePic = modal.querySelector('#dynamic-profile-pic');
+            
+            // Function to set profile media
+            function setProfileMedia() {
+                const currentFile = globalProfilePhotos[globalProfileIndex];
+                const fileExtension = currentFile.split('.').pop().toLowerCase();
+                
+                if (['mp4', 'webm', 'mov'].includes(fileExtension)) {
+                    // Handle video files
+                    profilePic.style.display = 'none';
+                    
+                    // Remove existing video if any
+                    const existingVideo = modal.querySelector('.profile-video');
+                    if (existingVideo) {
+                        existingVideo.remove();
+                    }
+                    
+                    // Create video element
+                    const video = document.createElement('video');
+                    video.className = 'profile-video';
+                    video.src = currentFile;
+                    video.autoplay = true;
+                    video.muted = true;
+                    video.loop = true;
+                    video.controls = false;
+                    video.style.cssText = `
+                        width: 80px;
+                        height: 80px;
+                        border-radius: 50%;
+                        object-fit: cover;
+                        border: 3px solid rgba(255, 182, 193, 0.5);
+                        box-shadow: 0 4px 15px rgba(255, 182, 193, 0.3);
+                        margin-bottom: 15px;
+                    `;
+                    
+                    // Insert video before the profile pic
+                    profilePic.parentNode.insertBefore(video, profilePic);
+                    
+                } else {
+                    // Handle image files
+                    const existingVideo = modal.querySelector('.profile-video');
+                    if (existingVideo) {
+                        existingVideo.remove();
+                    }
+                    
+                    profilePic.style.display = 'block';
+                    profilePic.src = currentFile;
+                }
+            }
+            
+            // Set current media (advances to next photo each time form opens)
+            setProfileMedia();
+            
+            // Cycle through media every 3 seconds
+            const intervalId = setInterval(() => {
+                globalProfileIndex = (globalProfileIndex + 1) % globalProfilePhotos.length;
+                setProfileMedia();
+            }, 3000);
+            
+            // Store interval ID to clear it when modal closes
+            modal.dataset.intervalId = intervalId;
+            
+        } catch (error) {
+            console.error('Error loading profile photos:', error);
+            // Fallback to original
+            const profilePic = modal.querySelector('#dynamic-profile-pic');
+            profilePic.src = 'pfp.png';
+        }
+    }
+
+    // Get list of profile photos from pfps folder
+    async function getProfilePhotosList() {
+        const profilePhotos = [];
+        
+        // Use specific filenames: pfp1.jpg, pfp2.jpg, pfp3.jpg, pfp1.gif, pfp2.gif, pfp3.gif
+        const specificNames = [
+            'pfp1.jpg', 'pfp2.jpg', 'pfp3.jpg',
+            'pfp1.gif', 'pfp2.gif', 'pfp3.gif'
+        ];
+        
+        // Test each file to see if it exists
+        for (const filename of specificNames) {
+            const filePath = `pfps/${filename}`;
+            try {
+                const response = await fetch(filePath, { method: 'HEAD' });
+                if (response.ok) {
+                    profilePhotos.push(filePath);
+                    console.log(`Found profile photo: ${filePath}`);
+                }
+            } catch (error) {
+                console.log(`Profile photo not found: ${filePath}`);
+            }
+        }
+        
+        return profilePhotos;
+    }
+
+    // Helper function to show confirmation
+    function showConfirmation(message) {
+        const confirmation = document.createElement('div');
+        confirmation.className = 'confirmation-message';
+        confirmation.textContent = message;
+        confirmation.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 182, 193, 0.95);
+            color: white;
+            padding: 15px 20px;
+            border-radius: 10px;
+            z-index: 10000;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            animation: slideInRight 0.3s ease;
+        `;
+        
+        document.body.appendChild(confirmation);
+        
+        setTimeout(() => {
+            confirmation.style.animation = 'slideOutRight 0.3s ease';
+            setTimeout(() => {
+                if (confirmation.parentElement) {
+                    document.body.removeChild(confirmation);
+                }
+            }, 300);
+        }, 3000);
+    }
+
+    // File upload handling
+    async function handleFileUpload(file, type) {
+        try {
+            console.log('Starting file upload:', file.name, file.size, file.type);
+            
+            // Check file size (max 5MB)
+            if (file.size > 5 * 1024 * 1024) {
+                showConfirmation('File too large. Maximum size is 5MB.');
+                return;
+            }
+            
+            // Convert file to base64
+            console.log('Converting file to base64...');
+            const base64 = await fileToBase64(file);
+            console.log('Base64 conversion complete, length:', base64.length);
+            
+            // Get IP address
+            console.log('Getting IP address...');
+            const ipAddress = await getIPAddress();
+            console.log('IP address:', ipAddress);
+            
+            // Save to Supabase
+            console.log('Saving to Supabase...');
+            const { data, error } = await window.supabase
+                .from('contact_attachments')
+                .insert([{
+                    filename: file.name,
+                    file_type: type,
+                    file_size: file.size,
+                    mime_type: file.type,
+                    file_data: base64,
+                    ip_address: ipAddress,
+                    created_at: new Date().toISOString()
+                }]);
+            
+            if (error) {
+                console.error('Supabase error:', error);
+                throw error;
+            }
+            
+            console.log('Upload successful!');
+            showConfirmation(`${type === 'camera' ? 'Photo' : 'File'} uploaded successfully!`);
+            
+        } catch (error) {
+            console.error('Error uploading file:', error);
+            
+            // More specific error messages
+            let errorMessage = 'Error uploading file. Please try again.';
+            
+            if (error.message) {
+                if (error.message.includes('relation "contact_attachments" does not exist')) {
+                    errorMessage = 'Database table not found. Please create the contact_attachments table in Supabase.';
+                } else if (error.message.includes('permission denied')) {
+                    errorMessage = 'Permission denied. Please check Supabase policies.';
+                } else if (error.message.includes('network')) {
+                    errorMessage = 'Network error. Please check your internet connection.';
+                } else {
+                    errorMessage = `Upload failed: ${error.message}`;
+                }
+            }
+            
+            showConfirmation(errorMessage);
+        }
+    }
+    
+    // Convert file to base64
+    function fileToBase64(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = () => {
+                const base64 = reader.result.split(',')[1];
+                resolve(base64);
+            };
+            reader.onerror = error => reject(error);
         });
+    }
+
+    // Terms & Privacy popup
+    function showTermsPrivacyPopup() {
+        const popup = document.createElement('div');
+        popup.className = 'terms-privacy-modal';
+        popup.innerHTML = `
+            <div class="contact-overlay"></div>
+            <div class="contact-form">
+                <div class="contact-header">
+                    <button class="contact-close-btn">×</button>
+                </div>
+                <h3 class="contact-title">Terms & Conditions & Privacy Policy</h3>
+                <div class="terms-content">
+                    <p>This is a placeholder for your Terms & Conditions and Privacy Policy content.</p>
+                    <p>You can add your actual legal text here later.</p>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(popup);
+        
+        // Close functionality
+        const overlay = popup.querySelector('.contact-overlay');
+        const closeBtn = popup.querySelector('.contact-close-btn');
+        
+        function closePopup() {
+            popup.style.opacity = '0';
+            setTimeout(() => {
+                document.body.removeChild(popup);
+            }, 300);
+        }
+        
+        overlay.addEventListener('click', closePopup);
+        closeBtn.addEventListener('click', closePopup);
     }
 
     // ===== DROPDOWN MENU =====
@@ -422,11 +931,22 @@ document.addEventListener("DOMContentLoaded", async function() {
                 if (error) throw error;
                 
                 drawingsList.innerHTML = '';
-                drawings.forEach((drawing) => {
+                drawings.forEach((drawing, index) => {
                     const el = document.createElement('div');
                     el.className = 'post-item';
-                    el.innerHTML = `<img src="data:image/png;base64,${drawing.imageData}" alt="User drawing">`;
+                    el.style.animationDelay = `${index * 0.1}s`;
+                    el.innerHTML = `
+                        <img src="data:image/png;base64,${drawing.imageData}" alt="User drawing">
+                        <div class="like-sticker" data-drawing-id="${drawing.id}">
+                            <div class="like-button">
+                                <img src="reactions.png" alt="Like" class="like-icon">
+                            </div>
+                        </div>
+                    `;
                     drawingsList.appendChild(el);
+                    
+                    // Initialize like system for this drawing
+                    initLikeSystem(el, drawing.id);
                 });
             } catch (error) {
                 console.error("Error loading drawings:", error);
@@ -445,9 +965,10 @@ document.addEventListener("DOMContentLoaded", async function() {
                 if (error) throw error;
                 
                 questionsList.innerHTML = '';
-                questions.forEach((q) => {
+                questions.forEach((q, index) => {
                     const el = document.createElement('div');
                     el.className = 'question-item';
+                    el.style.animationDelay = `${index * 0.1}s`;
                     el.innerHTML = `
                         <p class="question-text">"${q.question}"</p>
                         <p class="answer-text">${q.answer}</p>
@@ -458,6 +979,455 @@ document.addEventListener("DOMContentLoaded", async function() {
                 console.error("Error loading questions:", error);
                 questionsList.innerHTML = '<p>Error loading Q&A. Please refresh.</p>';
             }
+        }
+
+        // ===== LIKE SYSTEM =====
+        const reactionTypes = ['happy', 'cool', 'meh', 'sad'];
+        const reactionIcons = {
+            'happy': 'happy.png',
+            'cool': 'cool.png', 
+            'meh': 'meh.png',
+            'sad': 'sad.png'
+        };
+        const defaultReactionIcon = 'reactions.png';
+        let currentOpenPicker = null; // Track currently open picker
+
+        async function initLikeSystem(drawingElement, drawingId) {
+            const likeSticker = drawingElement.querySelector('.like-sticker');
+            const likeButton = likeSticker.querySelector('.like-button');
+            const likeIcon = likeButton.querySelector('.like-icon');
+            
+            // Load current likes for this drawing
+            await loadDrawingLikes(drawingId, likeIcon);
+            
+            // Set up click handler
+            likeButton.addEventListener('click', async (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                console.log('Reaction button clicked!'); // Debug log
+                
+                // Check if this picker is already open
+                const existingPicker = document.querySelector('.reaction-picker');
+                if (existingPicker && existingPicker.dataset.drawingId === drawingId) {
+                    // Close this picker
+                    closeReactionPicker();
+                    return;
+                }
+                
+                // Close any other open picker first
+                if (currentOpenPicker) {
+                    closeReactionPicker();
+                }
+                
+                console.log('About to get IP address...'); // Debug log
+                
+                // Get user's IP
+                let ipAddress = 'unknown';
+                try {
+                    const ipResponse = await fetch('https://api.ipify.org?format=json');
+                    const ipData = await ipResponse.json();
+                    ipAddress = ipData.ip;
+                } catch (ipError) {
+                    console.log("Couldn't get IP address", ipError);
+                }
+                
+                console.log('Checking existing like...'); // Debug log
+                
+                // Check if user already liked this drawing
+                const { data: existingLike, error: checkError } = await window.supabase
+                    .from('drawing_likes')
+                    .select('*')
+                    .eq('drawing_id', drawingId)
+                    .eq('ip_address', ipAddress)
+                    .single();
+                
+                if (checkError && checkError.code !== 'PGRST116') {
+                    console.error("Error checking existing like:", checkError);
+                    return;
+                }
+                
+                console.log('About to show reaction picker...'); // Debug log
+                
+                // Show the new picker immediately
+                if (existingLike) {
+                    // User already liked - show picker with current reaction highlighted
+                    showReactionPickerInternal(likeButton, drawingId, ipAddress, likeIcon, existingLike.reaction_type);
+                } else {
+                    // Show reaction picker
+                    showReactionPickerInternal(likeButton, drawingId, ipAddress, likeIcon);
+                }
+            });
+        }
+
+        async function loadDrawingLikes(drawingId, likeIconElement) {
+            try {
+                const { data: likes, error } = await window.supabase
+                    .from('drawing_likes')
+                    .select('reaction_type')
+                    .eq('drawing_id', drawingId);
+                
+                if (error) throw error;
+                
+                // Update icon to show most common reaction or default
+                if (likes.length > 0) {
+                    const reactionCounts = {};
+                    likes.forEach(like => {
+                        reactionCounts[like.reaction_type] = (reactionCounts[like.reaction_type] || 0) + 1;
+                    });
+                    
+                    const mostCommonReaction = Object.keys(reactionCounts).reduce((a, b) => 
+                        reactionCounts[a] > reactionCounts[b] ? a : b
+                    );
+                    
+                    likeIconElement.src = reactionIcons[mostCommonReaction];
+                } else {
+                    likeIconElement.src = defaultReactionIcon;
+                }
+            } catch (error) {
+                console.error("Error loading likes:", error);
+            }
+        }
+
+        function formatLikeCount(count) {
+            if (count === 0) return '';
+            if (count === 1) return '1';
+            if (count <= 99) return `${count - 1}+`;
+            return '99+';
+        }
+
+        function showReactionPickerInternal(likeButton, drawingId, ipAddress, likeIconElement, currentReaction = null) {
+            console.log('showReactionPickerInternal called!'); // Debug log
+            
+            // Create reaction picker overlay
+            const picker = document.createElement('div');
+            picker.className = 'reaction-picker';
+            picker.dataset.drawingId = drawingId;
+            picker.innerHTML = `
+                <div class="reaction-options">
+                    <div class="reaction-option" data-reaction="happy">
+                        <img src="happy.png" alt="Happy">
+                        <span class="reaction-count">0</span>
+                    </div>
+                    <div class="reaction-option" data-reaction="cool">
+                        <img src="cool.png" alt="Cool">
+                        <span class="reaction-count">0</span>
+                    </div>
+                    <div class="reaction-option" data-reaction="meh">
+                        <img src="meh.png" alt="Meh">
+                        <span class="reaction-count">0</span>
+                    </div>
+                    <div class="reaction-option" data-reaction="sad">
+                        <img src="sad.png" alt="Sad">
+                        <span class="reaction-count">0</span>
+                    </div>
+                </div>
+            `;
+            
+            console.log('Picker created, positioning...'); // Debug log
+            
+            // Position picker within the canvas boundaries
+            const buttonRect = likeButton.getBoundingClientRect();
+            const drawingElement = likeButton.closest('.post-item');
+            const drawingRect = drawingElement.getBoundingClientRect();
+            
+            // Calculate position relative to the drawing element
+            const relativeLeft = buttonRect.left - drawingRect.left;
+            const relativeTop = buttonRect.top - drawingRect.top;
+            
+            // Ensure picker doesn't go outside canvas boundaries
+            const pickerWidth = 140; // Minimum width of picker
+            const pickerHeight = 44; // Approximate height of picker
+            
+            let left = relativeLeft;
+            let top = relativeTop;
+            
+            if (left + pickerWidth > drawingRect.width - 10) {
+                left = drawingRect.width - pickerWidth - 10;
+            }
+            
+            if (top + pickerHeight > drawingRect.height - 10) {
+                top = drawingRect.height - pickerHeight - 10;
+            }
+            
+            picker.style.position = 'absolute';
+            picker.style.left = `${left}px`;
+            picker.style.top = `${top}px`;
+            picker.style.zIndex = '10000';
+            picker.style.transform = 'translateX(100%) scale(0.8)';
+            picker.style.opacity = '0';
+            
+            // Append to the drawing element instead of body
+            drawingElement.appendChild(picker);
+            currentOpenPicker = picker;
+            
+            console.log('Starting animation...'); // Debug log
+            
+            // Animate the roll transition
+            setTimeout(() => {
+                // Reset all other buttons first
+                const allButtons = document.querySelectorAll('.like-button');
+                allButtons.forEach(button => {
+                    if (button !== likeButton) {
+                        button.style.transform = 'translateX(0) rotate(0deg)';
+                        button.style.opacity = '1';
+                    }
+                });
+                
+                // Animate like button rolling away
+                likeButton.style.transform = 'translateX(-100%) rotate(-180deg)';
+                likeButton.style.opacity = '0';
+                
+                // Animate picker sliding in
+                picker.style.transform = 'translateX(0) scale(1)';
+                picker.style.opacity = '1';
+            }, 10);
+            
+            // Load and display reaction counts
+            loadReactionCounts(drawingId, picker, currentReaction);
+            
+            console.log('Picker setup complete!'); // Debug log
+            
+            // Add click handlers for reactions
+            picker.querySelectorAll('.reaction-option').forEach(option => {
+                option.addEventListener('click', async () => {
+                    const reaction = option.dataset.reaction;
+                    
+                    // Check if user already has this reaction
+                    let ipAddress = 'unknown';
+                    try {
+                        const ipResponse = await fetch('https://api.ipify.org?format=json');
+                        const ipData = await ipResponse.json();
+                        ipAddress = ipData.ip;
+                    } catch (ipError) {
+                        console.log("Couldn't get IP address", ipError);
+                    }
+                    
+                    const { data: existingLike } = await window.supabase
+                        .from('drawing_likes')
+                        .select('*')
+                        .eq('drawing_id', drawingId)
+                        .eq('ip_address', ipAddress)
+                        .single();
+                    
+                    if (existingLike && existingLike.reaction_type === reaction) {
+                        // User clicked same reaction - remove it (undo)
+                        await removeLike(drawingId, ipAddress, likeIconElement);
+                    } else {
+                        // Add new reaction or change existing one (overwrite)
+                        if (existingLike) {
+                            // Update existing reaction
+                            await updateLike(drawingId, ipAddress, reaction, likeIconElement);
+                        } else {
+                            // Add new reaction
+                            await addLike(drawingId, ipAddress, reaction, likeIconElement);
+                        }
+                    }
+                    
+                    closeReactionPicker();
+                });
+            });
+            
+            // Close picker when clicking outside
+            setTimeout(() => {
+                document.addEventListener('click', function closePicker(e) {
+                    if (!picker.contains(e.target) && !likeButton.contains(e.target)) {
+                        closeReactionPicker();
+                        document.removeEventListener('click', closePicker);
+                    }
+                });
+            }, 100);
+            
+            // Close picker on scroll
+            const scrollHandler = () => {
+                closeReactionPicker();
+                document.removeEventListener('scroll', scrollHandler);
+            };
+            document.addEventListener('scroll', scrollHandler);
+        }
+
+        function closeReactionPicker() {
+            if (currentOpenPicker && currentOpenPicker.parentElement) {
+                // Find the original like button
+                const drawingId = currentOpenPicker.dataset.drawingId;
+                const originalButton = document.querySelector(`[data-drawing-id="${drawingId}"] .like-button`);
+                
+                if (originalButton) {
+                    // Reset button to normal state immediately
+                    originalButton.style.transform = 'translateX(0) rotate(0deg)';
+                    originalButton.style.opacity = '1';
+                    
+                    // Remove picker immediately
+                    currentOpenPicker.parentElement.removeChild(currentOpenPicker);
+                    currentOpenPicker = null;
+                } else {
+                    // Fallback if button not found
+                    if (currentOpenPicker.parentElement) {
+                        currentOpenPicker.parentElement.removeChild(currentOpenPicker);
+                    }
+                    currentOpenPicker = null;
+                }
+            }
+            
+            // Always reset all buttons to normal state
+            const allButtons = document.querySelectorAll('.like-button');
+            allButtons.forEach(button => {
+                button.style.transform = 'translateX(0) rotate(0deg)';
+                button.style.opacity = '1';
+            });
+        }
+
+        async function loadReactionCounts(drawingId, picker, currentReaction) {
+            try {
+                const { data: likes, error } = await window.supabase
+                    .from('drawing_likes')
+                    .select('reaction_type')
+                    .eq('drawing_id', drawingId);
+                
+                if (error) throw error;
+                
+                // Count each reaction type
+                const reactionCounts = {};
+                likes.forEach(like => {
+                    reactionCounts[like.reaction_type] = (reactionCounts[like.reaction_type] || 0) + 1;
+                });
+                
+                // Update display
+                picker.querySelectorAll('.reaction-option').forEach(option => {
+                    const reaction = option.dataset.reaction;
+                    const count = reactionCounts[reaction] || 0;
+                    const countElement = option.querySelector('.reaction-count');
+                    
+                    // Only show count if greater than 0
+                    if (count > 0) {
+                        countElement.textContent = count;
+                        countElement.style.display = 'flex';
+                    } else {
+                        countElement.style.display = 'none';
+                    }
+                    
+                    // Highlight current user's reaction
+                    if (currentReaction === reaction) {
+                        option.classList.add('current-reaction');
+                    }
+                });
+            } catch (error) {
+                console.error("Error loading reaction counts:", error);
+            }
+        }
+
+        async function addLike(drawingId, ipAddress, reactionType, likeIconElement) {
+            try {
+                const { error } = await window.supabase
+                    .from('drawing_likes')
+                    .insert([{
+                        drawing_id: drawingId,
+                        reaction_type: reactionType,
+                        ip_address: ipAddress
+                    }]);
+                
+                if (error) throw error;
+                
+                // Update UI with animation
+                likeIconElement.src = reactionIcons[reactionType];
+                
+                // Facebook-like animation
+                animateLikeButton(likeIconElement);
+                
+            } catch (error) {
+                console.error("Error adding like:", error);
+                alert("Failed to add reaction. Please try again.");
+            }
+        }
+
+        async function updateLike(drawingId, ipAddress, newReactionType, likeIconElement) {
+            try {
+                const { error } = await window.supabase
+                    .from('drawing_likes')
+                    .update({ reaction_type: newReactionType })
+                    .eq('drawing_id', drawingId)
+                    .eq('ip_address', ipAddress);
+                
+                if (error) throw error;
+                
+                // Update UI with animation
+                likeIconElement.src = reactionIcons[newReactionType];
+                
+                // Facebook-like animation
+                animateLikeButton(likeIconElement);
+                
+            } catch (error) {
+                console.error("Error updating like:", error);
+                alert("Failed to update reaction. Please try again.");
+            }
+        }
+
+        async function removeLike(drawingId, ipAddress, likeIconElement) {
+            try {
+                const { error } = await window.supabase
+                    .from('drawing_likes')
+                    .delete()
+                    .eq('drawing_id', drawingId)
+                    .eq('ip_address', ipAddress);
+                
+                if (error) throw error;
+                
+                // Reset icon if no likes left
+                const { data: remainingLikes } = await window.supabase
+                    .from('drawing_likes')
+                    .select('reaction_type')
+                    .eq('drawing_id', drawingId);
+                
+                if (remainingLikes.length === 0) {
+                    likeIconElement.src = defaultReactionIcon;
+                } else {
+                    // Update to most common remaining reaction
+                    const reactionCounts = {};
+                    remainingLikes.forEach(like => {
+                        reactionCounts[like.reaction_type] = (reactionCounts[like.reaction_type] || 0) + 1;
+                    });
+                    const mostCommonReaction = Object.keys(reactionCounts).reduce((a, b) => 
+                        reactionCounts[a] > reactionCounts[b] ? a : b
+                    );
+                    likeIconElement.src = reactionIcons[mostCommonReaction];
+                }
+                
+            } catch (error) {
+                console.error("Error removing like:", error);
+                alert("Failed to remove reaction. Please try again.");
+            }
+        }
+
+        async function updateLikeCount(drawingId, likeCountElement) {
+            try {
+                const { data: likes, error } = await window.supabase
+                    .from('drawing_likes')
+                    .select('*')
+                    .eq('drawing_id', drawingId);
+                
+                if (error) throw error;
+                
+                likeCountElement.textContent = likes.length > 0 ? likes.length : '';
+                
+                // Animate count change
+                likeCountElement.style.transform = 'scale(1.2)';
+                setTimeout(() => {
+                    likeCountElement.style.transform = 'scale(1)';
+                }, 200);
+                
+            } catch (error) {
+                console.error("Error updating like count:", error);
+            }
+        }
+
+        function animateLikeButton(iconElement) {
+            // Facebook-like animation
+            iconElement.style.transform = 'scale(1.3) rotate(15deg)';
+            iconElement.style.transition = 'all 0.3s ease';
+            
+            setTimeout(() => {
+                iconElement.style.transform = 'scale(1) rotate(0deg)';
+            }, 300);
         }
 
         initPostsSystem();
