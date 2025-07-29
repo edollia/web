@@ -367,7 +367,16 @@ document.addEventListener("DOMContentLoaded", async function() {
             }
         }
         
-        contactAttachmentIcon.addEventListener('click', async function() {
+        // Handle attachment icon click/touch for mobile compatibility
+        const handleAttachmentClick = async function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            // Prevent double-tap zoom on mobile
+            if (e.type === 'touchstart') {
+                e.preventDefault();
+            }
+            
             // Check if already at 5 attachments limit for this session
             if (selectedFiles.length >= 5) {
                 showConfirmation('Maximum 5 attachments allowed per session.');
@@ -451,7 +460,11 @@ document.addEventListener("DOMContentLoaded", async function() {
             });
             
             input.click();
-        });
+        };
+        
+        // Add both click and touch event listeners
+        contactAttachmentIcon.addEventListener('click', handleAttachmentClick);
+        contactAttachmentIcon.addEventListener('touchstart', handleAttachmentClick, { passive: false });
         
         // Form submission with validation
         form.addEventListener('submit', async function(e) {
@@ -1158,6 +1171,13 @@ document.addEventListener("DOMContentLoaded", async function() {
             closePostsPopup?.addEventListener('click', () => {
                 postsPopup.style.display = 'none';
             });
+            
+            // Close popup when clicking outside
+            postsPopup?.addEventListener('click', (e) => {
+                if (e.target === postsPopup) {
+                    postsPopup.style.display = 'none';
+                }
+            });
 
             document.querySelectorAll('.tab-button').forEach(btn => {
                 btn.addEventListener('click', function() {
@@ -1245,6 +1265,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         };
         const defaultReactionIcon = 'reactions.png';
         let currentOpenPicker = null; // Track currently open picker
+        let lastClickTime = 0; // Prevent rapid-fire clicks
 
         async function initLikeSystem(drawingElement, drawingId) {
             const likeSticker = drawingElement.querySelector('.like-sticker');
@@ -1254,10 +1275,22 @@ document.addEventListener("DOMContentLoaded", async function() {
             // Load current likes for this drawing
             await loadDrawingLikes(drawingId, likeIcon);
             
-            // Set up click handler
-            likeButton.addEventListener('click', async (e) => {
+            // Set up click and touch handlers for mobile compatibility
+            const handleReactionClick = async (e) => {
                 e.preventDefault();
                 e.stopPropagation();
+                
+                // Prevent double-tap zoom on mobile
+                if (e.type === 'touchstart') {
+                    e.preventDefault();
+                }
+                
+                // Prevent rapid-fire clicks (debounce)
+                const now = Date.now();
+                if (now - lastClickTime < 300) {
+                    return;
+                }
+                lastClickTime = now;
                 
                 console.log('Reaction button clicked!'); // Debug log
                 
@@ -1272,14 +1305,19 @@ document.addEventListener("DOMContentLoaded", async function() {
                 // Close any other open picker first
                 if (currentOpenPicker) {
                     closeReactionPicker();
+                    // Wait a bit to ensure clean state
+                    await new Promise(resolve => setTimeout(resolve, 50));
                 }
                 
                 console.log('About to get IP address...'); // Debug log
                 
-                // Get user's IP
+                // Get user's IP with timeout
                 let ipAddress = 'unknown';
                 try {
-                    const ipResponse = await fetch('https://api.ipify.org?format=json');
+                    const ipResponse = await Promise.race([
+                        fetch('https://api.ipify.org?format=json'),
+                        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 3000))
+                    ]);
                     const ipData = await ipResponse.json();
                     ipAddress = ipData.ip;
                 } catch (ipError) {
@@ -1311,7 +1349,11 @@ document.addEventListener("DOMContentLoaded", async function() {
                     // Show reaction picker
                     showReactionPickerInternal(likeButton, drawingId, ipAddress, likeIcon);
                 }
-            });
+            };
+            
+            // Add both click and touch event listeners
+            likeButton.addEventListener('click', handleReactionClick);
+            likeButton.addEventListener('touchstart', handleReactionClick, { passive: false });
         }
 
         async function loadDrawingLikes(drawingId, likeIconElement) {
@@ -1429,16 +1471,24 @@ document.addEventListener("DOMContentLoaded", async function() {
                     // Animate picker sliding in with spring effect
                     picker.style.transform = 'translateX(0) scale(1)';
                     picker.style.opacity = '1';
-            }, 10);
+            }, 50);
             
             // Load and display reaction counts
             loadReactionCounts(drawingId, picker, currentReaction);
             
             console.log('Picker setup complete!'); // Debug log
             
-            // Add click handlers for reactions
+            // Add click and touch handlers for reactions
             picker.querySelectorAll('.reaction-option').forEach(option => {
-                option.addEventListener('click', async () => {
+                const handleReactionOptionClick = async (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    
+                    // Prevent double-tap zoom on mobile
+                    if (e.type === 'touchstart') {
+                        e.preventDefault();
+                    }
+                    
                     const reaction = option.dataset.reaction;
                     
                     // Check if user already has this reaction
@@ -1473,17 +1523,25 @@ document.addEventListener("DOMContentLoaded", async function() {
                     }
                     
                     closeReactionPicker();
-                });
+                };
+                
+                // Add both click and touch event listeners
+                option.addEventListener('click', handleReactionOptionClick);
+                option.addEventListener('touchstart', handleReactionOptionClick, { passive: false });
             });
             
             // Close picker when clicking outside
             setTimeout(() => {
-                document.addEventListener('click', function closePicker(e) {
+                const closePicker = (e) => {
                     if (!picker.contains(e.target) && !likeButton.contains(e.target)) {
                         closeReactionPicker();
                         document.removeEventListener('click', closePicker);
                     }
-                });
+                };
+                document.addEventListener('click', closePicker);
+                
+                // Store reference for cleanup
+                picker.dataset.closeHandler = 'true';
             }, 100);
             
             // Close picker on scroll
@@ -1504,17 +1562,11 @@ document.addEventListener("DOMContentLoaded", async function() {
                     // Reset button to normal state immediately
                     originalButton.style.transform = 'translateX(0) rotate(0deg)';
                     originalButton.style.opacity = '1';
-                    
-                    // Remove picker immediately
-                    currentOpenPicker.parentElement.removeChild(currentOpenPicker);
-                    currentOpenPicker = null;
-                } else {
-                    // Fallback if button not found
-                    if (currentOpenPicker.parentElement) {
-                        currentOpenPicker.parentElement.removeChild(currentOpenPicker);
-                    }
-                    currentOpenPicker = null;
                 }
+                
+                // Remove picker immediately
+                currentOpenPicker.parentElement.removeChild(currentOpenPicker);
+                currentOpenPicker = null;
             }
             
             // Always reset all buttons to normal state

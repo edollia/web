@@ -59,23 +59,26 @@
                 <button id="posts-button" class="next-button">Posts</button>
                 <div class="posts-popup" id="posts-popup">
                     <div class="popup-content">
-                        <button id="close-posts-popup" class="close-button">✕</button>
-                        <h3>Posts</h3>
-                        
-                        <div class="posts-tabs">
-                            <button class="tab-button active" data-tab="drawings">Doodles</button>
-                            <button class="tab-button" data-tab="questions">Q&A</button>
+                        <div class="posts-header">
+                            <button id="close-posts-popup" class="close-button">✕</button>
+                            
+                            <div class="posts-tabs">
+                                <button class="tab-button active" data-tab="drawings">Doodles</button>
+                                <button class="tab-button" data-tab="questions">Q&A</button>
+                            </div>
                         </div>
                         
-                        <div class="posts-container">
-                            <!-- Drawings will appear here -->
-                            <div id="drawings-tab" class="tab-content active">
-                                <div class="posts-list" id="drawings-list"></div>
-                            </div>
-                            
-                            <!-- Questions will appear here -->
-                            <div id="questions-tab" class="tab-content">
-                                <div class="posts-list" id="questions-list"></div>
+                        <div class="posts-content">
+                            <div class="posts-container">
+                                <!-- Drawings will appear here -->
+                                <div id="drawings-tab" class="tab-content active">
+                                    <div class="posts-list" id="drawings-list"></div>
+                                </div>
+                                
+                                <!-- Questions will appear here -->
+                                <div id="questions-tab" class="tab-content">
+                                    <div class="posts-list" id="questions-list"></div>
+                                </div>
                             </div>
                         </div>
                     </div>

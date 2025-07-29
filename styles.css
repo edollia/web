@@ -731,33 +731,71 @@ button {
 
 .posts-popup .popup-content {
     background: #fdedf5;
-    padding: 20px;
     border-radius: 15px;
     max-width: 90%;
     width: 500px;
     max-height: 80vh;
-    overflow-y: auto;
     position: relative;
+    display: flex;
+    flex-direction: column;
+}
+
+.posts-header {
+    position: sticky;
+    top: 0;
+    background: linear-gradient(135deg, #fdedf5, #fff5f8);
+    padding: 25px 20px 20px 20px;
+    border-radius: 15px 15px 0 0;
+    z-index: 10;
+    border-bottom: 2px solid rgba(255, 182, 193, 0.4);
+    backdrop-filter: blur(15px);
+    box-shadow: 0 4px 20px rgba(255, 105, 180, 0.15);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 15px;
 }
 
 .posts-tabs {
     display: flex;
-    margin-bottom: 15px;
-    border-bottom: 1px solid #ffb6c1;
+    background: rgba(255, 255, 255, 0.8);
+    border-radius: 25px;
+    padding: 8px;
+    gap: 4px;
+    box-shadow: 0 2px 10px rgba(255, 105, 180, 0.2);
+    backdrop-filter: blur(10px);
+}
+
+.posts-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
 }
 
 .tab-button {
-    background: none;
+    background: transparent;
     border: none;
-    padding: 8px 15px;
+    padding: 12px 24px;
     cursor: pointer;
     color: #888;
-    font-weight: bold;
+    font-weight: 600;
+    font-size: 16px;
+    border-radius: 20px;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+}
+
+.tab-button:hover {
+    color: #ff69b4;
+    transform: translateY(-1px);
 }
 
 .tab-button.active {
-    color: #ff69b4;
-    border-bottom: 2px solid #ff69b4;
+    background: linear-gradient(135deg, #ff69b4, #ff1493);
+    color: white;
+    box-shadow: 0 4px 15px rgba(255, 105, 180, 0.4);
+    transform: translateY(-2px);
 }
 
 .tab-content {
@@ -775,7 +813,7 @@ button {
     padding: 10px 0;
 }
 
-/* Questions list should be a simple vertical list, not a grid */
+/* Questions list should be 2 columns without blank spaces */
 #questions-list {
     display: block;
     column-count: 2;
@@ -800,7 +838,17 @@ button {
     }
     
     #questions-list {
-        column-count: 1;
+        column-count: 2;
+        column-gap: 12px;
+    }
+    
+    .posts-header {
+        padding: 20px 15px 15px 15px;
+    }
+    
+    .tab-button {
+        padding: 10px 20px;
+        font-size: 14px;
     }
 }
 
@@ -812,7 +860,8 @@ button {
     }
     
     #questions-list {
-        column-count: 1;
+        column-count: 2;
+        column-gap: 10px;
     }
 }
 
@@ -958,11 +1007,18 @@ button {
     transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
     backdrop-filter: blur(5px);
     position: relative;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
 }
 
 .like-button:hover {
     transform: scale(1.1);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.like-button:active {
+    transform: scale(0.95);
+    transition: transform 0.1s ease;
 }
 
 .like-icon {
@@ -1033,6 +1089,8 @@ button {
     position: relative;
     flex-shrink: 0;
     border: 2px solid transparent;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
 }
 
 .reaction-option:hover {
@@ -1343,11 +1401,18 @@ button {
     transition: all 0.3s ease;
     opacity: 0.7;
     display: block;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
 }
 
 .attachment-icon:hover {
     opacity: 1;
     transform: scale(1.1);
+}
+
+.attachment-icon:active {
+    transform: scale(0.95);
+    transition: transform 0.1s ease;
 }
 
 /* Attachment preview area */
