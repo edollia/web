@@ -340,11 +340,6 @@ document.addEventListener("DOMContentLoaded", async function() {
             e.preventDefault();
             e.stopPropagation();
             
-            // Prevent double-tap zoom on mobile
-            if (e.type === 'touchstart') {
-                e.preventDefault();
-            }
-            
             // Check if already at 5 attachments limit for this session
             if (selectedFiles.length >= 5) {
                 showConfirmation('Maximum 5 attachments allowed per session.');
@@ -358,11 +353,16 @@ document.addEventListener("DOMContentLoaded", async function() {
                 return;
             }
             
+            // Create file input with iOS-specific attributes
             const input = document.createElement('input');
             input.type = 'file';
             input.accept = 'image/*,.pdf,.doc,.docx,.txt';
             input.multiple = true;
-            // On mobile, this will show options for camera, photos, and files
+            input.style.display = 'none';
+            input.setAttribute('capture', 'environment'); // Enable camera on iOS
+            
+            // iOS Safari requires the input to be in the DOM
+            document.body.appendChild(input);
             
             input.addEventListener('change', function(e) {
                 const files = Array.from(e.target.files);
@@ -424,15 +424,22 @@ document.addEventListener("DOMContentLoaded", async function() {
                     updateFormSpacing();
                     
                 });
+                
+                // Clean up the input element
+                document.body.removeChild(input);
             });
             
-            input.click();
+            // iOS Safari requires a user gesture to trigger file input
+            // Use a small delay to ensure the input is properly attached
+            setTimeout(() => {
+                input.click();
+            }, 10);
         };
         
-        // Add both click and touch event listeners with better iOS support
+        // Add event listeners with better iOS support
         contactAttachmentIcon.addEventListener('click', handleAttachmentClick);
         contactAttachmentIcon.addEventListener('touchstart', function(e) {
-            e.preventDefault();
+            // Don't prevent default on touchstart for iOS
             e.stopPropagation();
             handleAttachmentClick(e);
         }, { passive: false });

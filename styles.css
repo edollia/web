@@ -1412,6 +1412,11 @@ button {
     -moz-user-select: none;
     -ms-user-select: none;
     user-select: none;
+    /* iOS-specific improvements */
+    -webkit-touch-callout: none;
+    -webkit-appearance: none;
+    border: none;
+    outline: none;
 }
 
 .attachment-icon:hover {
