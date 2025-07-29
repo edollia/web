@@ -44,7 +44,6 @@ document.addEventListener("DOMContentLoaded", async function() {
                 'twtpf.png',
                 'ytpf.png',
                 'attpf.png',
-                'campf.png',
                 
                 // Reaction system icons
                 'reactions.png',
@@ -248,8 +247,8 @@ document.addEventListener("DOMContentLoaded", async function() {
                         <textarea id="contact-notes" placeholder="Notes" maxlength="200"></textarea>
                         <div class="attachment-icons">
                             <img src="attpf.png" alt="Attachments" class="attachment-icon">
-                            <img src="campf.png" alt="Camera" class="attachment-icon">
                         </div>
+                        <div class="attachment-preview" id="attachment-preview"></div>
                     </div>
                     <button type="submit" class="connect-btn">CONNECT</button>
                     </form>
@@ -329,6 +328,131 @@ document.addEventListener("DOMContentLoaded", async function() {
             socialDropdown.classList.remove('active');
         });
         
+        // Attachment functionality
+        const contactAttachmentIcon = modal.querySelector('.attachment-icon');
+        const attachmentPreview = modal.querySelector('#attachment-preview');
+        let selectedFiles = [];
+        
+        // Function to update form spacing based on attachments
+        function updateFormSpacing() {
+            const textareaGroup = modal.querySelector('.form-group textarea').closest('.form-group');
+            if (selectedFiles.length > 0) {
+                textareaGroup.style.marginBottom = '80px';
+                console.log('Added margin for attachments');
+            } else {
+                textareaGroup.style.marginBottom = '0px';
+                console.log('Removed margin - no attachments');
+            }
+        }
+        
+        // Function to check IP-based attachment limits
+        async function checkIPAttachmentLimit() {
+            try {
+                const ipAddress = await getIPAddress();
+                const { data, error } = await window.supabase
+                    .from('contact_attachments')
+                    .select('id')
+                    .eq('ip_address', ipAddress);
+                
+                if (error) {
+                    console.error('Error checking attachment limit:', error);
+                    return false; // Allow if we can't check
+                }
+                
+                const currentCount = data ? data.length : 0;
+                return currentCount < 5;
+            } catch (error) {
+                console.error('Error checking IP attachment limit:', error);
+                return false; // Allow if we can't check
+            }
+        }
+        
+        contactAttachmentIcon.addEventListener('click', async function() {
+            // Check if already at 5 attachments limit for this session
+            if (selectedFiles.length >= 5) {
+                showConfirmation('Maximum 5 attachments allowed per session.');
+                return;
+            }
+            
+            // Check IP-based attachment limit
+            const canAddMore = await checkIPAttachmentLimit();
+            if (!canAddMore) {
+                showConfirmation('Maximum 5 attachments reached for your IP address. Please wait before adding more.');
+                return;
+            }
+            
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = 'image/*,.pdf,.doc,.docx,.txt';
+            input.multiple = true;
+            
+            input.addEventListener('change', function(e) {
+                const files = Array.from(e.target.files);
+                
+                files.forEach(async file => {
+                    // Check if we've reached the 5 attachment limit for this session
+                    if (selectedFiles.length >= 5) {
+                        showConfirmation('Maximum 5 attachments reached for this session. Remove some files first.');
+                        return;
+                    }
+                    
+                    // Check IP-based attachment limit for each file
+                    const canAddMore = await checkIPAttachmentLimit();
+                    if (!canAddMore) {
+                        showConfirmation('Maximum 5 attachments reached for your IP address. Please wait before adding more.');
+                        return;
+                    }
+                    
+                    // Check file size (max 5MB)
+                    if (file.size > 5 * 1024 * 1024) {
+                        showConfirmation('File too large. Maximum size is 5MB.');
+                        return;
+                    }
+                    
+                    // Create preview item
+                    const previewItem = document.createElement('div');
+                    previewItem.className = 'attachment-preview-item';
+                    previewItem.dataset.filename = file.name;
+                    
+                    if (file.type.startsWith('image/')) {
+                        // Image preview
+                        const img = document.createElement('img');
+                        img.src = URL.createObjectURL(file);
+                        previewItem.appendChild(img);
+                    } else {
+                        // File icon for non-images
+                        const fileIcon = document.createElement('div');
+                        fileIcon.className = 'file-icon';
+                        fileIcon.innerHTML = '📄';
+                        fileIcon.style.fontSize = '20px';
+                        previewItem.appendChild(fileIcon);
+                    }
+                    
+                    // Remove button
+                    const removeBtn = document.createElement('button');
+                    removeBtn.className = 'remove-attachment';
+                    removeBtn.innerHTML = '×';
+                    removeBtn.addEventListener('click', function() {
+                        selectedFiles = selectedFiles.filter(f => f.name !== file.name);
+                        previewItem.remove();
+                        updateFormSpacing();
+                    });
+                    previewItem.appendChild(removeBtn);
+                    
+                    attachmentPreview.appendChild(previewItem);
+                    selectedFiles.push(file);
+                    
+                    // Update form spacing
+                    updateFormSpacing();
+                    
+                    // Don't upload immediately - just show preview
+                    console.log('File added to preview:', file.name);
+                });
+            });
+            
+            input.click();
+        });
+        
         // Form submission with validation
         form.addEventListener('submit', async function(e) {
             e.preventDefault();
@@ -359,14 +483,40 @@ document.addEventListener("DOMContentLoaded", async function() {
             };
             
             try {
+                // First save the contact information
                 const { data, error } = await window.supabase
                     .from('contacts')
                     .insert([formData]);
                 
                 if (error) throw error;
                 
+                // Then upload any selected files
+                if (selectedFiles.length > 0) {
+                    const ipAddress = await getIPAddress();
+                    
+                    for (const file of selectedFiles) {
+                        try {
+                            const base64 = await fileToBase64(file);
+                            await window.supabase
+                                .from('contact_attachments')
+                                .insert([{
+                                    filename: file.name,
+                                    file_type: 'attachment',
+                                    file_size: file.size,
+                                    mime_type: file.type,
+                                    file_data: base64,
+                                    ip_address: ipAddress,
+                                    created_at: new Date().toISOString()
+                                }]);
+                        } catch (uploadError) {
+                            console.error('Error uploading file:', file.name, uploadError);
+                            // Continue with other files even if one fails
+                        }
+                    }
+                }
+                
                 // Show success message
-                showConfirmation('Contact information sent successfully!');
+                showConfirmation('Contact information and attachments sent successfully!');
                 closeModal();
                 
             } catch (error) {
@@ -383,49 +533,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             });
         });
         
-        // Attachment and camera functionality
-        const attachmentIcon = modal.querySelector('.attachment-icon[alt="Attachments"]');
-        const cameraIcon = modal.querySelector('.attachment-icon[alt="Camera"]');
-        
-        // Create hidden file input for attachments
-        const fileInput = document.createElement('input');
-        fileInput.type = 'file';
-        fileInput.accept = 'image/*,.pdf,.doc,.docx,.txt';
-        fileInput.style.display = 'none';
-        document.body.appendChild(fileInput);
-        
-        // Create hidden camera input (supports both camera and camera roll)
-        const cameraInput = document.createElement('input');
-        cameraInput.type = 'file';
-        cameraInput.accept = 'image/*';
-        cameraInput.style.display = 'none';
-        document.body.appendChild(cameraInput);
-        
-        // Attachment icon click handler
-        attachmentIcon.addEventListener('click', function() {
-            fileInput.click();
-        });
-        
-        // Camera icon click handler
-        cameraIcon.addEventListener('click', function() {
-            cameraInput.click();
-        });
-        
-        // Handle file selection
-        fileInput.addEventListener('change', async function(e) {
-            const file = e.target.files[0];
-            if (file) {
-                await handleFileUpload(file, 'attachment');
-            }
-        });
-        
-        // Handle camera capture
-        cameraInput.addEventListener('change', async function(e) {
-            const file = e.target.files[0];
-            if (file) {
-                await handleFileUpload(file, 'camera');
-            }
-        });
+
     }
 
     // Helper function to get IP address
@@ -690,7 +798,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             }
             
             console.log('Upload successful!');
-            showConfirmation(`${type === 'camera' ? 'Photo' : 'File'} uploaded successfully!`);
+            showConfirmation('File uploaded successfully!');
             
         } catch (error) {
             console.error('Error uploading file:', error);
@@ -1272,28 +1380,22 @@ document.addEventListener("DOMContentLoaded", async function() {
             
             console.log('Picker created, positioning...'); // Debug log
             
-            // Position picker within the canvas boundaries
-            const buttonRect = likeButton.getBoundingClientRect();
+            // Position picker centered within the canvas boundaries
             const drawingElement = likeButton.closest('.post-item');
             const drawingRect = drawingElement.getBoundingClientRect();
             
-            // Calculate position relative to the drawing element
-            const relativeLeft = buttonRect.left - drawingRect.left;
-            const relativeTop = buttonRect.top - drawingRect.top;
+            // Center the picker horizontally, keep it at the bottom
+            const pickerWidth = 140; // Reduced width to fit within canvas
+            const pickerHeight = 44; // Reduced height to match new styling
             
-            // Ensure picker doesn't go outside canvas boundaries
-            const pickerWidth = 140; // Minimum width of picker
-            const pickerHeight = 44; // Approximate height of picker
+            // Center horizontally, position at bottom
+            let left = (drawingRect.width - pickerWidth) / 2;
+            const top = drawingRect.height - pickerHeight - 10; // 10px from bottom
             
-            let left = relativeLeft;
-            let top = relativeTop;
-            
-            if (left + pickerWidth > drawingRect.width - 10) {
-                left = drawingRect.width - pickerWidth - 10;
-            }
-            
-            if (top + pickerHeight > drawingRect.height - 10) {
-                top = drawingRect.height - pickerHeight - 10;
+            // Ensure picker stays within canvas boundaries
+            if (left < 5) left = 5;
+            if (left + pickerWidth > drawingRect.width - 5) {
+                left = drawingRect.width - pickerWidth - 5;
             }
             
             picker.style.position = 'absolute';
@@ -1309,24 +1411,24 @@ document.addEventListener("DOMContentLoaded", async function() {
             
             console.log('Starting animation...'); // Debug log
             
-            // Animate the roll transition
-            setTimeout(() => {
-                // Reset all other buttons first
-                const allButtons = document.querySelectorAll('.like-button');
-                allButtons.forEach(button => {
-                    if (button !== likeButton) {
-                        button.style.transform = 'translateX(0) rotate(0deg)';
-                        button.style.opacity = '1';
-                    }
-                });
-                
-                // Animate like button rolling away
-                likeButton.style.transform = 'translateX(-100%) rotate(-180deg)';
-                likeButton.style.opacity = '0';
-                
-                // Animate picker sliding in
-                picker.style.transform = 'translateX(0) scale(1)';
-                picker.style.opacity = '1';
+                            // Animate the roll transition with improved timing
+                setTimeout(() => {
+                    // Reset all other buttons first
+                    const allButtons = document.querySelectorAll('.like-button');
+                    allButtons.forEach(button => {
+                        if (button !== likeButton) {
+                            button.style.transform = 'translateX(0) rotate(0deg)';
+                            button.style.opacity = '1';
+                        }
+                    });
+                    
+                    // Animate like button rolling away with bounce effect
+                    likeButton.style.transform = 'translateX(-100%) rotate(-180deg) scale(0.8)';
+                    likeButton.style.opacity = '0';
+                    
+                    // Animate picker sliding in with spring effect
+                    picker.style.transform = 'translateX(0) scale(1)';
+                    picker.style.opacity = '1';
             }, 10);
             
             // Load and display reaction counts

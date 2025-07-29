@@ -770,8 +770,8 @@ button {
 
 .posts-list {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-    gap: 15px;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
     padding: 10px 0;
 }
 
@@ -781,6 +781,39 @@ button {
     column-count: 2;
     column-gap: 15px;
     padding: 10px 0;
+}
+
+/* iPhone-specific responsive adjustments */
+@media (max-width: 428px) {
+    /* iPhone 12 Pro Max, 13 Pro Max, 14 Plus */
+    .posts-list {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+    }
+}
+
+@media (max-width: 375px) {
+    /* iPhone 12, 13, 14, SE */
+    .posts-list {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 8px;
+    }
+    
+    #questions-list {
+        column-count: 1;
+    }
+}
+
+@media (max-width: 320px) {
+    /* iPhone SE, smaller devices */
+    .posts-list {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 8px;
+    }
+    
+    #questions-list {
+        column-count: 1;
+    }
 }
 
 #questions-list .question-item {
@@ -954,18 +987,19 @@ button {
 
 /* Reaction Picker */
 .reaction-picker {
-    background: rgba(255, 255, 255, 0.95);
-    border-radius: 20px;
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(255, 182, 193, 0.3);
+    background: rgba(255, 255, 255, 0.98);
+    border-radius: 25px;
+    box-shadow: 0 8px 32px rgba(255, 105, 180, 0.15), 0 4px 16px rgba(0, 0, 0, 0.1);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 182, 193, 0.4);
     z-index: 10000;
-    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 8px 12px;
     min-width: 140px;
+    transform-origin: center bottom;
 }
 
 @keyframes slideInUp {
@@ -981,7 +1015,7 @@ button {
 
 .reaction-options {
     display: flex;
-    gap: 8px;
+    gap: 6px;
     justify-content: center;
     align-items: center;
 }
@@ -994,42 +1028,48 @@ button {
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    transition: all 0.2s ease;
-    background: rgba(255, 255, 255, 0.8);
+    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    background: rgba(255, 255, 255, 0.9);
     position: relative;
     flex-shrink: 0;
+    border: 2px solid transparent;
 }
 
 .reaction-option:hover {
-    transform: scale(1.15);
-    background: rgba(255, 182, 193, 0.2);
+    transform: scale(1.2) translateY(-2px);
+    background: rgba(255, 182, 193, 0.15);
+    box-shadow: 0 4px 12px rgba(255, 105, 180, 0.3);
 }
 
 .reaction-option.current-reaction {
-    background: rgba(255, 182, 193, 0.3);
+    background: rgba(255, 182, 193, 0.25);
     border: 2px solid #ff69b4;
+    transform: scale(1.1);
+    box-shadow: 0 4px 16px rgba(255, 105, 180, 0.4);
 }
 
 .reaction-option img {
-    width: 18px;
-    height: 18px;
+    width: 20px;
+    height: 20px;
 }
 
 .reaction-count {
     position: absolute;
-    bottom: -2px;
-    right: -2px;
-    background: #ff69b4;
+    bottom: -3px;
+    right: -3px;
+    background: linear-gradient(135deg, #ff69b4, #ff1493);
     color: white;
     border-radius: 50%;
-    width: 14px;
-    height: 14px;
-    font-size: 9px;
+    width: 16px;
+    height: 16px;
+    font-size: 10px;
     display: flex;
     align-items: center;
     justify-content: center;
     font-weight: bold;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 2px 6px rgba(255, 105, 180, 0.4);
+    border: 1.5px solid white;
+    transition: all 0.3s ease;
 }
 
 /* Ensure post items have relative positioning for like sticker */
@@ -1089,7 +1129,7 @@ button {
     object-fit: cover;
     border: 3px solid rgba(255, 182, 193, 0.5);
     box-shadow: 0 4px 15px rgba(255, 182, 193, 0.3), 0 0 25px rgba(255, 182, 193, 0.4), 0 0 40px rgba(255, 182, 193, 0.2);
-    top: -68px; /* Lowered by 15% from -80px to -68px */
+    top: -73px; /* Moved up by 7% from -68px to -73px */
     left: 50%;
     transform: translateX(-50%);
     z-index: 10;
@@ -1166,6 +1206,7 @@ button {
 
 .form-group {
     position: relative;
+    overflow: visible;
 }
 
 .form-group input,
@@ -1194,6 +1235,24 @@ button {
     font-family: inherit;
     overflow-y: auto;
     padding-right: 60px;
+    position: relative;
+    overflow: visible;
+}
+
+/* Position attachment icon relative to textarea */
+.form-group:has(textarea) .attachment-icons {
+    position: absolute !important;
+    right: 20px !important;
+    top: 50% !important;
+    transform: translateY(-50%) !important;
+    z-index: 10 !important;
+    pointer-events: auto !important;
+}
+
+/* Make textarea container the positioning context */
+.form-group:has(textarea) {
+    position: relative !important;
+    overflow: visible !important;
 }
 
 .social-group {
@@ -1264,26 +1323,104 @@ button {
 }
 
 .attachment-icons {
-    position: absolute;
-    right: 15px;
-    top: 50%;
-    transform: translateY(-50%);
+    position: absolute !important;
+    right: 20px !important;
+    top: 50% !important;
+    transform: translateY(-50%) !important;
     display: flex;
     gap: 8px;
     z-index: 10;
-    pointer-events: none; /* Prevent interference with textarea */
+    pointer-events: auto;
+    background: transparent;
+    width: 20px;
+    height: 20px;
 }
 
 .attachment-icon {
     width: 20px;
     height: 20px;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: all 0.3s ease;
     opacity: 0.7;
+    display: block;
 }
 
 .attachment-icon:hover {
     opacity: 1;
+    transform: scale(1.1);
+}
+
+/* Attachment preview area */
+.attachment-preview {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    margin-top: 8px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    min-height: 0;
+    transition: all 0.3s ease;
+    z-index: 1;
+    background: transparent;
+}
+
+.attachment-preview-item {
+    position: relative;
+    width: 60px;
+    height: 60px;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 2px solid rgba(255, 182, 193, 0.3);
+    background: rgba(255, 255, 255, 0.9);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s ease;
+}
+
+.attachment-preview-item:hover {
+    border-color: rgba(255, 182, 193, 0.8);
+    transform: scale(1.05);
+}
+
+.attachment-preview-item img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.attachment-preview-item .file-icon {
+    width: 30px;
+    height: 30px;
+    opacity: 0.7;
+}
+
+.attachment-preview-item .remove-attachment {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    width: 16px;
+    height: 16px;
+    background: #ff6b6b;
+    color: white;
+    border: 1.5px solid white;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+    font-weight: bold;
+    transition: all 0.3s ease;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+    z-index: 10;
+    line-height: 1;
+}
+
+.attachment-preview-item .remove-attachment:hover {
+    background: #ff5252;
     transform: scale(1.1);
 }
 
@@ -1434,7 +1571,7 @@ button {
     .profile-video {
         width: 80px; /* Keep bigger size on mobile */
         height: 80px;
-        top: -51px; /* Lowered by 15% from -60px to -51px for mobile */
+        top: -55px; /* Moved up by 7% from -51px to -55px for mobile */
     }
     
     .contact-title {
@@ -1460,11 +1597,10 @@ button {
     }
     
     .attachment-icons {
-        position: absolute;
-        right: 10px;
-        top: 50%;
-        transform: translateY(-50%);
-        gap: 6px;
+        position: absolute !important;
+        right: 15px !important;
+        top: 50% !important;
+        transform: translateY(-50%) !important;
     }
     
     /* Ensure textarea has enough padding for icons */
@@ -1481,12 +1617,14 @@ button {
     /* Extra small screens - ensure icons stay inside */
     @media (max-width: 480px) {
         .form-group textarea {
-            padding-right: 70px !important;
+            padding-right: 60px !important;
         }
         
         .attachment-icons {
-            right: 8px;
-            gap: 4px;
+            right: 12px !important;
+            position: absolute !important;
+            top: 50% !important;
+            transform: translateY(-50%) !important;
         }
         
         .attachment-icon {
