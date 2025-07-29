@@ -561,8 +561,8 @@ document.addEventListener("DOMContentLoaded", async function() {
                     </div>
                     <div class="form-group">
                         <textarea id="contact-notes" placeholder="Notes" maxlength="200"></textarea>
-                        <div class="attachment-icons">
-                            <img src="attpf.png" alt="Attachments" class="attachment-icon">
+                        <div class="attachment-icons" style="pointer-events: auto !important; z-index: 9999 !important;">
+                            <img src="attpf.png" alt="Attachments" class="attachment-icon" tabindex="0">
                         </div>
                         <div class="attachment-preview" id="attachment-preview"></div>
                     </div>
@@ -976,9 +976,12 @@ document.addEventListener("DOMContentLoaded", async function() {
             console.log('Simple click detected');
             console.log('Event:', e);
             console.log('Target:', e.target);
+            console.log('Form focus state:', document.activeElement);
+            console.log('Textarea value length:', document.getElementById('contact-notes')?.value?.length || 0);
             
             e.preventDefault();
             e.stopPropagation();
+            e.stopImmediatePropagation();
             
             // Create file input immediately
             const input = document.createElement('input');
@@ -1070,9 +1073,20 @@ document.addEventListener("DOMContentLoaded", async function() {
                 }, 100);
             });
             
-            // Trigger the file input
+            // Trigger the file input with multiple fallbacks
             setTimeout(() => {
-                input.click();
+                try {
+                    input.click();
+                } catch (e) {
+                    console.log('Click failed, trying alternative method');
+                    // Alternative method
+                    const event = new MouseEvent('click', {
+                        view: window,
+                        bubbles: true,
+                        cancelable: true
+                    });
+                    input.dispatchEvent(event);
+                }
             }, 50);
         });
         
@@ -1081,9 +1095,29 @@ document.addEventListener("DOMContentLoaded", async function() {
             console.log('Touch start detected');
             e.preventDefault();
             e.stopPropagation();
+            e.stopImmediatePropagation();
             // Trigger the same click handler
             this.click();
         }, { passive: false });
+        
+        // Additional event listeners to ensure it always works
+        contactAttachmentIcon.addEventListener('mousedown', function(e) {
+            console.log('Mouse down detected');
+            e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+            // Trigger the same click handler
+            this.click();
+        }, { passive: false });
+        
+        // Prevent any form interactions from affecting the attachment button
+        contactAttachmentIcon.addEventListener('focus', function(e) {
+            console.log('Attachment icon focused');
+        });
+        
+        contactAttachmentIcon.addEventListener('blur', function(e) {
+            console.log('Attachment icon blurred');
+        });
         
         // Test if element is receiving any events at all
         contactAttachmentIcon.addEventListener('mouseenter', () => {
@@ -1119,6 +1153,20 @@ document.addEventListener("DOMContentLoaded", async function() {
         // Ensure the attachment icon is on top
         contactAttachmentIcon.style.zIndex = '9999';
         contactAttachmentIcon.style.position = 'relative';
+        
+        // Make the attachment icon completely independent
+        contactAttachmentIcon.setAttribute('tabindex', '0');
+        contactAttachmentIcon.setAttribute('role', 'button');
+        contactAttachmentIcon.setAttribute('aria-label', 'Add attachments');
+        
+        // Prevent any form events from interfering
+        contactAttachmentIcon.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                e.stopPropagation();
+                this.click();
+            }
+        });
         
         // iOS detection and additional compatibility
         const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
