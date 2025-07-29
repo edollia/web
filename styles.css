@@ -1526,6 +1526,17 @@ button {
     -webkit-appearance: none;
     border: none;
     outline: none;
+    /* Enhanced iOS compatibility */
+    position: relative;
+    z-index: 1000;
+    background: transparent;
+    -webkit-transform: translateZ(0);
+    transform: translateZ(0);
+    -webkit-backface-visibility: hidden;
+    backface-visibility: hidden;
+    /* Force hardware acceleration */
+    -webkit-perspective: 1000px;
+    perspective: 1000px;
 }
 
 .attachment-icon:hover {
