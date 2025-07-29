@@ -139,6 +139,22 @@ document.addEventListener("DOMContentLoaded", async function() {
     const loadingBarDelay = 4000; // Show loading bar after 4 seconds
     let loadingBarShown = false;
     let loadingStartTime = Date.now();
+    
+    // Mobile detection
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    console.log('Device type:', isMobile ? 'Mobile' : 'Desktop');
+    
+    // Helper function to update loading bar with mobile optimization
+    function updateLoadingBar(loadedCount, totalResources) {
+        if (loadingBarShown) {
+            const progress = (loadedCount / totalResources) * 100;
+            loadingBarFill.style.width = `${progress}%`;
+            // Force repaint on mobile
+            if (isMobile) {
+                loadingBarFill.offsetHeight;
+            }
+        }
+    }
 
     // Enhanced loading logic: wait for min time, window load, AND ALL critical resources
     Promise.all([
@@ -201,68 +217,91 @@ document.addEventListener("DOMContentLoaded", async function() {
                 const fileExtension = src.split('.').pop().toLowerCase();
                 
                 if (fileExtension === 'mp3') {
-                    // Handle audio files
+                    // Handle audio files - mobile optimized
                     const audio = new Audio();
-                    audio.oncanplaythrough = () => {
+                    audio.preload = 'metadata'; // Mobile browsers prefer metadata only
+                    
+                    // Multiple event listeners for mobile compatibility
+                    const audioLoaded = () => {
                         loadedCount++;
                         console.log('Audio loaded:', src);
                         
                         // Update loading bar if it's shown
-                        if (loadingBarShown) {
-                            const progress = (loadedCount / totalResources) * 100;
-                            loadingBarFill.style.width = `${progress}%`;
-                        }
+                        updateLoadingBar(loadedCount, totalResources);
                         
                         if (loadedCount === totalResources) {
                             resolve();
                         }
                     };
+                    
+                    audio.addEventListener('canplaythrough', audioLoaded);
+                    audio.addEventListener('loadedmetadata', audioLoaded);
+                    audio.addEventListener('canplay', audioLoaded);
+                    
                     audio.onerror = () => {
                         loadedCount++;
                         console.log('Audio failed to load:', src);
                         
                         // Update loading bar if it's shown
-                        if (loadingBarShown) {
-                            const progress = (loadedCount / totalResources) * 100;
-                            loadingBarFill.style.width = `${progress}%`;
-                        }
+                        updateLoadingBar(loadedCount, totalResources);
                         
                         if (loadedCount === totalResources) {
                             resolve();
                         }
                     };
+                    
+                    // Mobile timeout for audio loading
+                    setTimeout(() => {
+                        if (audio.readyState < 1) { // Not loaded yet
+                            console.log('Audio loading timeout, continuing:', src);
+                            audioLoaded();
+                        }
+                    }, 3000); // 3 second timeout for mobile
+                    
                     audio.src = src;
                 } else if (fileExtension === 'mp4') {
-                    // Handle video files
+                    // Handle video files - mobile optimized
                     const video = document.createElement('video');
-                    video.onloadeddata = () => {
+                    video.muted = true; // Mobile browsers require muted for autoload
+                    video.preload = 'metadata'; // Only load metadata on mobile
+                    
+                    // Multiple event listeners for mobile compatibility
+                    const videoLoaded = () => {
                         loadedCount++;
                         console.log('Video loaded:', src);
                         
                         // Update loading bar if it's shown
-                        if (loadingBarShown) {
-                            const progress = (loadedCount / totalResources) * 100;
-                            loadingBarFill.style.width = `${progress}%`;
-                        }
+                        updateLoadingBar(loadedCount, totalResources);
                         
                         if (loadedCount === totalResources) {
                             resolve();
                         }
                     };
+                    
+                    video.addEventListener('loadedmetadata', videoLoaded);
+                    video.addEventListener('loadeddata', videoLoaded);
+                    video.addEventListener('canplay', videoLoaded);
+                    
                     video.onerror = () => {
                         loadedCount++;
                         console.log('Video failed to load:', src);
                         
                         // Update loading bar if it's shown
-                        if (loadingBarShown) {
-                            const progress = (loadedCount / totalResources) * 100;
-                            loadingBarFill.style.width = `${progress}%`;
-                        }
+                        updateLoadingBar(loadedCount, totalResources);
                         
                         if (loadedCount === totalResources) {
                             resolve();
                         }
                     };
+                    
+                    // Mobile timeout for video loading
+                    setTimeout(() => {
+                        if (video.readyState < 1) { // Not loaded yet
+                            console.log('Video loading timeout, continuing:', src);
+                            videoLoaded();
+                        }
+                    }, 5000); // 5 second timeout for mobile
+                    
                     video.src = src;
                 } else {
                     // Handle image files
@@ -272,10 +311,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                         console.log('Image loaded:', src);
                         
                         // Update loading bar if it's shown
-                        if (loadingBarShown) {
-                            const progress = (loadedCount / totalResources) * 100;
-                            loadingBarFill.style.width = `${progress}%`;
-                        }
+                        updateLoadingBar(loadedCount, totalResources);
                         
                         if (loadedCount === totalResources) {
                             resolve();
@@ -286,10 +322,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                         console.log('Image failed to load:', src);
                         
                         // Update loading bar if it's shown
-                        if (loadingBarShown) {
-                            const progress = (loadedCount / totalResources) * 100;
-                            loadingBarFill.style.width = `${progress}%`;
-                        }
+                        updateLoadingBar(loadedCount, totalResources);
                         
                         if (loadedCount === totalResources) {
                             resolve();
@@ -307,29 +340,56 @@ document.addEventListener("DOMContentLoaded", async function() {
                     loadingBarContainer.style.display = 'flex';
                     
                     // Set initial progress based on current loaded count
-                    const currentProgress = (loadedCount / totalResources) * 100;
-                    loadingBarFill.style.width = `${currentProgress}%`;
+                    updateLoadingBar(loadedCount, totalResources);
                 }
             }, loadingBarDelay);
+            
+            // Mobile-specific: Force show loading bar after 6 seconds if still loading
+            setTimeout(() => {
+                if (!loadingBarShown) {
+                    loadingBarShown = true;
+                    loadingBarContainer.style.display = 'flex';
+                    console.log('Mobile: Forcing loading bar to show');
+                }
+            }, 6000);
+            
+            // Mobile-specific: Force completion after 15 seconds to prevent infinite loading
+            setTimeout(() => {
+                if (loadedCount < totalResources) {
+                    console.log('Mobile: Force completing loading after timeout');
+                    loadedCount = totalResources;
+                    resolve();
+                }
+            }, 15000);
         })
     ]).then(async () => {
         // Load Supabase only after the initial loading is complete
         console.log('Loading Supabase...');
-        const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
-        window.supabase = createClient(
-            'https://zvqdodzkhmcptwkjlfeu.supabase.co',
-            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp2cWRvZHpraG1jcHR3a2psZmV1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg3NjM1NjAsImV4cCI6MjA2NDMzOTU2MH0.i1xbRIhPHVkDIrnDlQFP0ebNklrx8WVQcQo8Iuo9zG8',
-            {
-                db: {
-                    schema: 'public'
-                },
-                auth: {
-                    persistSession: false,
-                    autoRefreshToken: false
+        
+        try {
+            const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
+            window.supabase = createClient(
+                'https://zvqdodzkhmcptwkjlfeu.supabase.co',
+                'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp2cWRvZHpraG1jcHR3a2psZmV1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg3NjM1NjAsImV4cCI6MjA2NDMzOTU2MH0.i1xbRIhPHVkDIrnDlQFP0ebNklrx8WVQcQo8Iuo9zG8',
+                {
+                    db: {
+                        schema: 'public'
+                    },
+                    auth: {
+                        persistSession: false,
+                        autoRefreshToken: false
+                    }
                 }
-            }
-        );
-        console.log('Supabase loaded successfully');
+            );
+            console.log('Supabase loaded successfully');
+        } catch (supabaseError) {
+            console.error('Supabase loading failed, continuing without it:', supabaseError);
+            // Create a dummy supabase object to prevent errors
+            window.supabase = {
+                from: () => ({ select: () => ({ eq: () => ({ single: () => Promise.resolve({ data: null, error: null }) }) }) }),
+                insert: () => Promise.resolve({ data: null, error: null })
+            };
+        }
 
         // Final check - ensure everything is ready
         console.log('All resources loaded, showing website...');
@@ -343,7 +403,21 @@ document.addEventListener("DOMContentLoaded", async function() {
             }
             initApp();
         }, 500);
-    }).catch(e => console.error("❌ Error during loading:", e));
+    }).catch(e => {
+        console.error("❌ Error during loading:", e);
+        // Mobile fallback: show website even if loading fails
+        console.log('Mobile: Showing website despite loading errors');
+        loadingScreen.style.opacity = 0;
+        setTimeout(() => {
+            loadingScreen.style.display = "none";
+            const iconContainer = document.querySelector('.icon-container');
+            if (iconContainer) {
+                iconContainer.style.visibility = "visible";
+                iconContainer.style.opacity = 1;
+            }
+            initApp();
+        }, 500);
+    });
 
     // ===== PAW POPUP =====
     const popup = document.getElementById("popup");
