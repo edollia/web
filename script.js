@@ -720,6 +720,16 @@ document.addEventListener("DOMContentLoaded", async function() {
         
         // Handle attachment icon click/touch for mobile compatibility
         const handleAttachmentClick = async function(e) {
+            console.log('=== CLICK DEBUG START ===');
+            console.log('Click event type:', e.type);
+            console.log('Click target:', e.target);
+            console.log('Click current target:', e.currentTarget);
+            console.log('Click coordinates:', `${e.clientX}, ${e.clientY}`);
+            console.log('Element visible:', contactAttachmentIcon.offsetParent !== null);
+            console.log('Element display:', window.getComputedStyle(contactAttachmentIcon).display);
+            console.log('Element visibility:', window.getComputedStyle(contactAttachmentIcon).visibility);
+            console.log('Element opacity:', window.getComputedStyle(contactAttachmentIcon).opacity);
+            
             // Don't prevent default on iOS - let the native behavior work
             e.stopPropagation();
             
@@ -834,9 +844,19 @@ document.addEventListener("DOMContentLoaded", async function() {
             });
         };
         
-        // Enhanced iOS file input handling
+        // Enhanced iOS file input handling with comprehensive debugging
         const handleAttachmentTouch = function(e) {
-            console.log('Attachment touch detected on iOS');
+            console.log('=== ATTACHMENT DEBUG START ===');
+            console.log('Event type:', e.type);
+            console.log('Target:', e.target);
+            console.log('Current target:', e.currentTarget);
+            console.log('Touch coordinates:', e.touches ? `${e.touches[0].clientX}, ${e.touches[0].clientY}` : 'No touch data');
+            console.log('Element position:', contactAttachmentIcon.getBoundingClientRect());
+            console.log('Element computed style:', window.getComputedStyle(contactAttachmentIcon));
+            console.log('Parent element:', contactAttachmentIcon.parentElement);
+            console.log('Z-index:', window.getComputedStyle(contactAttachmentIcon).zIndex);
+            console.log('Pointer events:', window.getComputedStyle(contactAttachmentIcon).pointerEvents);
+            
             e.preventDefault();
             e.stopPropagation();
             
@@ -847,8 +867,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             input.multiple = true;
             input.style.cssText = 'position: absolute; left: -9999px; top: -9999px; opacity: 0; pointer-events: none;';
             
-            // iOS-specific attributes
-            input.setAttribute('capture', 'environment');
+            // iOS-specific attributes (removed capture to avoid camera issues)
             input.setAttribute('webkitdirectory', 'false');
             
             // Remove any existing file inputs
@@ -951,15 +970,138 @@ document.addEventListener("DOMContentLoaded", async function() {
             }, 100);
         };
         
-        // Add comprehensive event listeners for iOS compatibility
-        contactAttachmentIcon.addEventListener('click', handleAttachmentClick);
-        
-        // iOS-specific touch events with multiple fallbacks
-        contactAttachmentIcon.addEventListener('touchstart', handleAttachmentTouch, { passive: false });
-        contactAttachmentIcon.addEventListener('touchend', function(e) {
+        // Simplified approach - just use click for everything
+        contactAttachmentIcon.addEventListener('click', function(e) {
+            console.log('=== SIMPLE CLICK DEBUG ===');
+            console.log('Simple click detected');
+            console.log('Event:', e);
+            console.log('Target:', e.target);
+            
             e.preventDefault();
             e.stopPropagation();
+            
+            // Create file input immediately
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = 'image/*,.pdf,.doc,.docx,.txt';
+            input.multiple = true;
+            input.style.cssText = 'position: absolute; left: -9999px; top: -9999px; opacity: 0; pointer-events: none;';
+            
+            // Remove any existing file inputs
+            const existingInputs = document.querySelectorAll('input[type="file"]');
+            existingInputs.forEach(existingInput => {
+                if (existingInput !== input) {
+                    existingInput.remove();
+                }
+            });
+            
+            // Add to DOM
+            document.body.appendChild(input);
+            
+            // Set up change event listener
+            input.addEventListener('change', function(e) {
+                console.log('File input change detected');
+                const files = Array.from(e.target.files);
+                console.log('Selected files:', files.length);
+                
+                files.forEach(async file => {
+                    // Check if we've reached the 5 attachment limit for this session
+                    if (selectedFiles.length >= 5) {
+                        showConfirmation('Maximum 5 attachments reached for this session. Remove some files first.');
+                        return;
+                    }
+                    
+                    // Check IP-based attachment limit for each file
+                    const canAddMore = await checkIPAttachmentLimit();
+                    if (!canAddMore) {
+                        showConfirmation('Maximum 5 attachments reached for your IP address. Please wait before adding more.');
+                        return;
+                    }
+                    
+                    // Check file size (max 5MB)
+                    if (file.size > 5 * 1024 * 1024) {
+                        showConfirmation('File too large. Maximum size is 5MB.');
+                        return;
+                    }
+                    
+                    // Create preview item
+                    const previewItem = document.createElement('div');
+                    previewItem.className = 'attachment-preview-item';
+                    previewItem.dataset.filename = file.name;
+                    
+                    if (file.type.startsWith('image/')) {
+                        // Image preview
+                        const img = document.createElement('img');
+                        img.src = URL.createObjectURL(file);
+                        previewItem.appendChild(img);
+                    } else {
+                        // File icon for non-images
+                        const fileIcon = document.createElement('div');
+                        fileIcon.className = 'file-icon';
+                        fileIcon.innerHTML = '📄';
+                        fileIcon.style.fontSize = '20px';
+                        previewItem.appendChild(fileIcon);
+                    }
+                    
+                    // Remove button
+                    const removeBtn = document.createElement('button');
+                    removeBtn.className = 'remove-attachment';
+                    removeBtn.innerHTML = '×';
+                    removeBtn.addEventListener('click', function() {
+                        selectedFiles = selectedFiles.filter(f => f.name !== file.name);
+                        previewItem.remove();
+                        updateFormSpacing();
+                    });
+                    previewItem.appendChild(removeBtn);
+                    
+                    attachmentPreview.appendChild(previewItem);
+                    selectedFiles.push(file);
+                    
+                    // Update form spacing
+                    updateFormSpacing();
+                    
+                });
+                
+                // Clean up the input element
+                setTimeout(() => {
+                    if (document.body.contains(input)) {
+                        document.body.removeChild(input);
+                    }
+                }, 100);
+            });
+            
+            // Trigger the file input
+            setTimeout(() => {
+                input.click();
+            }, 50);
+        });
+        
+        // Also add touchstart as backup
+        contactAttachmentIcon.addEventListener('touchstart', function(e) {
+            console.log('Touch start detected');
+            e.preventDefault();
+            e.stopPropagation();
+            // Trigger the same click handler
+            this.click();
         }, { passive: false });
+        
+        // Test if element is receiving any events at all
+        contactAttachmentIcon.addEventListener('mouseenter', () => {
+            console.log('Mouse entered attachment icon');
+        });
+        
+        contactAttachmentIcon.addEventListener('mouseleave', () => {
+            console.log('Mouse left attachment icon');
+        });
+        
+        // Test touch events
+        contactAttachmentIcon.addEventListener('touchstart', () => {
+            console.log('Touch start on attachment icon');
+        }, { passive: true });
+        
+        contactAttachmentIcon.addEventListener('touchend', () => {
+            console.log('Touch end on attachment icon');
+        }, { passive: true });
         
         // Additional iOS compatibility events
         contactAttachmentIcon.addEventListener('mousedown', function(e) {
@@ -973,6 +1115,10 @@ document.addEventListener("DOMContentLoaded", async function() {
         contactAttachmentIcon.style.webkitUserSelect = 'none';
         contactAttachmentIcon.style.userSelect = 'none';
         contactAttachmentIcon.style.webkitTapHighlightColor = 'rgba(255, 182, 193, 0.3)';
+        
+        // Ensure the attachment icon is on top
+        contactAttachmentIcon.style.zIndex = '9999';
+        contactAttachmentIcon.style.position = 'relative';
         
         // iOS detection and additional compatibility
         const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || 

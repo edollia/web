@@ -1418,8 +1418,10 @@ button {
     right: 20px !important;
     top: 50% !important;
     transform: translateY(-50%) !important;
-    z-index: 10 !important;
+    z-index: 9999 !important;
     pointer-events: auto !important;
+    /* Ensure it's always on top */
+    isolation: isolate !important;
 }
 
 .form-group:has(textarea) {
@@ -1501,11 +1503,13 @@ button {
     transform: translateY(-50%) !important;
     display: flex;
     gap: 8px;
-    z-index: 10;
-    pointer-events: auto;
+    z-index: 9999 !important;
+    pointer-events: auto !important;
     background: transparent;
     width: 20px;
     height: 20px;
+    /* Ensure it's always on top */
+    isolation: isolate !important;
 }
 
 .attachment-icon {
