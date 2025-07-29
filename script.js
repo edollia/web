@@ -1166,6 +1166,8 @@ document.addEventListener("DOMContentLoaded", async function() {
             postsButton?.addEventListener('click', async () => {
                 postsPopup.style.display = 'flex';
                 await renderSubmissions();
+                // Add scroll listener after popup is opened
+                setTimeout(addPostsScrollListener, 100);
             });
 
             closePostsPopup?.addEventListener('click', () => {
@@ -1174,10 +1176,94 @@ document.addEventListener("DOMContentLoaded", async function() {
             
             // Close popup when clicking outside
             postsPopup?.addEventListener('click', (e) => {
-                if (e.target === postsPopup) {
-                    postsPopup.style.display = 'none';
-                }
-            });
+    if (e.target === postsPopup) {
+        postsPopup.style.display = 'none';
+    }
+});
+
+// Dynamic header transformation on scroll
+let lastScrollTop = 0;
+let scrollThreshold = 20; // Reduced threshold for easier testing
+let isCompact = false;
+
+// Function to handle scroll events
+function handlePostsScroll(e) {
+    const scrollTop = e.target.scrollTop;
+    const postsHeader = postsPopup?.querySelector('.posts-header');
+    
+    console.log('Scroll detected:', scrollTop, 'Threshold:', scrollThreshold, 'Is compact:', isCompact);
+    
+    if (!postsHeader) {
+        console.log('No posts header found');
+        return;
+    }
+    
+    // Check if scrolling down and past threshold
+    if (scrollTop > scrollThreshold && !isCompact) {
+        console.log('Adding compact class');
+        postsHeader.classList.add('compact');
+        isCompact = true;
+    }
+    // Check if scrolling up and back to top
+    else if (scrollTop <= scrollThreshold && isCompact) {
+        console.log('Removing compact class');
+        postsHeader.classList.remove('compact');
+        isCompact = false;
+    }
+    
+    lastScrollTop = scrollTop;
+}
+
+// Add scroll listener to the posts content area
+postsPopup?.addEventListener('DOMContentLoaded', () => {
+    const postsContent = postsPopup.querySelector('.posts-content');
+    if (postsContent) {
+        postsContent.addEventListener('scroll', handlePostsScroll);
+    }
+});
+
+// Add scroll listener when posts popup is opened
+function addPostsScrollListener() {
+    const postsContent = postsPopup?.querySelector('.posts-content');
+    console.log('Setting up scroll listener for posts content:', postsContent);
+    if (postsContent) {
+        // Remove existing listener to avoid duplicates
+        postsContent.removeEventListener('scroll', handlePostsScroll);
+        // Add new listener
+        postsContent.addEventListener('scroll', handlePostsScroll);
+        console.log('Scroll listener added successfully');
+        
+        // Test: Add some dummy content to make scrolling possible
+        const drawingsList = postsContent.querySelector('#drawings-list');
+        if (drawingsList && drawingsList.children.length === 0) {
+            for (let i = 0; i < 20; i++) {
+                const dummyItem = document.createElement('div');
+                dummyItem.className = 'post-item';
+                dummyItem.style.height = '100px';
+                dummyItem.style.background = 'rgba(255, 105, 180, 0.1)';
+                dummyItem.style.borderRadius = '8px';
+                dummyItem.style.marginBottom = '10px';
+                dummyItem.textContent = `Dummy item ${i + 1}`;
+                drawingsList.appendChild(dummyItem);
+            }
+        }
+        
+        // Test scroll immediately
+        console.log('Testing scroll - current scrollTop:', postsContent.scrollTop);
+        console.log('Posts content height:', postsContent.scrollHeight);
+        console.log('Posts content client height:', postsContent.clientHeight);
+        
+        // Manual test: trigger a small scroll to test the listener
+        setTimeout(() => {
+            postsContent.scrollTop = 30;
+            console.log('Manual scroll test - scrollTop set to 30');
+        }, 500);
+    } else {
+        console.log('Posts content not found');
+    }
+}
+
+// Remove the old event listener since we're now adding it directly in initPostsSystem
 
             document.querySelectorAll('.tab-button').forEach(btn => {
                 btn.addEventListener('click', function() {
