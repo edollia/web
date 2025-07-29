@@ -51,6 +51,12 @@ document.addEventListener("DOMContentLoaded", async function() {
                 console.log('Resuming background audio that was playing before');
                 audio.play().catch(e => console.log('Audio resume failed:', e));
             }
+        } else {
+            // Even if not muted, ensure audio is playing if it should be
+            if (audioPlayed && audio.paused) {
+                console.log('Audio was paused but should be playing, resuming');
+                audio.play().catch(e => console.log('Audio resume failed:', e));
+            }
         }
     }
     
@@ -127,6 +133,17 @@ document.addEventListener("DOMContentLoaded", async function() {
                 }
             }, 100);
         });
+        
+        // Additional safety: check audio state periodically
+        const videoAudioCheckInterval = setInterval(() => {
+            if (videoElement.paused || videoElement.ended) {
+                if (backgroundAudioMuted) {
+                    console.log('Video paused/ended, restoring background audio');
+                    unmuteBackgroundMusic();
+                }
+                clearInterval(videoAudioCheckInterval);
+            }
+        }, 500); // Check every 500ms
         
         observer.observe(document.body, {
             childList: true,
@@ -582,8 +599,10 @@ document.addEventListener("DOMContentLoaded", async function() {
             // Stop any playing video and unmute background music
             const currentVideo = modal.querySelector('.profile-video');
             if (currentVideo) {
+                console.log('Modal close: Found video, pausing and handling audio');
                 currentVideo.pause();
                 currentVideo.currentTime = 0;
+                
                 // Force unmute background music with improved tracking
                 console.log('Modal close: Force unmuting background music');
                 audio.volume = 1;
@@ -594,6 +613,15 @@ document.addEventListener("DOMContentLoaded", async function() {
                     console.log('Modal close: Resuming background audio');
                     audio.play().catch(e => console.log('Audio resume failed:', e));
                 }
+            } else {
+                console.log('Modal close: No video found, just unmuting');
+                // Even if no video, ensure audio is restored
+                audio.volume = 1;
+                backgroundAudioMuted = false;
+                if (backgroundAudioWasPlaying && audio.paused) {
+                    console.log('Modal close: Resuming background audio (no video)');
+                    audio.play().catch(e => console.log('Audio resume failed:', e));
+                }
             }
             
             // Shuffle system handles the next photo automatically
@@ -602,6 +630,17 @@ document.addEventListener("DOMContentLoaded", async function() {
             modal.style.opacity = '0';
             setTimeout(() => {
                 document.body.removeChild(modal);
+                // Final audio restoration after modal is removed
+                console.log('Modal removed from DOM, final audio check');
+                setTimeout(() => {
+                    if (backgroundAudioMuted) {
+                        console.log('Final: Unmuting background audio');
+                        unmuteBackgroundMusic();
+                    } else if (audioPlayed && audio.paused) {
+                        console.log('Final: Resuming background audio');
+                        audio.play().catch(e => console.log('Final audio resume failed:', e));
+                    }
+                }, 100);
             }, 300);
         }
         
