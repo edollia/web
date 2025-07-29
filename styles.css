@@ -57,6 +57,58 @@ body {
     z-index: 9999;
 }
 
+.loading-bar-container {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    gap: 15px;
+    margin-top: 30px;
+}
+
+.loading-bar {
+    width: 250px;
+    height: 8px;
+    background: rgba(255, 182, 193, 0.3);
+    border-radius: 10px;
+    overflow: hidden;
+    position: relative;
+    box-shadow: 0 2px 8px rgba(255, 182, 193, 0.2);
+}
+
+.loading-bar-fill {
+    height: 100%;
+    background: linear-gradient(135deg, #ffb6c1, #ff69b4, #ff1493);
+    border-radius: 10px;
+    width: 0%;
+    transition: width 0.3s ease;
+    position: relative;
+}
+
+.loading-bar-fill::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+    animation: shimmer 1.5s infinite;
+}
+
+@keyframes shimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+}
+
+.loading-text {
+    font-family: 'Brush Script MT', cursive;
+    font-size: 14px;
+    color: #ff69b4;
+    opacity: 0.8;
+    text-align: center;
+    margin-top: 5px;
+}
+
 .main-screen {
     display: none;
     text-align: center;
@@ -1016,16 +1068,31 @@ button {
     background: rgba(255, 255, 255, 0.95);
     border-radius: 20px;
     padding: 30px;
-    padding-top: 60px; /* Extra padding to accommodate profile photo coming out */
+    padding-top: 40px; /* Some padding to accommodate profile photo coming out */
     max-width: 400px;
     width: 90%;
     max-height: 80vh;
-    overflow-y: auto;
+    overflow: visible; /* Changed from overflow-y: auto to allow profile photo to come out */
     box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
     backdrop-filter: blur(10px);
     border: 1px solid rgba(255, 182, 193, 0.3);
     animation: slideInUp 0.4s ease;
     box-sizing: border-box;
+}
+
+.contact-profile-pic,
+.profile-video {
+    position: absolute;
+    width: 96px;
+    height: 96px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 3px solid rgba(255, 182, 193, 0.5);
+    box-shadow: 0 4px 15px rgba(255, 182, 193, 0.3), 0 0 25px rgba(255, 182, 193, 0.4), 0 0 40px rgba(255, 182, 193, 0.2);
+    top: -68px; /* Lowered by 15% from -80px to -68px */
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
 }
 
 .contact-header {
@@ -1036,29 +1103,14 @@ button {
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    min-height: 60px; /* Reduced from 80px */
-    padding-top: 48px; /* Space for the profile photo that comes out */
-}
-
-.contact-profile-pic {
-    width: 96px; /* 20% bigger than 80px */
-    height: 96px; /* 20% bigger than 80px */
-    border-radius: 50%;
-    object-fit: cover;
-    border: 3px solid rgba(255, 182, 193, 0.5);
-    box-shadow: 0 4px 15px rgba(255, 182, 193, 0.3);
-    margin-bottom: 10px; /* Reduced from 15px */
-    position: absolute;
-    top: -48px; /* Half the height to make it come out of the popup */
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 10;
+    min-height: 10px; /* Minimal height */
+    padding-top: 10px; /* Minimal padding since profile photo is now outside */
 }
 
 .contact-close-btn {
     position: absolute;
-    top: -10px;
-    right: -10px;
+    top: 10px;
+    right: 10px;
     width: 30px;
     height: 30px;
     border-radius: 50%;
@@ -1071,6 +1123,7 @@ button {
     align-items: center;
     justify-content: center;
     transition: all 0.3s ease;
+    z-index: 20;
 }
 
 .contact-close-btn:hover {
@@ -1083,7 +1136,14 @@ button {
     font-size: 18px;
     font-weight: 600;
     margin: 0;
+    margin-top: 0; /* No extra space above title */
     text-align: center;
+}
+
+.contact-form-scroll {
+    max-height: 60vh;
+    overflow-y: auto;
+    padding-right: 5px;
 }
 
 .contact-form-content {
@@ -1102,7 +1162,7 @@ button {
     padding: 12px 15px;
     border: 2px solid rgba(255, 182, 193, 0.3);
     border-radius: 10px;
-    font-size: 14px;
+    font-size: 16px; /* Prevent mobile zoom */
     background: rgba(255, 255, 255, 0.9);
     transition: all 0.3s ease;
     box-sizing: border-box;
@@ -1215,7 +1275,8 @@ button {
 }
 
 .connect-btn {
-    background: linear-gradient(135deg, #ff69b4, #ff1493);
+    background: linear-gradient(135deg, #ffb6c1, #ff69b4, #ff1493, #ff69b4, #ffb6c1);
+    background-size: 300% 100%;
     color: white;
     border: none;
     padding: 15px 30px;
@@ -1226,6 +1287,19 @@ button {
     transition: all 0.3s ease;
     margin-top: 10px;
     box-shadow: 0 4px 15px rgba(255, 105, 180, 0.3);
+    animation: gradientFlow 3s ease-in-out infinite;
+}
+
+@keyframes gradientFlow {
+    0% {
+        background-position: 0% 50%;
+    }
+    50% {
+        background-position: 100% 50%;
+    }
+    100% {
+        background-position: 0% 50%;
+    }
 }
 
 .connect-btn:hover {
@@ -1326,20 +1400,21 @@ button {
 @media (max-width: 768px) {
     .contact-form {
         padding: 20px;
-        padding-top: 50px; /* Extra padding for profile photo */
+        padding-top: 20px; /* Reduced padding since profile photo is outside */
         margin: 20px;
         max-width: calc(100% - 40px);
     }
     
-    .contact-profile-pic {
+    .contact-profile-pic,
+    .profile-video {
         width: 80px; /* Keep bigger size on mobile */
         height: 80px;
-        top: -40px; /* Half the height for mobile */
+        top: -51px; /* Lowered by 15% from -60px to -51px for mobile */
     }
     
     .contact-title {
         font-size: 16px;
-        margin-top: 5px; /* Reduce space above title */
+        margin-top: 0; /* No extra space above title */
     }
     
     .social-group {
@@ -1355,7 +1430,7 @@ button {
     
     .form-group input,
     .form-group textarea {
-        font-size: 13px; /* Smaller font for mobile */
+        font-size: 16px; /* Prevent mobile zoom */
         padding: 10px 12px; /* Smaller padding */
     }
     

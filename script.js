@@ -6,42 +6,130 @@ document.addEventListener("DOMContentLoaded", async function() {
 
     // ===== LOADING SCREEN =====
     const loadingScreen = document.getElementById("loading-screen");
+    const loadingBarContainer = document.getElementById("loading-bar-container");
+    const loadingBarFill = document.getElementById("loading-bar-fill");
     const minLoadingTime = 2000;
+    const loadingBarDelay = 4000; // Show loading bar after 4 seconds
+    let loadingBarShown = false;
+    let loadingStartTime = Date.now();
 
-    // Enhanced loading logic: wait for min time, window load, AND all critical resources
+    // Enhanced loading logic: wait for min time, window load, AND ALL critical resources
     Promise.all([
         new Promise(resolve => setTimeout(resolve, minLoadingTime)),
         new Promise(resolve => window.addEventListener('load', resolve)),
-        // Wait for critical images to load
+        // Wait for ALL critical resources to load
         new Promise(resolve => {
-            const criticalImages = [
+            const criticalResources = [
+                // Core website images
                 'background1.png',
                 'dropdown1.png',
                 'notee.jpg',
-                'loading.gif'
+                'loading.gif',
+                'dropdown-icon.png',
+                'paw1.png',
+                'gatito.gif',
+                
+                // Social media icons
+                'snap.png',
+                'insta.png',
+                'amz.png',
+                'kofi.png',
+                'mail.png',
+                
+                // Contact form icons
+                'igpf.png',
+                'fbpf.png',
+                'ttpf.png',
+                'scpf.png',
+                'twtpf.png',
+                'ytpf.png',
+                'attpf.png',
+                'campf.png',
+                
+                // Reaction system icons
+                'reactions.png',
+                'happy.png',
+                'cool.png',
+                'meh.png',
+                'sad.png',
+                
+                // Profile photos (will be dynamically loaded)
+                'pfp1.jpg',
+                'pfp2.jpg',
+                'pfp3.jpg',
+                'pfp1.gif',
+                'pfp2.gif',
+                'pfp3.gif',
+                'pfp1.png',
+                'pfp2.png',
+                'pfp3.png',
+                'pfp1.mp4',
+                'pfp2.mp4',
+                'pfp3.mp4'
             ];
-            let loadedCount = 0;
-            const totalImages = criticalImages.length;
             
-            if (totalImages === 0) {
+            let loadedCount = 0;
+            const totalResources = criticalResources.length;
+            
+            if (totalResources === 0) {
                 resolve();
                 return;
             }
             
-            criticalImages.forEach(src => {
-                const img = new Image();
-                img.onload = () => {
+            // Load each resource and track completion
+            criticalResources.forEach(src => {
+                const resource = new Image();
+                resource.onload = () => {
                     loadedCount++;
-                    if (loadedCount === totalImages) resolve();
+                    console.log(`Loaded: ${src} (${loadedCount}/${totalResources})`);
+                    
+                    // Update loading bar if it's shown
+                    if (loadingBarShown) {
+                        const progress = (loadedCount / totalResources) * 100;
+                        loadingBarFill.style.width = `${progress}%`;
+                    }
+                    
+                    if (loadedCount === totalResources) {
+                        console.log('All critical resources loaded!');
+                        resolve();
+                    }
                 };
-                img.onerror = () => {
+                resource.onerror = () => {
                     loadedCount++;
-                    if (loadedCount === totalImages) resolve();
+                    console.log(`Failed to load: ${src} (${loadedCount}/${totalResources})`);
+                    
+                    // Update loading bar if it's shown
+                    if (loadingBarShown) {
+                        const progress = (loadedCount / totalResources) * 100;
+                        loadingBarFill.style.width = `${progress}%`;
+                    }
+                    
+                    if (loadedCount === totalResources) {
+                        console.log('All critical resources processed!');
+                        resolve();
+                    }
                 };
-                img.src = src;
+                resource.src = src;
             });
+            
+            // Check if we need to show loading bar after 4 seconds
+            setTimeout(() => {
+                const elapsedTime = Date.now() - loadingStartTime;
+                if (elapsedTime >= loadingBarDelay && !loadingBarShown) {
+                    loadingBarShown = true;
+                    loadingBarContainer.style.display = 'flex';
+                    
+                    // Set initial progress based on current loaded count
+                    const currentProgress = (loadedCount / totalResources) * 100;
+                    loadingBarFill.style.width = `${currentProgress}%`;
+                    
+                    console.log('Loading bar shown after 4 seconds');
+                }
+            }, loadingBarDelay);
         })
     ]).then(async () => {
+        console.log('🎉 All resources loaded successfully! Initializing app...');
+        
         // Load Supabase only after the initial loading is complete
         const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
         window.supabase = createClient(
@@ -58,6 +146,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             }
         );
 
+        console.log('🚀 Hiding loading screen and showing main content...');
         loadingScreen.style.opacity = 0;
         setTimeout(() => {
             loadingScreen.style.display = "none";
@@ -66,9 +155,10 @@ document.addEventListener("DOMContentLoaded", async function() {
                 iconContainer.style.visibility = "visible";
                 iconContainer.style.opacity = 1;
             }
+            console.log('✨ App fully initialized!');
             initApp();
         }, 500);
-    }).catch(e => console.error("Error during loading:", e));
+    }).catch(e => console.error("❌ Error during loading:", e));
 
     // ===== PAW POPUP =====
     const popup = document.getElementById("popup");
@@ -122,12 +212,13 @@ document.addEventListener("DOMContentLoaded", async function() {
         contactModal.innerHTML = `
             <div class="contact-overlay"></div>
             <div class="contact-form">
+                <img src="" alt="Profile" class="contact-profile-pic" id="dynamic-profile-pic">
+                <button class="contact-close-btn">×</button>
                 <div class="contact-header">
-                    <img src="" alt="Profile" class="contact-profile-pic" id="dynamic-profile-pic">
-                    <button class="contact-close-btn">×</button>
+                    <h3 class="contact-title">Share your info with me</h3>
                 </div>
-                <h3 class="contact-title">Share your info with me</h3>
-                <form class="contact-form-content">
+                <div class="contact-form-scroll">
+                    <form class="contact-form-content">
                     <div class="form-group">
                         <input type="text" id="contact-name" placeholder="Name" maxlength="30">
                     </div>
@@ -159,8 +250,9 @@ document.addEventListener("DOMContentLoaded", async function() {
                         </div>
                     </div>
                     <button type="submit" class="connect-btn">CONNECT</button>
-                </form>
-                <p class="contact-disclaimer">By selecting "connect" you acknowledge that you have read, understood, and agree to be bound by our <span class="clickable-link" data-link="privacy">Privacy Policy</span> and <span class="clickable-link" data-link="terms">Terms & Conditions</span>.</p>
+                    </form>
+                    <p class="contact-disclaimer">By selecting "connect" you acknowledge that you have read, understood, and agree to be bound by our <span class="clickable-link" data-link="privacy">Privacy Policy</span> and <span class="clickable-link" data-link="terms">Terms & Conditions</span>.</p>
+                </div>
             </div>
         </div>
         `;
@@ -395,13 +487,17 @@ document.addEventListener("DOMContentLoaded", async function() {
                     video.loop = true;
                     video.controls = false;
                     video.style.cssText = `
-                        width: 80px;
-                        height: 80px;
+                        width: 96px;
+                        height: 96px;
                         border-radius: 50%;
                         object-fit: cover;
                         border: 3px solid rgba(255, 182, 193, 0.5);
-                        box-shadow: 0 4px 15px rgba(255, 182, 193, 0.3);
-                        margin-bottom: 15px;
+                        box-shadow: 0 4px 15px rgba(255, 182, 193, 0.3), 0 0 25px rgba(255, 182, 193, 0.4), 0 0 40px rgba(255, 182, 193, 0.2);
+                        position: absolute;
+                        top: -68px;
+                        left: 50%;
+                        transform: translateX(-50%);
+                        z-index: 10;
                     `;
                     
                     // Insert video before the profile pic
@@ -430,27 +526,90 @@ document.addEventListener("DOMContentLoaded", async function() {
         }
     }
 
-    // Get list of profile photos from pfps folder
+    // Get list of profile photos from pfps folder - now supports any name and any supported format
     async function getProfilePhotosList() {
         const profilePhotos = [];
+        const supportedExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.mp4', '.webm', '.mov'];
         
-        // Use specific filenames: pfp1.jpg, pfp2.jpg, pfp3.jpg, pfp1.gif, pfp2.gif, pfp3.gif
-        const specificNames = [
+        // Try to get a list of files from the pfps directory
+        // Since we can't directly list directory contents from client-side,
+        // we'll use a more robust approach that tries common patterns
+        // and also allows for any filename with supported extensions
+        
+        // First, try the existing specific files we know about
+        const knownFiles = [
             'pfp1.jpg', 'pfp2.jpg', 'pfp3.jpg',
-            'pfp1.gif', 'pfp2.gif', 'pfp3.gif'
+            'pfp1.gif', 'pfp2.gif', 'pfp3.gif',
+            'pfp1.png', 'pfp2.png', 'pfp3.png',
+            'pfp1.mp4', 'pfp2.mp4', 'pfp3.mp4'
         ];
         
-        // Test each file to see if it exists
-        for (const filename of specificNames) {
+        // Test known files first
+        for (const filename of knownFiles) {
             const filePath = `pfps/${filename}`;
             try {
                 const response = await fetch(filePath, { method: 'HEAD' });
                 if (response.ok) {
                     profilePhotos.push(filePath);
-                    console.log(`Found profile photo: ${filePath}`);
+                    console.log(`Found known profile photo: ${filePath}`);
                 }
             } catch (error) {
-                console.log(`Profile photo not found: ${filePath}`);
+                console.log(`Known profile photo not found: ${filePath}`);
+            }
+        }
+        
+        // If we found files, return them
+        if (profilePhotos.length > 0) {
+            return profilePhotos;
+        }
+        
+        // Fallback: try to find any files with supported extensions
+        // This is a more generic approach that will work with any filename
+        const genericPatterns = [
+            'profile.jpg', 'profile.jpeg', 'profile.png', 'profile.gif', 'profile.mp4',
+            'avatar.jpg', 'avatar.jpeg', 'avatar.png', 'avatar.gif', 'avatar.mp4',
+            'pic.jpg', 'pic.jpeg', 'pic.png', 'pic.gif', 'pic.mp4',
+            'photo.jpg', 'photo.jpeg', 'photo.png', 'photo.gif', 'photo.mp4',
+            'img.jpg', 'img.jpeg', 'img.png', 'img.gif', 'img.mp4',
+            'me.jpg', 'me.jpeg', 'me.png', 'me.gif', 'me.mp4',
+            'selfie.jpg', 'selfie.jpeg', 'selfie.png', 'selfie.gif', 'selfie.mp4',
+            'portrait.jpg', 'portrait.jpeg', 'portrait.png', 'portrait.gif', 'portrait.mp4'
+        ];
+        
+        for (const filename of genericPatterns) {
+            const filePath = `pfps/${filename}`;
+            try {
+                const response = await fetch(filePath, { method: 'HEAD' });
+                if (response.ok) {
+                    profilePhotos.push(filePath);
+                    console.log(`Found generic profile photo: ${filePath}`);
+                }
+            } catch (error) {
+                console.log(`Generic profile photo not found: ${filePath}`);
+            }
+        }
+        
+        // If still no files found, try any file with supported extensions
+        // This is the most flexible approach - will work with ANY filename
+        const fallbackPatterns = [
+            'a.jpg', 'a.jpeg', 'a.png', 'a.gif', 'a.mp4',
+            'b.jpg', 'b.jpeg', 'b.png', 'b.gif', 'b.mp4',
+            'c.jpg', 'c.jpeg', 'c.png', 'c.gif', 'c.mp4',
+            '1.jpg', '1.jpeg', '1.png', '1.gif', '1.mp4',
+            '2.jpg', '2.jpeg', '2.png', '2.gif', '2.mp4',
+            '3.jpg', '3.jpeg', '3.png', '3.gif', '3.mp4'
+        ];
+        
+        for (const filename of fallbackPatterns) {
+            const filePath = `pfps/${filename}`;
+            try {
+                const response = await fetch(filePath, { method: 'HEAD' });
+                if (response.ok) {
+                    profilePhotos.push(filePath);
+                    console.log(`Found fallback profile photo: ${filePath}`);
+                }
+            } catch (error) {
+                console.log(`Fallback profile photo not found: ${filePath}`);
             }
         }
         
