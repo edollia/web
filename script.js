@@ -219,14 +219,16 @@ document.addEventListener("DOMContentLoaded", async function() {
                 </div>
                 <div class="contact-form-scroll">
                     <form class="contact-form-content">
-                    <div class="form-group">
-                        <input type="text" id="contact-name" placeholder="Name" maxlength="30">
+                    <div class="name-phone-row">
+                        <div class="form-group">
+                            <input type="text" id="contact-name" placeholder="Name" maxlength="30">
+                        </div>
+                        <div class="form-group">
+                            <input type="tel" id="contact-phone" placeholder="Phone" maxlength="30">
+                        </div>
                     </div>
                     <div class="form-group">
                         <input type="email" id="contact-email" placeholder="Email" maxlength="30">
-                    </div>
-                    <div class="form-group">
-                        <input type="tel" id="contact-phone" placeholder="Phone" maxlength="30">
                     </div>
                     <div class="form-group social-group">
                         <div class="social-selector">

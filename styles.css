@@ -1152,6 +1152,18 @@ button {
     gap: 15px;
 }
 
+/* Name and phone row container - applies to all screen sizes */
+.name-phone-row {
+    display: flex;
+    gap: 10px;
+    width: 100%;
+}
+
+.name-phone-row .form-group {
+    flex: 1;
+    width: 50%;
+}
+
 .form-group {
     position: relative;
 }
@@ -1253,12 +1265,13 @@ button {
 
 .attachment-icons {
     position: absolute;
-    right: 20px;
+    right: 15px;
     top: 50%;
     transform: translateY(-50%);
     display: flex;
     gap: 8px;
     z-index: 10;
+    pointer-events: none; /* Prevent interference with textarea */
 }
 
 .attachment-icon {
@@ -1346,6 +1359,18 @@ button {
     color: #333;
 }
 
+/* Desktop override for very large screens - stack fields vertically */
+@media (min-width: 1200px) {
+    .name-phone-row {
+        flex-direction: column;
+        gap: 15px;
+    }
+    
+    .name-phone-row .form-group {
+        width: 100%;
+    }
+}
+
 /* Animations */
 @keyframes fadeIn {
     from { opacity: 0; }
@@ -1396,8 +1421,8 @@ button {
     }
 }
 
-/* Mobile responsiveness */
-@media (max-width: 768px) {
+/* Mobile responsiveness - increased breakpoint for better mobile experience */
+@media (max-width: 1024px) {
     .contact-form {
         padding: 20px;
         padding-top: 20px; /* Reduced padding since profile photo is outside */
@@ -1435,9 +1460,59 @@ button {
     }
     
     .attachment-icons {
-        position: static;
-        transform: none;
-        margin-top: 8px;
-        justify-content: flex-end;
+        position: absolute;
+        right: 10px;
+        top: 50%;
+        transform: translateY(-50%);
+        gap: 6px;
+    }
+    
+    /* Ensure textarea has enough padding for icons */
+    .form-group textarea {
+        padding-right: 80px !important;
+    }
+    
+    /* Make icons smaller on mobile */
+    .attachment-icon {
+        width: 18px;
+        height: 18px;
+    }
+    
+    /* Extra small screens - ensure icons stay inside */
+    @media (max-width: 480px) {
+        .form-group textarea {
+            padding-right: 70px !important;
+        }
+        
+        .attachment-icons {
+            right: 8px;
+            gap: 4px;
+        }
+        
+        .attachment-icon {
+            width: 16px;
+            height: 16px;
+        }
+    }
+    
+    /* Mobile contact form layout - name and phone on same line */
+    .contact-form-content {
+        gap: 12px; /* Reduce gap for mobile */
+    }
+    
+    /* Email field stays full width */
+    .contact-form-content .form-group {
+        width: 100%;
+    }
+    
+    /* Ensure the name-phone row doesn't stack on medium screens */
+    .name-phone-row {
+        flex-direction: row !important;
+    }
+    
+    /* Prevent form groups from stacking inside the row */
+    .name-phone-row .form-group {
+        display: block !important;
+        flex: 1 !important;
     }
 }
