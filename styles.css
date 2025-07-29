@@ -1181,6 +1181,8 @@ button {
     border: 1px solid rgba(255, 182, 193, 0.3);
     animation: slideInUp 0.4s ease;
     box-sizing: border-box;
+    /* Ensure attachment preview stays within form */
+    z-index: 1000;
 }
 
 .contact-profile-pic,
@@ -1412,21 +1414,66 @@ button {
     overflow: visible;
 }
 
-/* Position attachment icon relative to textarea */
-.form-group:has(textarea) .attachment-icons {
-    position: absolute !important;
-    right: 20px !important;
-    top: 50% !important;
-    transform: translateY(-50%) !important;
-    z-index: 9999 !important;
-    pointer-events: auto !important;
-    /* Ensure it's always on top */
-    isolation: isolate !important;
+/* Notes and attachment row - horizontal layout */
+.notes-attachment-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    width: 100%;
 }
 
-.form-group:has(textarea) {
-    position: relative !important;
-    overflow: visible !important;
+.notes-group {
+    flex: 1;
+    width: 100%;
+}
+
+.attachment-button-container {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 12px; /* Align with textarea */
+}
+
+.attachment-button {
+    width: 24px;
+    height: 24px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    opacity: 0.7;
+    display: block;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+    /* iOS-specific improvements */
+    -webkit-touch-callout: none;
+    -webkit-appearance: none;
+    border: none;
+    outline: none;
+    /* Enhanced iOS compatibility */
+    position: relative;
+    z-index: 1000;
+    background: transparent;
+    -webkit-transform: translateZ(0);
+    transform: translateZ(0);
+    -webkit-backface-visibility: hidden;
+    backface-visibility: hidden;
+    /* Force hardware acceleration */
+    -webkit-perspective: 1000px;
+    perspective: 1000px;
+}
+
+.attachment-button:hover {
+    opacity: 1;
+    transform: scale(1.1);
+}
+
+.attachment-button:active {
+    transform: scale(0.95);
+    transition: transform 0.1s ease;
 }
 
 .social-group {
@@ -1496,77 +1543,24 @@ button {
     background: rgba(255, 182, 193, 0.1);
 }
 
-.attachment-icons {
-    position: absolute !important;
-    right: 20px !important;
-    top: 50% !important;
-    transform: translateY(-50%) !important;
-    display: flex;
-    gap: 8px;
-    z-index: 9999 !important;
-    pointer-events: auto !important;
-    background: transparent;
-    width: 20px;
-    height: 20px;
-    /* Ensure it's always on top */
-    isolation: isolate !important;
-}
+/* Removed old attachment-icons - replaced with attachment-section */
 
-.attachment-icon {
-    width: 20px;
-    height: 20px;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    opacity: 0.7;
-    display: block;
-    -webkit-tap-highlight-color: transparent;
-    touch-action: manipulation;
-    -webkit-user-select: none;
-    -moz-user-select: none;
-    -ms-user-select: none;
-    user-select: none;
-    /* iOS-specific improvements */
-    -webkit-touch-callout: none;
-    -webkit-appearance: none;
-    border: none;
-    outline: none;
-    /* Enhanced iOS compatibility */
-    position: relative;
-    z-index: 1000;
-    background: transparent;
-    -webkit-transform: translateZ(0);
-    transform: translateZ(0);
-    -webkit-backface-visibility: hidden;
-    backface-visibility: hidden;
-    /* Force hardware acceleration */
-    -webkit-perspective: 1000px;
-    perspective: 1000px;
-}
-
-.attachment-icon:hover {
-    opacity: 1;
-    transform: scale(1.1);
-}
-
-.attachment-icon:active {
-    transform: scale(0.95);
-    transition: transform 0.1s ease;
-}
+/* Removed old attachment-icon - replaced with attachment-button */
 
 /* Attachment preview area */
 .attachment-preview {
-    position: absolute;
-    top: 100%;
-    left: 0;
-    right: 0;
+    position: relative;
+    width: 100%;
     margin-top: 8px;
-    display: flex;
+    display: none; /* Hidden by default */
     flex-wrap: wrap;
     gap: 8px;
     min-height: 0;
     transition: all 0.3s ease;
     z-index: 1;
     background: transparent;
+    /* Ensure it stays within the form */
+    overflow: visible;
 }
 
 .attachment-preview-item {
@@ -1581,6 +1575,7 @@ button {
     align-items: center;
     justify-content: center;
     transition: all 0.3s ease;
+    z-index: 1001; /* Ensure it appears above the form */
 }
 
 .attachment-preview-item:hover {
@@ -1893,17 +1888,17 @@ button {
         padding: 10px 12px;
     }
     
-    .attachment-icons {
-        right: 15px !important;
+    .attachment-button {
+        width: 20px;
+        height: 20px;
     }
     
-    .form-group textarea {
-        padding-right: 80px !important;
+    .notes-attachment-row {
+        gap: 8px;
     }
     
-    .attachment-icon {
-        width: 18px;
-        height: 18px;
+    .attachment-button-container {
+        margin-top: 10px;
     }
     
     .contact-form-content {
@@ -1926,16 +1921,16 @@ button {
 
 /* Extra small screens */
 @media (max-width: 480px) {
-    .form-group textarea {
-        padding-right: 60px !important;
+    .attachment-button {
+        width: 18px;
+        height: 18px;
     }
     
-    .attachment-icons {
-        right: 12px !important;
+    .notes-attachment-row {
+        gap: 6px;
     }
     
-    .attachment-icon {
-        width: 16px;
-        height: 16px;
+    .attachment-button-container {
+        margin-top: 8px;
     }
 }
