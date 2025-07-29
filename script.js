@@ -26,13 +26,16 @@ document.addEventListener("DOMContentLoaded", async function() {
     // Audio management system for MP4 files
     let currentVideoAudio = null;
     let backgroundAudioMuted = false;
+    let backgroundAudioWasPlaying = false; // Track if audio was playing before muting
     
     // Function to mute background music
     function muteBackgroundMusic() {
         if (audioPlayed) {
+            // Track if audio was playing before muting
+            backgroundAudioWasPlaying = !audio.paused;
             audio.volume = 0;
             backgroundAudioMuted = true;
-            console.log('Background music muted due to video audio');
+            console.log('Background music muted due to video audio, was playing:', backgroundAudioWasPlaying);
         }
     }
     
@@ -41,7 +44,13 @@ document.addEventListener("DOMContentLoaded", async function() {
         if (backgroundAudioMuted) {
             audio.volume = 1;
             backgroundAudioMuted = false;
-            console.log('Background music unmuted');
+            console.log('Background music unmuted, was playing before:', backgroundAudioWasPlaying);
+            
+            // Resume audio if it was playing before and is now paused
+            if (backgroundAudioWasPlaying && audio.paused) {
+                console.log('Resuming background audio that was playing before');
+                audio.play().catch(e => console.log('Audio resume failed:', e));
+            }
         }
     }
     
@@ -107,6 +116,16 @@ document.addEventListener("DOMContentLoaded", async function() {
                     }
                 });
             });
+        });
+        
+        // Additional safety: ensure audio is restored when video ends
+        videoElement.addEventListener('ended', () => {
+            console.log('Video ended, ensuring background audio is restored');
+            setTimeout(() => {
+                if (backgroundAudioMuted) {
+                    unmuteBackgroundMusic();
+                }
+            }, 100);
         });
         
         observer.observe(document.body, {
@@ -565,7 +584,16 @@ document.addEventListener("DOMContentLoaded", async function() {
             if (currentVideo) {
                 currentVideo.pause();
                 currentVideo.currentTime = 0;
-                unmuteBackgroundMusic();
+                // Force unmute background music with improved tracking
+                console.log('Modal close: Force unmuting background music');
+                audio.volume = 1;
+                backgroundAudioMuted = false;
+                
+                // Resume audio if it was playing before
+                if (backgroundAudioWasPlaying && audio.paused) {
+                    console.log('Modal close: Resuming background audio');
+                    audio.play().catch(e => console.log('Audio resume failed:', e));
+                }
             }
             
             // Shuffle system handles the next photo automatically
