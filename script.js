@@ -1,8 +1,135 @@
 document.addEventListener("DOMContentLoaded", async function() {
-    // ===== AUDIO HANDLING =====
+    // ===== ENHANCED AUDIO HANDLING =====
     const audio = new Audio('hehe.mp3');
     audio.loop = true;
     let audioPlayed = false;
+    
+    // Audio management system for MP4 files
+    let currentVideoAudio = null;
+    let backgroundAudioMuted = false;
+    
+    // Function to mute background music
+    function muteBackgroundMusic() {
+        if (audioPlayed) {
+            audio.volume = 0;
+            backgroundAudioMuted = true;
+            console.log('Background music muted due to video audio');
+        }
+    }
+    
+    // Function to unmute background music
+    function unmuteBackgroundMusic() {
+        if (backgroundAudioMuted) {
+            audio.volume = 1;
+            backgroundAudioMuted = false;
+            console.log('Background music unmuted');
+        }
+    }
+    
+    // Function to handle video audio
+    function handleVideoAudio(videoElement) {
+        if (!videoElement) return;
+        
+        console.log('Setting up audio management for video:', videoElement.src);
+        
+        // Remove any existing audio handler
+        if (currentVideoAudio) {
+            currentVideoAudio.removeEventListener('play', muteBackgroundMusic);
+            currentVideoAudio.removeEventListener('pause', unmuteBackgroundMusic);
+            currentVideoAudio.removeEventListener('ended', unmuteBackgroundMusic);
+        }
+        
+        // Set up new audio handler
+        currentVideoAudio = videoElement;
+        
+        // Mute background when video starts
+        videoElement.addEventListener('play', () => {
+            console.log('Video started playing:', videoElement.src);
+            muteBackgroundMusic();
+        });
+        
+        // Unmute background when video pauses
+        videoElement.addEventListener('pause', () => {
+            console.log('Video paused:', videoElement.src);
+            unmuteBackgroundMusic();
+        });
+        
+        // Unmute background when video ends
+        videoElement.addEventListener('ended', () => {
+            console.log('Video ended:', videoElement.src);
+            unmuteBackgroundMusic();
+        });
+        
+        // Also handle when video is ready to play
+        videoElement.addEventListener('canplay', () => {
+            console.log('Video ready to play:', videoElement.src);
+            // If video is playing, mute background
+            if (!videoElement.paused) {
+                muteBackgroundMusic();
+            }
+        });
+        
+        // Handle volume changes
+        videoElement.addEventListener('volumechange', () => {
+            console.log('Video volume changed:', videoElement.volume);
+            if (videoElement.volume > 0 && !videoElement.paused) {
+                muteBackgroundMusic();
+            }
+        });
+        
+        // Also handle when video is removed from DOM
+        const observer = new MutationObserver((mutations) => {
+            mutations.forEach((mutation) => {
+                mutation.removedNodes.forEach((node) => {
+                    if (node === videoElement || (node.contains && node.contains(videoElement))) {
+                        console.log('Video removed from DOM, unmuting background music');
+                        unmuteBackgroundMusic();
+                        observer.disconnect();
+                    }
+                });
+            });
+        });
+        
+        observer.observe(document.body, {
+            childList: true,
+            subtree: true
+        });
+        
+        // Add a safety timeout to unmute background music after video duration
+        videoElement.addEventListener('loadedmetadata', () => {
+            const duration = videoElement.duration;
+            if (duration && duration > 0) {
+                setTimeout(() => {
+                    if (videoElement.paused || videoElement.ended) {
+                        unmuteBackgroundMusic();
+                    }
+                }, (duration * 1000) + 1000); // Add 1 second buffer
+            }
+        });
+        
+        // Periodic check to ensure audio state is correct
+        const audioCheckInterval = setInterval(() => {
+            if (videoElement.paused || videoElement.ended) {
+                unmuteBackgroundMusic();
+                clearInterval(audioCheckInterval);
+            } else if (!videoElement.paused && videoElement.volume > 0) {
+                muteBackgroundMusic();
+            }
+        }, 1000); // Check every second
+        
+        // Clean up interval when video is removed
+        videoElement.addEventListener('removed', () => {
+            clearInterval(audioCheckInterval);
+        });
+        
+        // Final safety check - ensure audio state is correct after a short delay
+        setTimeout(() => {
+            if (videoElement && !videoElement.paused && videoElement.volume > 0) {
+                console.log('Final audio check - muting background music');
+                muteBackgroundMusic();
+            }
+        }, 500);
+    }
 
     // ===== LOADING SCREEN =====
     const loadingScreen = document.getElementById("loading-screen");
@@ -17,6 +144,14 @@ document.addEventListener("DOMContentLoaded", async function() {
     Promise.all([
         new Promise(resolve => setTimeout(resolve, minLoadingTime)),
         new Promise(resolve => window.addEventListener('load', resolve)),
+        // Wait for DOM to be fully ready
+        new Promise(resolve => {
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', resolve);
+            } else {
+                resolve();
+            }
+        }),
         // Wait for critical resources to load
         new Promise(resolve => {
             const criticalResources = [
@@ -43,7 +178,14 @@ document.addEventListener("DOMContentLoaded", async function() {
                 'happy.png',
                 'cool.png',
                 'meh.png',
-                'sad.png'
+                'sad.png',
+                'hehe.mp3',
+                'pfps/pfp1.jpg',
+                'pfps/pfp2.jpg',
+                'pfps/pfp4.jpg',
+                'pfps/pfp3.gif',
+                'pfps/pfp7.mp4',
+                'pfps/pfp8.mp4'
             ];
             
             let loadedCount = 0;
@@ -56,34 +198,105 @@ document.addEventListener("DOMContentLoaded", async function() {
             
             // Load each resource and track completion
             criticalResources.forEach(src => {
-                const resource = new Image();
-                resource.onload = () => {
-                    loadedCount++;
-                    
-                    // Update loading bar if it's shown
-                    if (loadingBarShown) {
-                        const progress = (loadedCount / totalResources) * 100;
-                        loadingBarFill.style.width = `${progress}%`;
-                    }
-                    
-                    if (loadedCount === totalResources) {
-                        resolve();
-                    }
-                };
-                resource.onerror = () => {
-                    loadedCount++;
-                    
-                    // Update loading bar if it's shown
-                    if (loadingBarShown) {
-                        const progress = (loadedCount / totalResources) * 100;
-                        loadingBarFill.style.width = `${progress}%`;
-                    }
-                    
-                    if (loadedCount === totalResources) {
-                        resolve();
-                    }
-                };
-                resource.src = src;
+                const fileExtension = src.split('.').pop().toLowerCase();
+                
+                if (fileExtension === 'mp3') {
+                    // Handle audio files
+                    const audio = new Audio();
+                    audio.oncanplaythrough = () => {
+                        loadedCount++;
+                        console.log('Audio loaded:', src);
+                        
+                        // Update loading bar if it's shown
+                        if (loadingBarShown) {
+                            const progress = (loadedCount / totalResources) * 100;
+                            loadingBarFill.style.width = `${progress}%`;
+                        }
+                        
+                        if (loadedCount === totalResources) {
+                            resolve();
+                        }
+                    };
+                    audio.onerror = () => {
+                        loadedCount++;
+                        console.log('Audio failed to load:', src);
+                        
+                        // Update loading bar if it's shown
+                        if (loadingBarShown) {
+                            const progress = (loadedCount / totalResources) * 100;
+                            loadingBarFill.style.width = `${progress}%`;
+                        }
+                        
+                        if (loadedCount === totalResources) {
+                            resolve();
+                        }
+                    };
+                    audio.src = src;
+                } else if (fileExtension === 'mp4') {
+                    // Handle video files
+                    const video = document.createElement('video');
+                    video.onloadeddata = () => {
+                        loadedCount++;
+                        console.log('Video loaded:', src);
+                        
+                        // Update loading bar if it's shown
+                        if (loadingBarShown) {
+                            const progress = (loadedCount / totalResources) * 100;
+                            loadingBarFill.style.width = `${progress}%`;
+                        }
+                        
+                        if (loadedCount === totalResources) {
+                            resolve();
+                        }
+                    };
+                    video.onerror = () => {
+                        loadedCount++;
+                        console.log('Video failed to load:', src);
+                        
+                        // Update loading bar if it's shown
+                        if (loadingBarShown) {
+                            const progress = (loadedCount / totalResources) * 100;
+                            loadingBarFill.style.width = `${progress}%`;
+                        }
+                        
+                        if (loadedCount === totalResources) {
+                            resolve();
+                        }
+                    };
+                    video.src = src;
+                } else {
+                    // Handle image files
+                    const resource = new Image();
+                    resource.onload = () => {
+                        loadedCount++;
+                        console.log('Image loaded:', src);
+                        
+                        // Update loading bar if it's shown
+                        if (loadingBarShown) {
+                            const progress = (loadedCount / totalResources) * 100;
+                            loadingBarFill.style.width = `${progress}%`;
+                        }
+                        
+                        if (loadedCount === totalResources) {
+                            resolve();
+                        }
+                    };
+                    resource.onerror = () => {
+                        loadedCount++;
+                        console.log('Image failed to load:', src);
+                        
+                        // Update loading bar if it's shown
+                        if (loadingBarShown) {
+                            const progress = (loadedCount / totalResources) * 100;
+                            loadingBarFill.style.width = `${progress}%`;
+                        }
+                        
+                        if (loadedCount === totalResources) {
+                            resolve();
+                        }
+                    };
+                    resource.src = src;
+                }
             });
             
             // Check if we need to show loading bar after 4 seconds
@@ -101,6 +314,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         })
     ]).then(async () => {
         // Load Supabase only after the initial loading is complete
+        console.log('Loading Supabase...');
         const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
         window.supabase = createClient(
             'https://zvqdodzkhmcptwkjlfeu.supabase.co',
@@ -115,7 +329,10 @@ document.addEventListener("DOMContentLoaded", async function() {
                 }
             }
         );
+        console.log('Supabase loaded successfully');
 
+        // Final check - ensure everything is ready
+        console.log('All resources loaded, showing website...');
         loadingScreen.style.opacity = 0;
         setTimeout(() => {
             loadingScreen.style.display = "none";
@@ -250,10 +467,16 @@ document.addEventListener("DOMContentLoaded", async function() {
         
         // Close modal functions
         function closeModal() {
-            // Advance to next photo for next time form opens
-            if (globalProfilePhotos.length > 0) {
-                globalProfileIndex = (globalProfileIndex + 1) % globalProfilePhotos.length;
+            // Stop any playing video and unmute background music
+            const currentVideo = modal.querySelector('.profile-video');
+            if (currentVideo) {
+                currentVideo.pause();
+                currentVideo.currentTime = 0;
+                unmuteBackgroundMusic();
             }
+            
+            // Shuffle system handles the next photo automatically
+            // No need to set anything here as it will be handled when form opens next time
             
             modal.style.opacity = '0';
             setTimeout(() => {
@@ -337,7 +560,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         
         // Handle attachment icon click/touch for mobile compatibility
         const handleAttachmentClick = async function(e) {
-            e.preventDefault();
+            // Don't prevent default on iOS - let the native behavior work
             e.stopPropagation();
             
             // Check if already at 5 attachments limit for this session
@@ -353,17 +576,28 @@ document.addEventListener("DOMContentLoaded", async function() {
                 return;
             }
             
-            // Create file input with iOS-specific attributes
+            // Create file input with proper iOS support
             const input = document.createElement('input');
             input.type = 'file';
             input.accept = 'image/*,.pdf,.doc,.docx,.txt';
             input.multiple = true;
             input.style.display = 'none';
-            input.setAttribute('capture', 'environment'); // Enable camera on iOS
+            input.style.position = 'absolute';
+            input.style.left = '-9999px';
+            input.style.top = '-9999px';
             
-            // iOS Safari requires the input to be in the DOM
+            // Remove any existing file inputs to prevent conflicts
+            const existingInputs = document.querySelectorAll('input[type="file"]');
+            existingInputs.forEach(existingInput => {
+                if (existingInput !== input) {
+                    existingInput.remove();
+                }
+            });
+            
+            // Add to DOM first
             document.body.appendChild(input);
             
+            // Set up change event listener
             input.addEventListener('change', function(e) {
                 const files = Array.from(e.target.files);
                 
@@ -426,23 +660,32 @@ document.addEventListener("DOMContentLoaded", async function() {
                 });
                 
                 // Clean up the input element
-                document.body.removeChild(input);
+                setTimeout(() => {
+                    if (document.body.contains(input)) {
+                        document.body.removeChild(input);
+                    }
+                }, 100);
             });
             
-            // iOS Safari requires a user gesture to trigger file input
-            // Use a small delay to ensure the input is properly attached
-            setTimeout(() => {
+            // Trigger the file input
+            // Use requestAnimationFrame to ensure DOM is ready
+            requestAnimationFrame(() => {
                 input.click();
-            }, 10);
+            });
         };
         
-        // Add event listeners with better iOS support
+        // Add event listeners with proper iOS support
         contactAttachmentIcon.addEventListener('click', handleAttachmentClick);
+        
+        // iOS-specific touch handling
         contactAttachmentIcon.addEventListener('touchstart', function(e) {
-            // Don't prevent default on touchstart for iOS
+            // Don't prevent default - let iOS handle the touch
             e.stopPropagation();
-            handleAttachmentClick(e);
-        }, { passive: false });
+            // Small delay to ensure touch is registered
+            setTimeout(() => {
+                handleAttachmentClick(e);
+            }, 50);
+        }, { passive: true });
         
         // Form submission with validation
         form.addEventListener('submit', async function(e) {
@@ -542,6 +785,8 @@ document.addEventListener("DOMContentLoaded", async function() {
     // Global variable to track current profile photo index
     let globalProfileIndex = 0;
     let globalProfilePhotos = [];
+    let shuffledProfilePhotos = [];
+    let currentShuffleIndex = 0;
 
     // Profile photo cycling functionality
     async function loadProfilePhotos(modal) {
@@ -580,7 +825,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                     video.className = 'profile-video';
                     video.src = currentFile;
                     video.autoplay = true;
-                    video.muted = true;
+                    video.muted = false; // Allow sound for MP4 files
                     video.loop = true;
                     video.controls = false;
                     video.style.cssText = `
@@ -596,6 +841,43 @@ document.addEventListener("DOMContentLoaded", async function() {
                         transform: translateX(-50%);
                         z-index: 10;
                     `;
+                    
+                    // Set up audio management for this video
+                    handleVideoAudio(video);
+                    
+                    // Add error handling for video loading
+                    video.addEventListener('error', (e) => {
+                        console.error('Error loading video:', currentFile, e);
+                        // Fallback to next shuffled image if video fails
+                        if (globalProfilePhotos.length > 1) {
+                            currentShuffleIndex++;
+                            if (currentShuffleIndex >= shuffledProfilePhotos.length) {
+                                // Create new shuffle if we run out
+                                shuffledProfilePhotos = [...globalProfilePhotos].sort(() => Math.random() - 0.5);
+                                currentShuffleIndex = 0;
+                            }
+                            globalProfileIndex = currentShuffleIndex;
+                            setProfileMedia();
+                        }
+                    });
+                    
+                    // Add load event to ensure video is ready
+                    video.addEventListener('loadeddata', () => {
+                        console.log('Video loaded successfully:', currentFile);
+                    });
+                    
+                    // Ensure video starts playing and audio works
+                    video.addEventListener('canplay', () => {
+                        console.log('Video can play:', currentFile);
+                        // Force play to ensure audio starts
+                        video.play().catch(e => console.log('Autoplay blocked:', e));
+                    });
+                    
+                    // Additional check for when video actually starts playing
+                    video.addEventListener('playing', () => {
+                        console.log('Video is now playing:', currentFile);
+                        muteBackgroundMusic();
+                    });
                     
                     // Insert video before the profile pic
                     profilePic.parentNode.insertBefore(video, profilePic);
@@ -625,8 +907,17 @@ document.addEventListener("DOMContentLoaded", async function() {
                 }
             }
             
-            // Set current media (advances to next photo each time form opens)
+            // Set shuffled media for this form opening
+            if (shuffledProfilePhotos.length === 0 || currentShuffleIndex >= shuffledProfilePhotos.length) {
+                // Create new shuffle when we run out or haven't shuffled yet
+                shuffledProfilePhotos = [...globalProfilePhotos].sort(() => Math.random() - 0.5);
+                currentShuffleIndex = 0;
+                console.log('Created new shuffle:', shuffledProfilePhotos);
+            }
+            
+            globalProfileIndex = currentShuffleIndex;
             setProfileMedia();
+            currentShuffleIndex++;
             
         } catch (error) {
             console.error('Error loading profile photos:', error);
@@ -658,10 +949,9 @@ document.addEventListener("DOMContentLoaded", async function() {
         
         // First, try the existing specific files we know about
         const knownFiles = [
-            'pfp1.jpg', 'pfp2.jpg', 'pfp3.jpg',
-            'pfp1.gif', 'pfp2.gif', 'pfp3.gif',
-            'pfp1.png', 'pfp2.png', 'pfp3.png',
-            'pfp1.mp4', 'pfp2.mp4', 'pfp3.mp4'
+            'pfp1.jpg', 'pfp2.jpg', 'pfp4.jpg',
+            'pfp3.gif',
+            'pfp7.mp4', 'pfp8.mp4'
         ];
         
         // Test known files first
@@ -833,37 +1123,30 @@ document.addEventListener("DOMContentLoaded", async function() {
 
     // Terms & Privacy popup
     function showTermsPrivacyPopup() {
-        const popup = document.createElement('div');
-        popup.className = 'terms-privacy-modal';
-        popup.innerHTML = `
-            <div class="contact-overlay"></div>
-            <div class="contact-form">
-                <div class="contact-header">
-                    <button class="contact-close-btn">×</button>
-                </div>
-                <h3 class="contact-title">Terms & Conditions & Privacy Policy</h3>
-                <div class="terms-content">
-                    <p>This is a placeholder for your Terms & Conditions and Privacy Policy content.</p>
-                    <p>You can add your actual legal text here later.</p>
-                </div>
-            </div>
-        `;
-        
-        document.body.appendChild(popup);
-        
-        // Close functionality
-        const overlay = popup.querySelector('.contact-overlay');
-        const closeBtn = popup.querySelector('.contact-close-btn');
-        
-        function closePopup() {
-            popup.style.opacity = '0';
-            setTimeout(() => {
-                document.body.removeChild(popup);
-            }, 300);
+        const modal = document.getElementById('terms-privacy-modal');
+        if (modal) {
+            modal.style.display = 'flex';
+            modal.style.opacity = '1';
+            
+            // Close functionality
+            const overlay = modal.querySelector('.terms-overlay');
+            const closeBtn = modal.querySelector('.terms-close-btn');
+            
+            function closePopup() {
+                modal.style.opacity = '0';
+                setTimeout(() => {
+                    modal.style.display = 'none';
+                }, 300);
+            }
+            
+            // Remove existing listeners to prevent duplicates
+            overlay.removeEventListener('click', closePopup);
+            closeBtn.removeEventListener('click', closePopup);
+            
+            // Add new listeners
+            overlay.addEventListener('click', closePopup);
+            closeBtn.addEventListener('click', closePopup);
         }
-        
-        overlay.addEventListener('click', closePopup);
-        closeBtn.addEventListener('click', closePopup);
     }
 
     // ===== DROPDOWN MENU =====
