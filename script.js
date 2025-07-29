@@ -17,10 +17,9 @@ document.addEventListener("DOMContentLoaded", async function() {
     Promise.all([
         new Promise(resolve => setTimeout(resolve, minLoadingTime)),
         new Promise(resolve => window.addEventListener('load', resolve)),
-        // Wait for ALL critical resources to load
+        // Wait for critical resources to load
         new Promise(resolve => {
             const criticalResources = [
-                // Core website images
                 'background1.png',
                 'dropdown1.png',
                 'notee.jpg',
@@ -28,15 +27,11 @@ document.addEventListener("DOMContentLoaded", async function() {
                 'dropdown-icon.png',
                 'paw1.png',
                 'gatito.gif',
-                
-                // Social media icons
                 'snap.png',
                 'insta.png',
                 'amz.png',
                 'kofi.png',
                 'mail.png',
-                
-                // Contact form icons
                 'igpf.png',
                 'fbpf.png',
                 'ttpf.png',
@@ -44,27 +39,11 @@ document.addEventListener("DOMContentLoaded", async function() {
                 'twtpf.png',
                 'ytpf.png',
                 'attpf.png',
-                
-                // Reaction system icons
                 'reactions.png',
                 'happy.png',
                 'cool.png',
                 'meh.png',
-                'sad.png',
-                
-                // Profile photos (will be dynamically loaded)
-                'pfp1.jpg',
-                'pfp2.jpg',
-                'pfp3.jpg',
-                'pfp1.gif',
-                'pfp2.gif',
-                'pfp3.gif',
-                'pfp1.png',
-                'pfp2.png',
-                'pfp3.png',
-                'pfp1.mp4',
-                'pfp2.mp4',
-                'pfp3.mp4'
+                'sad.png'
             ];
             
             let loadedCount = 0;
@@ -80,7 +59,6 @@ document.addEventListener("DOMContentLoaded", async function() {
                 const resource = new Image();
                 resource.onload = () => {
                     loadedCount++;
-                    console.log(`Loaded: ${src} (${loadedCount}/${totalResources})`);
                     
                     // Update loading bar if it's shown
                     if (loadingBarShown) {
@@ -89,13 +67,11 @@ document.addEventListener("DOMContentLoaded", async function() {
                     }
                     
                     if (loadedCount === totalResources) {
-                        console.log('All critical resources loaded!');
                         resolve();
                     }
                 };
                 resource.onerror = () => {
                     loadedCount++;
-                    console.log(`Failed to load: ${src} (${loadedCount}/${totalResources})`);
                     
                     // Update loading bar if it's shown
                     if (loadingBarShown) {
@@ -104,7 +80,6 @@ document.addEventListener("DOMContentLoaded", async function() {
                     }
                     
                     if (loadedCount === totalResources) {
-                        console.log('All critical resources processed!');
                         resolve();
                     }
                 };
@@ -121,14 +96,10 @@ document.addEventListener("DOMContentLoaded", async function() {
                     // Set initial progress based on current loaded count
                     const currentProgress = (loadedCount / totalResources) * 100;
                     loadingBarFill.style.width = `${currentProgress}%`;
-                    
-                    console.log('Loading bar shown after 4 seconds');
                 }
             }, loadingBarDelay);
         })
     ]).then(async () => {
-        console.log('🎉 All resources loaded successfully! Initializing app...');
-        
         // Load Supabase only after the initial loading is complete
         const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
         window.supabase = createClient(
@@ -145,7 +116,6 @@ document.addEventListener("DOMContentLoaded", async function() {
             }
         );
 
-        console.log('🚀 Hiding loading screen and showing main content...');
         loadingScreen.style.opacity = 0;
         setTimeout(() => {
             loadingScreen.style.display = "none";
@@ -154,7 +124,6 @@ document.addEventListener("DOMContentLoaded", async function() {
                 iconContainer.style.visibility = "visible";
                 iconContainer.style.opacity = 1;
             }
-            console.log('✨ App fully initialized!');
             initApp();
         }, 500);
     }).catch(e => console.error("❌ Error during loading:", e));
@@ -211,7 +180,8 @@ document.addEventListener("DOMContentLoaded", async function() {
         contactModal.innerHTML = `
             <div class="contact-overlay"></div>
             <div class="contact-form">
-                <img src="" alt="Profile" class="contact-profile-pic" id="dynamic-profile-pic">
+                <div class="contact-profile-pic" id="dynamic-profile-pic">
+                </div>
                 <button class="contact-close-btn">×</button>
                 <div class="contact-header">
                     <h3 class="contact-title">Share your info with me</h3>
@@ -219,10 +189,10 @@ document.addEventListener("DOMContentLoaded", async function() {
                 <div class="contact-form-scroll">
                     <form class="contact-form-content">
                     <div class="name-phone-row">
-                        <div class="form-group">
-                            <input type="text" id="contact-name" placeholder="Name" maxlength="30">
-                        </div>
-                        <div class="form-group">
+                    <div class="form-group">
+                        <input type="text" id="contact-name" placeholder="Name" maxlength="30">
+                    </div>
+                    <div class="form-group">
                             <input type="tel" id="contact-phone" placeholder="Phone" maxlength="30">
                         </div>
                     </div>
@@ -338,10 +308,8 @@ document.addEventListener("DOMContentLoaded", async function() {
             const textareaGroup = modal.querySelector('.form-group textarea').closest('.form-group');
             if (selectedFiles.length > 0) {
                 textareaGroup.style.marginBottom = '80px';
-                console.log('Added margin for attachments');
             } else {
                 textareaGroup.style.marginBottom = '0px';
-                console.log('Removed margin - no attachments');
             }
         }
         
@@ -394,6 +362,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             input.type = 'file';
             input.accept = 'image/*,.pdf,.doc,.docx,.txt';
             input.multiple = true;
+            // On mobile, this will show options for camera, photos, and files
             
             input.addEventListener('change', function(e) {
                 const files = Array.from(e.target.files);
@@ -454,17 +423,19 @@ document.addEventListener("DOMContentLoaded", async function() {
                     // Update form spacing
                     updateFormSpacing();
                     
-                    // Don't upload immediately - just show preview
-                    console.log('File added to preview:', file.name);
                 });
             });
             
             input.click();
         };
         
-        // Add both click and touch event listeners
+        // Add both click and touch event listeners with better iOS support
         contactAttachmentIcon.addEventListener('click', handleAttachmentClick);
-        contactAttachmentIcon.addEventListener('touchstart', handleAttachmentClick, { passive: false });
+        contactAttachmentIcon.addEventListener('touchstart', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            handleAttachmentClick(e);
+        }, { passive: false });
         
         // Form submission with validation
         form.addEventListener('submit', async function(e) {
@@ -568,16 +539,12 @@ document.addEventListener("DOMContentLoaded", async function() {
     // Profile photo cycling functionality
     async function loadProfilePhotos(modal) {
         try {
-            console.log('Loading profile photos...');
-            
             // Get list of profile photos from pfps folder
             if (globalProfilePhotos.length === 0) {
                 globalProfilePhotos = await getProfilePhotosList();
-                console.log('Found profile photos:', globalProfilePhotos);
             }
             
             if (globalProfilePhotos.length === 0) {
-                console.log('No profile photos found, using fallback');
                 // Fallback if no photos found
                 const profilePic = modal.querySelector('#dynamic-profile-pic');
                 profilePic.src = 'pfp.png'; // Fallback to original
@@ -633,8 +600,21 @@ document.addEventListener("DOMContentLoaded", async function() {
                         existingVideo.remove();
                     }
                     
+                    // Create img element and replace the div content
+                    const img = document.createElement('img');
+                    img.src = currentFile;
+                    img.alt = 'Profile';
+                    img.style.cssText = `
+                        width: 100%;
+                        height: 100%;
+                        border-radius: 50%;
+                        object-fit: cover;
+                    `;
+                    
+                    // Clear the div and add the image
+                    profilePic.innerHTML = '';
+                    profilePic.appendChild(img);
                     profilePic.style.display = 'block';
-                    profilePic.src = currentFile;
                 }
             }
             
@@ -645,7 +625,17 @@ document.addEventListener("DOMContentLoaded", async function() {
             console.error('Error loading profile photos:', error);
             // Fallback to original
             const profilePic = modal.querySelector('#dynamic-profile-pic');
-            profilePic.src = 'pfp.png';
+            const img = document.createElement('img');
+            img.src = 'pfp.png';
+            img.alt = 'Profile';
+            img.style.cssText = `
+                width: 100%;
+                height: 100%;
+                border-radius: 50%;
+                object-fit: cover;
+            `;
+            profilePic.innerHTML = '';
+            profilePic.appendChild(img);
         }
     }
 
@@ -674,10 +664,9 @@ document.addEventListener("DOMContentLoaded", async function() {
                 const response = await fetch(filePath, { method: 'HEAD' });
                 if (response.ok) {
                     profilePhotos.push(filePath);
-                    console.log(`Found known profile photo: ${filePath}`);
                 }
             } catch (error) {
-                console.log(`Known profile photo not found: ${filePath}`);
+                // File not found, continue to next
             }
         }
         
@@ -687,7 +676,6 @@ document.addEventListener("DOMContentLoaded", async function() {
         }
         
         // Fallback: try to find any files with supported extensions
-        // This is a more generic approach that will work with any filename
         const genericPatterns = [
             'profile.jpg', 'profile.jpeg', 'profile.png', 'profile.gif', 'profile.mp4',
             'avatar.jpg', 'avatar.jpeg', 'avatar.png', 'avatar.gif', 'avatar.mp4',
@@ -705,15 +693,13 @@ document.addEventListener("DOMContentLoaded", async function() {
                 const response = await fetch(filePath, { method: 'HEAD' });
                 if (response.ok) {
                     profilePhotos.push(filePath);
-                    console.log(`Found generic profile photo: ${filePath}`);
                 }
             } catch (error) {
-                console.log(`Generic profile photo not found: ${filePath}`);
+                // File not found, continue to next
             }
         }
         
         // If still no files found, try any file with supported extensions
-        // This is the most flexible approach - will work with ANY filename
         const fallbackPatterns = [
             'a.jpg', 'a.jpeg', 'a.png', 'a.gif', 'a.mp4',
             'b.jpg', 'b.jpeg', 'b.png', 'b.gif', 'b.mp4',
@@ -729,10 +715,9 @@ document.addEventListener("DOMContentLoaded", async function() {
                 const response = await fetch(filePath, { method: 'HEAD' });
                 if (response.ok) {
                     profilePhotos.push(filePath);
-                    console.log(`Found fallback profile photo: ${filePath}`);
                 }
             } catch (error) {
-                console.log(`Fallback profile photo not found: ${filePath}`);
+                // File not found, continue to next
             }
         }
         
@@ -773,8 +758,6 @@ document.addEventListener("DOMContentLoaded", async function() {
     // File upload handling
     async function handleFileUpload(file, type) {
         try {
-            console.log('Starting file upload:', file.name, file.size, file.type);
-            
             // Check file size (max 5MB)
             if (file.size > 5 * 1024 * 1024) {
                 showConfirmation('File too large. Maximum size is 5MB.');
@@ -782,17 +765,12 @@ document.addEventListener("DOMContentLoaded", async function() {
             }
             
             // Convert file to base64
-            console.log('Converting file to base64...');
             const base64 = await fileToBase64(file);
-            console.log('Base64 conversion complete, length:', base64.length);
             
             // Get IP address
-            console.log('Getting IP address...');
             const ipAddress = await getIPAddress();
-            console.log('IP address:', ipAddress);
             
             // Save to Supabase
-            console.log('Saving to Supabase...');
             const { data, error } = await window.supabase
                 .from('contact_attachments')
                 .insert([{
@@ -806,11 +784,9 @@ document.addEventListener("DOMContentLoaded", async function() {
                 }]);
             
             if (error) {
-                console.error('Supabase error:', error);
                 throw error;
             }
             
-            console.log('Upload successful!');
             showConfirmation('File uploaded successfully!');
             
         } catch (error) {
@@ -1166,8 +1142,6 @@ document.addEventListener("DOMContentLoaded", async function() {
             postsButton?.addEventListener('click', async () => {
                 postsPopup.style.display = 'flex';
                 await renderSubmissions();
-                // Add scroll listener after popup is opened
-                setTimeout(addPostsScrollListener, 100);
             });
 
             closePostsPopup?.addEventListener('click', () => {
@@ -1176,82 +1150,22 @@ document.addEventListener("DOMContentLoaded", async function() {
             
             // Close popup when clicking outside
             postsPopup?.addEventListener('click', (e) => {
-    if (e.target === postsPopup) {
-        postsPopup.style.display = 'none';
-    }
-});
-
-// Dynamic header transformation on scroll
-let lastScrollTop = 0;
-let scrollThreshold = 20; // Reduced threshold for easier testing
-let isCompact = false;
-
-// Function to handle scroll events
-function handlePostsScroll(e) {
-    const scrollTop = e.target.scrollTop;
-    const postsHeader = postsPopup?.querySelector('.posts-header');
-    
-    if (!postsHeader) return;
-    
-    // Check if scrolling down and past threshold
-    if (scrollTop > scrollThreshold && !isCompact) {
-        postsHeader.classList.add('compact');
-        isCompact = true;
-    }
-    // Check if scrolling up and back to top
-    else if (scrollTop <= scrollThreshold && isCompact) {
-        postsHeader.classList.remove('compact');
-        isCompact = false;
-    }
-    
-    lastScrollTop = scrollTop;
-}
-
-// Add scroll listener to the posts content area
-postsPopup?.addEventListener('DOMContentLoaded', () => {
-    const postsContent = postsPopup.querySelector('.posts-content');
-    if (postsContent) {
-        postsContent.addEventListener('scroll', handlePostsScroll);
-    }
-});
-
-// Add scroll listener when posts popup is opened
-function addPostsScrollListener() {
-    const postsContent = postsPopup?.querySelector('.posts-content');
-    if (postsContent) {
-        // Remove existing listener to avoid duplicates
-        postsContent.removeEventListener('scroll', handlePostsScroll);
-        // Add new listener
-        postsContent.addEventListener('scroll', handlePostsScroll);
-        
-        // Add some dummy content to make scrolling possible
-        const drawingsList = postsContent.querySelector('#drawings-list');
-        if (drawingsList && drawingsList.children.length === 0) {
-            for (let i = 0; i < 20; i++) {
-                const dummyItem = document.createElement('div');
-                dummyItem.className = 'post-item';
-                dummyItem.style.height = '100px';
-                dummyItem.style.background = 'rgba(255, 105, 180, 0.1)';
-                dummyItem.style.borderRadius = '8px';
-                dummyItem.style.marginBottom = '10px';
-                dummyItem.textContent = `Dummy item ${i + 1}`;
-                drawingsList.appendChild(dummyItem);
-            }
-        }
-    }
-}
-
-// Remove the old event listener since we're now adding it directly in initPostsSystem
-
-            document.querySelectorAll('.tab-button').forEach(btn => {
-                btn.addEventListener('click', function() {
-                    document.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active'));
-                    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-                    this.classList.add('active');
-                    document.getElementById(`${this.dataset.tab}-tab`).classList.add('active');
-                });
+                if (e.target === postsPopup) {
+                    postsPopup.style.display = 'none';
+                }
             });
+
         }
+
+        // Add tab switching functionality
+        document.querySelectorAll('.tab-button').forEach(btn => {
+            btn.addEventListener('click', function() {
+                document.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active'));
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                this.classList.add('active');
+                document.getElementById(this.dataset.tab).classList.add('active');
+            });
+        });
 
         async function renderSubmissions() {
             await renderDrawings();
@@ -1356,8 +1270,6 @@ function addPostsScrollListener() {
                 }
                 lastClickTime = now;
                 
-                console.log('Reaction button clicked!'); // Debug log
-                
                 // Check if this picker is already open
                 const existingPicker = document.querySelector('.reaction-picker');
                 if (existingPicker && existingPicker.dataset.drawingId === drawingId) {
@@ -1373,8 +1285,6 @@ function addPostsScrollListener() {
                     await new Promise(resolve => setTimeout(resolve, 50));
                 }
                 
-                console.log('About to get IP address...'); // Debug log
-                
                 // Get user's IP with timeout
                 let ipAddress = 'unknown';
                 try {
@@ -1388,8 +1298,6 @@ function addPostsScrollListener() {
                     console.log("Couldn't get IP address", ipError);
                 }
                 
-                console.log('Checking existing like...'); // Debug log
-                
                 // Check if user already liked this drawing
                 const { data: existingLike, error: checkError } = await window.supabase
                     .from('drawing_likes')
@@ -1402,8 +1310,6 @@ function addPostsScrollListener() {
                     console.error("Error checking existing like:", checkError);
                     return;
                 }
-                
-                console.log('About to show reaction picker...'); // Debug log
                 
                 // Show the new picker immediately
                 if (existingLike) {
@@ -1457,8 +1363,6 @@ function addPostsScrollListener() {
         }
 
         function showReactionPickerInternal(likeButton, drawingId, ipAddress, likeIconElement, currentReaction = null) {
-            console.log('showReactionPickerInternal called!'); // Debug log
-            
             // Create reaction picker overlay
             const picker = document.createElement('div');
             picker.className = 'reaction-picker';
@@ -1483,8 +1387,6 @@ function addPostsScrollListener() {
                     </div>
                 </div>
             `;
-            
-            console.log('Picker created, positioning...'); // Debug log
             
             // Position picker centered within the canvas boundaries
             const drawingElement = likeButton.closest('.post-item');
@@ -1515,32 +1417,28 @@ function addPostsScrollListener() {
             drawingElement.appendChild(picker);
             currentOpenPicker = picker;
             
-            console.log('Starting animation...'); // Debug log
-            
                             // Animate the roll transition with improved timing
-                setTimeout(() => {
-                    // Reset all other buttons first
-                    const allButtons = document.querySelectorAll('.like-button');
-                    allButtons.forEach(button => {
-                        if (button !== likeButton) {
-                            button.style.transform = 'translateX(0) rotate(0deg)';
-                            button.style.opacity = '1';
-                        }
-                    });
-                    
+            setTimeout(() => {
+                // Reset all other buttons first
+                const allButtons = document.querySelectorAll('.like-button');
+                allButtons.forEach(button => {
+                    if (button !== likeButton) {
+                        button.style.transform = 'translateX(0) rotate(0deg)';
+                        button.style.opacity = '1';
+                    }
+                });
+                
                     // Animate like button rolling away with bounce effect
                     likeButton.style.transform = 'translateX(-100%) rotate(-180deg) scale(0.8)';
-                    likeButton.style.opacity = '0';
-                    
+                likeButton.style.opacity = '0';
+                
                     // Animate picker sliding in with spring effect
-                    picker.style.transform = 'translateX(0) scale(1)';
-                    picker.style.opacity = '1';
+                picker.style.transform = 'translateX(0) scale(1)';
+                picker.style.opacity = '1';
             }, 50);
             
             // Load and display reaction counts
             loadReactionCounts(drawingId, picker, currentReaction);
-            
-            console.log('Picker setup complete!'); // Debug log
             
             // Add click and touch handlers for reactions
             picker.querySelectorAll('.reaction-option').forEach(option => {
@@ -1627,10 +1525,10 @@ function addPostsScrollListener() {
                     originalButton.style.transform = 'translateX(0) rotate(0deg)';
                     originalButton.style.opacity = '1';
                 }
-                
-                // Remove picker immediately
-                currentOpenPicker.parentElement.removeChild(currentOpenPicker);
-                currentOpenPicker = null;
+                    
+                    // Remove picker immediately
+                    currentOpenPicker.parentElement.removeChild(currentOpenPicker);
+                    currentOpenPicker = null;
             }
             
             // Always reset all buttons to normal state
