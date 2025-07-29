@@ -4,6 +4,25 @@ document.addEventListener("DOMContentLoaded", async function() {
     audio.loop = true;
     let audioPlayed = false;
     
+    // Global prevention of video fullscreen on mobile
+    document.addEventListener('webkitbeginfullscreen', (e) => {
+        e.preventDefault();
+        if (e.target.webkitExitFullscreen) {
+            e.target.webkitExitFullscreen();
+        }
+    }, true);
+    
+    document.addEventListener('webkitendfullscreen', (e) => {
+        e.preventDefault();
+    }, true);
+    
+    // Prevent any video from entering fullscreen
+    document.addEventListener('fullscreenchange', (e) => {
+        if (document.fullscreenElement && document.fullscreenElement.tagName === 'VIDEO') {
+            document.exitFullscreen();
+        }
+    });
+    
     // Audio management system for MP4 files
     let currentVideoAudio = null;
     let backgroundAudioMuted = false;
@@ -894,7 +913,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                         existingVideo.remove();
                     }
                     
-                    // Create video element
+                    // Create video element with mobile fullscreen prevention
                     const video = document.createElement('video');
                     video.className = 'profile-video';
                     video.src = currentFile;
@@ -902,6 +921,11 @@ document.addEventListener("DOMContentLoaded", async function() {
                     video.muted = false; // Allow sound for MP4 files
                     video.loop = true;
                     video.controls = false;
+                    video.disablePictureInPicture = true;
+                    video.disableRemotePlayback = true;
+                    video.playsInline = true; // Critical for mobile - prevents fullscreen
+                    video.webkitPlaysinline = true; // iOS Safari
+                    video.mozPlaysinline = true; // Firefox
                     video.style.cssText = `
                         width: 96px;
                         height: 96px;
@@ -914,10 +938,46 @@ document.addEventListener("DOMContentLoaded", async function() {
                         left: 50%;
                         transform: translateX(-50%);
                         z-index: 10;
+                        pointer-events: none; /* Prevent any user interaction */
                     `;
                     
                     // Set up audio management for this video
                     handleVideoAudio(video);
+                    
+                    // Prevent all user interaction with video
+                    video.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        return false;
+                    });
+                    
+                    video.addEventListener('touchstart', (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        return false;
+                    });
+                    
+                    video.addEventListener('touchend', (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        return false;
+                    });
+                    
+                    video.addEventListener('contextmenu', (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        return false;
+                    });
+                    
+                    // Prevent fullscreen attempts
+                    video.addEventListener('webkitbeginfullscreen', (e) => {
+                        e.preventDefault();
+                        video.webkitExitFullscreen();
+                    });
+                    
+                    video.addEventListener('webkitendfullscreen', (e) => {
+                        e.preventDefault();
+                    });
                     
                     // Add error handling for video loading
                     video.addEventListener('error', (e) => {
