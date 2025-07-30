@@ -35,7 +35,6 @@ document.addEventListener("DOMContentLoaded", async function() {
             backgroundAudioWasPlaying = !audio.paused;
             audio.volume = 0;
             backgroundAudioMuted = true;
-            console.log('Background music muted due to video audio, was playing:', backgroundAudioWasPlaying);
         }
     }
     
@@ -44,18 +43,15 @@ document.addEventListener("DOMContentLoaded", async function() {
         if (backgroundAudioMuted) {
             audio.volume = 1;
             backgroundAudioMuted = false;
-            console.log('Background music unmuted, was playing before:', backgroundAudioWasPlaying);
             
             // Resume audio if it was playing before and is now paused
             if (backgroundAudioWasPlaying && audio.paused) {
-                console.log('Resuming background audio that was playing before');
-                audio.play().catch(e => console.log('Audio resume failed:', e));
+                audio.play().catch(e => {});
             }
         } else {
             // Even if not muted, ensure audio is playing if it should be
             if (audioPlayed && audio.paused) {
-                console.log('Audio was paused but should be playing, resuming');
-                audio.play().catch(e => console.log('Audio resume failed:', e));
+                audio.play().catch(e => {});
             }
         }
     }
@@ -63,8 +59,6 @@ document.addEventListener("DOMContentLoaded", async function() {
     // Function to handle video audio
     function handleVideoAudio(videoElement) {
         if (!videoElement) return;
-        
-        console.log('Setting up audio management for video:', videoElement.src);
         
         // Remove any existing audio handler
         if (currentVideoAudio) {
@@ -78,91 +72,27 @@ document.addEventListener("DOMContentLoaded", async function() {
         
         // Mute background when video starts
         videoElement.addEventListener('play', () => {
-            console.log('Video started playing:', videoElement.src);
             muteBackgroundMusic();
         });
         
         // Unmute background when video pauses
         videoElement.addEventListener('pause', () => {
-            console.log('Video paused:', videoElement.src);
             unmuteBackgroundMusic();
         });
         
         // Unmute background when video ends
         videoElement.addEventListener('ended', () => {
-            console.log('Video ended:', videoElement.src);
             unmuteBackgroundMusic();
         });
         
-        // Also handle when video is ready to play
+        // Handle video state changes
         videoElement.addEventListener('canplay', () => {
-            console.log('Video ready to play:', videoElement.src);
-            // If video is playing, mute background
             if (!videoElement.paused) {
                 muteBackgroundMusic();
             }
         });
         
-        // Handle volume changes
-        videoElement.addEventListener('volumechange', () => {
-            console.log('Video volume changed:', videoElement.volume);
-            if (videoElement.volume > 0 && !videoElement.paused) {
-                muteBackgroundMusic();
-            }
-        });
-        
-        // Also handle when video is removed from DOM
-        const observer = new MutationObserver((mutations) => {
-            mutations.forEach((mutation) => {
-                mutation.removedNodes.forEach((node) => {
-                    if (node === videoElement || (node.contains && node.contains(videoElement))) {
-                        console.log('Video removed from DOM, unmuting background music');
-                        unmuteBackgroundMusic();
-                        observer.disconnect();
-                    }
-                });
-            });
-        });
-        
-        // Additional safety: ensure audio is restored when video ends
-        videoElement.addEventListener('ended', () => {
-            console.log('Video ended, ensuring background audio is restored');
-            setTimeout(() => {
-                if (backgroundAudioMuted) {
-                    unmuteBackgroundMusic();
-                }
-            }, 100);
-        });
-        
-        // Additional safety: check audio state periodically
-        const videoAudioCheckInterval = setInterval(() => {
-            if (videoElement.paused || videoElement.ended) {
-                if (backgroundAudioMuted) {
-                    console.log('Video paused/ended, restoring background audio');
-                    unmuteBackgroundMusic();
-                }
-                clearInterval(videoAudioCheckInterval);
-            }
-        }, 500); // Check every 500ms
-        
-        observer.observe(document.body, {
-            childList: true,
-            subtree: true
-        });
-        
-        // Add a safety timeout to unmute background music after video duration
-        videoElement.addEventListener('loadedmetadata', () => {
-            const duration = videoElement.duration;
-            if (duration && duration > 0) {
-                setTimeout(() => {
-                    if (videoElement.paused || videoElement.ended) {
-                        unmuteBackgroundMusic();
-                    }
-                }, (duration * 1000) + 1000); // Add 1 second buffer
-            }
-        });
-        
-        // Periodic check to ensure audio state is correct
+        // Simple audio state management
         const audioCheckInterval = setInterval(() => {
             if (videoElement.paused || videoElement.ended) {
                 unmuteBackgroundMusic();
@@ -170,20 +100,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             } else if (!videoElement.paused && videoElement.volume > 0) {
                 muteBackgroundMusic();
             }
-        }, 1000); // Check every second
-        
-        // Clean up interval when video is removed
-        videoElement.addEventListener('removed', () => {
-            clearInterval(audioCheckInterval);
-        });
-        
-        // Final safety check - ensure audio state is correct after a short delay
-        setTimeout(() => {
-            if (videoElement && !videoElement.paused && videoElement.volume > 0) {
-                console.log('Final audio check - muting background music');
-                muteBackgroundMusic();
-            }
-        }, 500);
+        }, 1000);
     }
 
     // ===== LOADING SCREEN =====
@@ -197,7 +114,6 @@ document.addEventListener("DOMContentLoaded", async function() {
     
     // Mobile detection
     const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-    console.log('Device type:', isMobile ? 'Mobile' : 'Desktop');
     
     // Helper function to update loading bar with mobile optimization
     function updateLoadingBar(loadedCount, totalResources) {
@@ -280,7 +196,6 @@ document.addEventListener("DOMContentLoaded", async function() {
                     // Multiple event listeners for mobile compatibility
                     const audioLoaded = () => {
                         loadedCount++;
-                        console.log('Audio loaded:', src);
                         
                         // Update loading bar if it's shown
                         updateLoadingBar(loadedCount, totalResources);
@@ -296,7 +211,6 @@ document.addEventListener("DOMContentLoaded", async function() {
                     
                     audio.onerror = () => {
                         loadedCount++;
-                        console.log('Audio failed to load:', src);
                         
                         // Update loading bar if it's shown
                         updateLoadingBar(loadedCount, totalResources);
@@ -309,7 +223,6 @@ document.addEventListener("DOMContentLoaded", async function() {
                     // Mobile timeout for audio loading
                     setTimeout(() => {
                         if (audio.readyState < 1) { // Not loaded yet
-                            console.log('Audio loading timeout, continuing:', src);
                             audioLoaded();
                         }
                     }, 3000); // 3 second timeout for mobile
@@ -324,7 +237,6 @@ document.addEventListener("DOMContentLoaded", async function() {
                     // Multiple event listeners for mobile compatibility
                     const videoLoaded = () => {
                         loadedCount++;
-                        console.log('Video loaded:', src);
                         
                         // Update loading bar if it's shown
                         updateLoadingBar(loadedCount, totalResources);
@@ -340,7 +252,6 @@ document.addEventListener("DOMContentLoaded", async function() {
                     
                     video.onerror = () => {
                         loadedCount++;
-                        console.log('Video failed to load:', src);
                         
                         // Update loading bar if it's shown
                         updateLoadingBar(loadedCount, totalResources);
@@ -353,7 +264,6 @@ document.addEventListener("DOMContentLoaded", async function() {
                     // Mobile timeout for video loading
                     setTimeout(() => {
                         if (video.readyState < 1) { // Not loaded yet
-                            console.log('Video loading timeout, continuing:', src);
                             videoLoaded();
                         }
                     }, 5000); // 5 second timeout for mobile
@@ -364,7 +274,6 @@ document.addEventListener("DOMContentLoaded", async function() {
                     const resource = new Image();
                     resource.onload = () => {
                         loadedCount++;
-                        console.log('Image loaded:', src);
                         
                         // Update loading bar if it's shown
                         updateLoadingBar(loadedCount, totalResources);
@@ -375,7 +284,6 @@ document.addEventListener("DOMContentLoaded", async function() {
                     };
                     resource.onerror = () => {
                         loadedCount++;
-                        console.log('Image failed to load:', src);
                         
                         // Update loading bar if it's shown
                         updateLoadingBar(loadedCount, totalResources);
@@ -400,27 +308,24 @@ document.addEventListener("DOMContentLoaded", async function() {
                 }
             }, loadingBarDelay);
             
-            // Mobile-specific: Force show loading bar after 6 seconds if still loading
+            // Mobile-specific: Force show loading bar after 3 seconds if still loading
             setTimeout(() => {
                 if (!loadingBarShown) {
                     loadingBarShown = true;
                     loadingBarContainer.style.display = 'flex';
-                    console.log('Mobile: Forcing loading bar to show');
                 }
-            }, 6000);
+            }, 3000);
             
-            // Mobile-specific: Force completion after 15 seconds to prevent infinite loading
+            // Mobile-specific: Force completion after 8 seconds to prevent infinite loading
             setTimeout(() => {
                 if (loadedCount < totalResources) {
-                    console.log('Mobile: Force completing loading after timeout');
                     loadedCount = totalResources;
                     resolve();
                 }
-            }, 15000);
+            }, 8000);
         })
     ]).then(async () => {
         // Load Supabase only after the initial loading is complete
-        console.log('Loading Supabase...');
         
         try {
             const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
@@ -437,9 +342,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                     }
                 }
             );
-            console.log('Supabase loaded successfully');
         } catch (supabaseError) {
-            console.error('Supabase loading failed, continuing without it:', supabaseError);
             // Create a dummy supabase object to prevent errors
             window.supabase = {
                 from: () => ({ select: () => ({ eq: () => ({ single: () => Promise.resolve({ data: null, error: null }) }) }) }),
@@ -448,7 +351,6 @@ document.addEventListener("DOMContentLoaded", async function() {
         }
 
         // Final check - ensure everything is ready
-        console.log('All resources loaded, showing website...');
         loadingScreen.style.opacity = 0;
         setTimeout(() => {
             loadingScreen.style.display = "none";
@@ -460,9 +362,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             initApp();
         }, 500);
     }).catch(e => {
-        console.error("❌ Error during loading:", e);
         // Mobile fallback: show website even if loading fails
-        console.log('Mobile: Showing website despite loading errors');
         loadingScreen.style.opacity = 0;
         setTimeout(() => {
             loadingScreen.style.display = "none";
@@ -488,7 +388,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             if (mainScreen) mainScreen.style.display = "block";
 
             if (!audioPlayed) {
-                audio.play().catch(e => console.log("Audio play blocked:", e));
+                audio.play().catch(e => {});
                 audioPlayed = true;
             }
         }, 500);
@@ -517,6 +417,8 @@ document.addEventListener("DOMContentLoaded", async function() {
             e.preventDefault();
             showContactForm();
         });
+    } else {
+        console.error('Email icon not found!');
     }
 
     // Contact form functionality
@@ -534,7 +436,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                     <h3 class="contact-title">Share your info with me</h3>
                 </div>
                 <div class="contact-form-scroll">
-                    <form class="contact-form-content">
+                    <div class="contact-form-content">
                     <div class="name-phone-row">
                     <div class="form-group">
                         <input type="text" id="contact-name" placeholder="Name" maxlength="30">
@@ -569,8 +471,8 @@ document.addEventListener("DOMContentLoaded", async function() {
                         </div>
                     </div>
                     <div class="attachment-preview" id="attachment-preview"></div>
-                    <button type="submit" class="connect-btn">CONNECT</button>
-                    </form>
+                    <button type="button" class="connect-btn" id="connect-submit-btn">CONNECT</button>
+                    </div>
                     <p class="contact-disclaimer">By selecting "connect" you acknowledge that you have read, understood, and agree to be bound by our <span class="clickable-link" data-link="privacy">Privacy Policy</span> and <span class="clickable-link" data-link="terms">Terms & Conditions</span>.</p>
                 </div>
             </div>
@@ -579,17 +481,20 @@ document.addEventListener("DOMContentLoaded", async function() {
         
         document.body.appendChild(contactModal);
         
-        // Load and cycle through profile photos
-        loadProfilePhotos(contactModal);
-        
-        // Initialize contact form functionality
-        initContactForm(contactModal);
+        // Wait for DOM to be ready before initializing
+        setTimeout(() => {
+            // Load and cycle through profile photos
+            loadProfilePhotos(contactModal);
+            
+            // Initialize contact form functionality
+            initContactForm(contactModal);
+        }, 100);
     }
 
     function initContactForm(modal) {
         const overlay = modal.querySelector('.contact-overlay');
         const closeBtn = modal.querySelector('.contact-close-btn');
-        const form = modal.querySelector('.contact-form-content');
+        const formContent = modal.querySelector('.contact-form-content');
         const socialSelector = modal.querySelector('.social-selector');
         const socialDropdown = modal.querySelector('.social-dropdown');
         const socialIcon = modal.querySelector('.social-icon');
@@ -602,28 +507,23 @@ document.addEventListener("DOMContentLoaded", async function() {
             // Stop any playing video and unmute background music
             const currentVideo = modal.querySelector('.profile-video');
             if (currentVideo) {
-                console.log('Modal close: Found video, pausing and handling audio');
                 currentVideo.pause();
                 currentVideo.currentTime = 0;
                 
                 // Force unmute background music with improved tracking
-                console.log('Modal close: Force unmuting background music');
                 audio.volume = 1;
                 backgroundAudioMuted = false;
                 
                 // Resume audio if it was playing before
                 if (backgroundAudioWasPlaying && audio.paused) {
-                    console.log('Modal close: Resuming background audio');
-                    audio.play().catch(e => console.log('Audio resume failed:', e));
+                    audio.play().catch(e => {});
                 }
             } else {
-                console.log('Modal close: No video found, just unmuting');
                 // Even if no video, ensure audio is restored
                 audio.volume = 1;
                 backgroundAudioMuted = false;
                 if (backgroundAudioWasPlaying && audio.paused) {
-                    console.log('Modal close: Resuming background audio (no video)');
-                    audio.play().catch(e => console.log('Audio resume failed:', e));
+                    audio.play().catch(e => {});
                 }
             }
             
@@ -634,14 +534,11 @@ document.addEventListener("DOMContentLoaded", async function() {
             setTimeout(() => {
                 document.body.removeChild(modal);
                 // Final audio restoration after modal is removed
-                console.log('Modal removed from DOM, final audio check');
                 setTimeout(() => {
                     if (backgroundAudioMuted) {
-                        console.log('Final: Unmuting background audio');
                         unmuteBackgroundMusic();
                     } else if (audioPlayed && audio.paused) {
-                        console.log('Final: Resuming background audio');
-                        audio.play().catch(e => console.log('Final audio resume failed:', e));
+                        audio.play().catch(e => {});
                     }
                 }, 100);
             }, 300);
@@ -728,15 +625,6 @@ document.addEventListener("DOMContentLoaded", async function() {
         
         // Handle attachment icon click/touch for mobile compatibility
         const handleAttachmentClick = async function(e) {
-            console.log('=== CLICK DEBUG START ===');
-            console.log('Click event type:', e.type);
-            console.log('Click target:', e.target);
-            console.log('Click current target:', e.currentTarget);
-            console.log('Click coordinates:', `${e.clientX}, ${e.clientY}`);
-            console.log('Element visible:', contactAttachmentIcon.offsetParent !== null);
-            console.log('Element display:', window.getComputedStyle(contactAttachmentIcon).display);
-            console.log('Element visibility:', window.getComputedStyle(contactAttachmentIcon).visibility);
-            console.log('Element opacity:', window.getComputedStyle(contactAttachmentIcon).opacity);
             
             // Don't prevent default on iOS - let the native behavior work
             e.stopPropagation();
@@ -838,32 +726,17 @@ document.addEventListener("DOMContentLoaded", async function() {
                 });
                 
                 // Clean up the input element
-                setTimeout(() => {
-                    if (document.body.contains(input)) {
-                        document.body.removeChild(input);
-                    }
-                }, 100);
+                if (document.body.contains(input)) {
+                    document.body.removeChild(input);
+                }
             });
             
             // Trigger the file input
-            // Use requestAnimationFrame to ensure DOM is ready
-            requestAnimationFrame(() => {
-                input.click();
-            });
+            input.click();
         };
         
-        // Enhanced iOS file input handling with comprehensive debugging
+        // Enhanced iOS file input handling
         const handleAttachmentTouch = function(e) {
-            console.log('=== ATTACHMENT DEBUG START ===');
-            console.log('Event type:', e.type);
-            console.log('Target:', e.target);
-            console.log('Current target:', e.currentTarget);
-            console.log('Touch coordinates:', e.touches ? `${e.touches[0].clientX}, ${e.touches[0].clientY}` : 'No touch data');
-            console.log('Element position:', contactAttachmentIcon.getBoundingClientRect());
-            console.log('Element computed style:', window.getComputedStyle(contactAttachmentIcon));
-            console.log('Parent element:', contactAttachmentIcon.parentElement);
-            console.log('Z-index:', window.getComputedStyle(contactAttachmentIcon).zIndex);
-            console.log('Pointer events:', window.getComputedStyle(contactAttachmentIcon).pointerEvents);
             
             e.preventDefault();
             e.stopPropagation();
@@ -891,9 +764,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             
             // Set up change event listener
             input.addEventListener('change', function(e) {
-                console.log('File input change detected');
                 const files = Array.from(e.target.files);
-                console.log('Selected files:', files.length);
                 
                 files.forEach(async file => {
                     // Check if we've reached the 5 attachment limit for this session
@@ -954,40 +825,19 @@ document.addEventListener("DOMContentLoaded", async function() {
                 });
                 
                 // Clean up the input element
-                setTimeout(() => {
-                    if (document.body.contains(input)) {
-                        document.body.removeChild(input);
-                    }
-                }, 100);
+                if (document.body.contains(input)) {
+                    document.body.removeChild(input);
+                }
             });
             
-            // Trigger the file input with multiple methods for iOS compatibility
-            setTimeout(() => {
-                try {
-                    input.click();
-                } catch (e) {
-                    console.log('Click method failed, trying alternative');
-                    // Alternative method for iOS
-                    const event = new MouseEvent('click', {
-                        view: window,
-                        bubbles: true,
-                        cancelable: true
-                    });
-                    input.dispatchEvent(event);
-                }
-            }, 100);
+            // Trigger the file input
+            input.click();
         };
         
-        // Simplified approach - just use click for everything
+        // Attachment button click handler
         contactAttachmentButton.addEventListener('click', function(e) {
-            console.log('=== ATTACHMENT BUTTON CLICK ===');
-            console.log('Attachment button clicked');
-            console.log('Event:', e);
-            console.log('Target:', e.target);
-            
             e.preventDefault();
             e.stopPropagation();
-            e.stopImmediatePropagation();
             
             // Create file input immediately
             const input = document.createElement('input');
@@ -1009,9 +859,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             
             // Set up change event listener
             input.addEventListener('change', function(e) {
-                console.log('File input change detected');
                 const files = Array.from(e.target.files);
-                console.log('Selected files:', files.length);
                 
                 files.forEach(async file => {
                     // Check if we've reached the 5 attachment limit for this session
@@ -1072,74 +920,21 @@ document.addEventListener("DOMContentLoaded", async function() {
                 });
                 
                 // Clean up the input element
-                setTimeout(() => {
-                    if (document.body.contains(input)) {
-                        document.body.removeChild(input);
-                    }
-                }, 100);
+                if (document.body.contains(input)) {
+                    document.body.removeChild(input);
+                }
             });
             
-            // Trigger the file input with multiple fallbacks
-            setTimeout(() => {
-                try {
-                    input.click();
-                } catch (e) {
-                    console.log('Click failed, trying alternative method');
-                    // Alternative method
-                    const event = new MouseEvent('click', {
-                        view: window,
-                        bubbles: true,
-                        cancelable: true
-                    });
-                    input.dispatchEvent(event);
-                }
-            }, 50);
+            // Trigger the file input
+            input.click();
         });
         
-        // Also add touchstart as backup
+        // Single touch event listener for iOS compatibility
         contactAttachmentButton.addEventListener('touchstart', function(e) {
-            console.log('Touch start detected on attachment button');
             e.preventDefault();
             e.stopPropagation();
-            e.stopImmediatePropagation();
-            // Trigger the same click handler
             this.click();
         }, { passive: false });
-        
-        // Additional event listeners to ensure it always works
-        contactAttachmentButton.addEventListener('mousedown', function(e) {
-            console.log('Mouse down detected on attachment button');
-            e.preventDefault();
-            e.stopPropagation();
-            e.stopImmediatePropagation();
-            // Trigger the same click handler
-            this.click();
-        }, { passive: false });
-        
-        // Test if element is receiving any events at all
-        contactAttachmentButton.addEventListener('mouseenter', () => {
-            console.log('Mouse entered attachment button');
-        });
-        
-        contactAttachmentButton.addEventListener('mouseleave', () => {
-            console.log('Mouse left attachment button');
-        });
-        
-        // Test touch events
-        contactAttachmentButton.addEventListener('touchstart', () => {
-            console.log('Touch start on attachment button');
-        }, { passive: true });
-        
-        contactAttachmentButton.addEventListener('touchend', () => {
-            console.log('Touch end on attachment button');
-        }, { passive: true });
-        
-        // Additional iOS compatibility events
-        contactAttachmentIcon.addEventListener('mousedown', function(e) {
-            if (e.type === 'mousedown') {
-                handleAttachmentClick(e);
-            }
-        });
         
         // Force iOS to recognize the element as clickable
         contactAttachmentButton.style.cursor = 'pointer';
@@ -1165,53 +960,35 @@ document.addEventListener("DOMContentLoaded", async function() {
             }
         });
         
-        // iOS detection and additional compatibility
+        // Minimal iOS compatibility - only essential touch handling
         const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
                      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
         
         if (isIOS) {
-            console.log('iOS detected, applying enhanced file input handling');
-            
-            // Additional iOS-specific event listeners
-            contactAttachmentButton.addEventListener('gesturestart', function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-            }, { passive: false });
-            
-            contactAttachmentButton.addEventListener('gesturechange', function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-            }, { passive: false });
-            
-            contactAttachmentButton.addEventListener('gestureend', function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-            }, { passive: false });
-            
-            // iOS-specific click handling
+            // Essential iOS touch handling only
             contactAttachmentButton.addEventListener('pointerdown', function(e) {
-                console.log('iOS pointerdown detected');
                 e.preventDefault();
                 e.stopPropagation();
                 handleAttachmentTouch(e);
             }, { passive: false });
-            
-            // Fallback for iOS Safari quirks
-            contactAttachmentButton.addEventListener('pointerup', function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-            }, { passive: false });
         }
         
         // Form submission with validation
-        form.addEventListener('submit', async function(e) {
+        const connectButton = modal.querySelector('#connect-submit-btn');
+        
+        if (!connectButton) {
+            return;
+        }
+        
+        connectButton.addEventListener('click', async function(e) {
             e.preventDefault();
+            e.stopPropagation();
             
-            const name = document.getElementById('contact-name').value.trim();
-            const email = document.getElementById('contact-email').value.trim();
-            const phone = document.getElementById('contact-phone').value.trim();
-            const username = document.getElementById('contact-username').value.trim();
-            const notes = document.getElementById('contact-notes').value.trim();
+            const name = modal.querySelector('#contact-name').value.trim();
+            const email = modal.querySelector('#contact-email').value.trim();
+            const phone = modal.querySelector('#contact-phone').value.trim();
+            const username = modal.querySelector('#contact-username').value.trim();
+            const notes = modal.querySelector('#contact-notes').value.trim();
             
             // Check if at least one field has 2+ characters
             const filledFields = [name, email, phone, username, notes].filter(field => field.length >= 2);
@@ -1233,6 +1010,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             };
             
             try {
+                
                 // First save the contact information
                 const { data, error } = await window.supabase
                     .from('contacts')
@@ -1246,15 +1024,19 @@ document.addEventListener("DOMContentLoaded", async function() {
                     
                     for (const file of selectedFiles) {
                         try {
-                            const base64 = await fileToBase64(file);
+                            // Upload to Supabase Storage instead of base64
+                            const uploadResult = await uploadFileToStorage(file, ipAddress);
+                            
+                            // Save file metadata to database
                             await window.supabase
                                 .from('contact_attachments')
                                 .insert([{
-                                    filename: file.name,
+                                    filename: uploadResult.filename,
                                     file_type: 'attachment',
-                                    file_size: file.size,
-                                    mime_type: file.type,
-                                    file_data: base64,
+                                    file_size: uploadResult.file_size,
+                                    mime_type: uploadResult.mime_type,
+                                    storage_path: uploadResult.storage_path,
+                                    public_url: uploadResult.public_url,
                                     ip_address: ipAddress,
                                     created_at: new Date().toISOString()
                                 }]);
@@ -1275,11 +1057,93 @@ document.addEventListener("DOMContentLoaded", async function() {
             }
         });
         
+
+        
         // Clickable links functionality
-        modal.querySelectorAll('.clickable-link').forEach(link => {
-            link.addEventListener('click', function(e) {
+        const clickableLinks = modal.querySelectorAll('.clickable-link');
+        
+        clickableLinks.forEach(link => {
+            // Remove any existing event listeners
+            const newLink = link.cloneNode(true);
+            link.parentNode.replaceChild(newLink, link);
+            
+            newLink.addEventListener('click', function(e) {
                 e.preventDefault();
-                showTermsPrivacyPopup();
+                e.stopPropagation();
+                
+                const linkType = this.getAttribute('data-link');
+                
+                if (linkType === 'privacy' || linkType === 'terms') {
+                    // Define showTermsPrivacyPopup function inside this scope
+                    function showTermsPrivacyPopup(linkType = 'privacy') {
+                        const modal = document.getElementById('terms-privacy-modal');
+                        if (modal) {
+                            modal.style.display = 'flex';
+                            modal.style.opacity = '1';
+                            
+                            // Update modal content based on link type
+                            const title = modal.querySelector('.terms-title');
+                            const content = modal.querySelector('.terms-content');
+                            
+                            if (linkType === 'privacy') {
+                                title.textContent = 'Privacy Policy';
+                                content.innerHTML = `
+                                    <p><strong>Privacy Policy</strong></p>
+                                    <p>This privacy policy describes how we collect, use, and protect your personal information when you use our website.</p>
+                                    <p><strong>Information We Collect:</strong></p>
+                                    <p>We collect information you provide directly to us, such as when you fill out contact forms, including your name, email address, phone number, and any attachments you submit.</p>
+                                    <p><strong>How We Use Your Information:</strong></p>
+                                    <p>We use the information we collect to respond to your inquiries, provide customer support, and improve our services.</p>
+                                    <p><strong>Information Sharing:</strong></p>
+                                    <p>We do not sell, trade, or otherwise transfer your personal information to third parties without your consent, except as required by law.</p>
+                                    <p><strong>Data Security:</strong></p>
+                                    <p>We implement appropriate security measures to protect your personal information against unauthorized access, alteration, disclosure, or destruction.</p>
+                                    <p><strong>Contact Us:</strong></p>
+                                    <p>If you have any questions about this privacy policy, please contact us through the contact form on this website.</p>
+                                `;
+                            } else if (linkType === 'terms') {
+                                title.textContent = 'Terms & Conditions';
+                                content.innerHTML = `
+                                    <p><strong>Terms & Conditions</strong></p>
+                                    <p>By using this website, you agree to be bound by these terms and conditions.</p>
+                                    <p><strong>Acceptable Use:</strong></p>
+                                    <p>You agree to use this website only for lawful purposes and in a way that does not infringe the rights of others or inhibit their use of the website.</p>
+                                    <p><strong>Content Submission:</strong></p>
+                                    <p>When you submit content through our contact form, you represent that you have the right to share such content and that it does not violate any third-party rights.</p>
+                                    <p><strong>Intellectual Property:</strong></p>
+                                    <p>All content on this website, including text, graphics, logos, and software, is the property of the website owner and is protected by copyright laws.</p>
+                                    <p><strong>Limitation of Liability:</strong></p>
+                                    <p>We shall not be liable for any indirect, incidental, special, consequential, or punitive damages arising out of or relating to your use of this website.</p>
+                                    <p><strong>Changes to Terms:</strong></p>
+                                    <p>We reserve the right to modify these terms at any time. Your continued use of the website constitutes acceptance of any changes.</p>
+                                    <p><strong>Contact:</strong></p>
+                                    <p>For questions about these terms, please contact us through the contact form on this website.</p>
+                                `;
+                            }
+                            
+                            // Close functionality
+                            const overlay = modal.querySelector('.terms-overlay');
+                            const closeBtn = modal.querySelector('.terms-close-btn');
+                            
+                            function closePopup() {
+                                modal.style.opacity = '0';
+                                setTimeout(() => {
+                                    modal.style.display = 'none';
+                                }, 300);
+                            }
+                            
+                            // Remove existing listeners to prevent duplicates
+                            overlay.removeEventListener('click', closePopup);
+                            closeBtn.removeEventListener('click', closePopup);
+                            
+                            // Add new listeners
+                            overlay.addEventListener('click', closePopup);
+                            closeBtn.addEventListener('click', closePopup);
+                        }
+                    }
+                    
+                    showTermsPrivacyPopup(linkType);
+                }
             });
         });
         
@@ -1293,7 +1157,6 @@ document.addEventListener("DOMContentLoaded", async function() {
             const ipData = await ipResponse.json();
             return ipData.ip;
         } catch (ipError) {
-            console.log("Couldn't get IP address", ipError);
             return 'unknown';
         }
     }
@@ -1404,7 +1267,6 @@ document.addEventListener("DOMContentLoaded", async function() {
                     
                     // Add error handling for video loading
                     video.addEventListener('error', (e) => {
-                        console.error('Error loading video:', currentFile, e);
                         // Fallback to next shuffled image if video fails
                         if (globalProfilePhotos.length > 1) {
                             currentShuffleIndex++;
@@ -1420,19 +1282,17 @@ document.addEventListener("DOMContentLoaded", async function() {
                     
                     // Add load event to ensure video is ready
                     video.addEventListener('loadeddata', () => {
-                        console.log('Video loaded successfully:', currentFile);
+                        // Video loaded successfully
                     });
                     
                     // Ensure video starts playing and audio works
                     video.addEventListener('canplay', () => {
-                        console.log('Video can play:', currentFile);
                         // Force play to ensure audio starts
-                        video.play().catch(e => console.log('Autoplay blocked:', e));
+                        video.play().catch(e => {});
                     });
                     
                     // Additional check for when video actually starts playing
                     video.addEventListener('playing', () => {
-                        console.log('Video is now playing:', currentFile);
                         muteBackgroundMusic();
                     });
                     
@@ -1469,7 +1329,6 @@ document.addEventListener("DOMContentLoaded", async function() {
                 // Create new shuffle when we run out or haven't shuffled yet
                 shuffledProfilePhotos = [...globalProfilePhotos].sort(() => Math.random() - 0.5);
                 currentShuffleIndex = 0;
-                console.log('Created new shuffle:', shuffledProfilePhotos);
             }
             
             globalProfileIndex = currentShuffleIndex;
@@ -1477,7 +1336,6 @@ document.addEventListener("DOMContentLoaded", async function() {
             currentShuffleIndex++;
             
         } catch (error) {
-            console.error('Error loading profile photos:', error);
             // Fallback to original
             const profilePic = modal.querySelector('#dynamic-profile-pic');
             const img = document.createElement('img');
@@ -1618,21 +1476,22 @@ document.addEventListener("DOMContentLoaded", async function() {
                 return;
             }
             
-            // Convert file to base64
-            const base64 = await fileToBase64(file);
-            
             // Get IP address
             const ipAddress = await getIPAddress();
             
-            // Save to Supabase
+            // Upload to Supabase Storage
+            const uploadResult = await uploadFileToStorage(file, ipAddress);
+            
+            // Save metadata to Supabase
             const { data, error } = await window.supabase
                 .from('contact_attachments')
                 .insert([{
-                    filename: file.name,
+                    filename: uploadResult.filename,
                     file_type: type,
-                    file_size: file.size,
-                    mime_type: file.type,
-                    file_data: base64,
+                    file_size: uploadResult.file_size,
+                    mime_type: uploadResult.mime_type,
+                    storage_path: uploadResult.storage_path,
+                    public_url: uploadResult.public_url,
                     ip_address: ipAddress,
                     created_at: new Date().toISOString()
                 }]);
@@ -1656,6 +1515,8 @@ document.addEventListener("DOMContentLoaded", async function() {
                     errorMessage = 'Permission denied. Please check Supabase policies.';
                 } else if (error.message.includes('network')) {
                     errorMessage = 'Network error. Please check your internet connection.';
+                } else if (error.message.includes('storage')) {
+                    errorMessage = 'Storage error. Please check Supabase Storage configuration.';
                 } else {
                     errorMessage = `Upload failed: ${error.message}`;
                 }
@@ -1678,33 +1539,58 @@ document.addEventListener("DOMContentLoaded", async function() {
         });
     }
 
-    // Terms & Privacy popup
-    function showTermsPrivacyPopup() {
-        const modal = document.getElementById('terms-privacy-modal');
-        if (modal) {
-            modal.style.display = 'flex';
-            modal.style.opacity = '1';
-            
-            // Close functionality
-            const overlay = modal.querySelector('.terms-overlay');
-            const closeBtn = modal.querySelector('.terms-close-btn');
-            
-            function closePopup() {
-                modal.style.opacity = '0';
-                setTimeout(() => {
-                    modal.style.display = 'none';
-                }, 300);
+    // Upload file to Supabase Storage
+    async function uploadFileToStorage(file, ipAddress) {
+        try {
+            // Check if Supabase is available
+            if (!window.supabase || !window.supabase.storage) {
+                throw new Error('Supabase storage not available');
             }
             
-            // Remove existing listeners to prevent duplicates
-            overlay.removeEventListener('click', closePopup);
-            closeBtn.removeEventListener('click', closePopup);
+            // Create a unique filename with timestamp and IP
+            const timestamp = Date.now();
+            const fileExtension = file.name.split('.').pop();
+            const uniqueFilename = `${timestamp}_${ipAddress.replace(/[^a-zA-Z0-9]/g, '')}.${fileExtension}`;
             
-            // Add new listeners
-            overlay.addEventListener('click', closePopup);
-            closeBtn.addEventListener('click', closePopup);
+            // Upload to Supabase Storage
+            const { data, error } = await window.supabase.storage
+                .from('contact-attachments')
+                .upload(uniqueFilename, file, {
+                    cacheControl: '3600',
+                    upsert: false
+                });
+            
+            if (error) {
+                throw error;
+            }
+            
+            // Get the public URL
+            const { data: urlData } = window.supabase.storage
+                .from('contact-attachments')
+                .getPublicUrl(uniqueFilename);
+            
+            return {
+                filename: file.name,
+                storage_path: uniqueFilename,
+                public_url: urlData.publicUrl,
+                file_size: file.size,
+                mime_type: file.type
+            };
+        } catch (error) {
+            console.error('Error uploading to storage:', error);
+            
+            // Provide specific error messages
+            if (error.message.includes('bucket')) {
+                throw new Error('Storage bucket not found. Please create the contact-attachments bucket in Supabase.');
+            } else if (error.message.includes('permission')) {
+                throw new Error('Storage permission denied. Please check Supabase storage policies.');
+            } else {
+                throw new Error(`Upload failed: ${error.message}`);
+            }
         }
     }
+
+
 
     // ===== DROPDOWN MENU =====
     const dropdownButton = document.querySelector(".dropdown-button");
@@ -1889,7 +1775,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                     const ipData = await ipResponse.json();
                     ipAddress = ipData.ip;
                 } catch (ipError) {
-                    console.log("Couldn't get IP address", ipError);
+                    // IP address fetch failed
                 }
 
                 const { error } = await window.supabase
@@ -1952,7 +1838,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                         const ipData = await ipResponse.json();
                         ipAddress = ipData.ip;
                     } catch (ipError) {
-                        console.log("Couldn't get IP address", ipError);
+                        // IP address fetch failed
                     }
 
                     const { data, error } = await window.supabase
@@ -2128,21 +2014,16 @@ document.addEventListener("DOMContentLoaded", async function() {
                 // Close any other open picker first
                 if (currentOpenPicker) {
                     closeReactionPicker();
-                    // Wait a bit to ensure clean state
-                    await new Promise(resolve => setTimeout(resolve, 50));
                 }
                 
-                // Get user's IP with timeout
+                // Get user's IP
                 let ipAddress = 'unknown';
                 try {
-                    const ipResponse = await Promise.race([
-                        fetch('https://api.ipify.org?format=json'),
-                        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 3000))
-                    ]);
+                    const ipResponse = await fetch('https://api.ipify.org?format=json');
                     const ipData = await ipResponse.json();
                     ipAddress = ipData.ip;
                 } catch (ipError) {
-                    console.log("Couldn't get IP address", ipError);
+                    // IP address fetch failed
                 }
                 
                 // Check if user already liked this drawing
@@ -2307,7 +2188,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                         const ipData = await ipResponse.json();
                         ipAddress = ipData.ip;
                     } catch (ipError) {
-                        console.log("Couldn't get IP address", ipError);
+                        // IP address fetch failed
                     }
                     
                     const { data: existingLike } = await window.supabase
