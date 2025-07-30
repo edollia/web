@@ -645,7 +645,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             // Create file input with proper iOS support
             const input = document.createElement('input');
             input.type = 'file';
-            input.accept = 'image/*,.pdf,.doc,.docx,.txt';
+            input.accept = 'image/*,image/jpeg,image/jpg,image/png,image/gif,image/webp,image/bmp,.pdf,.doc,.docx,.txt';
             input.multiple = true;
             input.style.display = 'none';
             input.style.position = 'absolute';
@@ -735,23 +735,23 @@ document.addEventListener("DOMContentLoaded", async function() {
             input.click();
         };
         
-        // Enhanced iOS file input handling
-        const handleAttachmentTouch = function(e) {
-            
+        // Removed redundant handleAttachmentTouch function - now using unified handleAttachmentButtonClick
+        
+        // Enhanced attachment button handler for iOS compatibility
+        const handleAttachmentButtonClick = function(e) {
             e.preventDefault();
             e.stopPropagation();
             
-            // Create a new file input for each touch to avoid iOS caching issues
+            // Create a fresh file input for each click to avoid iOS caching issues
             const input = document.createElement('input');
             input.type = 'file';
-            input.accept = 'image/*,.pdf,.doc,.docx,.txt';
+            input.accept = 'image/*,image/jpeg,image/jpg,image/png,image/gif,image/webp,image/bmp,.pdf,.doc,.docx,.txt';
             input.multiple = true;
             input.style.cssText = 'position: absolute; left: -9999px; top: -9999px; opacity: 0; pointer-events: none;';
             
-            // iOS-specific attributes (removed capture to avoid camera issues)
-            input.setAttribute('webkitdirectory', 'false');
+            // Clean file input without restrictive attributes
             
-            // Remove any existing file inputs
+            // Remove any existing file inputs to prevent conflicts
             const existingInputs = document.querySelectorAll('input[type="file"]');
             existingInputs.forEach(existingInput => {
                 if (existingInput !== input) {
@@ -763,7 +763,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             document.body.appendChild(input);
             
             // Set up change event listener
-            input.addEventListener('change', function(e) {
+            const handleFileChange = function(e) {
                 const files = Array.from(e.target.files);
                 
                 files.forEach(async file => {
@@ -824,116 +824,29 @@ document.addEventListener("DOMContentLoaded", async function() {
                     
                 });
                 
-                // Clean up the input element
+                // Clean up the input element and remove event listener
+                input.removeEventListener('change', handleFileChange);
                 if (document.body.contains(input)) {
                     document.body.removeChild(input);
                 }
-            });
+            };
             
-            // Trigger the file input
-            input.click();
+            input.addEventListener('change', handleFileChange);
+            
+            // Trigger the file input with a small delay for iOS
+            setTimeout(() => {
+                input.click();
+            }, 10);
         };
         
-        // Attachment button click handler
-        contactAttachmentButton.addEventListener('click', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            
-            // Create file input immediately
-            const input = document.createElement('input');
-            input.type = 'file';
-            input.accept = 'image/*,.pdf,.doc,.docx,.txt';
-            input.multiple = true;
-            input.style.cssText = 'position: absolute; left: -9999px; top: -9999px; opacity: 0; pointer-events: none;';
-            
-            // Remove any existing file inputs
-            const existingInputs = document.querySelectorAll('input[type="file"]');
-            existingInputs.forEach(existingInput => {
-                if (existingInput !== input) {
-                    existingInput.remove();
-                }
-            });
-            
-            // Add to DOM
-            document.body.appendChild(input);
-            
-            // Set up change event listener
-            input.addEventListener('change', function(e) {
-                const files = Array.from(e.target.files);
-                
-                files.forEach(async file => {
-                    // Check if we've reached the 5 attachment limit for this session
-                    if (selectedFiles.length >= 5) {
-                        showConfirmation('Maximum 5 attachments reached for this session. Remove some files first.');
-                        return;
-                    }
-                    
-                    // Check IP-based attachment limit for each file
-                    const canAddMore = await checkIPAttachmentLimit();
-                    if (!canAddMore) {
-                        showConfirmation('Maximum 5 attachments reached for your IP address. Please wait before adding more.');
-                        return;
-                    }
-                    
-                    // Check file size (max 5MB)
-                    if (file.size > 5 * 1024 * 1024) {
-                        showConfirmation('File too large. Maximum size is 5MB.');
-                        return;
-                    }
-                    
-                    // Create preview item
-                    const previewItem = document.createElement('div');
-                    previewItem.className = 'attachment-preview-item';
-                    previewItem.dataset.filename = file.name;
-                    
-                    if (file.type.startsWith('image/')) {
-                        // Image preview
-                        const img = document.createElement('img');
-                        img.src = URL.createObjectURL(file);
-                        previewItem.appendChild(img);
-                    } else {
-                        // File icon for non-images
-                        const fileIcon = document.createElement('div');
-                        fileIcon.className = 'file-icon';
-                        fileIcon.innerHTML = '📄';
-                        fileIcon.style.fontSize = '20px';
-                        previewItem.appendChild(fileIcon);
-                    }
-                    
-                    // Remove button
-                    const removeBtn = document.createElement('button');
-                    removeBtn.className = 'remove-attachment';
-                    removeBtn.innerHTML = '×';
-                    removeBtn.addEventListener('click', function() {
-                        selectedFiles = selectedFiles.filter(f => f.name !== file.name);
-                        previewItem.remove();
-                        updateFormSpacing();
-                    });
-                    previewItem.appendChild(removeBtn);
-                    
-                    attachmentPreview.appendChild(previewItem);
-                    selectedFiles.push(file);
-                    
-                    // Update form spacing
-                    updateFormSpacing();
-                    
-                });
-                
-                // Clean up the input element
-                if (document.body.contains(input)) {
-                    document.body.removeChild(input);
-                }
-            });
-            
-            // Trigger the file input
-            input.click();
-        });
+        // Add click event listener
+        contactAttachmentButton.addEventListener('click', handleAttachmentButtonClick);
         
-        // Single touch event listener for iOS compatibility
+        // Enhanced touch event listener for iOS compatibility
         contactAttachmentButton.addEventListener('touchstart', function(e) {
             e.preventDefault();
             e.stopPropagation();
-            this.click();
+            handleAttachmentButtonClick(e);
         }, { passive: false });
         
         // Force iOS to recognize the element as clickable
@@ -969,7 +882,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             contactAttachmentButton.addEventListener('pointerdown', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
-                handleAttachmentTouch(e);
+                handleAttachmentButtonClick(e);
             }, { passive: false });
         }
         
