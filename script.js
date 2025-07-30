@@ -1085,41 +1085,8 @@ document.addEventListener("DOMContentLoaded", async function() {
                             const title = modal.querySelector('.terms-title');
                             const content = modal.querySelector('.terms-content');
                             
-                            if (linkType === 'privacy') {
-                                title.textContent = 'Privacy Policy';
-                                content.innerHTML = `
-                                    <p><strong>Privacy Policy</strong></p>
-                                    <p>This privacy policy describes how we collect, use, and protect your personal information when you use our website.</p>
-                                    <p><strong>Information We Collect:</strong></p>
-                                    <p>We collect information you provide directly to us, such as when you fill out contact forms, including your name, email address, phone number, and any attachments you submit.</p>
-                                    <p><strong>How We Use Your Information:</strong></p>
-                                    <p>We use the information we collect to respond to your inquiries, provide customer support, and improve our services.</p>
-                                    <p><strong>Information Sharing:</strong></p>
-                                    <p>We do not sell, trade, or otherwise transfer your personal information to third parties without your consent, except as required by law.</p>
-                                    <p><strong>Data Security:</strong></p>
-                                    <p>We implement appropriate security measures to protect your personal information against unauthorized access, alteration, disclosure, or destruction.</p>
-                                    <p><strong>Contact Us:</strong></p>
-                                    <p>If you have any questions about this privacy policy, please contact us through the contact form on this website.</p>
-                                `;
-                            } else if (linkType === 'terms') {
-                                title.textContent = 'Terms & Conditions';
-                                content.innerHTML = `
-                                    <p><strong>Terms & Conditions</strong></p>
-                                    <p>By using this website, you agree to be bound by these terms and conditions.</p>
-                                    <p><strong>Acceptable Use:</strong></p>
-                                    <p>You agree to use this website only for lawful purposes and in a way that does not infringe the rights of others or inhibit their use of the website.</p>
-                                    <p><strong>Content Submission:</strong></p>
-                                    <p>When you submit content through our contact form, you represent that you have the right to share such content and that it does not violate any third-party rights.</p>
-                                    <p><strong>Intellectual Property:</strong></p>
-                                    <p>All content on this website, including text, graphics, logos, and software, is the property of the website owner and is protected by copyright laws.</p>
-                                    <p><strong>Limitation of Liability:</strong></p>
-                                    <p>We shall not be liable for any indirect, incidental, special, consequential, or punitive damages arising out of or relating to your use of this website.</p>
-                                    <p><strong>Changes to Terms:</strong></p>
-                                    <p>We reserve the right to modify these terms at any time. Your continued use of the website constitutes acceptance of any changes.</p>
-                                    <p><strong>Contact:</strong></p>
-                                    <p>For questions about these terms, please contact us through the contact form on this website.</p>
-                                `;
-                            }
+                            // Just show the modal - don't replace content
+                            // The HTML modal already has the correct content
                             
                             // Close functionality
                             const overlay = modal.querySelector('.terms-overlay');
