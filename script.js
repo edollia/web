@@ -623,117 +623,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             }
         }
         
-        // Handle attachment icon click/touch for mobile compatibility
-        const handleAttachmentClick = async function(e) {
-            
-            // Don't prevent default on iOS - let the native behavior work
-            e.stopPropagation();
-            
-            // Check if already at 5 attachments limit for this session
-            if (selectedFiles.length >= 5) {
-                showConfirmation('Maximum 5 attachments allowed per session.');
-                return;
-            }
-            
-            // Check IP-based attachment limit
-            const canAddMore = await checkIPAttachmentLimit();
-            if (!canAddMore) {
-                showConfirmation('Maximum 5 attachments reached for your IP address. Please wait before adding more.');
-                return;
-            }
-            
-            // Create file input with proper iOS support
-            const input = document.createElement('input');
-            input.type = 'file';
-            input.accept = 'image/*,image/jpeg,image/jpg,image/png,image/gif,image/webp,image/bmp,.pdf,.doc,.docx,.txt';
-            input.multiple = true;
-            input.style.display = 'none';
-            input.style.position = 'absolute';
-            input.style.left = '-9999px';
-            input.style.top = '-9999px';
-            
-            // Remove any existing file inputs to prevent conflicts
-            const existingInputs = document.querySelectorAll('input[type="file"]');
-            existingInputs.forEach(existingInput => {
-                if (existingInput !== input) {
-                    existingInput.remove();
-                }
-            });
-            
-            // Add to DOM first
-            document.body.appendChild(input);
-            
-            // Set up change event listener
-            input.addEventListener('change', function(e) {
-                const files = Array.from(e.target.files);
-                
-                files.forEach(async file => {
-                    // Check if we've reached the 5 attachment limit for this session
-                    if (selectedFiles.length >= 5) {
-                        showConfirmation('Maximum 5 attachments reached for this session. Remove some files first.');
-                        return;
-                    }
-                    
-                    // Check IP-based attachment limit for each file
-                    const canAddMore = await checkIPAttachmentLimit();
-                    if (!canAddMore) {
-                        showConfirmation('Maximum 5 attachments reached for your IP address. Please wait before adding more.');
-                        return;
-                    }
-                    
-                    // Check file size (max 5MB)
-                    if (file.size > 5 * 1024 * 1024) {
-                        showConfirmation('File too large. Maximum size is 5MB.');
-                        return;
-                    }
-                    
-                    // Create preview item
-                    const previewItem = document.createElement('div');
-                    previewItem.className = 'attachment-preview-item';
-                    previewItem.dataset.filename = file.name;
-                    
-                    if (file.type.startsWith('image/')) {
-                        // Image preview
-                        const img = document.createElement('img');
-                        img.src = URL.createObjectURL(file);
-                        previewItem.appendChild(img);
-                    } else {
-                        // File icon for non-images
-                        const fileIcon = document.createElement('div');
-                        fileIcon.className = 'file-icon';
-                        fileIcon.innerHTML = '📄';
-                        fileIcon.style.fontSize = '20px';
-                        previewItem.appendChild(fileIcon);
-                    }
-                    
-                    // Remove button
-                    const removeBtn = document.createElement('button');
-                    removeBtn.className = 'remove-attachment';
-                    removeBtn.innerHTML = '×';
-                    removeBtn.addEventListener('click', function() {
-                        selectedFiles = selectedFiles.filter(f => f.name !== file.name);
-                        previewItem.remove();
-                        updateFormSpacing();
-                    });
-                    previewItem.appendChild(removeBtn);
-                    
-                    attachmentPreview.appendChild(previewItem);
-                    selectedFiles.push(file);
-                    
-                    // Update form spacing
-                    updateFormSpacing();
-                    
-                });
-                
-                // Clean up the input element
-                if (document.body.contains(input)) {
-                    document.body.removeChild(input);
-                }
-            });
-            
-            // Trigger the file input
-            input.click();
-        };
+
         
         // Removed redundant handleAttachmentTouch function - now using unified handleAttachmentButtonClick
         
@@ -839,52 +729,42 @@ document.addEventListener("DOMContentLoaded", async function() {
             }, 10);
         };
         
-        // Add click event listener
-        contactAttachmentButton.addEventListener('click', handleAttachmentButtonClick);
-        
-        // Enhanced touch event listener for iOS compatibility
-        contactAttachmentButton.addEventListener('touchstart', function(e) {
+        // Single unified event handler to prevent conflicts
+        const handleAttachmentClick = function(e) {
             e.preventDefault();
             e.stopPropagation();
+            
+            // Prevent double-clicking issues
+            if (contactAttachmentButton.disabled) return;
+            contactAttachmentButton.disabled = true;
+            
+            // Call the main handler
             handleAttachmentButtonClick(e);
-        }, { passive: false });
+            
+            // Re-enable after a short delay
+            setTimeout(() => {
+                contactAttachmentButton.disabled = false;
+            }, 300);
+        };
         
-        // Force iOS to recognize the element as clickable
-        contactAttachmentButton.style.cursor = 'pointer';
-        contactAttachmentButton.style.webkitUserSelect = 'none';
-        contactAttachmentButton.style.userSelect = 'none';
-        contactAttachmentButton.style.webkitTapHighlightColor = 'rgba(255, 182, 193, 0.3)';
+        // Add single click event listener
+        contactAttachmentButton.addEventListener('click', handleAttachmentClick);
         
-        // Ensure the attachment button is on top
-        contactAttachmentButton.style.zIndex = '9999';
-        contactAttachmentButton.style.position = 'relative';
-        
-        // Make the attachment button completely independent
-        contactAttachmentButton.setAttribute('tabindex', '0');
-        contactAttachmentButton.setAttribute('role', 'button');
-        contactAttachmentButton.setAttribute('aria-label', 'Add attachments');
-        
-        // Prevent any form events from interfering
-        contactAttachmentButton.addEventListener('keydown', function(e) {
-            if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                e.stopPropagation();
-                this.click();
-            }
-        });
-        
-        // Minimal iOS compatibility - only essential touch handling
+        // iOS-specific touch handling only if needed
         const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
                      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
         
         if (isIOS) {
-            // Essential iOS touch handling only
-            contactAttachmentButton.addEventListener('pointerdown', function(e) {
+            contactAttachmentButton.addEventListener('touchend', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
-                handleAttachmentButtonClick(e);
+                handleAttachmentClick(e);
             }, { passive: false });
         }
+        
+        // Basic accessibility
+        contactAttachmentButton.setAttribute('tabindex', '0');
+        contactAttachmentButton.setAttribute('aria-label', 'Add attachments');
         
         // Form submission with validation
         const connectButton = modal.querySelector('#connect-submit-btn');

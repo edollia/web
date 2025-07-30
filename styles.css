@@ -1468,12 +1468,10 @@ button {
 
 .attachment-button:hover {
     opacity: 1;
-    transform: scale(1.1);
 }
 
 .attachment-button:active {
-    transform: scale(0.95);
-    transition: transform 0.1s ease;
+    opacity: 0.8;
 }
 
 .social-group {
