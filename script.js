@@ -1376,6 +1376,59 @@ document.addEventListener("DOMContentLoaded", async function() {
                 dropdownContent.style.display = "none";
             });
         }
+        
+        // Pink glitter animation cycle: show 2s after icon appears, stay 2s, then repeat every 10 seconds (2s show + 8s hide)
+        function showGlitter() {
+            const button = document.querySelector('.dropdown-button');
+            if (!button) return;
+            
+            button.classList.add('show-glitter');
+            
+            // Hide after 2 seconds
+            setTimeout(function() {
+                button.classList.remove('show-glitter');
+                
+                // Show again after 8 seconds (total cycle: 10 seconds)
+                setTimeout(function() {
+                    showGlitter(); // Recursive call to repeat cycle
+                }, 8000);
+            }, 2000);
+        }
+        
+        // Wait for icon container to be visible (after paw and all initial page elements load), then start animation after 2 seconds
+        function startGlitterCycle() {
+            const iconContainer = document.querySelector('.icon-container');
+            const button = document.querySelector('.dropdown-button');
+            const mainScreen = document.getElementById('main-screen');
+            
+            if (button && iconContainer) {
+                // Check if icon is visible and main screen is displayed (paw popup closed)
+                const checkVisibility = function() {
+                    const computedStyle = window.getComputedStyle(iconContainer);
+                    const mainScreenStyle = mainScreen ? window.getComputedStyle(mainScreen) : null;
+                    const isVisible = computedStyle.visibility !== 'hidden' && 
+                                     computedStyle.opacity !== '0' &&
+                                     iconContainer.offsetParent !== null &&
+                                     (!mainScreen || mainScreenStyle.display !== 'none');
+                    
+                    if (isVisible) {
+                        // Icon is visible and page is loaded, start animation after 2 seconds
+                        setTimeout(function() {
+                            showGlitter();
+                        }, 2000);
+                    } else {
+                        // Check again in 200ms
+                        setTimeout(checkVisibility, 200);
+                    }
+                };
+                
+                // Start checking after a small delay to ensure page elements are loaded
+                setTimeout(checkVisibility, 500);
+            }
+        }
+        
+        // Start the cycle
+        startGlitterCycle();
     }
 
     // ===== KO-FI OVERLAY INTEGRATION =====
