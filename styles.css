@@ -321,6 +321,8 @@ button {
     cursor: pointer;
     padding: 0;
     position: relative;
+    display: inline-block;
+    text-decoration: none;
 }
 
 /* Pink glitter circle animation for dropdown icon */
@@ -433,28 +435,121 @@ button {
     }
 }
 
-.dropdown-content {
-    display: none;
+/* Dropdown removed - Amazon icon now directly in icon-container */
+
+/* Pink glitter heart animation for mail icon */
+.email-button::before {
+    content: '';
     position: absolute;
-    top: 80%;
+    top: 50%;
     left: 50%;
-    transform: translateX(90%);
-    background-color: #fdedf5fb;
-    border-radius: 10px;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-    z-index: 1000;
-    padding: 10px;
-    min-width: 60px;
-    text-align: center;
+    transform: translate(-50%, -50%);
+    width: 70px;
+    height: 70px;
+    opacity: 0;
+    pointer-events: none;
+    z-index: 1;
+    /* Create hollow heart outline - transparent background, SVG stroke only */
+    background: transparent;
+    border: none;
+    /* SVG heart outline - white stroke (will be colored by filter), transparent center */
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 70 70'%3E%3Cpath d='M35,20 C35,20 25,10 15,10 C5,10 0,20 0,30 C0,40 15,55 35,70 C55,55 70,40 70,30 C70,20 65,10 55,10 C45,10 35,20 35,20 Z' fill='none' stroke='white' stroke-width='2'/%3E%3C/svg%3E");
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
 }
 
-.dropdown:focus-within .dropdown-content {
-    display: block;
+.email-button.show-glitter::before {
+    animation: pinkGlitterHeart 2s ease-out forwards;
+    animation-iteration-count: 1;
+    opacity: 1;
 }
 
-.dropdown-content .social-icon {
-    margin: 5px 0;
-    display: block;
+@keyframes pinkGlitterHeart {
+    0% {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(0.9);
+        filter: drop-shadow(0 0 0 rgba(255, 219, 238, 0)) 
+                drop-shadow(0 0 0 rgba(255, 192, 203, 0)) 
+                drop-shadow(0 0 0 rgba(255, 182, 193, 0));
+    }
+    30% {
+        opacity: 0.8;
+        transform: translate(-50%, -50%) scale(1);
+        filter: drop-shadow(0 0 20px rgba(255, 219, 238, 0.3)) 
+                drop-shadow(0 0 30px rgba(255, 192, 203, 0.25)) 
+                drop-shadow(0 0 40px rgba(255, 182, 193, 0.2));
+    }
+    50% {
+        opacity: 0.9;
+        transform: translate(-50%, -50%) scale(1.02);
+        filter: drop-shadow(0 0 25px rgba(255, 219, 238, 0.35)) 
+                drop-shadow(0 0 35px rgba(255, 192, 203, 0.3)) 
+                drop-shadow(0 0 45px rgba(255, 182, 193, 0.25));
+    }
+    70% {
+        opacity: 0.7;
+        transform: translate(-50%, -50%) scale(1);
+        filter: drop-shadow(0 0 20px rgba(255, 219, 238, 0.25)) 
+                drop-shadow(0 0 30px rgba(255, 192, 203, 0.2)) 
+                drop-shadow(0 0 40px rgba(255, 182, 193, 0.15));
+    }
+    100% {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(1.05);
+        filter: drop-shadow(0 0 15px rgba(255, 219, 238, 0)) 
+                drop-shadow(0 0 25px rgba(255, 192, 203, 0)) 
+                drop-shadow(0 0 35px rgba(255, 182, 193, 0));
+    }
+}
+
+/* Sparkle particles effect for mail icon */
+.email-button.show-glitter::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 70px;
+    height: 70px;
+    opacity: 0;
+    pointer-events: none;
+    z-index: 0;
+    /* Heart shape using SVG mask - transparent in center, gradient shades */
+    background: radial-gradient(circle, 
+        rgba(255, 219, 238, 0.6) 0%,
+        rgba(255, 192, 203, 0.4) 30%,
+        rgba(255, 182, 193, 0.3) 60%,
+        transparent 100%);
+    /* Use SVG to create heart shape outline */
+    -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 70 70'%3E%3Cpath d='M35,20 C35,20 25,10 15,10 C5,10 0,20 0,30 C0,40 15,55 35,70 C55,55 70,40 70,30 C70,20 65,10 55,10 C45,10 35,20 35,20 Z' fill='white'/%3E%3C/svg%3E");
+    mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 70 70'%3E%3Cpath d='M35,20 C35,20 25,10 15,10 C5,10 0,20 0,30 C0,40 15,55 35,70 C55,55 70,40 70,30 C70,20 65,10 55,10 C45,10 35,20 35,20 Z' fill='white'/%3E%3C/svg%3E");
+    -webkit-mask-size: contain;
+    mask-size: contain;
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+    mask-position: center;
+    animation: sparkleParticlesHeart 2s ease-out forwards;
+}
+
+@keyframes sparkleParticlesHeart {
+    0% {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(0.5);
+    }
+    30% {
+        opacity: 0.7;
+        transform: translate(-50%, -50%) scale(1.2);
+    }
+    60% {
+        opacity: 0.5;
+        transform: translate(-50%, -50%) scale(1.4);
+    }
+    100% {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(1.6);
+    }
 }
 
 .drawing-controls {
@@ -726,6 +821,7 @@ button {
     height: 40px;
     min-width: 40px;
     font-size: 14px;
+    position: relative;
 }
 
 .email-button img {
@@ -1259,540 +1355,7 @@ button {
     overflow: visible;
 }
 
-.contact-modal {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    z-index: 10000;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    opacity: 0;
-    animation: fadeIn 0.3s ease forwards;
-}
-
-.contact-overlay {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0, 0, 0, 0.5);
-    backdrop-filter: blur(5px);
-}
-
-.contact-form {
-    position: relative;
-    background: rgba(255, 255, 255, 0.95);
-    border-radius: 20px;
-    padding: 30px;
-    padding-top: 40px; /* Some padding to accommodate profile photo coming out */
-    max-width: 400px;
-    width: 90%;
-    max-height: 80vh;
-    overflow: visible; /* Changed from overflow-y: auto to allow profile photo to come out */
-    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(255, 182, 193, 0.3);
-    animation: slideInUp 0.4s ease;
-    box-sizing: border-box;
-    /* Ensure attachment preview stays within form */
-    z-index: 1000;
-}
-
-.contact-profile-pic,
-.profile-video {
-    position: absolute;
-    width: 96px;
-    height: 96px;
-    border-radius: 50%;
-    object-fit: cover;
-    border: 3px solid rgba(255, 182, 193, 0.5);
-    box-shadow: 0 4px 15px rgba(255, 182, 193, 0.3), 0 0 25px rgba(255, 182, 193, 0.4), 0 0 40px rgba(255, 182, 193, 0.2);
-    top: -73px; /* Moved up by 7% from -68px to -73px */
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 10;
-    background: white;
-    pointer-events: none; /* Prevent any user interaction */
-}
-
-/* Mobile video controls prevention */
-.profile-video::-webkit-media-controls {
-    display: none !important;
-}
-
-.profile-video::-webkit-media-controls-panel {
-    display: none !important;
-}
-
-.profile-video::-webkit-media-controls-play-button {
-    display: none !important;
-}
-
-.profile-video::-webkit-media-controls-start-playback-button {
-    display: none !important;
-}
-
-.profile-video::-webkit-media-controls-timeline {
-    display: none !important;
-}
-
-.profile-video::-webkit-media-controls-current-time-display {
-    display: none !important;
-}
-
-.profile-video::-webkit-media-controls-time-remaining-display {
-    display: none !important;
-}
-
-.profile-video::-webkit-media-controls-mute-button {
-    display: none !important;
-}
-
-.profile-video::-webkit-media-controls-toggle-closed-captions-button {
-    display: none !important;
-}
-
-.profile-video::-webkit-media-controls-volume-slider {
-    display: none !important;
-}
-
-.profile-video::-webkit-media-controls-fullscreen-button {
-    display: none !important;
-}
-
-.profile-video::-webkit-media-controls-rewind-button {
-    display: none !important;
-}
-
-.profile-video::-webkit-media-controls-return-to-realtime-button {
-    display: none !important;
-}
-
-.profile-video::-webkit-media-controls-seek-back-button {
-    display: none !important;
-}
-
-.profile-video::-webkit-media-controls-seek-forward-button {
-    display: none !important;
-}
-
-/* Firefox video controls prevention */
-.profile-video::-moz-media-controls {
-    display: none !important;
-}
-
-.profile-video::-moz-media-controls-panel {
-    display: none !important;
-}
-
-.profile-video::-moz-media-controls-play-button {
-    display: none !important;
-}
-
-.profile-video::-moz-media-controls-timeline {
-    display: none !important;
-}
-
-.profile-video::-moz-media-controls-current-time-display {
-    display: none !important;
-}
-
-.profile-video::-moz-media-controls-time-remaining-display {
-    display: none !important;
-}
-
-.profile-video::-moz-media-controls-mute-button {
-    display: none !important;
-}
-
-.profile-video::-moz-media-controls-volume-slider {
-    display: none !important;
-}
-
-.profile-video::-moz-media-controls-fullscreen-button {
-    display: none !important;
-}
-
-/* Prevent video from being focusable */
-.profile-video:focus {
-    outline: none !important;
-}
-
-/* Prevent any hover effects on video */
-.profile-video:hover {
-    cursor: default !important;
-}
-
-.contact-header {
-    position: relative;
-    text-align: center;
-    margin-bottom: 20px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    min-height: 10px; /* Minimal height */
-    padding-top: 10px; /* Minimal padding since profile photo is now outside */
-}
-
-.contact-close-btn {
-    position: absolute;
-    top: 10px;
-    right: 10px;
-    width: 30px;
-    height: 30px;
-    border-radius: 50%;
-    background: rgba(255, 182, 193, 0.9);
-    border: none;
-    color: white;
-    font-size: 18px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.3s ease;
-    z-index: 20;
-}
-
-.contact-close-btn:hover {
-    background: rgba(255, 182, 193, 1);
-    transform: scale(1.1);
-}
-
-.contact-title {
-    color: #333;
-    font-size: 18px;
-    font-weight: 600;
-    margin: 0;
-    margin-top: 0; /* No extra space above title */
-    text-align: center;
-}
-
-.contact-form-scroll {
-    max-height: 60vh;
-    overflow-y: auto;
-    padding-right: 5px;
-}
-
-.contact-form-content {
-    display: flex;
-    flex-direction: column;
-    gap: 15px;
-}
-
-/* Name and phone row container - applies to all screen sizes */
-.name-phone-row {
-    display: flex;
-    gap: 10px;
-    width: 100%;
-}
-
-.name-phone-row .form-group {
-    flex: 1;
-    width: 50%;
-}
-
-.form-group {
-    position: relative;
-    overflow: visible;
-}
-
-.form-group input,
-.form-group textarea {
-    width: 100%;
-    padding: 12px 15px;
-    border: 2px solid rgba(255, 182, 193, 0.3);
-    border-radius: 10px;
-    font-size: 16px; /* Prevent mobile zoom */
-    background: rgba(255, 255, 255, 0.9);
-    transition: all 0.3s ease;
-    box-sizing: border-box;
-    max-width: 100%;
-}
-
-.form-group input:focus,
-.form-group textarea:focus {
-    outline: none;
-    border-color: rgba(255, 182, 193, 0.8);
-    box-shadow: 0 0 0 3px rgba(255, 182, 193, 0.1);
-}
-
-.form-group textarea {
-    resize: none;
-    min-height: 80px;
-    font-family: inherit;
-    overflow-y: auto;
-    padding-right: 60px;
-    position: relative;
-    overflow: visible;
-}
-
-/* Notes and attachment row - horizontal layout */
-.notes-attachment-row {
-    display: flex;
-    align-items: flex-start;
-    gap: 10px;
-    width: 100%;
-}
-
-.notes-group {
-    flex: 1;
-    width: 100%;
-}
-
-.attachment-button-container {
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin-top: 12px; /* Align with textarea */
-}
-
-.attachment-button {
-    width: 24px;
-    height: 24px;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    opacity: 0.7;
-    display: block;
-    -webkit-tap-highlight-color: transparent;
-    touch-action: manipulation;
-    -webkit-user-select: none;
-    -moz-user-select: none;
-    -ms-user-select: none;
-    user-select: none;
-    /* iOS-specific improvements */
-    -webkit-touch-callout: none;
-    -webkit-appearance: none;
-    border: none;
-    outline: none;
-    /* Enhanced iOS compatibility */
-    position: relative;
-    z-index: 1000;
-    background: transparent;
-    -webkit-transform: translateZ(0);
-    transform: translateZ(0);
-    -webkit-backface-visibility: hidden;
-    backface-visibility: hidden;
-    /* Force hardware acceleration */
-    -webkit-perspective: 1000px;
-    perspective: 1000px;
-}
-
-.attachment-button:hover {
-    opacity: 1;
-}
-
-.attachment-button:active {
-    opacity: 0.8;
-}
-
-.social-group {
-    display: flex;
-    gap: 10px;
-    align-items: flex-start; /* Changed from center to align items to top */
-}
-
-.social-selector {
-    position: relative;
-    flex-shrink: 0;
-}
-
-.contact-form .social-icon {
-    width: 35px;
-    height: 35px;
-    border-radius: 50%;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    border: 2px solid rgba(255, 182, 193, 0.3);
-}
-
-.contact-form .social-icon:hover {
-    transform: scale(1.1);
-    border-color: rgba(255, 182, 193, 0.8);
-}
-
-.social-dropdown {
-    position: absolute;
-    top: 100%;
-    left: 0;
-    background: rgba(255, 255, 255, 0.95);
-    border-radius: 15px;
-    padding: 10px;
-    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(255, 182, 193, 0.3);
-    display: none;
-    flex-direction: column;
-    gap: 8px;
-    z-index: 1000;
-    width: fit-content;
-    min-width: 80px;
-}
-
-.social-dropdown.active {
-    display: flex;
-    animation: slideInDown 0.3s ease;
-}
-
-.social-option {
-    width: 30px;
-    height: 30px;
-    border-radius: 50%;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    border: 2px solid transparent;
-}
-
-.social-option:hover {
-    transform: scale(1.1);
-    border-color: rgba(255, 182, 193, 0.5);
-}
-
-.social-option.active {
-    border-color: rgba(255, 182, 193, 0.8);
-    background: rgba(255, 182, 193, 0.1);
-}
-
-/* Removed old attachment-icons - replaced with attachment-section */
-
-/* Removed old attachment-icon - replaced with attachment-button */
-
-/* Attachment preview area */
-.attachment-preview {
-    position: relative;
-    width: 100%;
-    margin-top: 8px;
-    display: none; /* Hidden by default */
-    flex-wrap: wrap;
-    gap: 8px;
-    min-height: 0;
-    transition: all 0.3s ease;
-    z-index: 1;
-    background: transparent;
-    /* Ensure it stays within the form */
-    overflow: visible;
-}
-
-.attachment-preview-item {
-    position: relative;
-    width: 60px;
-    height: 60px;
-    border-radius: 8px;
-    overflow: hidden;
-    border: 2px solid rgba(255, 182, 193, 0.3);
-    background: rgba(255, 255, 255, 0.9);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.3s ease;
-    z-index: 1001; /* Ensure it appears above the form */
-}
-
-.attachment-preview-item:hover {
-    border-color: rgba(255, 182, 193, 0.8);
-    transform: scale(1.05);
-}
-
-.attachment-preview-item img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-}
-
-.attachment-preview-item .file-icon {
-    width: 30px;
-    height: 30px;
-    opacity: 0.7;
-}
-
-.attachment-preview-item .remove-attachment {
-    position: absolute;
-    top: 2px;
-    right: 2px;
-    width: 16px;
-    height: 16px;
-    background: #ff6b6b;
-    color: white;
-    border: 1.5px solid white;
-    border-radius: 50%;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 9px;
-    font-weight: bold;
-    transition: all 0.3s ease;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
-    z-index: 10;
-    line-height: 1;
-}
-
-.attachment-preview-item .remove-attachment:hover {
-    background: #ff5252;
-    transform: scale(1.1);
-}
-
-.connect-btn {
-    background: linear-gradient(135deg, #ffb6c1, #ff69b4, #ff1493, #ff69b4, #ffb6c1);
-    background-size: 300% 100%;
-    color: white;
-    border: none;
-    padding: 15px 30px;
-    border-radius: 25px;
-    font-size: 16px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    margin-top: 10px;
-    box-shadow: 0 4px 15px rgba(255, 105, 180, 0.3);
-    animation: gradientFlow 3s ease-in-out infinite;
-}
-
-@keyframes gradientFlow {
-    0% {
-        background-position: 0% 50%;
-    }
-    50% {
-        background-position: 100% 50%;
-    }
-    100% {
-        background-position: 0% 50%;
-    }
-}
-
-.connect-btn:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(255, 105, 180, 0.4);
-}
-
-.connect-btn:active {
-    transform: translateY(0);
-}
-
-.contact-disclaimer {
-    font-size: 11px;
-    color: #666;
-    text-align: center;
-    margin-top: 15px;
-    line-height: 1.4;
-}
-
-.clickable-link {
-    color: rgba(255, 182, 193, 0.8);
-    text-decoration: underline;
-    cursor: pointer;
-    transition: all 0.3s ease;
-}
-
-.clickable-link:hover {
-    color: rgba(255, 182, 193, 1);
-    text-decoration: underline;
-}
+/* Contact form CSS removed - using Ko-fi widget instead */
 
 .terms-content {
     max-height: 400px;
@@ -2063,7 +1626,4 @@ button {
 }
 
 /* Prevent Ko-fi icon link from showing underline */
-.kofi-icon-link {
-    text-decoration: none;
-    display: block;
-}
+/* Ko-fi icon now uses .email-button class - no separate styling needed */
