@@ -1932,3 +1932,21 @@ button {
         margin-top: 8px;
     }
 }
+
+/* Hide Ko-fi default floating button */
+.floatingchat-container-wrap,
+.floatingchat-container-wrap-mobi,
+.floatingchat-container,
+.floatingchat-container-mobi {
+    display: none !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+    height: 0 !important;
+    width: 0 !important;
+}
+
+/* Prevent Ko-fi icon link from showing underline */
+.kofi-icon-link {
+    text-decoration: none;
+    display: block;
+}

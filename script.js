@@ -1368,6 +1368,59 @@ document.addEventListener("DOMContentLoaded", async function() {
                 dropdownContent.style.display = "none";
             }
         });
+        
+        // Close dropdown when clicking Amazon logo
+        const amazonLink = dropdownContent.querySelector('a[href*="amazon.com"]');
+        if (amazonLink) {
+            amazonLink.addEventListener("click", function(e) {
+                dropdownContent.style.display = "none";
+            });
+        }
+    }
+
+    // ===== KO-FI OVERLAY INTEGRATION =====
+    const kofiIconLink = document.getElementById('kofi-icon-link');
+    if (kofiIconLink) {
+        kofiIconLink.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            // Close dropdown when clicking Ko-fi icon
+            if (dropdownContent) {
+                dropdownContent.style.display = 'none';
+            }
+            
+            // Function to open Ko-fi overlay - wait for widget to be ready
+            function openKofiOverlay() {
+                var maxAttempts = 50;
+                var attempt = 0;
+                
+                var tryOpen = function() {
+                    attempt++;
+                    
+                    // Check if the global function is available
+                    if (typeof window.openKofiOverlay === 'function') {
+                        try {
+                            window.openKofiOverlay();
+                            return;
+                        } catch(err) {
+                            console.error('Error opening Ko-fi overlay:', err);
+                        }
+                    }
+                    
+                    // Retry if not ready yet
+                    if (attempt < maxAttempts) {
+                        setTimeout(tryOpen, 100);
+                    } else {
+                        console.warn('Ko-fi overlay widget not ready after maximum attempts');
+                    }
+                };
+                
+                tryOpen();
+            }
+            
+            openKofiOverlay();
+        });
     }
 
     // ===== DRAWING WIDGET =====

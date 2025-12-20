@@ -41,11 +41,10 @@
                     <a href="https://www.amazon.com/registries/gl/guest-view/38P79LSAILU95" target="_blank">
                         <img src="amz.png" alt="Amazon" class="social-icon">
                     </a>
+                    <a href="#" id="kofi-icon-link" class="kofi-icon-link">
+                        <img src="kofi.png" alt="Ko-fi" class="social-icon">
+                    </a>
 <!--
-<a href="https://ko-fi.com/edoll" target="_blank">
-    <img src="kofi.png" alt="Ko-fi" class="social-icon">
-</a>
-
 <a href="https://throne.com/edoll" target="_blank">
     <img src="throne.png" alt="Throne" class="social-icon">
 </a>
@@ -195,6 +194,18 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="kofi-overlay-widget.js"></script>
+    <script>
+      // Initialize Ko-fi widget (hidden by default)
+      if (typeof kofiWidgetOverlay !== 'undefined') {
+        kofiWidgetOverlay.draw('edoll', {
+          'type': 'floating-chat',
+          'floating-chat.donateButton.text': 'Support me',
+          'floating-chat.donateButton.background-color': '#323842',
+          'floating-chat.donateButton.text-color': '#fff'
+        });
+      }
+    </script>
     <script src="script.js?v=3.1"></script>
     
     <!-- GoatCounter Analytics -->
