@@ -714,7 +714,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     }
 
     function initApp() {
-        // ===== ASK ME ANYTHING =====
+        // ===== ASK! =====
         const askButton = document.getElementById('ask-button');
         const askFormContainer = document.getElementById('ask-form-container');
         const askTextarea = document.getElementById('ask-textarea');
@@ -725,7 +725,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             askButton.addEventListener('click', () => {
                 const open = askFormContainer.style.display === 'block';
                 askFormContainer.style.display = open ? 'none' : 'block';
-                askButton.textContent = open ? 'Ask me anything!' : 'Cancel';
+                askButton.textContent = open ? 'Ask!' : 'Cancel';
                 if (!open) askTextarea.focus();
             });
 
@@ -766,7 +766,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                     askTextarea.value = '';
                     charCount.textContent = '0/200';
                     askFormContainer.style.display = 'none';
-                    askButton.textContent = 'Ask me anything!';
+                    askButton.textContent = 'Ask!';
                     alert("Got it! ^-^");
                 } catch (error) {
                     console.error("Error saving question:", error);
