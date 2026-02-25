@@ -1625,5 +1625,43 @@ button {
     width: 0 !important;
 }
 
+.answer-text .answer-link {
+    position: relative;
+    text-decoration: none;
+    color: #ffb6c1;
+    background: linear-gradient(90deg, #ffb6c1 0%, #ffb6c1 100%) no-repeat;
+    background-size: 100% 1px;
+    background-position: 0 100%;
+    display: inline;
+}
+
+.answer-text .answer-link::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+        105deg,
+        transparent 20%,
+        rgba(255, 182, 193, 0.0) 35%,
+        rgba(255, 220, 230, 0.9) 50%,
+        rgba(255, 182, 193, 0.0) 65%,
+        transparent 80%
+    );
+    background-size: 200% 100%;
+    background-position: -200% 0;
+    animation: linkShine 3.75s linear infinite;
+    pointer-events: none;
+    border-radius: 0;
+    mix-blend-mode: color-dodge;
+}
+
+@keyframes linkShine {
+    0% {
+        background-position: -200% 0;
+    }
+    100% {
+        background-position: 200% 0;
+    }
+}
 /* Prevent Ko-fi icon link from showing underline */
 /* Ko-fi icon now uses .email-button class - no separate styling needed */
