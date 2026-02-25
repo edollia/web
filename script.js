@@ -801,7 +801,7 @@ document.addEventListener("DOMContentLoaded", async function() {
 
         }
 
-        // Add tab switching functionality
+// Add tab switching functionality
         document.querySelectorAll('.tab-button').forEach(btn => {
             btn.addEventListener('click', function() {
                 document.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active'));
@@ -810,6 +810,24 @@ document.addEventListener("DOMContentLoaded", async function() {
                 document.getElementById(this.dataset.tab).classList.add('active');
             });
         });
+
+        function escapeHtml(str) {
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        function linkifyText(str) {
+            const escaped = escapeHtml(str);
+            const urlPattern = /(\bhttps?:\/\/[^\s<>"']+|\bwww\.[^\s<>"']+\.[^\s<>"']+|\b[a-zA-Z0-9-]+\.[a-zA-Z]{2,}(?:\/[^\s<>"']*)?)/g;
+            return escaped.replace(urlPattern, (match) => {
+                const href = /^https?:\/\//i.test(match) ? match : 'https://' + match;
+                return `<a href="${href}" target="_blank" rel="noopener noreferrer" class="answer-link">${match}</a>`;
+            });
+        }
 
         async function renderSubmissions() {
             await renderDrawings();
@@ -866,8 +884,8 @@ document.addEventListener("DOMContentLoaded", async function() {
                     el.className = 'question-item';
                     el.style.animationDelay = `${index * 0.1}s`;
                     el.innerHTML = `
-                        <p class="question-text">"${q.question}"</p>
-                        <p class="answer-text">${q.answer}</p>
+                        <p class="question-text">"${escapeHtml(q.question)}"</p>
+    <p class="answer-text">${linkifyText(q.answer)}</p>
                     `;
                     questionsList.appendChild(el);
                 });
