@@ -2,7 +2,23 @@ document.addEventListener("DOMContentLoaded", async function() {
     // ===== ENHANCED AUDIO HANDLING =====
     const audio = new Audio('hehe.mp3');
     audio.loop = true;
+    const backgroundMusicVolume = 0.3;
+    audio.volume = backgroundMusicVolume;
     let audioPlayed = false;
+    const uiSounds = {
+        tap: 'CUT1.mp3',
+        link: 'CUT2.mp3',
+        submit: 'CUT3.mp3'
+    };
+
+    function playUiSound(type) {
+        const src = uiSounds[type];
+        if (!src) return;
+
+        const sound = new Audio(src);
+        sound.volume = 1;
+        sound.play().catch(() => {});
+    }
     
     // Global prevention of video fullscreen on mobile
     document.addEventListener('webkitbeginfullscreen', (e) => {
@@ -41,7 +57,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     // Function to unmute background music
     function unmuteBackgroundMusic() {
         if (backgroundAudioMuted) {
-            audio.volume = 1;
+            audio.volume = backgroundMusicVolume;
             backgroundAudioMuted = false;
             
             // Resume audio if it was playing before and is now paused
@@ -109,8 +125,15 @@ document.addEventListener("DOMContentLoaded", async function() {
     const loadingBarFill = document.getElementById("loading-bar-fill");
     const minLoadingTime = 2000;
     const loadingBarDelay = 4000; // Show loading bar after 4 seconds
+    const submissionsPreloadTimeout = 10000;
     let loadingBarShown = false;
     let loadingStartTime = Date.now();
+    const preloadedSubmissions = {
+        drawings: [],
+        questions: [],
+        loaded: false,
+        error: null
+    };
     
     // Mobile detection
     const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
@@ -124,6 +147,76 @@ document.addEventListener("DOMContentLoaded", async function() {
             if (isMobile) {
                 loadingBarFill.offsetHeight;
             }
+        }
+    }
+
+    function decodeImage(src) {
+        return new Promise(resolve => {
+            const img = new Image();
+            img.onload = resolve;
+            img.onerror = resolve;
+            img.src = src;
+        });
+    }
+
+    async function loadSubmissionsFromSupabase({ decodeDrawings = false } = {}) {
+        const [drawingsResult, questionsResult] = await Promise.all([
+            window.supabase
+                .from('drawings')
+                .select('*')
+                .eq('approved', true)
+                .order('created_at', { ascending: false }),
+            window.supabase
+                .from('questions')
+                .select('*')
+                .not('answer', 'is', null)
+                .order('created_at', { ascending: false })
+        ]);
+
+        if (drawingsResult.error) throw drawingsResult.error;
+        if (questionsResult.error) throw questionsResult.error;
+
+        const drawings = drawingsResult.data || [];
+        const questions = questionsResult.data || [];
+
+        if (decodeDrawings) {
+            await Promise.all(drawings.map(drawing =>
+                decodeImage(`data:image/png;base64,${drawing.imageData}`)
+            ));
+        }
+
+        preloadedSubmissions.drawings = drawings;
+        preloadedSubmissions.questions = questions;
+        preloadedSubmissions.error = null;
+        preloadedSubmissions.loaded = true;
+
+        return { drawings, questions };
+    }
+
+    async function preloadSubmissionsData() {
+        try {
+            await loadSubmissionsFromSupabase({ decodeDrawings: true });
+        } catch (error) {
+            preloadedSubmissions.error = error;
+            preloadedSubmissions.loaded = true;
+            console.error("Error preloading submissions:", error);
+        }
+    }
+
+    async function preloadSubmissionsWithTimeout() {
+        let timedOut = false;
+        await Promise.race([
+            preloadSubmissionsData(),
+            new Promise(resolve => {
+                setTimeout(() => {
+                    timedOut = true;
+                    resolve();
+                }, submissionsPreloadTimeout);
+            })
+        ]);
+
+        if (timedOut && !preloadedSubmissions.loaded) {
+            console.warn("Submissions preload timed out; will retry when :3 opens.");
         }
     }
 
@@ -147,10 +240,9 @@ document.addEventListener("DOMContentLoaded", async function() {
                 'notee.jpg',
                 'loading.gif',
                 'paw1.png',
-                'gatito.gif',
                 'snap.png',
                 'insta.png',
-                'amz.png',
+                'dropdown-icon.png',
                 'mail.png',
                 'kofi.png',
                 'igpf.png',
@@ -165,6 +257,9 @@ document.addEventListener("DOMContentLoaded", async function() {
                 'cool.png',
                 'meh.png',
                 'sad.png',
+                'CUT1.mp3',
+                'CUT2.mp3',
+                'CUT3.mp3',
                 'hehe.mp3',
                 'pfps/pfp1.jpg',
                 'pfps/pfp2.jpg',
@@ -186,43 +281,33 @@ document.addEventListener("DOMContentLoaded", async function() {
             // Load each resource and track completion
             criticalResources.forEach(src => {
                 const fileExtension = src.split('.').pop().toLowerCase();
+                let counted = false;
+
+                const markResourceLoaded = () => {
+                    if (counted) return;
+                    counted = true;
+                    loadedCount++;
+                    updateLoadingBar(loadedCount, totalResources);
+
+                    if (loadedCount === totalResources) {
+                        resolve();
+                    }
+                };
                 
                 if (fileExtension === 'mp3') {
                     // Handle audio files - mobile optimized
                     const audio = new Audio();
                     audio.preload = 'metadata'; // Mobile browsers prefer metadata only
-                    
-                    // Multiple event listeners for mobile compatibility
-                    const audioLoaded = () => {
-                        loadedCount++;
-                        
-                        // Update loading bar if it's shown
-                        updateLoadingBar(loadedCount, totalResources);
-                        
-                        if (loadedCount === totalResources) {
-                            resolve();
-                        }
-                    };
-                    
-                    audio.addEventListener('canplaythrough', audioLoaded);
-                    audio.addEventListener('loadedmetadata', audioLoaded);
-                    audio.addEventListener('canplay', audioLoaded);
-                    
-                    audio.onerror = () => {
-                        loadedCount++;
-                        
-                        // Update loading bar if it's shown
-                        updateLoadingBar(loadedCount, totalResources);
-                        
-                        if (loadedCount === totalResources) {
-                            resolve();
-                        }
-                    };
+
+                    audio.addEventListener('canplaythrough', markResourceLoaded);
+                    audio.addEventListener('loadedmetadata', markResourceLoaded);
+                    audio.addEventListener('canplay', markResourceLoaded);
+                    audio.onerror = markResourceLoaded;
                     
                     // Mobile timeout for audio loading
                     setTimeout(() => {
                         if (audio.readyState < 1) { // Not loaded yet
-                            audioLoaded();
+                            markResourceLoaded();
                         }
                     }, 3000); // 3 second timeout for mobile
                     
@@ -232,38 +317,16 @@ document.addEventListener("DOMContentLoaded", async function() {
                     const video = document.createElement('video');
                     video.muted = true; // Mobile browsers require muted for autoload
                     video.preload = 'metadata'; // Only load metadata on mobile
-                    
-                    // Multiple event listeners for mobile compatibility
-                    const videoLoaded = () => {
-                        loadedCount++;
-                        
-                        // Update loading bar if it's shown
-                        updateLoadingBar(loadedCount, totalResources);
-                        
-                        if (loadedCount === totalResources) {
-                            resolve();
-                        }
-                    };
-                    
-                    video.addEventListener('loadedmetadata', videoLoaded);
-                    video.addEventListener('loadeddata', videoLoaded);
-                    video.addEventListener('canplay', videoLoaded);
-                    
-                    video.onerror = () => {
-                        loadedCount++;
-                        
-                        // Update loading bar if it's shown
-                        updateLoadingBar(loadedCount, totalResources);
-                        
-                        if (loadedCount === totalResources) {
-                            resolve();
-                        }
-                    };
+
+                    video.addEventListener('loadedmetadata', markResourceLoaded);
+                    video.addEventListener('loadeddata', markResourceLoaded);
+                    video.addEventListener('canplay', markResourceLoaded);
+                    video.onerror = markResourceLoaded;
                     
                     // Mobile timeout for video loading
                     setTimeout(() => {
                         if (video.readyState < 1) { // Not loaded yet
-                            videoLoaded();
+                            markResourceLoaded();
                         }
                     }, 5000); // 5 second timeout for mobile
                     
@@ -271,26 +334,8 @@ document.addEventListener("DOMContentLoaded", async function() {
                 } else {
                     // Handle image files
                     const resource = new Image();
-                    resource.onload = () => {
-                        loadedCount++;
-                        
-                        // Update loading bar if it's shown
-                        updateLoadingBar(loadedCount, totalResources);
-                        
-                        if (loadedCount === totalResources) {
-                            resolve();
-                        }
-                    };
-                    resource.onerror = () => {
-                        loadedCount++;
-                        
-                        // Update loading bar if it's shown
-                        updateLoadingBar(loadedCount, totalResources);
-                        
-                        if (loadedCount === totalResources) {
-                            resolve();
-                        }
-                    };
+                    resource.onload = markResourceLoaded;
+                    resource.onerror = markResourceLoaded;
                     resource.src = src;
                 }
             });
@@ -349,6 +394,8 @@ document.addEventListener("DOMContentLoaded", async function() {
             };
         }
 
+        await preloadSubmissionsWithTimeout();
+
         // Final check - ensure everything is ready
         loadingScreen.style.opacity = 0;
         setTimeout(() => {
@@ -384,7 +431,12 @@ document.addEventListener("DOMContentLoaded", async function() {
         setTimeout(() => {
             popup.style.display = "none";
             const mainScreen = document.getElementById("main-screen");
-            if (mainScreen) mainScreen.style.display = "block";
+            if (mainScreen) {
+                mainScreen.classList.remove('ui-ready', 'note-ready');
+                mainScreen.style.display = "block";
+                setTimeout(() => mainScreen.classList.add('ui-ready'), 780);
+                setTimeout(() => mainScreen.classList.add('note-ready'), 1080);
+            }
 
             if (!audioPlayed) {
                 audio.play().catch(e => {});
@@ -400,11 +452,15 @@ document.addEventListener("DOMContentLoaded", async function() {
 
     if (toggleButton && noteImage && drawingWidget) {
         let showingNote = true;
-        toggleButton.addEventListener('click', function() {
+        toggleButton.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            playUiSound('tap');
             showingNote = !showingNote;
             noteImage.classList.toggle('hidden', !showingNote);
             drawingWidget.classList.toggle('active', !showingNote);
-            toggleButton.textContent = showingNote ? ':3' : '✖';
+            toggleButton.classList.toggle('drawing-open', !showingNote);
+            toggleButton.textContent = showingNote ? '' : '✖';
         });
     }
 
@@ -422,7 +478,211 @@ document.addEventListener("DOMContentLoaded", async function() {
         }
     }
 
-    // ===== AMAZON ICON WITH GLITTER ANIMATION =====
+    // ===== SOCIALS AND SUPPORT MENUS =====
+    const wishlistUrl = 'https://throne.com/edoll';
+    const snapchatUrl = 'https://www.snapchat.com/add/dumidoll';
+    const instagramUrl = 'https://www.instagram.com/pawswirl';
+    const socialsButton = document.getElementById('socials-button');
+    const socialsOptions = socialsButton?.querySelector('.socials-options');
+    const snapchatOption = document.getElementById('snapchat-option');
+    const instagramOption = document.getElementById('instagram-option');
+    const supportMenuButton = document.getElementById('support-menu-button');
+    const supportOptions = supportMenuButton?.querySelector('.support-options');
+    const actionMenuButton = document.getElementById('action-menu-button');
+    const actionOptions = actionMenuButton?.querySelector('.action-options');
+    const donateOption = document.getElementById('donate-option');
+    const wishlistOption = document.getElementById('wishlist-option');
+
+    function closeSocialsMenu() {
+        if (!socialsButton) return;
+        socialsButton.classList.remove('open');
+        socialsButton.setAttribute('aria-expanded', 'false');
+        socialsOptions?.setAttribute('aria-hidden', 'true');
+        socialsButton.querySelectorAll('.social-option').forEach(option => {
+            option.setAttribute('tabindex', '-1');
+        });
+    }
+
+    function closeSupportMenu() {
+        if (!supportMenuButton) return;
+        supportMenuButton.classList.remove('open');
+        supportMenuButton.setAttribute('aria-expanded', 'false');
+        supportOptions?.setAttribute('aria-hidden', 'true');
+        supportMenuButton.querySelectorAll('.support-option').forEach(option => {
+            option.setAttribute('tabindex', '-1');
+        });
+    }
+
+    function closeActionMenu() {
+        if (!actionMenuButton) return;
+        actionMenuButton.classList.remove('open');
+        actionMenuButton.setAttribute('aria-expanded', 'false');
+        actionOptions?.setAttribute('aria-hidden', 'true');
+        actionMenuButton.querySelectorAll('.action-option').forEach(option => {
+            option.setAttribute('tabindex', '-1');
+        });
+    }
+
+    function openKofiOverlay() {
+        var maxAttempts = 50;
+        var attempt = 0;
+        
+        var tryOpen = function() {
+            attempt++;
+            
+            if (typeof window.openKofiOverlay === 'function') {
+                try {
+                    window.openKofiOverlay();
+                    return;
+                } catch(err) {
+                    console.error('Error opening Ko-fi overlay:', err);
+                }
+            }
+            
+            if (attempt < maxAttempts) {
+                setTimeout(tryOpen, 100);
+            } else {
+                console.warn('Ko-fi overlay widget not ready after maximum attempts');
+            }
+        };
+        
+        tryOpen();
+    }
+
+    socialsButton?.addEventListener('click', function(e) {
+        if (e.target.closest('.social-option')) {
+            return;
+        }
+
+        e.preventDefault();
+        e.stopPropagation();
+        if (socialsButton.classList.contains('open') && !e.target.closest('.menu-back-arrow')) {
+            return;
+        }
+
+        if (!socialsButton.classList.contains('open')) {
+            closeSupportMenu();
+            closeActionMenu();
+        }
+
+        playUiSound('tap');
+        const isOpen = socialsButton.classList.toggle('open');
+        socialsButton.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+        socialsOptions?.setAttribute('aria-hidden', isOpen ? 'false' : 'true');
+        socialsButton.querySelectorAll('.social-option').forEach(option => {
+            option.setAttribute('tabindex', isOpen ? '0' : '-1');
+        });
+    });
+
+    socialsButton?.addEventListener('keydown', function(e) {
+        if ((e.key === 'Enter' || e.key === ' ') && e.target === socialsButton) {
+            e.preventDefault();
+            socialsButton.click();
+        }
+    });
+
+    snapchatOption?.addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        playUiSound('link');
+        window.open(snapchatUrl, '_blank', 'noopener,noreferrer');
+    });
+
+    instagramOption?.addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        playUiSound('link');
+        window.open(instagramUrl, '_blank', 'noopener,noreferrer');
+    });
+
+    supportMenuButton?.addEventListener('click', function(e) {
+        if (e.target.closest('.support-option')) {
+            return;
+        }
+
+        e.preventDefault();
+        e.stopPropagation();
+        if (supportMenuButton.classList.contains('open') && !e.target.closest('.menu-back-arrow')) {
+            return;
+        }
+
+        if (!supportMenuButton.classList.contains('open')) {
+            closeSocialsMenu();
+            closeActionMenu();
+        }
+
+        playUiSound('tap');
+        const isOpen = supportMenuButton.classList.toggle('open');
+        supportMenuButton.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+        supportOptions?.setAttribute('aria-hidden', isOpen ? 'false' : 'true');
+        supportMenuButton.querySelectorAll('.support-option').forEach(option => {
+            option.setAttribute('tabindex', isOpen ? '0' : '-1');
+        });
+    });
+
+    supportMenuButton?.addEventListener('keydown', function(e) {
+        if ((e.key === 'Enter' || e.key === ' ') && e.target === supportMenuButton) {
+            e.preventDefault();
+            supportMenuButton.click();
+        }
+    });
+
+    donateOption?.addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        playUiSound('tap');
+        openKofiOverlay();
+    });
+
+    wishlistOption?.addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        playUiSound('link');
+        window.open(wishlistUrl, '_blank', 'noopener,noreferrer');
+    });
+
+    actionMenuButton?.addEventListener('click', function(e) {
+        if (e.target.closest('.action-option')) {
+            return;
+        }
+
+        e.preventDefault();
+        e.stopPropagation();
+        if (actionMenuButton.classList.contains('open') && !e.target.closest('.menu-back-arrow')) {
+            return;
+        }
+
+        if (!actionMenuButton.classList.contains('open')) {
+            closeSocialsMenu();
+            closeSupportMenu();
+        }
+
+        playUiSound('tap');
+        const isOpen = actionMenuButton.classList.toggle('open');
+        actionMenuButton.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+        actionOptions?.setAttribute('aria-hidden', isOpen ? 'false' : 'true');
+        actionMenuButton.querySelectorAll('.action-option').forEach(option => {
+            option.setAttribute('tabindex', isOpen ? '0' : '-1');
+        });
+    });
+
+    actionMenuButton?.addEventListener('keydown', function(e) {
+        if ((e.key === 'Enter' || e.key === ' ') && e.target === actionMenuButton) {
+            e.preventDefault();
+            actionMenuButton.click();
+        }
+    });
+
+    [snapchatOption, instagramOption, donateOption, wishlistOption, toggleButton].forEach(option => {
+        option?.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                option.click();
+            }
+        });
+    });
+
+    // ===== ICON GLITTER ANIMATION =====
     // Pink glitter animation cycle: show 2s after icon appears, stay 2s, then repeat every 10 seconds (2s show + 8s hide)
     function showGlitter(button) {
         if (!button) return;
@@ -443,8 +703,8 @@ document.addEventListener("DOMContentLoaded", async function() {
     // Wait for icon container to be visible (after paw and all initial page elements load), then start animation after 2 seconds
     function startGlitterCycle() {
         const iconContainer = document.querySelector('.icon-container');
-        const amazonButton = document.querySelector('.dropdown-button');
-        const mailButton = document.querySelector('.email-button');
+        const socialsButton = document.querySelector('.socials-button');
+        const mailButton = document.getElementById('support-menu-button');
         const mainScreen = document.getElementById('main-screen');
         
         if (iconContainer) {
@@ -460,8 +720,8 @@ document.addEventListener("DOMContentLoaded", async function() {
                 if (isVisible) {
                     // Icons are visible and page is loaded, start animation after 2 seconds
                     setTimeout(function() {
-                        if (amazonButton) {
-                            showGlitter(amazonButton);
+                        if (socialsButton) {
+                            showGlitter(socialsButton);
                         }
                         if (mailButton) {
                             showGlitter(mailButton);
@@ -480,46 +740,6 @@ document.addEventListener("DOMContentLoaded", async function() {
     
     // Start the cycle
     startGlitterCycle();
-
-    // ===== KO-FI OVERLAY INTEGRATION =====
-    const kofiIconLink = document.getElementById('kofi-icon-link');
-    if (kofiIconLink) {
-        kofiIconLink.addEventListener('click', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            
-            // Function to open Ko-fi overlay - wait for widget to be ready
-            function openKofiOverlay() {
-                var maxAttempts = 50;
-                var attempt = 0;
-                
-                var tryOpen = function() {
-                    attempt++;
-                    
-                    // Check if the global function is available
-                    if (typeof window.openKofiOverlay === 'function') {
-                        try {
-                            window.openKofiOverlay();
-                            return;
-                        } catch(err) {
-                            console.error('Error opening Ko-fi overlay:', err);
-                        }
-                    }
-                    
-                    // Retry if not ready yet
-                    if (attempt < maxAttempts) {
-                        setTimeout(tryOpen, 100);
-                    } else {
-                        console.warn('Ko-fi overlay widget not ready after maximum attempts');
-                    }
-                };
-                
-                tryOpen();
-            }
-            
-            openKofiOverlay();
-        });
-    }
 
     // ===== DRAWING WIDGET =====
     let canvas, ctx, drawingHistory = [], historyIndex = -1, currentColor = "#000000", brushSize = 5;
@@ -679,6 +899,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                 return;
             }
             
+            playUiSound('submit');
             try {
                 let ipAddress = 'unknown';
                 try {
@@ -722,11 +943,21 @@ document.addEventListener("DOMContentLoaded", async function() {
         const sendQuestionBtn = document.getElementById('send-question');
 
         if (askButton && askFormContainer) {
-            askButton.addEventListener('click', () => {
+            askButton.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                playUiSound('tap');
                 const open = askFormContainer.style.display === 'block';
                 askFormContainer.style.display = open ? 'none' : 'block';
-                askButton.textContent = open ? 'Ask!' : 'Cancel';
+                askButton.textContent = open ? '?' : '×';
                 if (!open) askTextarea.focus();
+            });
+
+            askButton.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    askButton.click();
+                }
             });
 
             askTextarea.addEventListener('input', function() {
@@ -742,6 +973,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                     return;
                 }
 
+                playUiSound('submit');
                 try {
                     let ipAddress = 'unknown';
                     try {
@@ -766,7 +998,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                     askTextarea.value = '';
                     charCount.textContent = '0/200';
                     askFormContainer.style.display = 'none';
-                    askButton.textContent = 'Ask!';
+                    askButton.textContent = '?';
                     alert("Got it! ^-^");
                 } catch (error) {
                     console.error("Error saving question:", error);
@@ -783,9 +1015,19 @@ document.addEventListener("DOMContentLoaded", async function() {
         const questionsList = document.getElementById('questions-list');
 
         async function initPostsSystem() {
-            postsButton?.addEventListener('click', async () => {
+            postsButton?.addEventListener('click', async (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                playUiSound('tap');
                 postsPopup.style.display = 'flex';
                 await renderSubmissions();
+            });
+
+            postsButton?.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    postsButton.click();
+                }
             });
 
             closePostsPopup?.addEventListener('click', () => {
@@ -804,10 +1046,12 @@ document.addEventListener("DOMContentLoaded", async function() {
 // Add tab switching functionality
         document.querySelectorAll('.tab-button').forEach(btn => {
             btn.addEventListener('click', function() {
+                playUiSound('tap');
                 document.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active'));
                 document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
                 this.classList.add('active');
                 document.getElementById(this.dataset.tab).classList.add('active');
+                this.closest('.posts-tabs')?.classList.toggle('questions-active', this.dataset.tab === 'questions-tab');
             });
         });
 
@@ -836,13 +1080,10 @@ document.addEventListener("DOMContentLoaded", async function() {
 
         async function renderDrawings() {
             try {
-                const { data: drawings, error } = await window.supabase
-                    .from('drawings')
-                    .select('*')
-                    .eq('approved', true)
-                    .order('created_at', { ascending: false });
-                
-                if (error) throw error;
+                let drawings = preloadedSubmissions.drawings;
+                if (!preloadedSubmissions.loaded || preloadedSubmissions.error) {
+                    ({ drawings } = await loadSubmissionsFromSupabase());
+                }
                 
                 drawingsList.innerHTML = '';
                 drawings.forEach((drawing, index) => {
@@ -870,13 +1111,10 @@ document.addEventListener("DOMContentLoaded", async function() {
 
         async function renderQuestions() {
             try {
-                const { data: questions, error } = await window.supabase
-                    .from('questions')
-                    .select('*')
-                    .not('answer', 'is', null)
-                    .order('created_at', { ascending: false });
-                
-                if (error) throw error;
+                let questions = preloadedSubmissions.questions;
+                if (!preloadedSubmissions.loaded || preloadedSubmissions.error) {
+                    ({ questions } = await loadSubmissionsFromSupabase());
+                }
                 
                 questionsList.innerHTML = '';
                 questions.forEach((q, index) => {
@@ -924,6 +1162,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                 if (e.type === 'touchstart') {
                     e.preventDefault();
                 }
+                playUiSound('tap');
                 
                 // Prevent rapid-fire clicks (debounce)
                 const now = Date.now();
@@ -1109,6 +1348,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                     }
                     
                     const reaction = option.dataset.reaction;
+                    playUiSound('tap');
                     
                     // Check if user already has this reaction
                     let ipAddress = 'unknown';

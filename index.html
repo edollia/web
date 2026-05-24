@@ -40,7 +40,7 @@
                 <div class="loading-bar">
                     <div class="loading-bar-fill" id="loading-bar-fill"></div>
                 </div>
-                <div class="loading-text">oops looks like your wifi sucks rn so..</div>
+                <div class="loading-text">just wait...</div>
             </div>
         </div>
     </div>    
@@ -51,24 +51,40 @@
             <img src="dropdown1.png" alt="Dropdown Header" class="header-image">
         </header>
         
-        <!-- Social Icons -->
-        <div class="icon-container">
-            <a href="https://www.snapchat.com/add/dumidoll" target="_blank"><img src="snap.png" alt="Snapchat" class="social-icon"></a>
-            <a href="https://www.instagram.com/pawswirl" target="_blank"><img src="insta.png" alt="Instagram" class="social-icon"></a>
-            <a href="https://throne.com/edoll" target="_blank" class="dropdown-button">
-                <img src="amz.png" alt="Amazon" class="social-icon">
-            </a>
-        </div>
-
         <!-- Interactive Content Area -->
         <div class="toggle-container">
             <div class="button-group">
-                <a href="#" id="kofi-icon-link" class="email-button">
-                    <img src="mail.png" alt="Ko-fi">
-                </a>
-                <button id="toggle-button" class="next-button">:3</button>
-                <button id="ask-button" class="next-button">Ask!</button>
-                <button id="posts-button" class="next-button">Psst</button>
+                <div class="icon-container">
+                    <div id="socials-button" class="email-button support-menu-button socials-button" role="button" tabindex="0" aria-label="Open socials" aria-expanded="false">
+                        <span class="socials-menu-label menu-main-icon">꩜</span>
+                        <span class="menu-back-arrow" aria-hidden="true">↢</span>
+                        <span class="support-options socials-options" aria-hidden="true">
+                            <span id="snapchat-option" class="support-option social-option" role="button" tabindex="-1" aria-label="Snapchat">
+                                <img src="snap.png" alt="Snapchat">
+                            </span>
+                            <span id="instagram-option" class="support-option social-option" role="button" tabindex="-1" aria-label="Instagram">
+                                <img src="insta.png" alt="Instagram">
+                            </span>
+                        </span>
+                    </div>
+                </div>
+                <div id="support-menu-button" class="email-button support-menu-button" role="button" tabindex="0" aria-label="Open support options" aria-expanded="false">
+                    <img src="mail.png" alt="Ko-fi" class="menu-main-icon">
+                    <span class="menu-back-arrow" aria-hidden="true">↢</span>
+                    <span class="support-options" aria-hidden="true">
+                        <span id="donate-option" class="support-option" role="button" tabindex="-1">Tip</span>
+                        <span id="wishlist-option" class="support-option" role="button" tabindex="-1">Wishlist</span>
+                    </span>
+                </div>
+                <div id="action-menu-button" class="next-button support-menu-button action-menu-button" role="button" tabindex="0" aria-label="Open actions" aria-expanded="false">
+                    <span class="action-menu-label menu-main-icon">𓏲ּ𝄢</span>
+                    <span class="menu-back-arrow" aria-hidden="true">↢</span>
+                    <span class="support-options action-options" aria-hidden="true">
+                        <span id="toggle-button" class="support-option action-option pencil-option" role="button" tabindex="-1" aria-label="Doodle"></span>
+                        <span id="ask-button" class="support-option action-option question-option" role="button" tabindex="-1" aria-label="Ask">?</span>
+                        <span id="posts-button" class="support-option action-option" role="button" tabindex="-1">:3</span>
+                    </span>
+                </div>
                 <div class="posts-popup" id="posts-popup">
                     <div class="popup-content">
                         <div class="posts-header">
@@ -97,7 +113,7 @@
                 <textarea id="ask-textarea" maxlength="200" placeholder="Type your question here... don't be nasty ty.."></textarea>
                 <div class="ask-footer">
                     <span id="char-count">0/200</span>
-                    <button id="send-question" class="send-button">Send</button>
+                    <button id="send-question" class="send-button">Send anonymously</button>
                 </div>
             </div>
             
@@ -126,26 +142,6 @@
     </div>
 
     <!-- Popup Modals -->
-    <div class="confirmation-popup" id="confirmation-popup">
-        <div class="popup-content">
-            <p>For inquiries only, please.</p>
-            <p>☆or if youre a girl</p>
-            <p>☆or if you have a 2 pages+ paragraph ready</p>
-            <div class="button-group">
-                <button id="cancel-email-request">Cancel</button>
-                <button id="confirm-email-request">Continue?</button>
-            </div>
-        </div>
-    </div>   
-
-    <div class="email-popup" id="email-popup">
-        <div class="popup-content">
-            <p>email: <strong>dumidollia@gmail.com</strong></p>
-            <button id="close-email-popup">Close</button>
-            <img src="gatito.gif" alt="Cute Cat GIF" class="cat-gif">
-        </div>
-    </div>     
-    
     <div class="popup" id="popup">
         <div class="popup-content">
             <button id="close-popup" aria-label="Close">
