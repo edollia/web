@@ -10,13 +10,54 @@ document.addEventListener("DOMContentLoaded", async function() {
         link: 'CUT2.mp3',
         submit: 'CUT3.mp3'
     };
+    const uiSoundPlayers = Object.fromEntries(
+        Object.entries(uiSounds).map(([type, src]) => {
+            const sound = new Audio(src);
+            sound.preload = 'auto';
+            sound.volume = 1;
+            sound.load();
+            return [type, sound];
+        })
+    );
+    let uiSoundsWarmed = false;
+
+    function warmUiSounds() {
+        if (uiSoundsWarmed) return;
+        uiSoundsWarmed = true;
+
+        Object.values(uiSoundPlayers).forEach(sound => {
+            const previousVolume = sound.volume;
+            sound.volume = 0;
+            sound.currentTime = 0;
+            sound.play()
+                .then(() => {
+                    sound.pause();
+                    sound.currentTime = 0;
+                    sound.volume = previousVolume;
+                })
+                .catch(() => {
+                    sound.volume = previousVolume;
+                });
+        });
+    }
+
+    document.addEventListener('pointerdown', warmUiSounds, { once: true, capture: true });
+
+    let lastTouchEndTime = 0;
+    document.addEventListener('touchend', function(e) {
+        const now = Date.now();
+        if (now - lastTouchEndTime <= 320 && e.touches.length === 0) {
+            e.preventDefault();
+        }
+        lastTouchEndTime = now;
+    }, { passive: false });
 
     function playUiSound(type) {
-        const src = uiSounds[type];
-        if (!src) return;
+        const sound = uiSoundPlayers[type];
+        if (!sound) return;
 
-        const sound = new Audio(src);
-        sound.volume = 1;
+        sound.pause();
+        sound.currentTime = 0;
         sound.play().catch(() => {});
     }
     

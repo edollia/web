@@ -22,6 +22,7 @@ html {
     /* KEYBOARD FIX: Prevent viewport resize on mobile */
     height: 100vh;
     height: -webkit-fill-available;
+    touch-action: manipulation;
 }
 
 body.loading {
@@ -45,6 +46,16 @@ body {
     padding: 0 1px;
     overflow: hidden;
     -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+}
+
+button,
+[role="button"],
+a,
+input,
+textarea,
+canvas {
+    touch-action: manipulation;
 }
 
 /* KEYBOARD FIX: Prevent layout shift when virtual keyboard appears */
@@ -698,6 +709,7 @@ button {
 .drawing-widget.active {
     opacity: 1;
     pointer-events: auto;
+    transform: translateX(-50%) translateY(0) scale(1);
 }
 
 .toggle-container {
@@ -751,10 +763,12 @@ button {
 .drawing-widget {
     position: absolute;
     left: 50%;
-    transform: translateX(-50%);
+    transform: translateX(-50%) translateY(-8px) scale(0.985);
     opacity: 0;
     pointer-events: none;
-    transition: opacity 0.5s ease, transform 0.5s ease;
+    transition: opacity 0.42s ease, transform 0.48s cubic-bezier(0.22, 1, 0.36, 1);
+    will-change: opacity, transform;
+    backface-visibility: hidden;
 }
 
 /* Ensure canvas has fixed dimensions */
@@ -901,6 +915,7 @@ button {
     padding-right: 10px;
     text-decoration: none;
     white-space: nowrap;
+    will-change: width, transform;
 }
 
 .support-menu-button.open {
@@ -920,6 +935,7 @@ button {
     z-index: 1;
     transition: max-width 0.3s ease, opacity 0.2s ease;
     pointer-events: none;
+    will-change: max-width, opacity;
 }
 
 .support-menu-button.open .support-options {
@@ -1104,6 +1120,8 @@ button {
     -webkit-backdrop-filter: blur(3px);
     z-index: 10;
     overflow: visible;
+    will-change: opacity, transform;
+    backface-visibility: hidden;
 }
 
 .ask-form-container[style*="block"] {
@@ -1248,8 +1266,13 @@ button {
 .ask-heart-left {
     top: 17px;
     left: 18px;
-    font-size: 22px;
-    transform: rotate(-13deg);
+    width: 13px;
+    height: 13px;
+    background: rgba(255, 132, 187, 0.76);
+    border-radius: 2px;
+    color: transparent;
+    font-size: 0;
+    transform: rotate(-45deg);
 }
 
 .ask-sparkle-left {
@@ -1267,8 +1290,34 @@ button {
 .ask-heart-right {
     right: 14px;
     bottom: 42px;
+    color: rgba(255, 132, 187, 0.76);
+    font-family: "Comic Sans MS", "Trebuchet MS", sans-serif;
     font-size: 17px;
     transform: rotate(11deg);
+}
+
+.ask-heart-left::before,
+.ask-heart-left::after,
+.posts-heart-left::before,
+.posts-heart-left::after {
+    content: '';
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    background: inherit;
+    border-radius: 50%;
+}
+
+.ask-heart-left::before,
+.posts-heart-left::before {
+    top: -50%;
+    left: 0;
+}
+
+.ask-heart-left::after,
+.posts-heart-left::after {
+    top: 0;
+    left: 50%;
 }
 
 .ask-corner-mascot {
@@ -1297,6 +1346,8 @@ button {
     pointer-events: none;
     transform: translateY(-10px) scale(0.98);
     transition: opacity 0.45s ease, transform 0.45s ease;
+    will-change: opacity, transform;
+    backface-visibility: hidden;
 }
 
 .posts-popup.active {
@@ -1343,8 +1394,13 @@ button {
 .posts-heart-left {
     top: 17px;
     left: 19px;
-    font-size: 18px;
-    transform: rotate(-13deg);
+    width: 12px;
+    height: 12px;
+    background: rgba(255, 132, 187, 0.72);
+    border-radius: 2px;
+    color: transparent;
+    font-size: 0;
+    transform: rotate(-45deg);
 }
 
 .posts-sparkle-left {
@@ -1362,6 +1418,8 @@ button {
 .posts-heart-right {
     right: 16px;
     bottom: 23px;
+    color: rgba(255, 132, 187, 0.72);
+    font-family: "Comic Sans MS", "Trebuchet MS", sans-serif;
     font-size: 18px;
     transform: rotate(11deg);
 }
@@ -1599,7 +1657,7 @@ button {
 
 .post-item {
     background: rgba(255, 255, 255, 0.72);
-    border: 1.5px dashed rgba(255, 180, 212, 0.5);
+    border: 1px solid rgba(255, 180, 212, 0.42);
     border-radius: 14px;
     padding: 7px;
     position: relative;
@@ -1637,7 +1695,7 @@ button {
     margin-bottom: 0;
     box-shadow: 0 4px 12px rgba(255, 145, 198, 0.11);
     transition: all 0.3s ease;
-    border: 1.5px dashed rgba(255, 180, 212, 0.5);
+    border: 1px solid rgba(255, 180, 212, 0.42);
 }
 
 .question-item:hover {
