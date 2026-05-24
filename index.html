@@ -72,7 +72,7 @@
                     <img src="mail.png" alt="Ko-fi" class="menu-main-icon">
                     <span class="menu-back-arrow" aria-hidden="true">↢</span>
                     <span class="support-options" aria-hidden="true">
-                        <span id="donate-option" class="support-option" role="button" tabindex="-1">Tip</span>
+                        <span id="donate-option" class="support-option" role="button" tabindex="-1">$</span>
                         <span id="wishlist-option" class="support-option" role="button" tabindex="-1">Wishlist</span>
                     </span>
                 </div>
@@ -85,42 +85,24 @@
                         <span id="posts-button" class="support-option action-option" role="button" tabindex="-1">:3</span>
                     </span>
                 </div>
-                <div class="posts-popup" id="posts-popup">
-                    <div class="popup-content">
-                        <div class="posts-header">
-                            <button id="close-posts-popup" class="close-button">✕</button>
-                            <div class="posts-tabs">
-                                <button class="tab-button active" data-tab="drawings-tab">Doodles</button>
-                                <button class="tab-button" data-tab="questions-tab">Q&A</button>
-                            </div>
-                        </div>
-                        
-                        <div class="posts-content">
-                            <!-- Drawings will appear here -->
-                            <div id="drawings-tab" class="tab-content active">
-                                <div class="posts-list" id="drawings-list"></div>
-                            </div>
-                            
-                            <!-- Questions will appear here -->
-                            <div id="questions-tab" class="tab-content">
-                                <div class="posts-list" id="questions-list"></div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
             </div>
-            <div id="ask-form-container" class="ask-form-container">
-                <textarea id="ask-textarea" maxlength="200" placeholder="Type your question here... don't be nasty ty.."></textarea>
-                <div class="ask-footer">
-                    <span id="char-count">0/200</span>
-                    <button id="send-question" class="send-button">Send anonymously</button>
-                </div>
-            </div>
-            
             <!-- Content Area -->
             <div class="content-area">
                 <!-- Note Image -->
                 <img src="notee.jpg" alt="Note" class="note-image active-content">
+
+                <div id="ask-form-container" class="ask-form-container">
+                    <span class="ask-deco ask-heart-left" aria-hidden="true">♥</span>
+                    <span class="ask-deco ask-sparkle-left" aria-hidden="true">✧</span>
+                    <span class="ask-deco ask-sparkle-right" aria-hidden="true">✧</span>
+                    <span class="ask-deco ask-heart-right" aria-hidden="true">♡</span>
+                    <textarea id="ask-textarea" maxlength="200" placeholder="Ask away :0"></textarea>
+                    <div class="ask-footer">
+                        <span id="char-count">0/200</span>
+                        <button id="send-question" class="send-button">Send</button>
+                    </div>
+                    <img src="question-bunny.png" alt="" class="ask-corner-mascot" aria-hidden="true" onerror="this.style.display='none'">
+                </div>
                 
                 <!-- Drawing Widget -->
                 <div class="drawing-widget">
@@ -135,6 +117,31 @@
 
                         <canvas id="drawing-canvas" width="330" height="230"></canvas>
                         <button id="send-drawing" class="send-button">Send anonymously</button>
+                    </div>
+                </div>
+
+                <div class="posts-popup posts-panel" id="posts-popup">
+                    <div class="popup-content">
+                        <span class="posts-deco posts-heart-left" aria-hidden="true">♥</span>
+                        <span class="posts-deco posts-sparkle-left" aria-hidden="true">✧</span>
+                        <span class="posts-deco posts-sparkle-right" aria-hidden="true">✧</span>
+                        <span class="posts-deco posts-heart-right" aria-hidden="true">♡</span>
+                        <div class="posts-header">
+                            <div class="posts-tabs">
+                                <button class="tab-button active" data-tab="drawings-tab">Doods</button>
+                                <button class="tab-button" data-tab="questions-tab">Mi</button>
+                            </div>
+                        </div>
+                        
+                        <div class="posts-content">
+                            <div id="drawings-tab" class="tab-content active">
+                                <div class="posts-list" id="drawings-list"></div>
+                            </div>
+                            
+                            <div id="questions-tab" class="tab-content">
+                                <div class="posts-list" id="questions-list"></div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

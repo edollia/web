@@ -211,6 +211,31 @@ var kofiWidgetOverlayFloatingChatBuilder = kofiWidgetOverlayFloatingChatBuilder 
                     }
                 }
             };
+
+            window.closeKofiOverlay = function() {
+                var iframeId = getContainerFrameId();
+                var mobiIframeId = getMobiContainerFrameId();
+                var closeDesktop = function() {
+                    var iframe = document.getElementById(iframeId);
+                    if (!iframe || !iframe.contentDocument) return false;
+                    var donateButton = iframe.contentDocument.getElementById(`${getButtonId()}`);
+                    var popup = document.getElementById(`${_configManager.getValue(_myType, 'cssId')}-kofi-popup-iframe`);
+                    if (!donateButton || !popup || donateButton.classList.contains('closed')) return false;
+                    closePopup(popup, donateButton);
+                    return true;
+                };
+                var closeMobile = function() {
+                    var iframe = document.getElementById(mobiIframeId);
+                    if (!iframe || !iframe.contentDocument) return false;
+                    var donateButton = iframe.contentDocument.getElementById(`${getButtonId()}`);
+                    var popup = document.getElementById(`${_configManager.getValue(_myType, 'cssId')}-kofi-popup-iframe-mobi`);
+                    if (!donateButton || !popup || donateButton.classList.contains('closed')) return false;
+                    closePopup(popup, donateButton);
+                    return true;
+                };
+
+                closeDesktop() || closeMobile();
+            };
         }, 500);
     };
 
@@ -236,7 +261,10 @@ var kofiWidgetOverlayFloatingChatBuilder = kofiWidgetOverlayFloatingChatBuilder 
     };
 
     function slidePopupOpen(popup, finalHeight) {
-        popup.style = `z-index:10000;width:328px!important;height: ${finalHeight}px!important; transition: height 0.5s ease, opacity 0.3s linear; opacity:1;`;
+        var displayHeight = Math.round(finalHeight * 1.2);
+        var topOffset = Math.round(finalHeight * 0.07);
+        popup.dataset.kofiTopOffset = topOffset;
+        popup.style = `z-index:10000;position:fixed!important;top:calc(50% + ${topOffset}px)!important;left:50%!important;right:auto!important;bottom:auto!important;width:328px!important;height:${displayHeight}px!important;max-height:108vh!important;transform:translate(-50%, -50%) scale(0.7)!important;transform-origin:center center!important;transition:height 0.5s ease, opacity 0.3s linear; opacity:1;`;
         var noticeMobi = document.getElementsByClassName("floating-chat-kofi-popup-iframe-notice-mobi")[0];
         var notice = document.getElementsByClassName("floating-chat-kofi-popup-iframe-notice")[0];
         if (noticeMobi) noticeMobi.style.display = "block";
@@ -245,7 +273,8 @@ var kofiWidgetOverlayFloatingChatBuilder = kofiWidgetOverlayFloatingChatBuilder 
 
     function closePopup(popup, donateButton) {
         // ar popup = document.getElementById(popupId);
-        popup.style = 'height: 0px; width:0px; transition:height 0.3s ease 0s , width 1s linear,opacity 0.3s linear; opacity:0;';
+        var topOffset = popup.dataset.kofiTopOffset || 0;
+        popup.style = `z-index:10000;position:fixed!important;top:calc(50% + ${topOffset}px)!important;left:50%!important;right:auto!important;bottom:auto!important;width:328px!important;height:0px!important;transform:translate(-50%, -50%) scale(0.7)!important;transform-origin:center center!important;transition:height 0.3s ease 0s, opacity 0.3s linear; opacity:0;`;
         updateClass(donateButton, 'open', 'closed');
         var noticeMobi = document.getElementsByClassName("floating-chat-kofi-popup-iframe-notice-mobi")[0];
         var notice = document.getElementsByClassName("floating-chat-kofi-popup-iframe-notice")[0];

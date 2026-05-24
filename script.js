@@ -2,7 +2,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     // ===== ENHANCED AUDIO HANDLING =====
     const audio = new Audio('hehe.mp3');
     audio.loop = true;
-    const backgroundMusicVolume = 0.3;
+    const backgroundMusicVolume = 0.06;
     audio.volume = backgroundMusicVolume;
     let audioPlayed = false;
     const uiSounds = {
@@ -449,18 +449,67 @@ document.addEventListener("DOMContentLoaded", async function() {
     const toggleButton = document.getElementById('toggle-button');
     const noteImage = document.querySelector('.note-image');
     const drawingWidget = document.querySelector('.drawing-widget');
+    const postsPanel = document.getElementById('posts-popup');
+    const postsButton = document.getElementById('posts-button');
+    let showingNote = true;
+
+    function closeDrawingWidget() {
+        if (!toggleButton || !noteImage || !drawingWidget) return;
+        showingNote = true;
+        drawingWidget.classList.remove('active');
+        toggleButton.classList.remove('drawing-open');
+        toggleButton.textContent = '';
+    }
+
+    function closeQuestionForm() {
+        const askButton = document.getElementById('ask-button');
+        const askFormContainer = document.getElementById('ask-form-container');
+        if (!askButton || !askFormContainer) return;
+        askFormContainer.style.display = 'none';
+        askButton.textContent = '?';
+    }
+
+    function closePostsPanel() {
+        if (!postsPanel || !postsButton) return;
+        postsPanel.classList.remove('active');
+        postsButton.textContent = ':3';
+    }
+
+    function showNoteImage() {
+        closeDrawingWidget();
+        closeQuestionForm();
+        closePostsPanel();
+        noteImage?.classList.remove('hidden');
+    }
+
+    function hideNoteImage() {
+        noteImage?.classList.add('hidden');
+    }
+
+    function closeActionPanels() {
+        closeDrawingWidget();
+        closeQuestionForm();
+        closePostsPanel();
+        noteImage?.classList.remove('hidden');
+    }
 
     if (toggleButton && noteImage && drawingWidget) {
-        let showingNote = true;
         toggleButton.addEventListener('click', function(e) {
             e.preventDefault();
             e.stopPropagation();
             playUiSound('tap');
-            showingNote = !showingNote;
-            noteImage.classList.toggle('hidden', !showingNote);
-            drawingWidget.classList.toggle('active', !showingNote);
-            toggleButton.classList.toggle('drawing-open', !showingNote);
-            toggleButton.textContent = showingNote ? '' : '✖';
+            const open = drawingWidget.classList.contains('active');
+            if (open) {
+                showNoteImage();
+            } else {
+                closeQuestionForm();
+                closePostsPanel();
+                hideNoteImage();
+                showingNote = false;
+                drawingWidget.classList.add('active');
+                toggleButton.classList.add('drawing-open');
+                toggleButton.textContent = '✖';
+            }
         });
     }
 
@@ -508,6 +557,9 @@ document.addEventListener("DOMContentLoaded", async function() {
         supportMenuButton.classList.remove('open');
         supportMenuButton.setAttribute('aria-expanded', 'false');
         supportOptions?.setAttribute('aria-hidden', 'true');
+        if (typeof window.closeKofiOverlay === 'function') {
+            window.closeKofiOverlay();
+        }
         supportMenuButton.querySelectorAll('.support-option').forEach(option => {
             option.setAttribute('tabindex', '-1');
         });
@@ -518,6 +570,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         actionMenuButton.classList.remove('open');
         actionMenuButton.setAttribute('aria-expanded', 'false');
         actionOptions?.setAttribute('aria-hidden', 'true');
+        closeActionPanels();
         actionMenuButton.querySelectorAll('.action-option').forEach(option => {
             option.setAttribute('tabindex', '-1');
         });
@@ -615,6 +668,9 @@ document.addEventListener("DOMContentLoaded", async function() {
         const isOpen = supportMenuButton.classList.toggle('open');
         supportMenuButton.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
         supportOptions?.setAttribute('aria-hidden', isOpen ? 'false' : 'true');
+        if (!isOpen && typeof window.closeKofiOverlay === 'function') {
+            window.closeKofiOverlay();
+        }
         supportMenuButton.querySelectorAll('.support-option').forEach(option => {
             option.setAttribute('tabindex', isOpen ? '0' : '-1');
         });
@@ -661,6 +717,9 @@ document.addEventListener("DOMContentLoaded", async function() {
         const isOpen = actionMenuButton.classList.toggle('open');
         actionMenuButton.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
         actionOptions?.setAttribute('aria-hidden', isOpen ? 'false' : 'true');
+        if (!isOpen) {
+            closeActionPanels();
+        }
         actionMenuButton.querySelectorAll('.action-option').forEach(option => {
             option.setAttribute('tabindex', isOpen ? '0' : '-1');
         });
@@ -948,6 +1007,13 @@ document.addEventListener("DOMContentLoaded", async function() {
                 e.stopPropagation();
                 playUiSound('tap');
                 const open = askFormContainer.style.display === 'block';
+                if (!open) {
+                    closeDrawingWidget();
+                    closePostsPanel();
+                    hideNoteImage();
+                } else {
+                    noteImage?.classList.remove('hidden');
+                }
                 askFormContainer.style.display = open ? 'none' : 'block';
                 askButton.textContent = open ? '?' : '×';
                 if (!open) askTextarea.focus();
@@ -963,7 +1029,8 @@ document.addEventListener("DOMContentLoaded", async function() {
             askTextarea.addEventListener('input', function() {
                 const len = this.value.length;
                 charCount.textContent = `${len}/200`;
-                charCount.style.color = len > 180 ? '#ff6b6b' : '#888';
+                charCount.style.color = len > 180 ? '#ff6b6b' : 'rgba(255, 132, 187, 0.82)';
+                askFormContainer.classList.toggle('has-text', len > 0);
             });
 
             sendQuestionBtn?.addEventListener('click', async function() {
@@ -997,8 +1064,10 @@ document.addEventListener("DOMContentLoaded", async function() {
                     
                     askTextarea.value = '';
                     charCount.textContent = '0/200';
+                    askFormContainer.classList.remove('has-text');
                     askFormContainer.style.display = 'none';
                     askButton.textContent = '?';
+                    noteImage?.classList.remove('hidden');
                     alert("Got it! ^-^");
                 } catch (error) {
                     console.error("Error saving question:", error);
@@ -1008,9 +1077,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         }
 
         // ===== POSTS SYSTEM =====
-        const postsButton = document.getElementById('posts-button');
-        const postsPopup = document.getElementById('posts-popup');
-        const closePostsPopup = document.getElementById('close-posts-popup');
+        const postsPopup = postsPanel;
         const drawingsList = document.getElementById('drawings-list');
         const questionsList = document.getElementById('questions-list');
 
@@ -1019,25 +1086,23 @@ document.addEventListener("DOMContentLoaded", async function() {
                 e.preventDefault();
                 e.stopPropagation();
                 playUiSound('tap');
-                postsPopup.style.display = 'flex';
-                await renderSubmissions();
+                const open = postsPopup?.classList.contains('active');
+                if (open) {
+                    showNoteImage();
+                } else {
+                    closeDrawingWidget();
+                    closeQuestionForm();
+                    hideNoteImage();
+                    postsPopup?.classList.add('active');
+                    postsButton.textContent = '×';
+                    await renderSubmissions();
+                }
             });
 
             postsButton?.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
                     postsButton.click();
-                }
-            });
-
-            closePostsPopup?.addEventListener('click', () => {
-                postsPopup.style.display = 'none';
-            });
-            
-            // Close popup when clicking outside
-            postsPopup?.addEventListener('click', (e) => {
-                if (e.target === postsPopup) {
-                    postsPopup.style.display = 'none';
                 }
             });
 
@@ -1121,15 +1186,16 @@ document.addEventListener("DOMContentLoaded", async function() {
                     const el = document.createElement('div');
                     el.className = 'question-item';
                     el.style.animationDelay = `${index * 0.1}s`;
+                    const answerHtml = q.answer ? `<p class="answer-text">${linkifyText(q.answer)}</p>` : '';
                     el.innerHTML = `
                         <p class="question-text">"${escapeHtml(q.question)}"</p>
-    <p class="answer-text">${linkifyText(q.answer)}</p>
+                        ${answerHtml}
                     `;
                     questionsList.appendChild(el);
                 });
             } catch (error) {
                 console.error("Error loading questions:", error);
-                questionsList.innerHTML = '<p>Error loading Q&A. Please refresh.</p>';
+                questionsList.innerHTML = '<p>Error loading Mi. Please refresh.</p>';
             }
         }
 
@@ -1144,6 +1210,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         const defaultReactionIcon = 'reactions.png';
         let currentOpenPicker = null; // Track currently open picker
         let lastClickTime = 0; // Prevent rapid-fire clicks
+        let lastTouchReactionTime = 0;
 
         async function initLikeSystem(drawingElement, drawingId) {
             const likeSticker = drawingElement.querySelector('.like-sticker');
@@ -1157,10 +1224,14 @@ document.addEventListener("DOMContentLoaded", async function() {
             const handleReactionClick = async (e) => {
                 e.preventDefault();
                 e.stopPropagation();
+                if (e.type === 'click' && Date.now() - lastTouchReactionTime < 500) {
+                    return;
+                }
                 
                 // Prevent double-tap zoom on mobile
                 if (e.type === 'touchstart') {
                     e.preventDefault();
+                    lastTouchReactionTime = Date.now();
                 }
                 playUiSound('tap');
                 
@@ -1289,8 +1360,8 @@ document.addEventListener("DOMContentLoaded", async function() {
             const drawingRect = drawingElement.getBoundingClientRect();
             
             // Center the picker horizontally, keep it at the bottom
-            const pickerWidth = 140; // Reduced width to fit within canvas
-            const pickerHeight = 44; // Reduced height to match new styling
+            const pickerWidth = 112;
+            const pickerHeight = 35;
             
             // Center horizontally, position at bottom
             let left = (drawingRect.width - pickerWidth) / 2;
@@ -1341,10 +1412,14 @@ document.addEventListener("DOMContentLoaded", async function() {
                 const handleReactionOptionClick = async (e) => {
                     e.preventDefault();
                     e.stopPropagation();
+                    if (e.type === 'click' && Date.now() - lastTouchReactionTime < 500) {
+                        return;
+                    }
                     
                     // Prevent double-tap zoom on mobile
                     if (e.type === 'touchstart') {
                         e.preventDefault();
+                        lastTouchReactionTime = Date.now();
                     }
                     
                     const reaction = option.dataset.reaction;
