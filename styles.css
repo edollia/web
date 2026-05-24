@@ -767,8 +767,6 @@ button {
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.42s ease, transform 0.48s cubic-bezier(0.22, 1, 0.36, 1);
-    will-change: opacity, transform;
-    backface-visibility: hidden;
 }
 
 /* Ensure canvas has fixed dimensions */
@@ -785,7 +783,6 @@ button {
     /* Fix rendering glitches on desktop browsers - force hardware acceleration */
     transform: translateZ(0);
     -webkit-transform: translateZ(0);
-    will-change: transform;
     isolation: isolate;
 }
 
@@ -915,7 +912,6 @@ button {
     padding-right: 10px;
     text-decoration: none;
     white-space: nowrap;
-    will-change: width, transform;
 }
 
 .support-menu-button.open {
@@ -935,7 +931,6 @@ button {
     z-index: 1;
     transition: max-width 0.3s ease, opacity 0.2s ease;
     pointer-events: none;
-    will-change: max-width, opacity;
 }
 
 .support-menu-button.open .support-options {
@@ -1120,8 +1115,6 @@ button {
     -webkit-backdrop-filter: blur(3px);
     z-index: 10;
     overflow: visible;
-    will-change: opacity, transform;
-    backface-visibility: hidden;
 }
 
 .ask-form-container[style*="block"] {
@@ -1346,8 +1339,6 @@ button {
     pointer-events: none;
     transform: translateY(-10px) scale(0.98);
     transition: opacity 0.45s ease, transform 0.45s ease;
-    will-change: opacity, transform;
-    backface-visibility: hidden;
 }
 
 .posts-popup.active {

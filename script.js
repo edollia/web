@@ -2,14 +2,36 @@ document.addEventListener("DOMContentLoaded", async function() {
     // ===== ENHANCED AUDIO HANDLING =====
     const audio = new Audio('hehe.mp3');
     audio.loop = true;
-    const backgroundMusicVolume = 0.06;
-    audio.volume = backgroundMusicVolume;
+    const backgroundMusicVolume = 0.4;
     let audioPlayed = false;
     const uiSounds = {
         tap: 'CUT1.mp3',
         link: 'CUT2.mp3',
         submit: 'CUT3.mp3'
     };
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    const uiAudioContext = AudioContextClass ? new AudioContextClass() : null;
+    let backgroundMusicGain = null;
+    if (uiAudioContext) {
+        try {
+            const backgroundMusicSource = uiAudioContext.createMediaElementSource(audio);
+            backgroundMusicGain = uiAudioContext.createGain();
+            backgroundMusicSource.connect(backgroundMusicGain);
+            backgroundMusicGain.connect(uiAudioContext.destination);
+        } catch (error) {
+            backgroundMusicGain = null;
+        }
+    }
+    function setBackgroundMusicVolume(volume) {
+        if (backgroundMusicGain) {
+            audio.volume = 1;
+            backgroundMusicGain.gain.value = volume;
+        } else {
+            audio.volume = volume;
+        }
+    }
+    setBackgroundMusicVolume(backgroundMusicVolume);
+    const uiSoundBuffers = {};
     const uiSoundPlayers = Object.fromEntries(
         Object.entries(uiSounds).map(([type, src]) => {
             const sound = new Audio(src);
@@ -21,9 +43,33 @@ document.addEventListener("DOMContentLoaded", async function() {
     );
     let uiSoundsWarmed = false;
 
-    function warmUiSounds() {
+    async function loadUiSoundBuffers() {
+        if (!uiAudioContext) return;
+
+        await Promise.all(Object.entries(uiSounds).map(async ([type, src]) => {
+            try {
+                const response = await fetch(src);
+                const buffer = await response.arrayBuffer();
+                uiSoundBuffers[type] = await uiAudioContext.decodeAudioData(buffer);
+            } catch (error) {
+                // Fall back to HTMLAudioElement for this sound.
+            }
+        }));
+    }
+
+    const uiSoundBuffersReady = loadUiSoundBuffers();
+
+    async function warmUiSounds() {
         if (uiSoundsWarmed) return;
         uiSoundsWarmed = true;
+
+        if (uiAudioContext && uiAudioContext.state !== 'running') {
+            try {
+                await uiAudioContext.resume();
+            } catch (error) {
+                // HTMLAudioElement fallback below still works.
+            }
+        }
 
         Object.values(uiSoundPlayers).forEach(sound => {
             const previousVolume = sound.volume;
@@ -41,18 +87,18 @@ document.addEventListener("DOMContentLoaded", async function() {
         });
     }
 
-    document.addEventListener('pointerdown', warmUiSounds, { once: true, capture: true });
-
-    let lastTouchEndTime = 0;
-    document.addEventListener('touchend', function(e) {
-        const now = Date.now();
-        if (now - lastTouchEndTime <= 320 && e.touches.length === 0) {
-            e.preventDefault();
-        }
-        lastTouchEndTime = now;
-    }, { passive: false });
-
     function playUiSound(type) {
+        if (uiAudioContext && uiAudioContext.state === 'running' && uiSoundBuffers[type]) {
+            const source = uiAudioContext.createBufferSource();
+            const gain = uiAudioContext.createGain();
+            source.buffer = uiSoundBuffers[type];
+            gain.gain.value = 1;
+            source.connect(gain);
+            gain.connect(uiAudioContext.destination);
+            source.start(0);
+            return;
+        }
+
         const sound = uiSoundPlayers[type];
         if (!sound) return;
 
@@ -90,7 +136,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         if (audioPlayed) {
             // Track if audio was playing before muting
             backgroundAudioWasPlaying = !audio.paused;
-            audio.volume = 0;
+            setBackgroundMusicVolume(0);
             backgroundAudioMuted = true;
         }
     }
@@ -98,7 +144,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     // Function to unmute background music
     function unmuteBackgroundMusic() {
         if (backgroundAudioMuted) {
-            audio.volume = backgroundMusicVolume;
+            setBackgroundMusicVolume(backgroundMusicVolume);
             backgroundAudioMuted = false;
             
             // Resume audio if it was playing before and is now paused
@@ -191,6 +237,32 @@ document.addEventListener("DOMContentLoaded", async function() {
         }
     }
 
+    function waitForKofiOverlayReady() {
+        return new Promise(resolve => {
+            if (typeof window.openKofiOverlay === 'function' && typeof window.closeKofiOverlay === 'function') {
+                resolve();
+                return;
+            }
+
+            const startedAt = Date.now();
+            const checkReady = () => {
+                if (typeof window.openKofiOverlay === 'function' && typeof window.closeKofiOverlay === 'function') {
+                    resolve();
+                    return;
+                }
+
+                if (Date.now() - startedAt >= 2000) {
+                    resolve();
+                    return;
+                }
+
+                setTimeout(checkReady, 100);
+            };
+
+            checkReady();
+        });
+    }
+
     function decodeImage(src) {
         return new Promise(resolve => {
             const img = new Image();
@@ -273,6 +345,11 @@ document.addEventListener("DOMContentLoaded", async function() {
                 resolve();
             }
         }),
+        Promise.race([
+            uiSoundBuffersReady.catch(() => {}),
+            new Promise(resolve => setTimeout(resolve, 2000))
+        ]),
+        waitForKofiOverlayReady(),
         // Wait for critical resources to load
         new Promise(resolve => {
             const criticalResources = [
@@ -286,6 +363,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                 'dropdown-icon.png',
                 'mail.png',
                 'kofi.png',
+                'question-bunny.png',
                 'igpf.png',
                 'fbpf.png',
                 'ttpf.png',
@@ -468,6 +546,7 @@ document.addEventListener("DOMContentLoaded", async function() {
 
     document.getElementById("close-popup")?.addEventListener("click", function() {
         if (!popup) return;
+        warmUiSounds();
         popup.style.opacity = 0;
         setTimeout(() => {
             popup.style.display = "none";
@@ -650,10 +729,6 @@ document.addEventListener("DOMContentLoaded", async function() {
 
         e.preventDefault();
         e.stopPropagation();
-        if (socialsButton.classList.contains('open') && !e.target.closest('.menu-back-arrow')) {
-            return;
-        }
-
         if (!socialsButton.classList.contains('open')) {
             closeSupportMenu();
             closeActionMenu();
@@ -696,10 +771,6 @@ document.addEventListener("DOMContentLoaded", async function() {
 
         e.preventDefault();
         e.stopPropagation();
-        if (supportMenuButton.classList.contains('open') && !e.target.closest('.menu-back-arrow')) {
-            return;
-        }
-
         if (!supportMenuButton.classList.contains('open')) {
             closeSocialsMenu();
             closeActionMenu();
@@ -745,10 +816,6 @@ document.addEventListener("DOMContentLoaded", async function() {
 
         e.preventDefault();
         e.stopPropagation();
-        if (actionMenuButton.classList.contains('open') && !e.target.closest('.menu-back-arrow')) {
-            return;
-        }
-
         if (!actionMenuButton.classList.contains('open')) {
             closeSocialsMenu();
             closeSupportMenu();
