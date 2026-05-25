@@ -816,7 +816,7 @@ button {
     color: #d7c0c5;
     font-weight: bold;
     cursor: pointer;
-    transition: background 0.2s ease, box-shadow 0.2s ease, transform 0.16s ease;
+    transition: width 0.22s cubic-bezier(0.22, 1, 0.36, 1), background 0.2s ease, box-shadow 0.2s ease, transform 0.16s ease;
     box-shadow: var(--glass-pink-shadow-small);
     display: flex;
     align-items: center;
@@ -825,6 +825,9 @@ button {
     min-width: 40px;
     font-size: 14px;
     position: relative;
+    touch-action: manipulation;
+    -webkit-user-select: none;
+    user-select: none;
 }
 
 .email-button img {
@@ -900,6 +903,18 @@ button {
     background: linear-gradient(145deg, rgba(255, 248, 252, 0.94), rgba(255, 196, 225, 0.74));
 }
 
+@media (hover: none), (pointer: coarse) {
+    .email-button:hover,
+    .next-button:hover {
+        transform: none;
+        background: var(--glass-pink-control);
+    }
+
+    .support-option:hover {
+        transform: none;
+    }
+}
+
 .email-button:active {
     box-shadow: 0 0 8px rgba(255, 182, 193, 0.8);
 }
@@ -907,16 +922,18 @@ button {
 .support-menu-button {
     overflow: hidden;
     width: 40px;
+    flex: 0 0 auto;
     gap: 0;
     padding-left: 10px;
     padding-right: 10px;
     text-decoration: none;
     white-space: nowrap;
-    transition: background 0.2s ease, box-shadow 0.2s ease, transform 0.16s ease;
+    transition: width 0.22s cubic-bezier(0.22, 1, 0.36, 1), background 0.2s ease, box-shadow 0.2s ease, transform 0.16s ease;
 }
 
 .support-menu-button.open {
     width: 184px;
+    flex-basis: auto;
     gap: 6px;
     padding-left: 6px;
     padding-right: 6px;
@@ -932,7 +949,7 @@ button {
     z-index: 1;
     transform: translateX(-5px) scale(0.96);
     transform-origin: left center;
-    transition: opacity 0.16s ease, transform 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+    transition: max-width 0.22s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.16s ease, transform 0.18s cubic-bezier(0.22, 1, 0.36, 1);
     pointer-events: none;
 }
 

@@ -723,10 +723,11 @@ document.addEventListener("DOMContentLoaded", async function() {
 
     function closeSupportMenu() {
         if (!supportMenuButton) return;
+        const wasOpen = supportMenuButton.classList.contains('open');
         supportMenuButton.classList.remove('open');
         supportMenuButton.setAttribute('aria-expanded', 'false');
         supportOptions?.setAttribute('aria-hidden', 'true');
-        if (typeof window.closeKofiOverlay === 'function') {
+        if (wasOpen && typeof window.closeKofiOverlay === 'function') {
             window.closeKofiOverlay();
         }
         supportMenuButton.querySelectorAll('.support-option').forEach(option => {
@@ -736,10 +737,13 @@ document.addEventListener("DOMContentLoaded", async function() {
 
     function closeActionMenu() {
         if (!actionMenuButton) return;
+        const wasOpen = actionMenuButton.classList.contains('open');
         actionMenuButton.classList.remove('open');
         actionMenuButton.setAttribute('aria-expanded', 'false');
         actionOptions?.setAttribute('aria-hidden', 'true');
-        closeActionPanels();
+        if (wasOpen) {
+            closeActionPanels();
+        }
         actionMenuButton.querySelectorAll('.action-option').forEach(option => {
             option.setAttribute('tabindex', '-1');
         });
@@ -771,24 +775,12 @@ document.addEventListener("DOMContentLoaded", async function() {
         tryOpen();
     }
 
-    function addFastActivation(element, handler) {
+    function addMenuActivation(element, handler) {
         if (!element) return;
-        let skipClickUntil = 0;
-
-        element.addEventListener('pointerdown', function(e) {
-            if (e.pointerType === 'touch' || e.pointerType === 'pen') {
-                skipClickUntil = Date.now() + 500;
-                handler(e);
-            }
-        });
 
         element.addEventListener('click', function(e) {
-            if (Date.now() < skipClickUntil) {
-                e.preventDefault();
-                e.stopPropagation();
-                return;
-            }
-
+            // Mobile browsers no longer need a touch fast-path here. Opening on
+            // pointerdown reshaped the row before the tap/click sequence ended.
             handler(e);
         });
     }
@@ -814,7 +806,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         });
     }
 
-    addFastActivation(socialsButton, handleSocialsButtonActivate);
+    addMenuActivation(socialsButton, handleSocialsButtonActivate);
 
     socialsButton?.addEventListener('keydown', function(e) {
         if ((e.key === 'Enter' || e.key === ' ') && e.target === socialsButton) {
@@ -861,7 +853,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         });
     }
 
-    addFastActivation(supportMenuButton, handleSupportMenuActivate);
+    addMenuActivation(supportMenuButton, handleSupportMenuActivate);
 
     supportMenuButton?.addEventListener('keydown', function(e) {
         if ((e.key === 'Enter' || e.key === ' ') && e.target === supportMenuButton) {
@@ -908,7 +900,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         });
     }
 
-    addFastActivation(actionMenuButton, handleActionMenuActivate);
+    addMenuActivation(actionMenuButton, handleActionMenuActivate);
 
     actionMenuButton?.addEventListener('keydown', function(e) {
         if ((e.key === 'Enter' || e.key === ' ') && e.target === actionMenuButton) {
