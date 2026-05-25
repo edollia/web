@@ -3,6 +3,11 @@ document.addEventListener("DOMContentLoaded", async function() {
     const audio = new Audio('hehe.mp3');
     audio.loop = true;
     const backgroundMusicVolume = 0.4;
+    const backgroundFadeInDuration = 6;
+    const backgroundFadeOutDuration = 4;
+    let backgroundMusicRequestedVolume = backgroundMusicVolume;
+    let backgroundFadeLevel = 0;
+    let backgroundFadeFrame = null;
     let audioPlayed = false;
     const uiSounds = {
         tap: 'CUT1.mp3',
@@ -23,6 +28,12 @@ document.addEventListener("DOMContentLoaded", async function() {
         }
     }
     function setBackgroundMusicVolume(volume) {
+        backgroundMusicRequestedVolume = volume;
+        applyBackgroundMusicVolume();
+    }
+
+    function applyBackgroundMusicVolume() {
+        const volume = backgroundMusicRequestedVolume * backgroundFadeLevel;
         if (backgroundMusicGain) {
             audio.volume = 1;
             backgroundMusicGain.gain.value = volume;
@@ -30,6 +41,36 @@ document.addEventListener("DOMContentLoaded", async function() {
             audio.volume = volume;
         }
     }
+
+    function updateBackgroundFade() {
+        if (!audioPlayed || audio.paused) {
+            backgroundFadeFrame = null;
+            return;
+        }
+
+        const duration = Number.isFinite(audio.duration) ? audio.duration : 0;
+        const fadeInWindow = duration > 0 ? Math.min(backgroundFadeInDuration, duration / 2) : backgroundFadeInDuration;
+        const fadeOutWindow = duration > 0 ? Math.min(backgroundFadeOutDuration, duration / 2) : backgroundFadeOutDuration;
+        const fadeInLevel = fadeInWindow ? audio.currentTime / fadeInWindow : 1;
+        const fadeOutLevel = duration > 0 && fadeOutWindow ? (duration - audio.currentTime) / fadeOutWindow : 1;
+        backgroundFadeLevel = Math.max(0, Math.min(1, fadeInLevel, fadeOutLevel));
+        applyBackgroundMusicVolume();
+
+        backgroundFadeFrame = requestAnimationFrame(updateBackgroundFade);
+    }
+
+    function startBackgroundFadeLoop() {
+        if (backgroundFadeFrame !== null) return;
+        updateBackgroundFade();
+    }
+
+    function stopBackgroundFadeLoop() {
+        if (backgroundFadeFrame === null) return;
+        cancelAnimationFrame(backgroundFadeFrame);
+        backgroundFadeFrame = null;
+    }
+    audio.addEventListener('play', startBackgroundFadeLoop);
+    audio.addEventListener('pause', stopBackgroundFadeLoop);
     setBackgroundMusicVolume(backgroundMusicVolume);
     const uiSoundBuffers = {};
     const uiSoundPlayers = Object.fromEntries(
@@ -72,6 +113,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         }
 
         Object.values(uiSoundPlayers).forEach(sound => {
+            if (!sound.paused) return;
             const previousVolume = sound.volume;
             sound.volume = 0;
             sound.currentTime = 0;
@@ -546,6 +588,7 @@ document.addEventListener("DOMContentLoaded", async function() {
 
     document.getElementById("close-popup")?.addEventListener("click", function() {
         if (!popup) return;
+        playUiSound('link');
         warmUiSounds();
         popup.style.opacity = 0;
         setTimeout(() => {
@@ -559,8 +602,14 @@ document.addEventListener("DOMContentLoaded", async function() {
             }
 
             if (!audioPlayed) {
-                audio.play().catch(e => {});
                 audioPlayed = true;
+                backgroundFadeLevel = 0;
+                applyBackgroundMusicVolume();
+                audio.play()
+                    .then(startBackgroundFadeLoop)
+                    .catch(e => {
+                        audioPlayed = false;
+                    });
             }
         }, 500);
     });
@@ -722,7 +771,29 @@ document.addEventListener("DOMContentLoaded", async function() {
         tryOpen();
     }
 
-    socialsButton?.addEventListener('click', function(e) {
+    function addFastActivation(element, handler) {
+        if (!element) return;
+        let skipClickUntil = 0;
+
+        element.addEventListener('pointerdown', function(e) {
+            if (e.pointerType === 'touch' || e.pointerType === 'pen') {
+                skipClickUntil = Date.now() + 500;
+                handler(e);
+            }
+        });
+
+        element.addEventListener('click', function(e) {
+            if (Date.now() < skipClickUntil) {
+                e.preventDefault();
+                e.stopPropagation();
+                return;
+            }
+
+            handler(e);
+        });
+    }
+
+    function handleSocialsButtonActivate(e) {
         if (e.target.closest('.social-option')) {
             return;
         }
@@ -741,7 +812,9 @@ document.addEventListener("DOMContentLoaded", async function() {
         socialsButton.querySelectorAll('.social-option').forEach(option => {
             option.setAttribute('tabindex', isOpen ? '0' : '-1');
         });
-    });
+    }
+
+    addFastActivation(socialsButton, handleSocialsButtonActivate);
 
     socialsButton?.addEventListener('keydown', function(e) {
         if ((e.key === 'Enter' || e.key === ' ') && e.target === socialsButton) {
@@ -764,7 +837,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         window.open(instagramUrl, '_blank', 'noopener,noreferrer');
     });
 
-    supportMenuButton?.addEventListener('click', function(e) {
+    function handleSupportMenuActivate(e) {
         if (e.target.closest('.support-option')) {
             return;
         }
@@ -786,7 +859,9 @@ document.addEventListener("DOMContentLoaded", async function() {
         supportMenuButton.querySelectorAll('.support-option').forEach(option => {
             option.setAttribute('tabindex', isOpen ? '0' : '-1');
         });
-    });
+    }
+
+    addFastActivation(supportMenuButton, handleSupportMenuActivate);
 
     supportMenuButton?.addEventListener('keydown', function(e) {
         if ((e.key === 'Enter' || e.key === ' ') && e.target === supportMenuButton) {
@@ -809,7 +884,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         window.open(wishlistUrl, '_blank', 'noopener,noreferrer');
     });
 
-    actionMenuButton?.addEventListener('click', function(e) {
+    function handleActionMenuActivate(e) {
         if (e.target.closest('.action-option')) {
             return;
         }
@@ -831,7 +906,9 @@ document.addEventListener("DOMContentLoaded", async function() {
         actionMenuButton.querySelectorAll('.action-option').forEach(option => {
             option.setAttribute('tabindex', isOpen ? '0' : '-1');
         });
-    });
+    }
+
+    addFastActivation(actionMenuButton, handleActionMenuActivate);
 
     actionMenuButton?.addEventListener('keydown', function(e) {
         if ((e.key === 'Enter' || e.key === ' ') && e.target === actionMenuButton) {
