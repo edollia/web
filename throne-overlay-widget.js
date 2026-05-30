@@ -68,7 +68,7 @@
 
             .doll-throne-frame {
                 position: relative;
-                width: min(112.5vw, 390px);
+                width: min(123.75vw, 429px);
                 height: min(102.5vh, 650px);
                 min-height: min(575px, 102.5vh);
                 border: 1px solid rgba(255, 178, 215, 0.66);
@@ -103,9 +103,33 @@
                 z-index: 5;
             }
 
-            .doll-throne-close,
-            .doll-throne-popout {
+            .doll-throne-frame::after {
+                content: '';
                 position: absolute;
+                inset: 2px;
+                border: 6px solid transparent;
+                border-radius: 25px;
+                background:
+                    linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(255, 205, 232, 0.54), rgba(255, 255, 255, 0.78), rgba(255, 174, 218, 0.42)) border-box;
+                box-shadow:
+                    inset 0 0 14px rgba(255, 255, 255, 0.82),
+                    inset 0 0 24px rgba(255, 166, 214, 0.42),
+                    0 0 16px rgba(255, 203, 229, 0.26);
+                -webkit-mask:
+                    linear-gradient(#000 0 0) padding-box,
+                    linear-gradient(#000 0 0);
+                -webkit-mask-composite: xor;
+                mask:
+                    linear-gradient(#000 0 0) padding-box,
+                    linear-gradient(#000 0 0);
+                mask-composite: exclude;
+                pointer-events: none;
+                z-index: 4;
+            }
+
+            .doll-throne-close,
+            .doll-throne-back,
+            .doll-throne-popout {
                 z-index: 8;
                 display: grid;
                 place-items: center;
@@ -120,13 +144,12 @@
             }
 
             .doll-throne-close {
-                top: -18px;
-                right: -18px;
-                width: 52px;
-                height: 52px;
+                position: static;
+                width: 34px;
+                height: 34px;
                 border-radius: 50%;
                 font-family: Georgia, serif;
-                font-size: 38px;
+                font-size: 26px;
                 line-height: 1;
             }
 
@@ -134,9 +157,21 @@
                 transform: translateY(-2px);
             }
 
-            .doll-throne-popout {
+            .doll-throne-controls {
+                position: absolute;
                 left: 50%;
                 bottom: -17px;
+                z-index: 8;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 8px;
+                transform: translateX(-50%);
+            }
+
+            .doll-throne-back,
+            .doll-throne-popout {
+                position: static;
                 min-width: 78px;
                 height: 30px;
                 padding: 0 10px;
@@ -144,15 +179,33 @@
                 font-family: "Comic Sans MS", "Trebuchet MS", cursive;
                 font-size: 11px;
                 font-weight: 700;
-                transform: translateX(-50%);
+            }
+
+            .doll-throne-back {
+                min-width: 34px;
+                width: 34px;
+                height: 34px;
+                padding: 0;
+                border-radius: 50%;
+                overflow: hidden;
+            }
+
+            .doll-throne-back::before {
+                content: '';
+                width: 10px;
+                height: 10px;
+                border-left: 2px solid rgba(177, 72, 126, 0.76);
+                border-bottom: 2px solid rgba(177, 72, 126, 0.76);
+                transform: translateX(2px) rotate(45deg);
             }
 
             .doll-throne-close:active {
                 transform: scale(0.96);
             }
 
+            .doll-throne-back:active,
             .doll-throne-popout:active {
-                transform: translateX(-50%) scale(0.96);
+                transform: scale(0.96);
             }
 
             .doll-throne-iframe-wrap {
@@ -202,6 +255,12 @@
             .doll-throne-fallback.hidden {
                 opacity: 0;
                 pointer-events: none;
+            }
+
+            .doll-throne-loading.soft {
+                background:
+                    radial-gradient(circle at 50% 38%, rgba(255, 225, 240, 0.56), transparent 34%),
+                    rgba(255, 247, 251, 0.62);
             }
 
             .doll-throne-loader-mark {
@@ -330,7 +389,7 @@
                 }
 
                 .doll-throne-frame {
-                    width: min(112.5vw, 390px);
+                    width: min(123.75vw, 429px);
                     height: min(102.5vh, 650px);
                     min-height: min(538px, 102.5vh);
                 }
@@ -354,8 +413,11 @@
         overlay.innerHTML = `
             <div class="doll-throne-scrim" data-throne-close></div>
             <section class="doll-throne-frame" role="dialog" aria-label="Wishlist">
-                <button type="button" class="doll-throne-close" aria-label="Close"><span>&times;</span></button>
-                <button type="button" class="doll-throne-popout">open full</button>
+                <div class="doll-throne-controls">
+                    <button type="button" class="doll-throne-back" aria-label="Back"></button>
+                    <button type="button" class="doll-throne-popout">open full</button>
+                    <button type="button" class="doll-throne-close" aria-label="Close"><span>&times;</span></button>
+                </div>
                 <div class="doll-throne-iframe-wrap"></div>
                 <div class="doll-throne-loading">
                     <div class="doll-throne-loader-mark"><img src="wishlist.png" alt=""></div>
@@ -376,8 +438,32 @@
 
         overlay.querySelector('.doll-throne-close').addEventListener('click', closeThroneOverlay);
         overlay.querySelector('[data-throne-close]').addEventListener('click', closeThroneOverlay);
+        overlay.querySelector('.doll-throne-back').addEventListener('click', goBackInWishlist);
         overlay.querySelector('.doll-throne-popout').addEventListener('click', openFullWishlist);
         overlay.querySelector('.doll-throne-fallback button').addEventListener('click', openFullWishlist);
+    }
+
+    function goBackInWishlist() {
+        playSound('link');
+        const iframe = overlay?.querySelector('.doll-throne-iframe');
+        if (!iframe) return;
+        const loading = overlay.querySelector('.doll-throne-loading');
+
+        iframe.classList.remove('loaded');
+        loading?.classList.add('soft');
+        loading?.classList.remove('hidden');
+
+        try {
+            iframe.contentWindow.history.back();
+        } catch (error) {
+            iframe.src = wishlistUrl;
+        }
+
+        window.setTimeout(function() {
+            iframe.classList.add('loaded');
+            loading?.classList.add('hidden');
+            loading?.classList.remove('soft');
+        }, 850);
     }
 
     function ensureIframe() {

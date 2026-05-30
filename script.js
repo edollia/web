@@ -1163,7 +1163,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         e.stopPropagation();
         closeSocialsMenu();
         closeActionMenu();
-        playUiSound('tap');
+        playUiSound('link');
         if (typeof window.openThroneOverlay === 'function') {
             window.openThroneOverlay();
         } else {
@@ -1183,7 +1183,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     donateOption?.addEventListener('click', function(e) {
         e.preventDefault();
         e.stopPropagation();
-        playUiSound('tap');
+        playUiSound('link');
         openKofiOverlay();
     });
 

@@ -344,6 +344,29 @@ var kofiWidgetOverlayFloatingChatBuilder = kofiWidgetOverlayFloatingChatBuilder 
                 overflow: hidden;
             }
 
+            .doll-kofi-ornaments::before {
+                content: "";
+                position: absolute;
+                inset: 2px;
+                border: 6px solid transparent;
+                border-radius: 20px;
+                background:
+                    linear-gradient(135deg, rgba(255,255,255,0.9), rgba(255,205,232,0.54), rgba(255,255,255,0.78), rgba(255,174,218,0.42)) border-box;
+                box-shadow:
+                    inset 0 0 14px rgba(255,255,255,0.82),
+                    inset 0 0 24px rgba(255,166,214,0.42),
+                    0 0 16px rgba(255,203,229,0.26);
+                -webkit-mask:
+                    linear-gradient(#000 0 0) padding-box,
+                    linear-gradient(#000 0 0);
+                -webkit-mask-composite: xor;
+                mask:
+                    linear-gradient(#000 0 0) padding-box,
+                    linear-gradient(#000 0 0);
+                mask-composite: exclude;
+                pointer-events: none;
+            }
+
             .doll-kofi-ornaments span {
                 width: var(--bubble-size);
                 height: var(--bubble-size);
