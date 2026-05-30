@@ -148,6 +148,284 @@ document.addEventListener("DOMContentLoaded", async function() {
         sound.currentTime = 0;
         sound.play().catch(() => {});
     }
+
+    function wait(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    function createUnavailableSupabaseClient() {
+        const unavailableError = {
+            message: 'Connection is unavailable right now. Please try again.'
+        };
+
+        function createSelectQuery(single = false) {
+            const query = {
+                eq: () => query,
+                not: () => query,
+                order: () => query,
+                single: () => createSelectQuery(true),
+                then: (resolve, reject) => Promise.resolve({
+                    data: single ? null : [],
+                    error: single ? { code: 'PGRST116', message: 'No rows found' } : null
+                }).then(resolve, reject),
+                catch: callback => Promise.resolve({
+                    data: single ? null : [],
+                    error: single ? { code: 'PGRST116', message: 'No rows found' } : null
+                }).catch(callback)
+            };
+
+            return query;
+        }
+
+        return {
+            from: () => ({
+                select: () => createSelectQuery(),
+                insert: () => Promise.resolve({ data: null, error: unavailableError }),
+                update: () => ({
+                    eq: () => ({
+                        eq: () => Promise.resolve({ data: null, error: unavailableError })
+                    })
+                }),
+                delete: () => ({
+                    eq: () => ({
+                        eq: () => Promise.resolve({ data: null, error: unavailableError })
+                    })
+                })
+            })
+        };
+    }
+
+    let submitPopupTimer = null;
+
+    function showSubmitPopup(message) {
+        const popup = document.getElementById('submit-popup');
+        const popupMessage = document.getElementById('submit-popup-message');
+        if (!popup || !popupMessage) {
+            alert(message);
+            return;
+        }
+
+        popupMessage.textContent = message;
+        popup.classList.add('show');
+        popup.setAttribute('aria-hidden', 'false');
+        clearTimeout(submitPopupTimer);
+        submitPopupTimer = setTimeout(() => {
+            popup.classList.remove('show');
+            popup.setAttribute('aria-hidden', 'true');
+        }, 1500);
+    }
+
+    function setSendButtonLoading(button, isLoading) {
+        if (!button) return;
+
+        if (!button.dataset.defaultText) {
+            button.dataset.defaultText = button.textContent;
+        }
+
+        button.disabled = isLoading;
+        button.classList.toggle('is-loading', isLoading);
+        button.innerHTML = isLoading
+            ? '<span class="send-loading-dot" aria-hidden="true"></span><span>Sending</span>'
+            : button.dataset.defaultText;
+    }
+
+    function initAdminGate() {
+        const headerImage = document.querySelector('.header-image');
+        const gate = document.getElementById('admin-gate');
+        const form = document.getElementById('admin-gate-form');
+        const input = document.getElementById('admin-gate-code');
+        const error = document.getElementById('admin-gate-error');
+        const closeButton = document.getElementById('admin-gate-close');
+        if (!headerImage || !gate || !form || !input) return;
+
+        const adminCode = '7769';
+        let tapCount = 0;
+        let tapResetTimer = null;
+
+        function showGate() {
+            gate.classList.add('show');
+            gate.setAttribute('aria-hidden', 'false');
+            input.value = '';
+            if (error) error.textContent = '';
+            window.setTimeout(() => input.focus(), 80);
+        }
+
+        function hideGate() {
+            gate.classList.remove('show');
+            gate.setAttribute('aria-hidden', 'true');
+        }
+
+        headerImage.addEventListener('click', function() {
+            tapCount++;
+            clearTimeout(tapResetTimer);
+            tapResetTimer = setTimeout(() => {
+                tapCount = 0;
+            }, 2600);
+
+            if (tapCount >= 10) {
+                tapCount = 0;
+                clearTimeout(tapResetTimer);
+                playUiSound('tap');
+                showGate();
+            }
+        });
+
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            if (input.value.trim() !== adminCode) {
+                if (error) error.textContent = 'nope';
+                playUiSound('tap');
+                input.select();
+                return;
+            }
+
+            sessionStorage.setItem('doll_admin_gate', 'open');
+            playUiSound('link');
+            window.location.href = 'admin.html';
+        });
+
+        closeButton?.addEventListener('click', hideGate);
+        gate.addEventListener('click', function(e) {
+            if (e.target === gate) hideGate();
+        });
+    }
+
+    initAdminGate();
+
+    function initStreamPullTab() {
+        const tab = document.getElementById('stream-pull-tab');
+        const sheet = document.getElementById('stream-pull-sheet');
+        if (!tab) return;
+
+        const streamUrl = 'stream.html';
+        let maxPull = 280;
+        let openThreshold = 168;
+        let startX = 0;
+        let currentPull = 0;
+        let dragging = false;
+        let moved = false;
+        let opening = false;
+        let skipClickUntil = 0;
+
+        function updatePullMetrics() {
+            const sheetWidth = sheet?.getBoundingClientRect().width || 280;
+            maxPull = sheetWidth;
+            openThreshold = sheetWidth * 0.58;
+        }
+
+        function setPull(distance) {
+            currentPull = Math.max(0, Math.min(maxPull, distance));
+            const pullValue = `${currentPull}px`;
+            tab.style.setProperty('--stream-pull', pullValue);
+            sheet?.style.setProperty('--stream-pull', pullValue);
+        }
+
+        function resetPull() {
+            if (opening) return;
+            tab.classList.remove('dragging');
+            sheet?.classList.remove('dragging');
+            sheet?.classList.remove('completing');
+            tab.classList.remove('completing');
+            setPull(0);
+        }
+
+        function showPullHint() {
+            if (tab.classList.contains('dragging')) return;
+            tab.classList.remove('stream-tab-peek');
+            sheet?.classList.remove('stream-tab-peek');
+            void tab.offsetWidth;
+            void sheet?.offsetWidth;
+            tab.classList.add('stream-tab-peek');
+            sheet?.classList.add('stream-tab-peek');
+        }
+
+        function openStreamPage() {
+            if (opening) return;
+            opening = true;
+            // Uses uiSounds.link, which is CUT2.mp3.
+            playUiSound('link');
+            tab.classList.remove('dragging');
+            sheet?.classList.remove('dragging');
+            tab.classList.add('completing');
+            sheet?.classList.add('completing');
+            setPull(maxPull);
+            window.setTimeout(() => {
+                window.location.href = streamUrl;
+            }, 360);
+        }
+
+        updatePullMetrics();
+        window.addEventListener('resize', function() {
+            updatePullMetrics();
+            if (!dragging) setPull(0);
+        });
+
+        tab.addEventListener('pointerdown', function(e) {
+            if (opening) return;
+            if (!e.isPrimary) return;
+            updatePullMetrics();
+            dragging = true;
+            moved = false;
+            startX = e.clientX;
+            tab.classList.remove('stream-tab-peek');
+            sheet?.classList.remove('stream-tab-peek');
+            tab.classList.add('dragging');
+            sheet?.classList.add('dragging');
+            tab.setPointerCapture?.(e.pointerId);
+        });
+
+        tab.addEventListener('pointermove', function(e) {
+            if (!dragging || opening) return;
+            const pullDistance = startX - e.clientX;
+            if (pullDistance > 4) {
+                moved = true;
+                e.preventDefault();
+            }
+            setPull(pullDistance);
+        });
+
+        function finishPull(e) {
+            if (!dragging || opening) return;
+            dragging = false;
+            tab.releasePointerCapture?.(e.pointerId);
+            skipClickUntil = Date.now() + 350;
+
+            if (currentPull >= openThreshold) {
+                openStreamPage();
+                return;
+            }
+
+            resetPull();
+            if (!moved) {
+                playUiSound('tap');
+                showPullHint();
+            }
+        }
+
+        tab.addEventListener('pointerup', finishPull);
+        tab.addEventListener('pointercancel', resetPull);
+
+        tab.addEventListener('click', function(e) {
+            e.preventDefault();
+            if (opening) return;
+            if (Date.now() < skipClickUntil) return;
+            playUiSound('tap');
+            showPullHint();
+        });
+
+        tab.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                showPullHint();
+            }
+            if (e.key === 'ArrowLeft') {
+                e.preventDefault();
+                openStreamPage();
+            }
+        });
+    }
+
+    initStreamPullTab();
     
     // Global prevention of video fullscreen on mobile
     document.addEventListener('webkitbeginfullscreen', (e) => {
@@ -253,31 +531,48 @@ document.addEventListener("DOMContentLoaded", async function() {
     const loadingBarContainer = document.getElementById("loading-bar-container");
     const loadingBarFill = document.getElementById("loading-bar-fill");
     const minLoadingTime = 2000;
-    const loadingBarDelay = 4000; // Show loading bar after 4 seconds
     const submissionsPreloadTimeout = 10000;
     let loadingBarShown = false;
-    let loadingStartTime = Date.now();
+    let loadingProgress = 0;
     const preloadedSubmissions = {
         drawings: [],
         questions: [],
         loaded: false,
         error: null
     };
+
+    function markSubmissionsDirty() {
+        preloadedSubmissions.loaded = false;
+        preloadedSubmissions.error = null;
+    }
     
     // Mobile detection
     const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-    
-    // Helper function to update loading bar with mobile optimization
-    function updateLoadingBar(loadedCount, totalResources) {
-        if (loadingBarShown) {
-            const progress = (loadedCount / totalResources) * 100;
-            loadingBarFill.style.width = `${progress}%`;
-            // Force repaint on mobile
-            if (isMobile) {
-                loadingBarFill.offsetHeight;
-            }
+
+    function setLoadingProgress(progress) {
+        if (!loadingBarFill) return;
+        loadingProgress = Math.max(loadingProgress, Math.max(0, Math.min(100, progress)));
+        loadingBarFill.style.width = `${loadingProgress}%`;
+
+        if (loadingBarContainer && !loadingBarShown) {
+            loadingBarShown = true;
+            loadingBarContainer.style.display = 'flex';
+        }
+
+        // Force repaint on mobile
+        if (isMobile) {
+            loadingBarFill.offsetHeight;
         }
     }
+    
+    // Static resources are most of the load, but final app setup owns the last 16%.
+    function updateLoadingBar(loadedCount, totalResources) {
+        if (!totalResources) return;
+        const resourceProgress = (loadedCount / totalResources) * 84;
+        setLoadingProgress(resourceProgress);
+    }
+
+    setLoadingProgress(2);
 
     function waitForKofiOverlayReady() {
         return new Promise(resolve => {
@@ -377,21 +672,39 @@ document.addEventListener("DOMContentLoaded", async function() {
 
     // Enhanced loading logic: wait for min time, window load, AND ALL critical resources
     Promise.all([
-        new Promise(resolve => setTimeout(resolve, minLoadingTime)),
-        new Promise(resolve => window.addEventListener('load', resolve)),
+        new Promise(resolve => setTimeout(() => {
+            setLoadingProgress(6);
+            resolve();
+        }, minLoadingTime)),
+        new Promise(resolve => {
+            if (document.readyState === 'complete') {
+                setLoadingProgress(10);
+                resolve();
+                return;
+            }
+
+            window.addEventListener('load', () => {
+                setLoadingProgress(10);
+                resolve();
+            }, { once: true });
+        }),
         // Wait for DOM to be fully ready
         new Promise(resolve => {
             if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', resolve);
+                document.addEventListener('DOMContentLoaded', () => {
+                    setLoadingProgress(14);
+                    resolve();
+                });
             } else {
+                setLoadingProgress(14);
                 resolve();
             }
         }),
         Promise.race([
             uiSoundBuffersReady.catch(() => {}),
             new Promise(resolve => setTimeout(resolve, 2000))
-        ]),
-        waitForKofiOverlayReady(),
+        ]).then(() => setLoadingProgress(18)),
+        waitForKofiOverlayReady().then(() => setLoadingProgress(22)),
         // Wait for critical resources to load
         new Promise(resolve => {
             const criticalResources = [
@@ -501,36 +814,20 @@ document.addEventListener("DOMContentLoaded", async function() {
                 }
             });
             
-            // Check if we need to show loading bar after 4 seconds
-            setTimeout(() => {
-                const elapsedTime = Date.now() - loadingStartTime;
-                if (elapsedTime >= loadingBarDelay && !loadingBarShown) {
-                    loadingBarShown = true;
-                    loadingBarContainer.style.display = 'flex';
-                    
-                    // Set initial progress based on current loaded count
-                    updateLoadingBar(loadedCount, totalResources);
-                }
-            }, loadingBarDelay);
-            
-            // Mobile-specific: Force show loading bar after 3 seconds if still loading
-            setTimeout(() => {
-                if (!loadingBarShown) {
-                    loadingBarShown = true;
-                    loadingBarContainer.style.display = 'flex';
-                }
-            }, 3000);
+            updateLoadingBar(loadedCount, totalResources);
             
             // Mobile-specific: Force completion after 8 seconds to prevent infinite loading
             setTimeout(() => {
                 if (loadedCount < totalResources) {
                     loadedCount = totalResources;
+                    updateLoadingBar(loadedCount, totalResources);
                     resolve();
                 }
             }, 8000);
         })
     ]).then(async () => {
         // Load Supabase only after the initial loading is complete
+        setLoadingProgress(88);
         
         try {
             const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
@@ -547,17 +844,18 @@ document.addEventListener("DOMContentLoaded", async function() {
                     }
                 }
             );
+            setLoadingProgress(94);
         } catch (supabaseError) {
             // Create a dummy supabase object to prevent errors
-            window.supabase = {
-                from: () => ({ select: () => ({ eq: () => ({ single: () => Promise.resolve({ data: null, error: null }) }) }) }),
-                insert: () => Promise.resolve({ data: null, error: null })
-            };
+            window.supabase = createUnavailableSupabaseClient();
+            setLoadingProgress(94);
         }
 
         await preloadSubmissionsWithTimeout();
+        setLoadingProgress(100);
 
         // Final check - ensure everything is ready
+        await wait(250);
         loadingScreen.style.opacity = 0;
         setTimeout(() => {
             loadingScreen.style.display = "none";
@@ -633,8 +931,10 @@ document.addEventListener("DOMContentLoaded", async function() {
     function closeQuestionForm() {
         const askButton = document.getElementById('ask-button');
         const askFormContainer = document.getElementById('ask-form-container');
+        const askTextarea = document.getElementById('ask-textarea');
         if (!askButton || !askFormContainer) return;
         askFormContainer.style.display = 'none';
+        askFormContainer.classList.toggle('has-text', Boolean(askTextarea?.value.trim()));
         askButton.textContent = '?';
     }
 
@@ -648,6 +948,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         closeDrawingWidget();
         closeQuestionForm();
         closePostsPanel();
+        closeActionMenu();
         noteImage?.classList.remove('hidden');
     }
 
@@ -705,17 +1006,19 @@ document.addEventListener("DOMContentLoaded", async function() {
     const snapchatOption = document.getElementById('snapchat-option');
     const instagramOption = document.getElementById('instagram-option');
     const supportMenuButton = document.getElementById('support-menu-button');
-    const supportOptions = supportMenuButton?.querySelector('.support-options');
     const actionMenuButton = document.getElementById('action-menu-button');
     const actionOptions = actionMenuButton?.querySelector('.action-options');
     const donateOption = document.getElementById('donate-option');
-    const wishlistOption = document.getElementById('wishlist-option');
 
     function closeSocialsMenu() {
         if (!socialsButton) return;
+        const wasOpen = socialsButton.classList.contains('open');
         socialsButton.classList.remove('open');
         socialsButton.setAttribute('aria-expanded', 'false');
         socialsOptions?.setAttribute('aria-hidden', 'true');
+        if (wasOpen && typeof window.closeKofiOverlay === 'function') {
+            window.closeKofiOverlay();
+        }
         socialsButton.querySelectorAll('.social-option').forEach(option => {
             option.setAttribute('tabindex', '-1');
         });
@@ -723,16 +1026,7 @@ document.addEventListener("DOMContentLoaded", async function() {
 
     function closeSupportMenu() {
         if (!supportMenuButton) return;
-        const wasOpen = supportMenuButton.classList.contains('open');
         supportMenuButton.classList.remove('open');
-        supportMenuButton.setAttribute('aria-expanded', 'false');
-        supportOptions?.setAttribute('aria-hidden', 'true');
-        if (wasOpen && typeof window.closeKofiOverlay === 'function') {
-            window.closeKofiOverlay();
-        }
-        supportMenuButton.querySelectorAll('.support-option').forEach(option => {
-            option.setAttribute('tabindex', '-1');
-        });
     }
 
     function closeActionMenu() {
@@ -801,6 +1095,9 @@ document.addEventListener("DOMContentLoaded", async function() {
         const isOpen = socialsButton.classList.toggle('open');
         socialsButton.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
         socialsOptions?.setAttribute('aria-hidden', isOpen ? 'false' : 'true');
+        if (!isOpen && typeof window.closeKofiOverlay === 'function') {
+            window.closeKofiOverlay();
+        }
         socialsButton.querySelectorAll('.social-option').forEach(option => {
             option.setAttribute('tabindex', isOpen ? '0' : '-1');
         });
@@ -829,31 +1126,16 @@ document.addEventListener("DOMContentLoaded", async function() {
         window.open(instagramUrl, '_blank', 'noopener,noreferrer');
     });
 
-    function handleSupportMenuActivate(e) {
-        if (e.target.closest('.support-option')) {
-            return;
-        }
-
+    function handleWishlistButtonActivate(e) {
         e.preventDefault();
         e.stopPropagation();
-        if (!supportMenuButton.classList.contains('open')) {
-            closeSocialsMenu();
-            closeActionMenu();
-        }
-
-        playUiSound('tap');
-        const isOpen = supportMenuButton.classList.toggle('open');
-        supportMenuButton.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
-        supportOptions?.setAttribute('aria-hidden', isOpen ? 'false' : 'true');
-        if (!isOpen && typeof window.closeKofiOverlay === 'function') {
-            window.closeKofiOverlay();
-        }
-        supportMenuButton.querySelectorAll('.support-option').forEach(option => {
-            option.setAttribute('tabindex', isOpen ? '0' : '-1');
-        });
+        closeSocialsMenu();
+        closeActionMenu();
+        playUiSound('link');
+        window.open(wishlistUrl, '_blank', 'noopener,noreferrer');
     }
 
-    addMenuActivation(supportMenuButton, handleSupportMenuActivate);
+    addMenuActivation(supportMenuButton, handleWishlistButtonActivate);
 
     supportMenuButton?.addEventListener('keydown', function(e) {
         if ((e.key === 'Enter' || e.key === ' ') && e.target === supportMenuButton) {
@@ -867,13 +1149,6 @@ document.addEventListener("DOMContentLoaded", async function() {
         e.stopPropagation();
         playUiSound('tap');
         openKofiOverlay();
-    });
-
-    wishlistOption?.addEventListener('click', function(e) {
-        e.preventDefault();
-        e.stopPropagation();
-        playUiSound('link');
-        window.open(wishlistUrl, '_blank', 'noopener,noreferrer');
     });
 
     function handleActionMenuActivate(e) {
@@ -909,7 +1184,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         }
     });
 
-    [snapchatOption, instagramOption, donateOption, wishlistOption, toggleButton].forEach(option => {
+    [snapchatOption, instagramOption, donateOption, toggleButton].forEach(option => {
         option?.addEventListener('keydown', function(e) {
             if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
@@ -939,7 +1214,6 @@ document.addEventListener("DOMContentLoaded", async function() {
     // Wait for icon container to be visible (after paw and all initial page elements load), then start animation after 2 seconds
     function startGlitterCycle() {
         const iconContainer = document.querySelector('.icon-container');
-        const socialsButton = document.querySelector('.socials-button');
         const mailButton = document.getElementById('support-menu-button');
         const mainScreen = document.getElementById('main-screen');
         
@@ -956,9 +1230,6 @@ document.addEventListener("DOMContentLoaded", async function() {
                 if (isVisible) {
                     // Icons are visible and page is loaded, start animation after 2 seconds
                     setTimeout(function() {
-                        if (socialsButton) {
-                            showGlitter(socialsButton);
-                        }
                         if (mailButton) {
                             showGlitter(mailButton);
                         }
@@ -1127,15 +1398,19 @@ document.addEventListener("DOMContentLoaded", async function() {
         });
 
         document.getElementById("send-drawing")?.addEventListener("click", async function() {
+            const sendButton = this;
+            if (sendButton.disabled) return;
             const dataUrl = canvas.toDataURL("image/png");
             const base64Data = dataUrl.split(',')[1];
             
             if (base64Data.length > 20 * 1024 * 1024) {
-                alert("Drawing is too large. Please make it smaller.");
+                showSubmitPopup("Drawing is too large. Please make it smaller.");
                 return;
             }
             
             playUiSound('submit');
+            setSendButtonLoading(sendButton, true);
+            const submitSoundMinimum = wait(1000);
             try {
                 let ipAddress = 'unknown';
                 try {
@@ -1154,15 +1429,20 @@ document.addEventListener("DOMContentLoaded", async function() {
                     }]);
 
                 if (error) throw error;
+                markSubmissionsDirty();
                 
-                alert("Submitted! ᵇᵘᵗ ᵈᶦᵈ ʸᵒᵘ ˢᵘᵇᵐᶦᵗ ᵗᵒ ᵐᵉ ʸᵉᵗ...");
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
                 ctx.fillStyle = "#ffffff";
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
                 saveState();
+                showNoteImage();
+                await submitSoundMinimum;
+                showSubmitPopup("Got it! ^-^");
             } catch (error) {
                 console.error("Error submitting drawing:", error);
-                alert(`Failed to submit drawing: ${error.message || 'Please try again.'}`);
+                showSubmitPopup(`Failed to submit drawing: ${error.message || 'Please try again.'}`);
+            } finally {
+                setSendButtonLoading(sendButton, false);
             }
         });
 
@@ -1211,13 +1491,17 @@ document.addEventListener("DOMContentLoaded", async function() {
             });
 
             sendQuestionBtn?.addEventListener('click', async function() {
+                const sendButton = this;
+                if (sendButton.disabled) return;
                 const question = askTextarea.value.trim();
                 if (!question) {
-                    alert("Please enter a question first!");
+                    showSubmitPopup("Please enter a question first!");
                     return;
                 }
 
                 playUiSound('submit');
+                setSendButtonLoading(sendButton, true);
+                const submitSoundMinimum = wait(1000);
                 try {
                     let ipAddress = 'unknown';
                     try {
@@ -1238,17 +1522,18 @@ document.addEventListener("DOMContentLoaded", async function() {
                         }]);
                     
                     if (error) throw error;
+                    markSubmissionsDirty();
                     
                     askTextarea.value = '';
                     charCount.textContent = '0/200';
-                    askFormContainer.classList.remove('has-text');
-                    askFormContainer.style.display = 'none';
-                    askButton.textContent = '?';
-                    noteImage?.classList.remove('hidden');
-                    alert("Got it! ^-^");
+                    showNoteImage();
+                    await submitSoundMinimum;
+                    showSubmitPopup("Got it! ^-^");
                 } catch (error) {
                     console.error("Error saving question:", error);
-                    alert("Failed to submit question. Please try again.");
+                    showSubmitPopup("Failed to submit question. Please try again.");
+                } finally {
+                    setSendButtonLoading(sendButton, false);
                 }
             });
         }
@@ -1257,6 +1542,30 @@ document.addEventListener("DOMContentLoaded", async function() {
         const postsPopup = postsPanel;
         const drawingsList = document.getElementById('drawings-list');
         const questionsList = document.getElementById('questions-list');
+        let renderedSubmissionsKey = '';
+        const drawingLikesObserver = 'IntersectionObserver' in window
+            ? new IntersectionObserver(entries => {
+                entries.forEach(entry => {
+                    if (!entry.isIntersecting) return;
+                    const item = entry.target;
+                    drawingLikesObserver.unobserve(item);
+                    const likeSticker = item.querySelector('.like-sticker');
+                    const drawingId = likeSticker?.dataset.drawingId;
+                    if (!drawingId || item.dataset.likesReady === 'true') return;
+                    item.dataset.likesReady = 'true';
+                    initLikeSystem(item, drawingId);
+                });
+            }, {
+                root: postsPopup,
+                rootMargin: '160px 0px'
+            })
+            : null;
+
+        function getSubmissionsRenderKey(drawings, questions) {
+            const drawingKey = drawings.map(drawing => drawing.id || drawing.created_at || '').join(',');
+            const questionKey = questions.map(question => question.id || question.created_at || '').join(',');
+            return `${drawings.length}:${drawingKey}|${questions.length}:${questionKey}`;
+        }
 
         async function initPostsSystem() {
             postsButton?.addEventListener('click', async (e) => {
@@ -1307,31 +1616,50 @@ document.addEventListener("DOMContentLoaded", async function() {
         }
 
         function linkifyText(str) {
-            const escaped = escapeHtml(str);
             const urlPattern = /(\bhttps?:\/\/[^\s<>"']+|\bwww\.[^\s<>"']+\.[^\s<>"']+|\b[a-zA-Z0-9-]+\.[a-zA-Z]{2,}(?:\/[^\s<>"']*)?)/g;
-            return escaped.replace(urlPattern, (match) => {
+            let html = '';
+            let lastIndex = 0;
+            String(str).replace(urlPattern, (match, _url, offset) => {
+                html += escapeHtml(String(str).slice(lastIndex, offset));
                 const href = /^https?:\/\//i.test(match) ? match : 'https://' + match;
-                return `<a href="${href}" target="_blank" rel="noopener noreferrer" class="answer-link">${match}</a>`;
+                const safeHref = escapeHtml(href);
+                const safeText = escapeHtml(match);
+                if (/\.gif(?:[?#].*)?$/i.test(href)) {
+                    html += `<a href="${safeHref}" target="_blank" rel="noopener noreferrer" class="answer-gif-link"><img src="${safeHref}" alt="" class="answer-gif" loading="lazy"></a>`;
+                } else {
+                    html += `<a href="${safeHref}" target="_blank" rel="noopener noreferrer" class="answer-link">${safeText}</a>`;
+                }
+                lastIndex = offset + match.length;
+                return match;
             });
+            html += escapeHtml(String(str).slice(lastIndex));
+            return html;
         }
 
         async function renderSubmissions() {
-            await renderDrawings();
-            await renderQuestions();
+            if (!preloadedSubmissions.loaded || preloadedSubmissions.error) {
+                await loadSubmissionsFromSupabase();
+            }
+
+            const drawings = preloadedSubmissions.drawings;
+            const questions = preloadedSubmissions.questions;
+            const nextRenderKey = getSubmissionsRenderKey(drawings, questions);
+            if (nextRenderKey === renderedSubmissionsKey) return;
+
+            renderedSubmissionsKey = nextRenderKey;
+            renderDrawings(drawings);
+            renderQuestions(questions);
         }
 
-        async function renderDrawings() {
+        function renderDrawings(drawings) {
             try {
-                let drawings = preloadedSubmissions.drawings;
-                if (!preloadedSubmissions.loaded || preloadedSubmissions.error) {
-                    ({ drawings } = await loadSubmissionsFromSupabase());
-                }
-                
+                drawingLikesObserver?.disconnect();
                 drawingsList.innerHTML = '';
-                drawings.forEach((drawing, index) => {
+                const fragment = document.createDocumentFragment();
+                const drawingsToObserve = [];
+                drawings.forEach(drawing => {
                     const el = document.createElement('div');
                     el.className = 'post-item';
-                    el.style.animationDelay = `${index * 0.1}s`;
                     el.innerHTML = `
                         <img src="data:image/png;base64,${drawing.imageData}" alt="User drawing">
                         <div class="like-sticker" data-drawing-id="${drawing.id}">
@@ -1340,36 +1668,37 @@ document.addEventListener("DOMContentLoaded", async function() {
                             </div>
                         </div>
                     `;
-                    drawingsList.appendChild(el);
-                    
-                    // Initialize like system for this drawing
-                    initLikeSystem(el, drawing.id);
+                    fragment.appendChild(el);
+
+                    if (drawingLikesObserver) {
+                        drawingsToObserve.push(el);
+                    } else {
+                        initLikeSystem(el, drawing.id);
+                    }
                 });
+                drawingsList.appendChild(fragment);
+                drawingsToObserve.forEach(el => drawingLikesObserver.observe(el));
             } catch (error) {
                 console.error("Error loading drawings:", error);
                 drawingsList.innerHTML = '<p>Error loading drawings. Please refresh.</p>';
             }
         }
 
-        async function renderQuestions() {
+        function renderQuestions(questions) {
             try {
-                let questions = preloadedSubmissions.questions;
-                if (!preloadedSubmissions.loaded || preloadedSubmissions.error) {
-                    ({ questions } = await loadSubmissionsFromSupabase());
-                }
-                
                 questionsList.innerHTML = '';
-                questions.forEach((q, index) => {
+                const fragment = document.createDocumentFragment();
+                questions.forEach(q => {
                     const el = document.createElement('div');
                     el.className = 'question-item';
-                    el.style.animationDelay = `${index * 0.1}s`;
                     const answerHtml = q.answer ? `<p class="answer-text">${linkifyText(q.answer)}</p>` : '';
                     el.innerHTML = `
                         <p class="question-text">"${escapeHtml(q.question)}"</p>
                         ${answerHtml}
                     `;
-                    questionsList.appendChild(el);
+                    fragment.appendChild(el);
                 });
+                questionsList.appendChild(fragment);
             } catch (error) {
                 console.error("Error loading questions:", error);
                 questionsList.innerHTML = '<p>Error loading Mi. Please refresh.</p>';
@@ -1747,7 +2076,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                 
             } catch (error) {
                 console.error("Error adding like:", error);
-                alert("Failed to add reaction. Please try again.");
+                showSubmitPopup("Failed to add reaction. Please try again.");
             }
         }
 
@@ -1769,7 +2098,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                 
             } catch (error) {
                 console.error("Error updating like:", error);
-                alert("Failed to update reaction. Please try again.");
+                showSubmitPopup("Failed to update reaction. Please try again.");
             }
         }
 
@@ -1805,7 +2134,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                 
             } catch (error) {
                 console.error("Error removing like:", error);
-                alert("Failed to remove reaction. Please try again.");
+                showSubmitPopup("Failed to remove reaction. Please try again.");
             }
         }
 

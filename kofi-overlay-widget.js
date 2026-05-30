@@ -262,7 +262,7 @@ var kofiWidgetOverlayFloatingChatBuilder = kofiWidgetOverlayFloatingChatBuilder 
 
     function slidePopupOpen(popup, finalHeight) {
         var displayHeight = Math.round(finalHeight * 1.2);
-        var topOffset = Math.round(finalHeight * 0.07);
+        var topOffset = 0;
         popup.dataset.kofiTopOffset = topOffset;
         popup.style = `z-index:10000;position:fixed!important;top:calc(50% + ${topOffset}px)!important;left:50%!important;right:auto!important;bottom:auto!important;width:328px!important;height:${displayHeight}px!important;max-height:108vh!important;transform:translate(-50%, -50%) scale(0.7)!important;transform-origin:center center!important;transition:height 0.5s ease, opacity 0.3s linear; opacity:1;`;
         var noticeMobi = document.getElementsByClassName("floating-chat-kofi-popup-iframe-notice-mobi")[0];

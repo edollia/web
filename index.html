@@ -26,7 +26,7 @@
     <!-- Robots Meta - ADDED -->
     <meta name="robots" content="index, follow">
     
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="styles.css?v=5.2">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
 </head>
 <body>
@@ -40,7 +40,6 @@
                 <div class="loading-bar">
                     <div class="loading-bar-fill" id="loading-bar-fill"></div>
                 </div>
-                <div class="loading-text">just wait...</div>
             </div>
         </div>
     </div>    
@@ -65,16 +64,14 @@
                             <span id="instagram-option" class="support-option social-option" role="button" tabindex="-1" aria-label="Instagram">
                                 <img src="insta.png" alt="Instagram">
                             </span>
+                            <span id="donate-option" class="support-option social-option kofi-social-option" role="button" tabindex="-1" aria-label="Ko-fi">
+                                <img src="mail.png" alt="Ko-fi">
+                            </span>
                         </span>
                     </div>
                 </div>
-                <div id="support-menu-button" class="email-button support-menu-button" role="button" tabindex="0" aria-label="Open support options" aria-expanded="false">
-                    <img src="mail.png" alt="Ko-fi" class="menu-main-icon">
-                    <span class="menu-back-arrow" aria-hidden="true">↢</span>
-                    <span class="support-options" aria-hidden="true">
-                        <span id="donate-option" class="support-option" role="button" tabindex="-1">$</span>
-                        <span id="wishlist-option" class="support-option" role="button" tabindex="-1">Wishlist</span>
-                    </span>
+                <div id="support-menu-button" class="email-button support-menu-button wishlist-direct-button" role="button" tabindex="0" aria-label="Open wishlist">
+                    <img src="wishlist.png" alt="Wishlist" class="menu-main-icon">
                 </div>
                 <div id="action-menu-button" class="next-button support-menu-button action-menu-button" role="button" tabindex="0" aria-label="Open actions" aria-expanded="false">
                     <span class="action-menu-label menu-main-icon">𓏲ּ𝄢</span>
@@ -146,15 +143,54 @@
                 </div>
             </div>
         </div>
-    </div>
+	    </div>
 
-    <!-- Popup Modals -->
+	    <div id="stream-pull-sheet" class="stream-pull-sheet" aria-hidden="true">
+	        <span class="stream-sheet-bubble bubble-one"></span>
+	        <span class="stream-sheet-bubble bubble-two"></span>
+	        <span class="stream-sheet-bubble bubble-three"></span>
+	        <span class="stream-sheet-bubble bubble-four"></span>
+	        <span class="stream-sheet-bubble bubble-five"></span>
+	        <span class="stream-sheet-bubble bubble-six"></span>
+	        <span class="stream-sheet-bubble bubble-seven"></span>
+	        <span class="stream-sheet-heart heart-one"></span>
+	        <span class="stream-sheet-heart heart-two"></span>
+	        <span class="stream-sheet-glint glint-one"></span>
+	        <span class="stream-sheet-glint glint-two"></span>
+	    </div>
+	    <div id="stream-pull-tab" class="stream-pull-tab" role="button" tabindex="0" aria-label="Pull left to open stream">
+	        <img src="tabby.png" alt="" aria-hidden="true" onerror="this.style.display='none'">
+	    </div>
+
+	    <!-- Popup Modals -->
     <div class="popup" id="popup">
         <div class="popup-content">
             <button id="close-popup" aria-label="Close">
                 <img src="paw1.png" alt="Paw Image" class="paw-image">
             </button>
         </div>
+    </div>
+
+    <div class="submit-popup" id="submit-popup" aria-hidden="true">
+        <div class="submit-popup-card">
+            <span class="submit-popup-heart submit-popup-heart-one"></span>
+            <span class="submit-popup-heart submit-popup-heart-two"></span>
+            <span class="submit-popup-sparkle submit-popup-sparkle-one">✧</span>
+            <span class="submit-popup-sparkle submit-popup-sparkle-two">✧</span>
+            <p id="submit-popup-message">Got it! ^-^</p>
+        </div>
+    </div>
+
+    <div class="admin-gate" id="admin-gate" aria-hidden="true">
+        <form class="admin-gate-card" id="admin-gate-form">
+            <button type="button" class="admin-gate-close" id="admin-gate-close" aria-label="Close">×</button>
+            <span class="admin-gate-sparkle admin-gate-sparkle-one">✧</span>
+            <span class="admin-gate-sparkle admin-gate-sparkle-two">✧</span>
+            <label for="admin-gate-code">secret</label>
+            <input id="admin-gate-code" type="password" inputmode="numeric" autocomplete="off" maxlength="8">
+            <button type="submit">enter</button>
+            <p id="admin-gate-error"></p>
+        </form>
     </div>
 
     <!-- Privacy Policy & Terms of Service Modal -->
@@ -204,7 +240,7 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="kofi-overlay-widget.js"></script>
+    <script src="kofi-overlay-widget.js?v=5.2"></script>
     <script>
       // Initialize Ko-fi widget (hidden by default)
       if (typeof kofiWidgetOverlay !== 'undefined') {
@@ -216,7 +252,7 @@
         });
       }
     </script>
-    <script src="script.js?v=3.1"></script>
+    <script src="script.js?v=5.2"></script>
     
     <!-- GoatCounter Analytics -->
     <script data-goatcounter="https://dollia.goatcounter.com/count"
