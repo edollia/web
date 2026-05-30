@@ -5,6 +5,9 @@
     let overlay = null;
     let iframeLoaded = false;
     let fallbackTimer = null;
+    let backNavigationActive = false;
+    let backNavigationStartedAt = 0;
+    let backNavigationSafetyTimer = null;
 
     function playSound(type) {
         if (typeof window.dollPlayUiSound === 'function') {
@@ -106,9 +109,9 @@
             .doll-throne-frame::after {
                 content: '';
                 position: absolute;
-                inset: 2px;
-                border: 6px solid transparent;
-                border-radius: 25px;
+                inset: 0;
+                border: 8px solid transparent;
+                border-radius: 28px;
                 background:
                     linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(255, 205, 232, 0.54), rgba(255, 255, 255, 0.78), rgba(255, 174, 218, 0.42)) border-box;
                 box-shadow:
@@ -415,7 +418,7 @@
             <section class="doll-throne-frame" role="dialog" aria-label="Wishlist">
                 <div class="doll-throne-controls">
                     <button type="button" class="doll-throne-back" aria-label="Back"></button>
-                    <button type="button" class="doll-throne-popout">open full</button>
+                    <button type="button" class="doll-throne-popout">full website</button>
                     <button type="button" class="doll-throne-close" aria-label="Close"><span>&times;</span></button>
                 </div>
                 <div class="doll-throne-iframe-wrap"></div>
@@ -425,8 +428,8 @@
                 </div>
                 <div class="doll-throne-fallback hidden">
                     <div class="doll-throne-loader-mark"><img src="wishlist.png" alt=""></div>
-                    <p>if throne is being shy in the mini window, open the full wishlist.</p>
-                    <button type="button">open throne</button>
+                    <p>checkout works best on the full throne website.</p>
+                    <button type="button">open full website</button>
                 </div>
                 <div class="doll-throne-ornaments" aria-hidden="true">
                     <span></span><span></span><span></span><i></i><i></i>
@@ -449,6 +452,9 @@
         if (!iframe) return;
         const loading = overlay.querySelector('.doll-throne-loading');
 
+        backNavigationActive = true;
+        backNavigationStartedAt = Date.now();
+        window.clearTimeout(backNavigationSafetyTimer);
         iframe.classList.remove('loaded');
         loading?.classList.add('soft');
         loading?.classList.remove('hidden');
@@ -459,11 +465,25 @@
             iframe.src = wishlistUrl;
         }
 
+        // Throne may navigate like an app without firing a full iframe load.
+        // Keep the veil for at least 0.7s, then use this only as a safety net.
+        backNavigationSafetyTimer = window.setTimeout(finishBackNavigation, 2800);
+    }
+
+    function finishBackNavigation() {
+        if (!backNavigationActive) return;
+        const elapsed = Date.now() - backNavigationStartedAt;
+        const remaining = Math.max(700 - elapsed, 0);
+
         window.setTimeout(function() {
-            iframe.classList.add('loaded');
+            const iframe = overlay?.querySelector('.doll-throne-iframe');
+            const loading = overlay?.querySelector('.doll-throne-loading');
+            iframe?.classList.add('loaded');
             loading?.classList.add('hidden');
             loading?.classList.remove('soft');
-        }, 850);
+            backNavigationActive = false;
+            window.clearTimeout(backNavigationSafetyTimer);
+        }, remaining);
     }
 
     function ensureIframe() {
@@ -475,10 +495,18 @@
         iframe.className = 'doll-throne-iframe';
         iframe.title = 'Throne wishlist';
         iframe.loading = 'eager';
+        iframe.allow = 'payment';
+        iframe.allowPaymentRequest = true;
+        iframe.setAttribute('allow', 'payment');
+        iframe.setAttribute('allowpaymentrequest', 'true');
         iframe.referrerPolicy = 'strict-origin-when-cross-origin';
         iframe.src = wishlistUrl;
         iframe.addEventListener('load', function() {
             iframeLoaded = true;
+            if (backNavigationActive) {
+                finishBackNavigation();
+                return;
+            }
             iframe.classList.add('loaded');
             overlay.querySelector('.doll-throne-loading')?.classList.add('hidden');
         });

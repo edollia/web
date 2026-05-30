@@ -347,9 +347,9 @@ var kofiWidgetOverlayFloatingChatBuilder = kofiWidgetOverlayFloatingChatBuilder 
             .doll-kofi-ornaments::before {
                 content: "";
                 position: absolute;
-                inset: 2px;
-                border: 6px solid transparent;
-                border-radius: 20px;
+                inset: 0;
+                border: 8px solid transparent;
+                border-radius: 22px;
                 background:
                     linear-gradient(135deg, rgba(255,255,255,0.9), rgba(255,205,232,0.54), rgba(255,255,255,0.78), rgba(255,174,218,0.42)) border-box;
                 box-shadow:

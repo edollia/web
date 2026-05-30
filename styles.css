@@ -1133,32 +1133,9 @@ button {
 
 .pencil-option {
     position: relative;
-}
-
-.pencil-option::before {
-    content: '';
-    width: 20px;
-    height: 6px;
-    border-radius: 4px;
-    background: rgba(122, 76, 92, 0.78);
-    transform: rotate(-34deg);
-    box-shadow: 7px 0 0 -2px rgba(255, 236, 245, 0.9);
-}
-
-.pencil-option::after {
-    content: '';
-    position: absolute;
-    width: 0;
-    height: 0;
-    border-left: 6px solid rgba(122, 76, 92, 0.78);
-    border-top: 4px solid transparent;
-    border-bottom: 4px solid transparent;
-    transform: translate(12px, -7px) rotate(-34deg);
-}
-
-.pencil-option.drawing-open::before,
-.pencil-option.drawing-open::after {
-    display: none;
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 18px;
+    font-weight: 700;
 }
 
 .question-option {

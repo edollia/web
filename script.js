@@ -954,7 +954,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         showingNote = true;
         drawingWidget.classList.remove('active');
         toggleButton.classList.remove('drawing-open');
-        toggleButton.textContent = '';
+        toggleButton.textContent = '✎';
     }
 
     function closeQuestionForm() {
