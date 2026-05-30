@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow">
+    <title>Dollia</title>
+    <script>
+        (function() {
+            var redirects = {
+                '/admin.html': '/admin/',
+                '/stream.html': '/stream/',
+                '/index.html': '/'
+            };
+            var cleanPath = redirects[window.location.pathname];
+            if (cleanPath) {
+                window.location.replace(cleanPath + window.location.search + window.location.hash);
+                return;
+            }
+            window.location.replace('/');
+        }());
+    </script>
+</head>
+<body></body>
+</html>
