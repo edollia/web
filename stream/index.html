@@ -5,10 +5,26 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="theme-color" content="#fff7fb">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="referrer" content="strict-origin-when-cross-origin">
     <title>Stream</title>
-    <link rel="stylesheet" href="../styles.css?v=5.5">
+    <link rel="stylesheet" href="../styles.css?v=6.6">
 </head>
 <body class="stream-page">
+    <script>
+        (function() {
+            try {
+                if (sessionStorage.getItem('doll_stream_from_pull') === '1') {
+                    sessionStorage.removeItem('doll_stream_from_pull');
+                    document.body.classList.add('stream-arriving');
+                    window.setTimeout(function() {
+                        document.body.classList.remove('stream-arriving');
+                    }, 900);
+                }
+            } catch (error) {
+                // Normal entry still works without session storage.
+            }
+        }());
+    </script>
     <a href="../index.html" class="stream-back-button" id="stream-back-button" aria-label="Back to main page">
         <span class="stream-back-icon" aria-hidden="true"></span>
     </a>
@@ -27,14 +43,125 @@
         <span class="stream-spark spark-two"></span>
         <span class="stream-spark spark-three"></span>
     </div>
-    <main class="stream-coming-soon" aria-label="Stream page">
+    <main class="stream-coming-soon" id="stream-coming-soon" aria-label="Stream page">
         <div class="stream-title-wrap">
             <h1>Coming Soon</h1>
         </div>
     </main>
+    <main class="stream-live-shell" id="stream-live-shell" data-stream-base="" data-stream-name="Live" hidden aria-label="Stream page">
+        <section class="stream-stage" aria-label="Stream player">
+            <div class="stream-live-header">
+                <div>
+                    <span class="stream-live-kicker">doll.gg/stream</span>
+                    <h1 id="stream-page-title">Live</h1>
+                </div>
+                <div class="stream-live-status" id="stream-live-status">
+                    <span aria-hidden="true"></span>
+                    <strong id="stream-status-text">offline</strong>
+                </div>
+            </div>
+
+            <div class="stream-player-shell">
+                <div class="stream-player-frame" id="stream-video-frame">
+                    <div class="stream-setup-panel" id="stream-video-setup">
+                        <span class="stream-setup-mark" aria-hidden="true"></span>
+                        <h2>Loading...</h2>
+                        <p>One sec.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="stream-live-actions" aria-label="Stream controls">
+                <button type="button" id="stream-refresh-status">refresh</button>
+                <button type="button" id="stream-theater-button">theater</button>
+                <button type="button" id="stream-fullscreen-button">fullscreen</button>
+                <button type="button" id="stream-open-source">open stream</button>
+                <button type="button" id="stream-hide-preview">hide</button>
+            </div>
+
+            <div class="stream-info-row" aria-label="Stream details">
+                <span><strong id="stream-viewer-count">--</strong> viewers</span>
+                <span id="stream-server-line">offline</span>
+                <span id="stream-updated-line">waiting</span>
+            </div>
+        </section>
+
+        <aside class="stream-chat-panel" aria-label="Stream chat">
+            <div class="stream-chat-header">
+                <div>
+                    <span>live</span>
+                    <strong>Chat</strong>
+                </div>
+                <span class="stream-chat-pill" id="stream-chat-state">offline</span>
+            </div>
+
+            <div class="stream-chat-frame" id="stream-chat-frame">
+                <div class="stream-chat-feed" id="stream-chat-feed" role="log" aria-live="polite">
+                    <div class="stream-chat-empty" id="stream-chat-empty">chat is waking up...</div>
+                </div>
+                <form class="stream-chat-form" id="stream-chat-form" autocomplete="off">
+                    <input type="text" id="stream-chat-name" name="nickname" maxlength="18" placeholder="nickname">
+                    <div class="stream-chat-send-row">
+                        <input type="text" id="stream-chat-message" name="message" maxlength="220" placeholder="say something">
+                        <button type="submit" id="stream-chat-send">send</button>
+                    </div>
+                </form>
+            </div>
+
+            <div class="stream-mod-strip" aria-label="Chat tools">
+                <button type="button" id="stream-chat-popout">chat</button>
+                <button type="button" id="stream-copy-link">copy link</button>
+            </div>
+        </aside>
+
+        <div class="stream-toast" id="stream-toast" role="status" aria-live="polite"></div>
+    </main>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>
         (function() {
             var backButton = document.getElementById('stream-back-button');
+            var comingSoon = document.getElementById('stream-coming-soon');
+            var liveShell = document.getElementById('stream-live-shell');
+            var hidePreviewButton = document.getElementById('stream-hide-preview');
+            var refreshButton = document.getElementById('stream-refresh-status');
+            var theaterButton = document.getElementById('stream-theater-button');
+            var fullscreenButton = document.getElementById('stream-fullscreen-button');
+            var openSourceButton = document.getElementById('stream-open-source');
+            var chatPopoutButton = document.getElementById('stream-chat-popout');
+            var copyLinkButton = document.getElementById('stream-copy-link');
+            var streamStatus = document.getElementById('stream-live-status');
+            var streamStatusText = document.getElementById('stream-status-text');
+            var streamTitle = document.getElementById('stream-page-title');
+            var viewerCount = document.getElementById('stream-viewer-count');
+            var serverLine = document.getElementById('stream-server-line');
+            var updatedLine = document.getElementById('stream-updated-line');
+            var chatState = document.getElementById('stream-chat-state');
+            var toast = document.getElementById('stream-toast');
+            var chatFeed = document.getElementById('stream-chat-feed');
+            var chatForm = document.getElementById('stream-chat-form');
+            var chatNameInput = document.getElementById('stream-chat-name');
+            var chatMessageInput = document.getElementById('stream-chat-message');
+            var chatSendButton = document.getElementById('stream-chat-send');
+            var chatEmpty = document.getElementById('stream-chat-empty');
+            var SUPABASE_URL = 'https://zvqdodzkhmcptwkjlfeu.supabase.co';
+            var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp2cWRvZHpraG1jcHR3a2psZmV1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg3NjM1NjAsImV4cCI6MjA2NDMzOTU2MH0.i1xbRIhPHVkDIrnDlQFP0ebNklrx8WVQcQo8Iuo9zG8';
+            var STREAM_CHAT_TABLE = 'stream_messages';
+            var CHAT_COOLDOWN_MS = 5000;
+            var CHAT_LIMIT = 60;
+            var statusTimer = null;
+            var toastTimer = null;
+            var chatPollTimer = null;
+            var chatCooldownTimer = null;
+            var chatChannel = null;
+            var presenceChannel = null;
+            var streamClient = null;
+            var clientIpPromise = null;
+            var seenMessageIds = new Set();
+            var unlockTaps = 0;
+            var unlockResetTimer = null;
+            var easterVideoId = 'GpQSUjNsNm0';
+            var easterVideoUrl = 'https://www.youtube.com/watch?v=GpQSUjNsNm0';
+            var currentViewerCount = 1;
             if (!backButton) return;
 
             function getHomeUrl() {
@@ -51,6 +178,632 @@
             backButton.addEventListener('click', function(event) {
                 event.preventDefault();
                 window.location.href = getHomeUrl();
+            });
+
+            function normalizeStreamUrl(url) {
+                return String(url || '').trim().replace(/\/+$/, '');
+            }
+
+            function getStreamUrl() {
+                return normalizeStreamUrl(liveShell ? liveShell.dataset.streamBase : '');
+            }
+
+            function getShareUrl() {
+                return window.location.origin + window.location.pathname;
+            }
+
+            function getEasterEmbedUrl() {
+                var origin = window.location.origin && window.location.origin !== 'null'
+                    ? window.location.origin
+                    : 'https://doll.gg';
+                var pageUrl = window.location.href && window.location.href !== 'about:blank'
+                    ? window.location.href.split('#')[0]
+                    : 'https://doll.gg/stream/';
+                var params = new URLSearchParams({
+                    feature: 'oembed',
+                    autoplay: '1',
+                    mute: '1',
+                    playsinline: '1',
+                    controls: '1',
+                    fs: '1',
+                    rel: '0',
+                    modestbranding: '1',
+                    origin: origin,
+                    widget_referrer: pageUrl
+                });
+
+                return 'https://www.youtube.com/embed/' + easterVideoId + '?' + params.toString();
+            }
+
+            function showToast(message) {
+                if (!toast) return;
+                toast.textContent = message;
+                toast.classList.add('show');
+                window.clearTimeout(toastTimer);
+                toastTimer = window.setTimeout(function() {
+                    toast.classList.remove('show');
+                }, 2200);
+            }
+
+            function setConnectionState(state, text) {
+                if (!streamStatus || !streamStatusText) return;
+                streamStatus.dataset.state = state;
+                streamStatusText.textContent = text;
+            }
+
+            function setUpdatedLine(message) {
+                if (updatedLine) updatedLine.textContent = message;
+            }
+
+            function setViewerCount(count, keepAtLeastOne) {
+                var parsed = Number(count);
+                if (!Number.isFinite(parsed)) parsed = keepAtLeastOne ? 1 : 0;
+                currentViewerCount = keepAtLeastOne ? Math.max(1, parsed) : Math.max(0, parsed);
+                if (viewerCount) viewerCount.textContent = String(currentViewerCount);
+            }
+
+            function getStreamClient() {
+                if (streamClient) return streamClient;
+                if (!window.supabase || typeof window.supabase.createClient !== 'function') {
+                    return null;
+                }
+
+                streamClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+                    db: { schema: 'public' },
+                    auth: {
+                        persistSession: false,
+                        autoRefreshToken: false
+                    }
+                });
+                return streamClient;
+            }
+
+            function normalizeText(value, maxLength) {
+                return String(value || '').replace(/\s+/g, ' ').trim().slice(0, maxLength);
+            }
+
+            function getStoredNickname() {
+                try {
+                    return normalizeText(localStorage.getItem('doll_stream_chat_nickname') || '', 18);
+                } catch (error) {
+                    return '';
+                }
+            }
+
+            function saveNickname(nickname) {
+                try {
+                    localStorage.setItem('doll_stream_chat_nickname', nickname);
+                } catch (error) {
+                    // Chat still works without local storage.
+                }
+            }
+
+            function getLastChatSentAt() {
+                try {
+                    return Number(localStorage.getItem('doll_stream_chat_last_sent') || 0);
+                } catch (error) {
+                    return Number(window.dollStreamLastChatSentAt || 0);
+                }
+            }
+
+            function setLastChatSentAt(value) {
+                window.dollStreamLastChatSentAt = value;
+                try {
+                    localStorage.setItem('doll_stream_chat_last_sent', String(value));
+                } catch (error) {
+                    // The in-memory fallback above covers private/storage-blocked modes.
+                }
+            }
+
+            function getChatCooldownRemaining() {
+                return Math.max(0, CHAT_COOLDOWN_MS - (Date.now() - getLastChatSentAt()));
+            }
+
+            function refreshChatButtonState() {
+                if (!chatSendButton) return;
+                var remaining = getChatCooldownRemaining();
+                if (remaining > 0) {
+                    chatSendButton.disabled = true;
+                    chatSendButton.textContent = 'wait ' + Math.ceil(remaining / 1000);
+                    if (chatState) chatState.textContent = 'cooldown';
+                    return;
+                }
+
+                chatSendButton.disabled = false;
+                chatSendButton.textContent = 'send';
+                if (chatState && chatState.textContent === 'cooldown') {
+                    chatState.textContent = 'live';
+                }
+            }
+
+            function startChatCooldownTicker() {
+                window.clearInterval(chatCooldownTimer);
+                refreshChatButtonState();
+                chatCooldownTimer = window.setInterval(function() {
+                    refreshChatButtonState();
+                    if (getChatCooldownRemaining() <= 0) {
+                        window.clearInterval(chatCooldownTimer);
+                        chatCooldownTimer = null;
+                    }
+                }, 250);
+            }
+
+            function getClientIp() {
+                if (clientIpPromise) return clientIpPromise;
+                clientIpPromise = new Promise(function(resolve) {
+                    var timeout = window.setTimeout(function() {
+                        resolve('unknown');
+                    }, 2400);
+
+                    fetch('https://api.ipify.org?format=json', { cache: 'no-store' })
+                        .then(function(response) {
+                            if (!response.ok) throw new Error('ip unavailable');
+                            return response.json();
+                        })
+                        .then(function(data) {
+                            window.clearTimeout(timeout);
+                            resolve(data && data.ip ? String(data.ip) : 'unknown');
+                        })
+                        .catch(function() {
+                            window.clearTimeout(timeout);
+                            resolve('unknown');
+                        });
+                });
+                return clientIpPromise;
+            }
+
+            function updateChatEmpty(message) {
+                if (!chatEmpty) return;
+                var hasMessages = chatFeed && chatFeed.querySelector('.stream-chat-message');
+                chatEmpty.textContent = message || 'say hi first.';
+                chatEmpty.hidden = Boolean(hasMessages);
+            }
+
+            function isChatNearBottom() {
+                if (!chatFeed) return true;
+                return chatFeed.scrollHeight - chatFeed.scrollTop - chatFeed.clientHeight < 90;
+            }
+
+            function appendChatMessage(message, forceScroll) {
+                if (!chatFeed || !message || !message.id || seenMessageIds.has(message.id)) return;
+                var shouldScroll = forceScroll || isChatNearBottom();
+                seenMessageIds.add(message.id);
+
+                var row = document.createElement('article');
+                row.className = 'stream-chat-message';
+
+                var meta = document.createElement('div');
+                meta.className = 'stream-chat-message-meta';
+
+                var name = document.createElement('strong');
+                name.textContent = normalizeText(message.nickname || 'guest', 18) || 'guest';
+
+                var time = document.createElement('time');
+                var date = new Date(message.created_at || Date.now());
+                time.dateTime = Number.isNaN(date.getTime()) ? '' : date.toISOString();
+                time.textContent = Number.isNaN(date.getTime())
+                    ? 'now'
+                    : date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+
+                var text = document.createElement('p');
+                text.textContent = normalizeText(message.message || '', 220);
+
+                meta.appendChild(name);
+                meta.appendChild(time);
+                row.appendChild(meta);
+                row.appendChild(text);
+                chatFeed.appendChild(row);
+                updateChatEmpty();
+
+                if (shouldScroll) {
+                    chatFeed.scrollTop = chatFeed.scrollHeight;
+                }
+            }
+
+            function renderChatMessages(messages) {
+                if (!chatFeed) return;
+                Array.from(chatFeed.querySelectorAll('.stream-chat-message')).forEach(function(node) {
+                    node.remove();
+                });
+                seenMessageIds.clear();
+                (messages || []).forEach(function(message) {
+                    appendChatMessage(message, true);
+                });
+                updateChatEmpty();
+                chatFeed.scrollTop = chatFeed.scrollHeight;
+            }
+
+            async function loadStreamMessages() {
+                var client = getStreamClient();
+                if (!client) {
+                    if (chatState) chatState.textContent = 'offline';
+                    updateChatEmpty('chat needs the site connection.');
+                    return false;
+                }
+
+                var result = await client
+                    .from(STREAM_CHAT_TABLE)
+                    .select('id,nickname,message,created_at')
+                    .order('created_at', { ascending: false })
+                    .limit(CHAT_LIMIT);
+
+                if (result.error) {
+                    console.warn('Stream chat unavailable:', result.error.message);
+                    if (chatState) chatState.textContent = 'offline';
+                    updateChatEmpty('chat needs setup.');
+                    return false;
+                }
+
+                renderChatMessages((result.data || []).slice().reverse());
+                if (chatState) chatState.textContent = 'live';
+                refreshChatButtonState();
+                return true;
+            }
+
+            function startChatRealtime() {
+                var client = getStreamClient();
+                if (!client || chatChannel) return;
+
+                chatChannel = client
+                    .channel('doll_stream_chat_feed')
+                    .on('postgres_changes', {
+                        event: 'INSERT',
+                        schema: 'public',
+                        table: STREAM_CHAT_TABLE
+                    }, function(payload) {
+                        appendChatMessage(payload.new, true);
+                    })
+                    .subscribe(function(status) {
+                        if (status === 'SUBSCRIBED' && chatState) {
+                            chatState.textContent = 'live';
+                        }
+                    });
+            }
+
+            function startChatPoll() {
+                window.clearInterval(chatPollTimer);
+                chatPollTimer = window.setInterval(function() {
+                    loadStreamMessages();
+                }, 6000);
+            }
+
+            async function startStreamChat() {
+                if (chatNameInput && !chatNameInput.value) {
+                    chatNameInput.value = getStoredNickname();
+                }
+                if (chatState) chatState.textContent = 'loading';
+                var ready = await loadStreamMessages();
+                startChatCooldownTicker();
+                if (!ready) return;
+                startChatRealtime();
+                startChatPoll();
+            }
+
+            function stopStreamChat() {
+                var client = getStreamClient();
+                window.clearInterval(chatPollTimer);
+                window.clearInterval(chatCooldownTimer);
+                chatPollTimer = null;
+                chatCooldownTimer = null;
+                if (chatChannel && client) {
+                    client.removeChannel(chatChannel);
+                }
+                chatChannel = null;
+                if (chatState) chatState.textContent = 'offline';
+                renderChatMessages([]);
+                updateChatEmpty('chat is sleeping.');
+            }
+
+            async function sendStreamChat(event) {
+                event.preventDefault();
+                var client = getStreamClient();
+                if (!client) {
+                    showToast('Chat connection is not ready.');
+                    return;
+                }
+
+                var remaining = getChatCooldownRemaining();
+                if (remaining > 0) {
+                    startChatCooldownTicker();
+                    showToast('Wait ' + Math.ceil(remaining / 1000) + ' seconds.');
+                    return;
+                }
+
+                var nickname = normalizeText(chatNameInput ? chatNameInput.value : '', 18) || 'guest';
+                var message = normalizeText(chatMessageInput ? chatMessageInput.value : '', 220);
+                if (!message) {
+                    showToast('Type a message first.');
+                    return;
+                }
+
+                if (chatSendButton) {
+                    chatSendButton.disabled = true;
+                    chatSendButton.textContent = 'sending';
+                }
+
+                try {
+                    var ipAddress = await getClientIp();
+                    var result = await client.from(STREAM_CHAT_TABLE).insert({
+                        nickname: nickname,
+                        message: message,
+                        ip_address: ipAddress
+                    });
+
+                    if (result.error) throw result.error;
+                    saveNickname(nickname);
+                    if (chatMessageInput) chatMessageInput.value = '';
+                    setLastChatSentAt(Date.now());
+                    await loadStreamMessages();
+                    startChatCooldownTicker();
+                } catch (error) {
+                    console.warn('Stream chat send failed:', error);
+                    var messageText = String(error && error.message ? error.message : '');
+                    showToast(messageText.toLowerCase().includes('5 seconds')
+                        ? 'Wait 5 seconds before chatting.'
+                        : 'Chat could not send.');
+                } finally {
+                    refreshChatButtonState();
+                }
+            }
+
+            function getPresenceKey() {
+                try {
+                    var existing = sessionStorage.getItem('doll_stream_presence_key');
+                    if (existing) return existing;
+                    var generated = (window.crypto && window.crypto.randomUUID)
+                        ? window.crypto.randomUUID()
+                        : String(Date.now()) + '-' + Math.random().toString(16).slice(2);
+                    sessionStorage.setItem('doll_stream_presence_key', generated);
+                    return generated;
+                } catch (error) {
+                    return String(Date.now()) + '-' + Math.random().toString(16).slice(2);
+                }
+            }
+
+            function startViewerPresence() {
+                var client = getStreamClient();
+                if (!client || getStreamUrl()) {
+                    setViewerCount(1, true);
+                    return;
+                }
+
+                stopViewerPresence();
+                presenceChannel = client.channel('doll_stream_viewers', {
+                    config: {
+                        presence: {
+                            key: getPresenceKey()
+                        }
+                    }
+                });
+
+                presenceChannel.on('presence', { event: 'sync' }, function() {
+                    var state = presenceChannel.presenceState();
+                    var count = Object.keys(state).reduce(function(total, key) {
+                        return total + state[key].length;
+                    }, 0);
+                    setViewerCount(count, true);
+                });
+
+                presenceChannel.subscribe(function(status) {
+                    if (status === 'SUBSCRIBED') {
+                        presenceChannel.track({
+                            online_at: new Date().toISOString()
+                        });
+                    }
+                });
+            }
+
+            function stopViewerPresence() {
+                var client = getStreamClient();
+                if (presenceChannel && client) {
+                    presenceChannel.untrack();
+                    client.removeChannel(presenceChannel);
+                }
+                presenceChannel = null;
+            }
+
+            function getVideoFrame() {
+                return document.getElementById('stream-video-frame');
+            }
+
+            function clearStreamFrames() {
+                var videoFrame = getVideoFrame();
+                if (videoFrame) videoFrame.textContent = '';
+            }
+
+            function mountEasterVideo(forceReload) {
+                var videoFrame = getVideoFrame();
+                if (!videoFrame) return;
+                var existing = videoFrame.querySelector('iframe');
+
+                if (existing && !forceReload) return;
+                videoFrame.textContent = '';
+
+                var easterVideo = document.createElement('iframe');
+                easterVideo.title = 'Stream video';
+                easterVideo.src = getEasterEmbedUrl();
+                easterVideo.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen';
+                easterVideo.allowFullscreen = true;
+                easterVideo.referrerPolicy = 'strict-origin-when-cross-origin';
+                easterVideo.setAttribute('frameborder', '0');
+                easterVideo.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
+                videoFrame.appendChild(easterVideo);
+            }
+
+            function mountStreamEmbeds() {
+                if (!liveShell) return;
+                var baseUrl = getStreamUrl();
+                var videoFrame = getVideoFrame();
+
+                if (!baseUrl) {
+                    setConnectionState('live', 'live');
+                    if (streamTitle) streamTitle.textContent = 'Live';
+                    setViewerCount(currentViewerCount || 1, true);
+                    if (chatState) chatState.textContent = 'loading';
+                    if (serverLine) serverLine.textContent = 'guest stream';
+                    setUpdatedLine('playing');
+                    mountEasterVideo(false);
+                    return;
+                }
+
+                if (serverLine) serverLine.textContent = baseUrl.replace(/^https?:\/\//, '');
+                if (chatState) chatState.textContent = 'loading';
+
+                if (videoFrame && (!videoFrame.querySelector('iframe') || videoFrame.querySelector('iframe')?.src.includes('youtube.com/embed'))) {
+                    var video = document.createElement('iframe');
+                    video.title = 'Stream video';
+                    video.src = baseUrl + '/embed/video?initiallyMuted=true';
+                    video.loading = 'lazy';
+                    video.allow = 'autoplay; fullscreen; picture-in-picture';
+                    video.allowFullscreen = true;
+                    video.referrerPolicy = 'origin';
+                    videoFrame.textContent = '';
+                    videoFrame.appendChild(video);
+                }
+            }
+
+            async function refreshStreamStatus(isManual) {
+                var baseUrl = getStreamUrl();
+                if (!baseUrl) {
+                    setConnectionState('live', 'live');
+                    setViewerCount(currentViewerCount || 1, true);
+                    setUpdatedLine('playing');
+                    mountEasterVideo(true);
+                    if (isManual) showToast('Stream refreshed.');
+                    return;
+                }
+
+                setUpdatedLine('checking...');
+
+                try {
+                    var response = await fetch(baseUrl + '/api/status', {
+                        headers: { Accept: 'application/json' },
+                        cache: 'no-store'
+                    });
+                    if (!response.ok) throw new Error('status unavailable');
+
+                    var status = await response.json();
+                    var online = Boolean(status.online);
+                    var title = status.streamTitle || liveShell.dataset.streamName || 'Live';
+
+                    if (streamTitle) streamTitle.textContent = title;
+                    setViewerCount(Number(status.viewerCount || 0), false);
+                    setConnectionState(online ? 'live' : 'offline', online ? 'live' : 'offline');
+                    setUpdatedLine('updated now');
+                    if (isManual) showToast('Stream status refreshed.');
+                } catch (error) {
+                    setConnectionState('offline', 'status unavailable');
+                    setUpdatedLine('stream unavailable');
+                    if (isManual) showToast('Stream is unavailable right now.');
+                }
+            }
+
+            function startStatusLoop() {
+                window.clearInterval(statusTimer);
+                refreshStreamStatus(false);
+                statusTimer = window.setInterval(function() {
+                    refreshStreamStatus(false);
+                }, 30000);
+            }
+
+            function stopStatusLoop() {
+                window.clearInterval(statusTimer);
+                statusTimer = null;
+            }
+
+            async function copyText(text, successMessage) {
+                try {
+                    await navigator.clipboard.writeText(text);
+                    showToast(successMessage);
+                } catch (error) {
+                    showToast(text);
+                }
+            }
+
+            function showLivePreview() {
+                if (!comingSoon || !liveShell) return;
+                document.body.classList.add('stream-live-unlocked');
+                comingSoon.hidden = true;
+                liveShell.hidden = false;
+                mountStreamEmbeds();
+                startStatusLoop();
+                startViewerPresence();
+                startStreamChat();
+            }
+
+            function hideLivePreview() {
+                if (!comingSoon || !liveShell) return;
+                document.body.classList.remove('stream-live-unlocked');
+                document.body.classList.remove('stream-theater-mode');
+                if (theaterButton) theaterButton.textContent = 'theater';
+                liveShell.hidden = true;
+                comingSoon.hidden = false;
+                unlockTaps = 0;
+                stopStatusLoop();
+                stopViewerPresence();
+                stopStreamChat();
+                clearStreamFrames();
+            }
+
+            comingSoon?.addEventListener('click', function() {
+                unlockTaps += 1;
+                window.clearTimeout(unlockResetTimer);
+                unlockResetTimer = window.setTimeout(function() {
+                    unlockTaps = 0;
+                }, 1800);
+
+                if (unlockTaps >= 5) {
+                    window.clearTimeout(unlockResetTimer);
+                    unlockTaps = 0;
+                    showLivePreview();
+                }
+            });
+
+            hidePreviewButton?.addEventListener('click', hideLivePreview);
+            refreshButton?.addEventListener('click', function() {
+                refreshStreamStatus(true);
+            });
+            openSourceButton?.addEventListener('click', function() {
+                var baseUrl = getStreamUrl();
+                if (!baseUrl) {
+                    window.open(easterVideoUrl, '_blank', 'noopener,noreferrer');
+                    return;
+                }
+                window.open(baseUrl, '_blank', 'noopener,noreferrer');
+            });
+            chatPopoutButton?.addEventListener('click', function() {
+                if (chatMessageInput) {
+                    chatMessageInput.focus();
+                }
+                showToast('Chat is right here.');
+            });
+            chatForm?.addEventListener('submit', sendStreamChat);
+            theaterButton?.addEventListener('click', function() {
+                document.body.classList.toggle('stream-theater-mode');
+                theaterButton.textContent = document.body.classList.contains('stream-theater-mode') ? 'normal' : 'theater';
+            });
+            fullscreenButton?.addEventListener('click', async function() {
+                var videoFrame = getVideoFrame();
+                if (!videoFrame) return;
+
+                try {
+                    if (videoFrame.requestFullscreen) {
+                        await videoFrame.requestFullscreen();
+                    } else if (videoFrame.webkitRequestFullscreen) {
+                        videoFrame.webkitRequestFullscreen();
+                    } else {
+                        document.body.classList.add('stream-theater-mode');
+                        if (theaterButton) theaterButton.textContent = 'normal';
+                        showToast('Fullscreen unavailable here, theater mode on.');
+                    }
+                } catch (error) {
+                    document.body.classList.add('stream-theater-mode');
+                    if (theaterButton) theaterButton.textContent = 'normal';
+                    showToast('Fullscreen unavailable here, theater mode on.');
+                }
+            });
+            copyLinkButton?.addEventListener('click', function() {
+                copyText(getShareUrl(), 'Stream link copied.');
             });
         }());
     </script>

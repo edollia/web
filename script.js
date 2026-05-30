@@ -331,19 +331,22 @@ document.addEventListener("DOMContentLoaded", async function() {
         let openThreshold = 168;
         let startX = 0;
         let currentPull = 0;
+        let pullScale = 1;
         let dragging = false;
         let moved = false;
         let opening = false;
         let skipClickUntil = 0;
 
-        function updatePullMetrics() {
+        function updatePullMetrics(pointerStartX) {
             const sheetWidth = sheet?.getBoundingClientRect().width || 280;
+            const reachablePull = pointerStartX ? Math.max(220, pointerStartX - 2) : sheetWidth;
             maxPull = sheetWidth;
-            openThreshold = sheetWidth * 0.58;
+            pullScale = sheetWidth / reachablePull;
+            openThreshold = sheetWidth * 0.62;
         }
 
         function setPull(distance) {
-            currentPull = Math.max(0, Math.min(maxPull, distance));
+            currentPull = Math.max(0, Math.min(maxPull, distance * pullScale));
             const pullValue = `${currentPull}px`;
             tab.style.setProperty('--stream-pull', pullValue);
             sheet?.style.setProperty('--stream-pull', pullValue);
@@ -373,14 +376,19 @@ document.addEventListener("DOMContentLoaded", async function() {
             opening = true;
             // Uses uiSounds.link, which is CUT2.mp3.
             playUiSound('link');
+            try {
+                sessionStorage.setItem('doll_stream_from_pull', '1');
+            } catch (error) {
+                // The route still works if session storage is unavailable.
+            }
             tab.classList.remove('dragging');
             sheet?.classList.remove('dragging');
             tab.classList.add('completing');
             sheet?.classList.add('completing');
             setPull(maxPull);
-            window.setTimeout(() => {
+            window.requestAnimationFrame(() => {
                 window.location.href = streamUrl;
-            }, 360);
+            });
         }
 
         updatePullMetrics();
@@ -392,10 +400,10 @@ document.addEventListener("DOMContentLoaded", async function() {
         tab.addEventListener('pointerdown', function(e) {
             if (opening) return;
             if (!e.isPrimary) return;
-            updatePullMetrics();
             dragging = true;
             moved = false;
             startX = e.clientX;
+            updatePullMetrics(startX);
             tab.classList.remove('stream-tab-peek');
             sheet?.classList.remove('stream-tab-peek');
             tab.classList.add('dragging');
@@ -1302,6 +1310,12 @@ document.addEventListener("DOMContentLoaded", async function() {
             saveState();
         }
 
+        function resetCanvasHistory() {
+            drawingHistory = [];
+            historyIndex = -1;
+            saveState();
+        }
+
         function saveState() {
             historyIndex++;
             if (historyIndex < drawingHistory.length) {
@@ -1377,6 +1391,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             }, { passive: false });
 
             canvas.addEventListener("touchend", stopDrawing);
+            canvas.addEventListener("touchcancel", stopDrawing);
         }
 
         document.getElementById("undo-button")?.addEventListener("click", () => {
@@ -1392,7 +1407,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         });
 
         document.getElementById("brush-size")?.addEventListener("input", e => {
-            brushSize = e.target.value;
+            brushSize = Number(e.target.value);
         });
 
         // Fixed color picker - works on both desktop and mobile
@@ -1433,9 +1448,59 @@ document.addEventListener("DOMContentLoaded", async function() {
             saveState();
         });
 
+        function getDrawingQualityError() {
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+            let inkPixels = 0;
+            let minX = canvas.width;
+            let minY = canvas.height;
+            let maxX = 0;
+            let maxY = 0;
+
+            for (let i = 0; i < imageData.length; i += 4) {
+                const alpha = imageData[i + 3];
+                if (alpha < 18) continue;
+
+                const red = imageData[i];
+                const green = imageData[i + 1];
+                const blue = imageData[i + 2];
+                const distanceFromWhite = (255 - red) + (255 - green) + (255 - blue);
+                if (distanceFromWhite < 52) continue;
+
+                const pixelIndex = i / 4;
+                const x = pixelIndex % canvas.width;
+                const y = Math.floor(pixelIndex / canvas.width);
+
+                inkPixels += 1;
+                if (x < minX) minX = x;
+                if (y < minY) minY = y;
+                if (x > maxX) maxX = x;
+                if (y > maxY) maxY = y;
+            }
+
+            if (inkPixels < 95) {
+                return "Draw a little something first ^-^";
+            }
+
+            const inkWidth = maxX - minX + 1;
+            const inkHeight = maxY - minY + 1;
+            const inkSpread = Math.hypot(inkWidth, inkHeight);
+
+            if (inkPixels < 150 || inkSpread < 44 || (inkWidth < 18 && inkHeight < 18)) {
+                return "Make your doodle a tiny bit bigger ^-^";
+            }
+
+            return "";
+        }
+
         document.getElementById("send-drawing")?.addEventListener("click", async function() {
             const sendButton = this;
             if (sendButton.disabled) return;
+            const qualityError = getDrawingQualityError();
+            if (qualityError) {
+                showSubmitPopup(qualityError);
+                return;
+            }
+
             const dataUrl = canvas.toDataURL("image/png");
             const base64Data = dataUrl.split(',')[1];
             
@@ -1470,7 +1535,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
                 ctx.fillStyle = "#ffffff";
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
-                saveState();
+                resetCanvasHistory();
                 await submitSoundMinimum;
                 await showSubmitPopupAndWait("Got it! ^-^");
                 showNoteImage();

@@ -8,6 +8,11 @@
     let backNavigationActive = false;
     let backNavigationStartedAt = 0;
     let backNavigationSafetyTimer = null;
+    let unloadIframeTimer = null;
+    let openVeilTimer = null;
+    let fullWebsiteHintTimer = null;
+    let fullWebsiteHintHideTimer = null;
+    let fullWebsiteHintCycle = 0;
 
     function playSound(type) {
         if (typeof window.dollPlayUiSound === 'function') {
@@ -175,9 +180,7 @@
             .doll-throne-back,
             .doll-throne-popout {
                 position: static;
-                min-width: 78px;
                 height: 30px;
-                padding: 0 10px;
                 border-radius: 999px;
                 font-family: "Comic Sans MS", "Trebuchet MS", cursive;
                 font-size: 11px;
@@ -200,6 +203,12 @@
                 border-left: 2px solid rgba(177, 72, 126, 0.76);
                 border-bottom: 2px solid rgba(177, 72, 126, 0.76);
                 transform: translateX(2px) rotate(45deg);
+            }
+
+            .doll-throne-popout {
+                min-width: 106px;
+                padding: 0 13px;
+                white-space: nowrap;
             }
 
             .doll-throne-close:active {
@@ -237,7 +246,7 @@
             .doll-throne-fallback {
                 position: absolute;
                 inset: 0;
-                z-index: 4;
+                z-index: 7;
                 display: flex;
                 flex-direction: column;
                 align-items: center;
@@ -311,14 +320,81 @@
                 cursor: pointer;
             }
 
+            .doll-throne-hint {
+                position: absolute;
+                left: 50%;
+                bottom: 28px;
+                z-index: 9;
+                width: min(206px, calc(100% - 46px));
+                min-height: 38px;
+                padding: 9px 16px 10px;
+                border: 1px solid rgba(255, 169, 211, 0.56);
+                border-radius: 999px;
+                background:
+                    radial-gradient(circle at 18% 24%, rgba(255, 255, 255, 0.98), transparent 26%),
+                    radial-gradient(circle at 88% 28%, rgba(255, 222, 238, 0.72), transparent 30%),
+                    rgba(255, 249, 252, 0.95);
+                color: rgba(139, 68, 103, 0.86);
+                font-family: "Comic Sans MS", "Trebuchet MS", cursive;
+                font-size: 11px;
+                font-weight: 700;
+                line-height: 1.28;
+                text-align: center;
+                display: grid;
+                place-items: center;
+                box-shadow:
+                    0 13px 30px rgba(209, 83, 148, 0.18),
+                    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+                    inset 0 -10px 20px rgba(255, 210, 232, 0.28);
+                opacity: 0;
+                pointer-events: none;
+                transform: translateX(-50%) translateY(9px) scale(0.96);
+                transition:
+                    opacity 0.28s ease,
+                    transform 0.34s cubic-bezier(0.18, 0.9, 0.24, 1);
+            }
+
+            .doll-throne-hint.show {
+                opacity: 1;
+                transform: translateX(-50%) translateY(0) scale(1);
+            }
+
+            .doll-throne-hint::after {
+                content: '';
+                position: absolute;
+                left: 50%;
+                bottom: -6px;
+                width: 12px;
+                height: 12px;
+                border-right: 1px solid rgba(255, 169, 211, 0.46);
+                border-bottom: 1px solid rgba(255, 169, 211, 0.46);
+                background: rgba(255, 249, 252, 0.95);
+                transform: translateX(-50%) rotate(45deg);
+                box-shadow: 6px 6px 14px rgba(209, 83, 148, 0.08);
+            }
+
+            .doll-throne-hint::before {
+                content: '';
+                position: absolute;
+                right: 20px;
+                top: 8px;
+                width: 8px;
+                height: 8px;
+                border-radius: 50%;
+                background: rgba(255, 196, 225, 0.62);
+                box-shadow:
+                    -116px 10px 0 -2px rgba(255, 215, 236, 0.8),
+                    -94px -4px 0 -3px rgba(255, 255, 255, 0.95);
+            }
+
             .doll-throne-ornaments {
                 position: absolute;
                 inset: 0;
-                z-index: 1;
+                z-index: 6;
                 pointer-events: none;
                 overflow: hidden;
                 border-radius: 28px;
-                opacity: 0.5;
+                opacity: 0.72;
             }
 
             .doll-throne-ornaments span,
@@ -341,13 +417,18 @@
                 animation: dollThroneBubbleDrift var(--speed) ease-in-out infinite alternate;
             }
 
-            .doll-throne-ornaments span:nth-child(1) { --size: 44px; --speed: 4s; left: -12px; top: 82px; }
-            .doll-throne-ornaments span:nth-child(2) { --size: 24px; --speed: 3.2s; right: 46px; top: 74px; }
-            .doll-throne-ornaments span:nth-child(3) { --size: 34px; --speed: 4.8s; right: -8px; bottom: 94px; }
+            .doll-throne-ornaments span:nth-child(1) { --size: 54px; --speed: 3.9s; left: -14px; top: 16%; }
+            .doll-throne-ornaments span:nth-child(2) { --size: 24px; --speed: 3.1s; right: 36px; top: 13%; animation-delay: -1.4s; }
+            .doll-throne-ornaments span:nth-child(3) { --size: 38px; --speed: 4.8s; right: -10px; bottom: 22%; animation-delay: -2.2s; }
+            .doll-throne-ornaments span:nth-child(4) { --size: 18px; --speed: 3.4s; left: 46px; bottom: 14%; opacity: 0.78; animation-delay: -0.7s; }
+            .doll-throne-ornaments span:nth-child(5) { --size: 72px; --speed: 6.1s; right: 34%; bottom: -26px; opacity: 0.34; animation-name: dollThroneBubbleWander; animation-delay: -3.2s; }
+            .doll-throne-ornaments span:nth-child(6) { --size: 14px; --speed: 2.9s; left: 28%; top: 7%; opacity: 0.88; animation-name: dollThroneBubbleJitter; animation-delay: -1.1s; }
+            .doll-throne-ornaments span:nth-child(7) { --size: 31px; --speed: 5.2s; left: 13%; top: 58%; opacity: 0.64; animation-name: dollThroneBubbleWander; animation-delay: -4.1s; }
+            .doll-throne-ornaments span:nth-child(8) { --size: 19px; --speed: 3.6s; right: 18%; bottom: 34%; opacity: 0.82; animation-name: dollThroneBubbleJitter; animation-delay: -2.3s; }
 
             .doll-throne-ornaments i {
-                width: 15px;
-                height: 15px;
+                width: 16px;
+                height: 16px;
                 border-radius: 4px 4px 2px 4px;
                 background: rgba(255, 139, 196, 0.48);
                 transform: rotate(45deg);
@@ -358,16 +439,18 @@
             .doll-throne-ornaments i::after {
                 content: '';
                 position: absolute;
-                width: 15px;
-                height: 15px;
+                width: 16px;
+                height: 16px;
                 border-radius: 50%;
                 background: inherit;
             }
 
-            .doll-throne-ornaments i::before { left: -7px; top: 0; }
-            .doll-throne-ornaments i::after { left: 0; top: -7px; }
-            .doll-throne-ornaments i:nth-of-type(1) { --speed: 3.8s; left: 34px; bottom: 92px; opacity: 0.52; }
-            .doll-throne-ornaments i:nth-of-type(2) { --speed: 4.4s; right: 58px; top: 34px; opacity: 0.42; transform: rotate(45deg) scale(0.74); }
+            .doll-throne-ornaments i::before { left: -8px; top: 0; }
+            .doll-throne-ornaments i::after { left: 0; top: -8px; }
+            .doll-throne-ornaments i:nth-of-type(1) { --speed: 3.7s; left: 26px; bottom: 28%; opacity: 0.48; }
+            .doll-throne-ornaments i:nth-of-type(2) { --speed: 4.3s; right: 42px; bottom: 9%; opacity: 0.5; transform: rotate(45deg) scale(0.78); animation-delay: -1.8s; }
+            .doll-throne-ornaments i:nth-of-type(3) { --speed: 3.2s; right: 70px; top: 9%; opacity: 0.36; transform: rotate(45deg) scale(0.62); animation-delay: -0.9s; }
+            .doll-throne-ornaments i:nth-of-type(4) { --speed: 4.9s; left: 39%; top: 18%; opacity: 0.28; transform: rotate(45deg) scale(0.52); animation-delay: -2.5s; }
 
             @keyframes dollThroneFloat {
                 from { transform: translateY(0) scale(1); }
@@ -377,6 +460,19 @@
             @keyframes dollThroneBubbleDrift {
                 from { transform: translate3d(0, 0, 0) scale(1); opacity: 0.5; }
                 to { transform: translate3d(8px, -14px, 0) scale(1.08); opacity: 0.76; }
+            }
+
+            @keyframes dollThroneBubbleWander {
+                0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+                34% { transform: translate3d(13px, -18px, 0) scale(1.03); }
+                72% { transform: translate3d(-8px, 5px, 0) scale(0.99); }
+            }
+
+            @keyframes dollThroneBubbleJitter {
+                0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+                26% { transform: translate3d(7px, -10px, 0) scale(1.12); }
+                58% { transform: translate3d(-5px, -16px, 0) scale(0.94); }
+                82% { transform: translate3d(3px, -5px, 0) scale(1.04); }
             }
 
             @keyframes dollThroneHeartFloat {
@@ -403,7 +499,53 @@
 
     function openFullWishlist() {
         playSound('link');
+        hideFullWebsiteHint();
         window.open(wishlistUrl, '_blank', 'noopener,noreferrer');
+    }
+
+    function hideFullWebsiteHint() {
+        window.clearTimeout(fullWebsiteHintTimer);
+        window.clearTimeout(fullWebsiteHintHideTimer);
+        overlay?.querySelector('.doll-throne-hint')?.classList.remove('show');
+    }
+
+    function scheduleFullWebsiteHint() {
+        hideFullWebsiteHint();
+        fullWebsiteHintCycle = 0;
+        queueFullWebsiteHint(10000);
+    }
+
+    function queueFullWebsiteHint(delay) {
+        fullWebsiteHintTimer = window.setTimeout(function() {
+            if (!overlay?.classList.contains('show')) return;
+            const visibleFor = fullWebsiteHintCycle === 0 ? 4000 : 2000;
+            fullWebsiteHintCycle += 1;
+            overlay.querySelector('.doll-throne-hint')?.classList.add('show');
+
+            fullWebsiteHintHideTimer = window.setTimeout(function() {
+                if (!overlay?.classList.contains('show')) return;
+                overlay.querySelector('.doll-throne-hint')?.classList.remove('show');
+                queueFullWebsiteHint(10000);
+            }, visibleFor);
+        }, delay);
+    }
+
+    function showOpeningVeil() {
+        const loading = overlay?.querySelector('.doll-throne-loading');
+        const iframe = overlay?.querySelector('.doll-throne-iframe');
+
+        window.clearTimeout(openVeilTimer);
+        iframe?.classList.remove('loaded');
+        loading?.classList.add('soft');
+        loading?.classList.remove('hidden');
+
+        openVeilTimer = window.setTimeout(function() {
+            if (!overlay?.classList.contains('show')) return;
+            if (!iframeLoaded) return;
+            iframe?.classList.add('loaded');
+            loading?.classList.add('hidden');
+            loading?.classList.remove('soft');
+        }, 850);
     }
 
     function buildOverlay() {
@@ -421,6 +563,7 @@
                     <button type="button" class="doll-throne-popout">full website</button>
                     <button type="button" class="doll-throne-close" aria-label="Close"><span>&times;</span></button>
                 </div>
+                <div class="doll-throne-hint">Apple Pay checkout: full site</div>
                 <div class="doll-throne-iframe-wrap"></div>
                 <div class="doll-throne-loading">
                     <div class="doll-throne-loader-mark"><img src="wishlist.png" alt=""></div>
@@ -432,7 +575,7 @@
                     <button type="button">open full website</button>
                 </div>
                 <div class="doll-throne-ornaments" aria-hidden="true">
-                    <span></span><span></span><span></span><i></i><i></i>
+                    <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><i></i><i></i><i></i><i></i>
                 </div>
             </section>
         `;
@@ -447,7 +590,7 @@
     }
 
     function goBackInWishlist() {
-        playSound('link');
+        playSound('tap');
         const iframe = overlay?.querySelector('.doll-throne-iframe');
         if (!iframe) return;
         const loading = overlay.querySelector('.doll-throne-loading');
@@ -507,8 +650,13 @@
                 finishBackNavigation();
                 return;
             }
-            iframe.classList.add('loaded');
-            overlay.querySelector('.doll-throne-loading')?.classList.add('hidden');
+            window.clearTimeout(openVeilTimer);
+            openVeilTimer = window.setTimeout(function() {
+                iframe.classList.add('loaded');
+                overlay.querySelector('.doll-throne-loading')?.classList.add('hidden');
+                overlay.querySelector('.doll-throne-loading')?.classList.remove('soft');
+                overlay.querySelector('.doll-throne-fallback')?.classList.add('hidden');
+            }, 700);
         });
         wrapper.appendChild(iframe);
     }
@@ -525,15 +673,17 @@
 
     function openThroneOverlay() {
         if (!overlay) buildOverlay();
+        window.clearTimeout(unloadIframeTimer);
         ensureIframe();
         overlay.setAttribute('aria-hidden', 'false');
         document.body.classList.add('has-throne-overlay-open');
         overlay.querySelector('.doll-throne-fallback')?.classList.add('hidden');
-        if (!iframeLoaded) overlay.querySelector('.doll-throne-loading')?.classList.remove('hidden');
+        showOpeningVeil();
         window.requestAnimationFrame(function() {
             overlay.classList.add('show');
         });
         showFallbackIfNeeded();
+        scheduleFullWebsiteHint();
     }
 
     function closeThroneOverlay() {
@@ -543,6 +693,14 @@
         overlay.setAttribute('aria-hidden', 'true');
         document.body.classList.remove('has-throne-overlay-open');
         window.clearTimeout(fallbackTimer);
+        window.clearTimeout(openVeilTimer);
+        hideFullWebsiteHint();
+        unloadIframeTimer = window.setTimeout(function() {
+            if (overlay?.classList.contains('show')) return;
+            const iframe = overlay?.querySelector('.doll-throne-iframe');
+            iframe?.remove();
+            iframeLoaded = false;
+        }, 900);
     }
 
     document.addEventListener('keydown', function(event) {
