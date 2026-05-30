@@ -181,6 +181,7 @@ var kofiWidgetOverlayFloatingChatBuilder = kofiWidgetOverlayFloatingChatBuilder 
         // Set up global function to open overlay after widget is initialized
         setTimeout(function() {
             window.openKofiOverlay = function() {
+                showKofiScrim();
                 var iframeId = getContainerFrameId();
                 var mobiIframeId = getMobiContainerFrameId();
                 
@@ -207,6 +208,7 @@ var kofiWidgetOverlayFloatingChatBuilder = kofiWidgetOverlayFloatingChatBuilder 
                             popupIframeContainerIdSuffix: 'popup-iframe-container-mobi'
                         }, { maxHeight: 690, minHeight: 350 });
                     } catch(e) {
+                        hideKofiScrim();
                         console.error('Error opening Ko-fi overlay:', e);
                     }
                 }
@@ -235,6 +237,7 @@ var kofiWidgetOverlayFloatingChatBuilder = kofiWidgetOverlayFloatingChatBuilder 
                 };
 
                 closeDesktop() || closeMobile();
+                hideKofiScrim();
             };
         }, 500);
     };
@@ -280,6 +283,46 @@ var kofiWidgetOverlayFloatingChatBuilder = kofiWidgetOverlayFloatingChatBuilder 
         var notice = document.getElementsByClassName("floating-chat-kofi-popup-iframe-notice")[0];
         if (noticeMobi) noticeMobi.style.display = "none";
         if (notice) notice.style.display = "none";
+        hideKofiScrim();
+    }
+
+    function ensureKofiScrim() {
+        var scrim = document.getElementById('doll-kofi-scrim');
+        if (scrim) return scrim;
+
+        scrim = document.createElement('div');
+        scrim.id = 'doll-kofi-scrim';
+        scrim.style = 'position:fixed!important;inset:0!important;z-index:9999!important;opacity:0!important;pointer-events:none!important;background:radial-gradient(circle at 50% 44%, rgba(255,214,235,0.72), transparent 34%), rgba(255,247,251,0.3)!important;backdrop-filter:blur(0px)!important;-webkit-backdrop-filter:blur(0px)!important;transition:opacity 0.5s ease, backdrop-filter 0.55s ease, -webkit-backdrop-filter 0.55s ease!important;';
+        scrim.addEventListener('click', function() {
+            if (typeof window.closeKofiOverlay === 'function') window.closeKofiOverlay();
+        });
+        document.body.appendChild(scrim);
+        return scrim;
+    }
+
+    function showKofiScrim() {
+        var scrim = ensureKofiScrim();
+        document.body.classList.add('has-kofi-overlay-open');
+        scrim.style.setProperty('pointer-events', 'auto', 'important');
+        window.requestAnimationFrame(function() {
+            scrim.style.setProperty('opacity', '1', 'important');
+            scrim.style.setProperty('backdrop-filter', 'blur(9px)', 'important');
+            scrim.style.setProperty('-webkit-backdrop-filter', 'blur(9px)', 'important');
+        });
+    }
+
+    function hideKofiScrim() {
+        var scrim = document.getElementById('doll-kofi-scrim');
+        document.body.classList.remove('has-kofi-overlay-open');
+        if (!scrim) return;
+        scrim.style.setProperty('opacity', '0', 'important');
+        scrim.style.setProperty('backdrop-filter', 'blur(0px)', 'important');
+        scrim.style.setProperty('-webkit-backdrop-filter', 'blur(0px)', 'important');
+        window.setTimeout(function() {
+            if (scrim.style.opacity === '0') {
+                scrim.style.setProperty('pointer-events', 'none', 'important');
+            }
+        }, 520);
     }
 
     function injectKofiOrnamentStyle() {
@@ -295,6 +338,10 @@ var kofiWidgetOverlayFloatingChatBuilder = kofiWidgetOverlayFloatingChatBuilder 
                 pointer-events: none;
                 opacity: 0.62;
                 will-change: transform, opacity;
+            }
+
+            body.has-kofi-overlay-open {
+                overflow: hidden;
             }
 
             .doll-kofi-ornaments span {
@@ -399,16 +446,24 @@ var kofiWidgetOverlayFloatingChatBuilder = kofiWidgetOverlayFloatingChatBuilder 
 
         closerContent.innerHTML = _configManager.getValue(_myType, 'closer', true);
         closer.appendChild(closerContent);
-        closer.classList = selectors.closerClass;
+        closer.className = selectors.closerClass;
         closer.setAttribute('aria-label', 'Close Ko-fi');
         closer.setAttribute('role', 'button');
-        closer.style = 'position:absolute!important;top:8px!important;right:8px!important;width:42px!important;height:42px!important;display:grid!important;place-items:center!important;border-radius:999px!important;background:rgba(255,238,247,0.92)!important;border:1px solid rgba(255,147,197,0.58)!important;box-shadow:0 10px 24px rgba(210,75,142,0.20), inset 0 1px 0 rgba(255,255,255,0.92)!important;color:#b94d84!important;font-family:Georgia, serif!important;font-size:32px!important;line-height:1!important;cursor:pointer!important;z-index:5!important;touch-action:manipulation!important;-webkit-tap-highlight-color:transparent!important;';
+        closer.setAttribute('tabindex', '0');
+        closer.style = 'position:absolute!important;top:-14px!important;right:-14px!important;width:46px!important;height:46px!important;display:grid!important;place-items:center!important;border-radius:999px!important;background:rgba(255,238,247,0.96)!important;border:1px solid rgba(255,147,197,0.62)!important;box-shadow:0 12px 26px rgba(210,75,142,0.22), inset 0 1px 0 rgba(255,255,255,0.95)!important;color:#b94d84!important;font-family:Georgia, serif!important;font-size:34px!important;line-height:1!important;cursor:pointer!important;z-index:10!important;touch-action:manipulation!important;pointer-events:auto!important;user-select:none!important;-webkit-user-select:none!important;-webkit-tap-highlight-color:transparent!important;';
         closerContent.style = 'display:block!important;transform:translateY(-2px)!important;pointer-events:none!important;';
 
         closer.addEventListener('click', function (event) {
             event.preventDefault();
             event.stopPropagation();
             closePopup(popup, donateButton);
+        });
+        closer.addEventListener('keydown', function(event) {
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                event.stopPropagation();
+                closePopup(popup, donateButton);
+            }
         });
 
         popup.appendChild(closer);

@@ -149,6 +149,8 @@ document.addEventListener("DOMContentLoaded", async function() {
         sound.play().catch(() => {});
     }
 
+    window.dollPlayUiSound = playUiSound;
+
     function wait(ms) {
         return new Promise(resolve => setTimeout(resolve, ms));
     }
@@ -1054,6 +1056,9 @@ document.addEventListener("DOMContentLoaded", async function() {
     function closeSupportMenu() {
         if (!supportMenuButton) return;
         supportMenuButton.classList.remove('open');
+        if (typeof window.closeThroneOverlay === 'function') {
+            window.closeThroneOverlay();
+        }
     }
 
     function closeActionMenu() {
@@ -1158,8 +1163,12 @@ document.addEventListener("DOMContentLoaded", async function() {
         e.stopPropagation();
         closeSocialsMenu();
         closeActionMenu();
-        playUiSound('link');
-        window.open(wishlistUrl, '_blank', 'noopener,noreferrer');
+        playUiSound('tap');
+        if (typeof window.openThroneOverlay === 'function') {
+            window.openThroneOverlay();
+        } else {
+            window.open(wishlistUrl, '_blank', 'noopener,noreferrer');
+        }
     }
 
     addMenuActivation(supportMenuButton, handleWishlistButtonActivate);
