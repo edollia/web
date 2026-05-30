@@ -198,11 +198,16 @@ document.addEventListener("DOMContentLoaded", async function() {
     let submitPopupTimer = null;
 
     function showSubmitPopup(message) {
-        const popup = document.getElementById('submit-popup');
-        const popupMessage = document.getElementById('submit-popup-message');
+        let popup = document.getElementById('submit-popup');
+        let popupMessage = document.getElementById('submit-popup-message');
         if (!popup || !popupMessage) {
-            alert(message);
-            return;
+            popup = document.createElement('div');
+            popup.className = 'submit-popup';
+            popup.id = 'submit-popup';
+            popup.setAttribute('aria-hidden', 'true');
+            popup.innerHTML = '<div class="submit-popup-card"><p id="submit-popup-message"></p></div>';
+            document.body.appendChild(popup);
+            popupMessage = document.getElementById('submit-popup-message');
         }
 
         popupMessage.textContent = message;
@@ -213,6 +218,28 @@ document.addEventListener("DOMContentLoaded", async function() {
             popup.classList.remove('show');
             popup.setAttribute('aria-hidden', 'true');
         }, 1500);
+    }
+
+    function showSubmitPopupAndWait(message) {
+        showSubmitPopup(message);
+        return wait(1500);
+    }
+
+    function resolveSiteRoute(route) {
+        if (window.location.protocol === 'file:') {
+            return route.replace(/\/$/, '/index.html');
+        }
+
+        const cleanRoute = route.replace(/^\/+/, '');
+        const currentPath = window.location.pathname;
+        const lastSegment = currentPath.split('/').pop() || '';
+        const currentDir = currentPath.endsWith('/')
+            ? currentPath
+            : lastSegment.includes('.')
+                ? currentPath.replace(/\/[^/]*$/, '/')
+                : `${currentPath}/`;
+
+        return new URL(cleanRoute, `${window.location.origin}${currentDir}`).href;
     }
 
     function setSendButtonLoading(button, isLoading) {
@@ -281,7 +308,7 @@ document.addEventListener("DOMContentLoaded", async function() {
 
             sessionStorage.setItem('doll_admin_gate', 'open');
             playUiSound('link');
-            window.location.href = 'admin/';
+            window.location.href = resolveSiteRoute('admin/');
         });
 
         closeButton?.addEventListener('click', hideGate);
@@ -297,7 +324,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         const sheet = document.getElementById('stream-pull-sheet');
         if (!tab) return;
 
-        const streamUrl = 'stream/';
+        const streamUrl = resolveSiteRoute('stream/');
         let maxPull = 280;
         let openThreshold = 168;
         let startX = 0;
@@ -1435,9 +1462,9 @@ document.addEventListener("DOMContentLoaded", async function() {
                 ctx.fillStyle = "#ffffff";
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
                 saveState();
-                showNoteImage();
                 await submitSoundMinimum;
-                showSubmitPopup("Got it! ^-^");
+                await showSubmitPopupAndWait("Got it! ^-^");
+                showNoteImage();
             } catch (error) {
                 console.error("Error submitting drawing:", error);
                 showSubmitPopup(`Failed to submit drawing: ${error.message || 'Please try again.'}`);
@@ -1526,9 +1553,9 @@ document.addEventListener("DOMContentLoaded", async function() {
                     
                     askTextarea.value = '';
                     charCount.textContent = '0/200';
-                    showNoteImage();
                     await submitSoundMinimum;
-                    showSubmitPopup("Got it! ^-^");
+                    await showSubmitPopupAndWait("Got it! ^-^");
+                    showNoteImage();
                 } catch (error) {
                     console.error("Error saving question:", error);
                     showSubmitPopup("Failed to submit question. Please try again.");
