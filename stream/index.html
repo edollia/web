@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stream</title>
+    <link rel="stylesheet" href="../styles.css?v=5.4">
+</head>
+<body class="stream-page">
+    <a href="../index.html" class="stream-back-button" id="stream-back-button" aria-label="Back to main page">
+        <span class="stream-back-icon" aria-hidden="true"></span>
+    </a>
+    <img src="../dropdown1.png" alt="" class="stream-page-drape" aria-hidden="true">
+    <div class="stream-page-ornaments" aria-hidden="true">
+        <span class="stream-bubble stream-bubble-one"></span>
+        <span class="stream-bubble stream-bubble-two"></span>
+        <span class="stream-bubble stream-bubble-three"></span>
+        <span class="stream-bubble stream-bubble-four"></span>
+        <span class="stream-bubble stream-bubble-five"></span>
+        <span class="stream-bubble stream-bubble-six"></span>
+        <span class="stream-bubble stream-bubble-seven"></span>
+        <span class="stream-heart stream-heart-one"></span>
+        <span class="stream-heart stream-heart-two"></span>
+        <span class="stream-spark spark-one"></span>
+        <span class="stream-spark spark-two"></span>
+        <span class="stream-spark spark-three"></span>
+    </div>
+    <main class="stream-coming-soon" aria-label="Stream page">
+        <div class="stream-title-wrap">
+            <h1>Coming Soon</h1>
+        </div>
+    </main>
+    <script>
+        (function() {
+            var backButton = document.getElementById('stream-back-button');
+            if (!backButton) return;
+
+            function getHomeUrl() {
+                if (window.location.protocol === 'file:') {
+                    return '../index.html';
+                }
+
+                var path = window.location.pathname;
+                var homePath = path.replace(/\/stream\/?$/, '/');
+                if (homePath === path) homePath = '/';
+                return window.location.origin + homePath;
+            }
+
+            backButton.addEventListener('click', function(event) {
+                event.preventDefault();
+                window.location.href = getHomeUrl();
+            });
+        }());
+    </script>
+</body>
+</html>
