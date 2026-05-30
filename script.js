@@ -281,7 +281,7 @@ document.addEventListener("DOMContentLoaded", async function() {
 
             sessionStorage.setItem('doll_admin_gate', 'open');
             playUiSound('link');
-            window.location.href = 'admin.html';
+            window.location.href = 'admin/';
         });
 
         closeButton?.addEventListener('click', hideGate);
@@ -297,7 +297,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         const sheet = document.getElementById('stream-pull-sheet');
         if (!tab) return;
 
-        const streamUrl = 'stream.html';
+        const streamUrl = 'stream/';
         let maxPull = 280;
         let openThreshold = 168;
         let startX = 0;
@@ -1636,6 +1636,12 @@ document.addEventListener("DOMContentLoaded", async function() {
             return html;
         }
 
+        function getDrawingSrc(imageData) {
+            const cleanData = String(imageData || '').replace(/\s/g, '');
+            if (!cleanData || !/^[A-Za-z0-9+/=]+$/.test(cleanData)) return '';
+            return `data:image/png;base64,${cleanData}`;
+        }
+
         async function renderSubmissions() {
             if (!preloadedSubmissions.loaded || preloadedSubmissions.error) {
                 await loadSubmissionsFromSupabase();
@@ -1660,8 +1666,10 @@ document.addEventListener("DOMContentLoaded", async function() {
                 drawings.forEach(drawing => {
                     const el = document.createElement('div');
                     el.className = 'post-item';
+                    const drawingSrc = getDrawingSrc(drawing.imageData);
+                    if (!drawingSrc) return;
                     el.innerHTML = `
-                        <img src="data:image/png;base64,${drawing.imageData}" alt="User drawing">
+                        <img src="${drawingSrc}" alt="User drawing">
                         <div class="like-sticker" data-drawing-id="${drawing.id}">
                             <div class="like-button">
                                 <img src="reactions.png" alt="Like" class="like-icon">

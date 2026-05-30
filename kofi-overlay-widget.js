@@ -2,7 +2,7 @@
 
 const kofiWidgetOverlayConfig = {
     'floating-chat.core.pageId': '',
-    'floating-chat.core.closer': '<svg height="0px" width="15px"><line x1="2" y1="8" x2="13" y2="18" style="stroke:#000; stroke-width:3" /><line x1="13" y1="8" x2="2" y2="18" style="stroke:#000; stroke-width:3" /></svg>',
+    'floating-chat.core.closer': '&times;',
     'floating-chat.core.position.bottom-left': 'position: fixed; bottom: 50px; left: 10px; width: 160px; height: 65px;',
 
     'floating-chat.cssId': '',
@@ -261,10 +261,10 @@ var kofiWidgetOverlayFloatingChatBuilder = kofiWidgetOverlayFloatingChatBuilder 
     };
 
     function slidePopupOpen(popup, finalHeight) {
-        var displayHeight = Math.round(finalHeight * 1.2);
+        var displayHeight = Math.min(Math.round(finalHeight * 1.4), Math.round(window.innerHeight * 0.94));
         var topOffset = 0;
         popup.dataset.kofiTopOffset = topOffset;
-        popup.style = `z-index:10000;position:fixed!important;top:calc(50% + ${topOffset}px)!important;left:50%!important;right:auto!important;bottom:auto!important;width:328px!important;height:${displayHeight}px!important;max-height:108vh!important;transform:translate(-50%, -50%) scale(0.7)!important;transform-origin:center center!important;transition:height 0.5s ease, opacity 0.3s linear; opacity:1;`;
+        popup.style = `z-index:10000;position:fixed!important;top:calc(50% + ${topOffset}px)!important;left:50%!important;right:auto!important;bottom:auto!important;width:328px!important;height:${displayHeight}px!important;max-height:92vh!important;transform:translate(-50%, -50%) scale(0.7)!important;transform-origin:center center!important;transition:height 0.5s ease, opacity 0.3s linear; opacity:1;`;
         var noticeMobi = document.getElementsByClassName("floating-chat-kofi-popup-iframe-notice-mobi")[0];
         var notice = document.getElementsByClassName("floating-chat-kofi-popup-iframe-notice")[0];
         if (noticeMobi) noticeMobi.style.display = "block";
@@ -282,7 +282,80 @@ var kofiWidgetOverlayFloatingChatBuilder = kofiWidgetOverlayFloatingChatBuilder 
         if (notice) notice.style.display = "none";
     }
 
+    function injectKofiOrnamentStyle() {
+        if (document.getElementById('doll-kofi-ornament-style')) return;
+
+        var style = document.createElement('style');
+        style.id = 'doll-kofi-ornament-style';
+        style.textContent = `
+            .doll-kofi-ornaments span,
+            .doll-kofi-ornaments i {
+                position: absolute;
+                display: block;
+                pointer-events: none;
+                opacity: 0.62;
+                will-change: transform, opacity;
+            }
+
+            .doll-kofi-ornaments span {
+                width: var(--bubble-size);
+                height: var(--bubble-size);
+                border-radius: 999px;
+                background:
+                    radial-gradient(circle at 32% 28%, rgba(255,255,255,0.94) 0 16%, transparent 18%),
+                    radial-gradient(circle at 68% 72%, rgba(255,168,214,0.28), rgba(255,236,247,0.15));
+                border: 1px solid rgba(255,165,211,0.36);
+                box-shadow: inset 0 1px 8px rgba(255,255,255,0.72), 0 10px 24px rgba(221,91,158,0.12);
+                animation: dollKofiBubbleFloat var(--bubble-speed) ease-in-out infinite alternate;
+            }
+
+            .doll-kofi-ornaments span:nth-child(1) { --bubble-size: 58px; --bubble-speed: 3.87s; left: -16px; top: 18%; }
+            .doll-kofi-ornaments span:nth-child(2) { --bubble-size: 28px; --bubble-speed: 3.07s; right: 18px; top: 22%; }
+            .doll-kofi-ornaments span:nth-child(3) { --bubble-size: 44px; --bubble-speed: 4.67s; right: -10px; bottom: 20%; }
+            .doll-kofi-ornaments span:nth-child(4) { --bubble-size: 22px; --bubble-speed: 3.47s; left: 24px; bottom: 14%; }
+
+            .doll-kofi-ornaments i {
+                width: 18px;
+                height: 18px;
+                transform: rotate(45deg);
+                background: linear-gradient(135deg, rgba(255,142,199,0.54), rgba(255,221,241,0.74));
+                border-radius: 6px 6px 3px 6px;
+                filter: drop-shadow(0 8px 12px rgba(209,78,144,0.16));
+                animation: dollKofiHeartDrift var(--heart-speed) ease-in-out infinite alternate;
+            }
+
+            .doll-kofi-ornaments i::before,
+            .doll-kofi-ornaments i::after {
+                content: "";
+                position: absolute;
+                width: 18px;
+                height: 18px;
+                border-radius: 999px;
+                background: inherit;
+            }
+
+            .doll-kofi-ornaments i::before { left: -9px; top: 0; }
+            .doll-kofi-ornaments i::after { left: 0; top: -9px; }
+
+            .doll-kofi-ornaments i:nth-of-type(1) { --heart-speed: 3.67s; left: 14px; top: 46%; opacity: 0.42; }
+            .doll-kofi-ornaments i:nth-of-type(2) { --heart-speed: 4.27s; right: 38px; bottom: 8%; opacity: 0.48; transform: rotate(45deg) scale(0.78); }
+            .doll-kofi-ornaments i:nth-of-type(3) { --heart-speed: 3.2s; right: 74px; top: 10%; opacity: 0.34; transform: rotate(45deg) scale(0.62); }
+
+            @keyframes dollKofiBubbleFloat {
+                from { transform: translate3d(0, 0, 0) scale(1); opacity: 0.42; }
+                to { transform: translate3d(8px, -18px, 0) scale(1.08); opacity: 0.72; }
+            }
+
+            @keyframes dollKofiHeartDrift {
+                from { translate: 0 0; }
+                to { translate: -8px -16px; }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+
     function insertPopupHtmlIntoBody(donateButton, selectors, parentElementId) {
+        injectKofiOrnamentStyle();
         var popupId = _configManager.getValue(_myType, 'cssId') + `-${selectors.popupId}`;
 
         var popup = document.createElement('div');
@@ -296,6 +369,13 @@ var kofiWidgetOverlayFloatingChatBuilder = kofiWidgetOverlayFloatingChatBuilder 
         else {
             document.body.appendChild(popup);
         }
+
+        var ornaments = document.createElement('div');
+        ornaments.className = 'doll-kofi-ornaments';
+        ornaments.setAttribute('aria-hidden', 'true');
+        ornaments.style = 'position:absolute!important;inset:0!important;overflow:hidden!important;border-radius:22px!important;pointer-events:none!important;z-index:4!important;';
+        ornaments.innerHTML = '<span></span><span></span><span></span><span></span><i></i><i></i><i></i>';
+        popup.appendChild(ornaments);
 
         var notice = document.createElement('div');
         notice.classList = selectors.noticeClass;
@@ -320,8 +400,14 @@ var kofiWidgetOverlayFloatingChatBuilder = kofiWidgetOverlayFloatingChatBuilder 
         closerContent.innerHTML = _configManager.getValue(_myType, 'closer', true);
         closer.appendChild(closerContent);
         closer.classList = selectors.closerClass;
+        closer.setAttribute('aria-label', 'Close Ko-fi');
+        closer.setAttribute('role', 'button');
+        closer.style = 'position:absolute!important;top:8px!important;right:8px!important;width:42px!important;height:42px!important;display:grid!important;place-items:center!important;border-radius:999px!important;background:rgba(255,238,247,0.92)!important;border:1px solid rgba(255,147,197,0.58)!important;box-shadow:0 10px 24px rgba(210,75,142,0.20), inset 0 1px 0 rgba(255,255,255,0.92)!important;color:#b94d84!important;font-family:Georgia, serif!important;font-size:32px!important;line-height:1!important;cursor:pointer!important;z-index:5!important;touch-action:manipulation!important;-webkit-tap-highlight-color:transparent!important;';
+        closerContent.style = 'display:block!important;transform:translateY(-2px)!important;pointer-events:none!important;';
 
         closer.addEventListener('click', function (event) {
+            event.preventDefault();
+            event.stopPropagation();
             closePopup(popup, donateButton);
         });
 
@@ -329,7 +415,7 @@ var kofiWidgetOverlayFloatingChatBuilder = kofiWidgetOverlayFloatingChatBuilder 
 
         var popupIFrameContainer = document.createElement('div');
         popupIFrameContainer.classList = selectors.popupIframeContainerClass;
-        popupIFrameContainer.style = 'height:100%';
+        popupIFrameContainer.style = 'height:100%;position:relative;z-index:2;';
         popupIFrameContainer.id = popupId + selectors.popupIframeContainerIdSuffix;
 
         popup.appendChild(popupIFrameContainer);
