@@ -331,10 +331,8 @@ document.addEventListener("DOMContentLoaded", async function() {
         let startY = 0;
         let currentProgress = 0;
         let dragging = false;
-        let moved = false;
         let opening = false;
         let openDistance = 190;
-        let skipClickUntil = 0;
 
         function updatePeelMetrics() {
             const noteRect = noteTarget.getBoundingClientRect();
@@ -350,16 +348,16 @@ document.addEventListener("DOMContentLoaded", async function() {
 
         function setPeelProgress(progress) {
             currentProgress = Math.max(0, Math.min(1, progress));
-            const eased = 1 - Math.pow(1 - currentProgress, 1.8);
-            const foldSize = 28 + eased * 168;
-            const foldX = eased * -92;
-            const foldY = eased * -86;
+            const eased = 1 - Math.pow(1 - currentProgress, 2.05);
+            const foldSize = 28 + eased * 176;
+            const foldX = eased * -96;
+            const foldY = eased * -92;
 
             noteTarget.style.setProperty('--note-peel-progress', eased.toFixed(3));
             noteTarget.style.setProperty('--note-fold-size', `${foldSize.toFixed(1)}px`);
             noteTarget.style.setProperty('--note-fold-x', `${foldX.toFixed(1)}px`);
             noteTarget.style.setProperty('--note-fold-y', `${foldY.toFixed(1)}px`);
-            noteTarget.style.transform = `translateX(-50%) translateY(${-4 - eased * 8}px) rotate(${-eased * 5.4}deg) scale(${1.015 + eased * 0.018})`;
+            noteTarget.style.transform = `translateX(-50%) translateY(${-4 - eased * 6}px) rotate(${-eased * 4.2}deg) scale(${1.015 + eased * 0.012})`;
             document.body.style.setProperty('--stream-peel-progress', eased.toFixed(3));
             document.body.style.setProperty('--stream-peel-blur', `${(eased * 12).toFixed(2)}px`);
         }
@@ -378,14 +376,6 @@ document.addEventListener("DOMContentLoaded", async function() {
             }, 320);
         }
 
-        function showPeelHint() {
-            if (dragging || opening || note.classList.contains('hidden')) return;
-            noteTarget.classList.remove('peel-hint');
-            void noteTarget.offsetWidth;
-            noteTarget.classList.add('peel-hint');
-            window.setTimeout(() => noteTarget.classList.remove('peel-hint'), 700);
-        }
-
         function openStreamPage() {
             if (opening) return;
             opening = true;
@@ -399,10 +389,12 @@ document.addEventListener("DOMContentLoaded", async function() {
             noteTarget.classList.remove('peeling');
             noteTarget.classList.add('completing');
             document.body.classList.add('stream-note-peeling');
-            setPeelProgress(1);
-            window.setTimeout(() => {
-                window.location.href = streamUrl;
-            }, 240);
+            window.requestAnimationFrame(() => {
+                setPeelProgress(1);
+                window.setTimeout(() => {
+                    window.location.href = streamUrl;
+                }, 330);
+            });
         }
 
         updatePeelMetrics();
@@ -415,11 +407,9 @@ document.addEventListener("DOMContentLoaded", async function() {
             if (opening || !e.isPrimary || note.classList.contains('hidden')) return;
             if (!isCornerGesture(e)) return;
             dragging = true;
-            moved = false;
             startX = e.clientX;
             startY = e.clientY;
             updatePeelMetrics();
-            noteTarget.classList.remove('peel-hint');
             noteTarget.classList.add('peeling');
             document.body.classList.add('stream-note-peeling');
             noteTarget.setPointerCapture?.(e.pointerId);
@@ -431,7 +421,6 @@ document.addEventListener("DOMContentLoaded", async function() {
             const dy = startY - e.clientY;
             const distance = Math.max(0, dx * 0.78 + dy * 0.58);
             if (distance > 5) {
-                moved = true;
                 e.preventDefault();
             }
             setPeelProgress(distance / openDistance);
@@ -441,7 +430,6 @@ document.addEventListener("DOMContentLoaded", async function() {
             if (!dragging || opening) return;
             dragging = false;
             noteTarget.releasePointerCapture?.(e.pointerId);
-            skipClickUntil = Date.now() + 350;
 
             if (currentProgress >= 0.72) {
                 openStreamPage();
@@ -449,21 +437,10 @@ document.addEventListener("DOMContentLoaded", async function() {
             }
 
             resetPeel();
-            if (!moved) {
-                playUiSound('tap');
-                showPeelHint();
-            }
         }
 
         noteTarget.addEventListener('pointerup', finishPeel);
         noteTarget.addEventListener('pointercancel', resetPeel);
-
-        noteTarget.addEventListener('click', function(e) {
-            if (Date.now() < skipClickUntil || opening) return;
-            if (!isCornerGesture(e)) return;
-            playUiSound('tap');
-            showPeelHint();
-        });
     }
 
     initNoteStreamPeel();

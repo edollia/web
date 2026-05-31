@@ -178,7 +178,7 @@ body.stream-note-peeling .main-screen {
 
 .main-screen.note-ready .note-peel-target.active-content {
     opacity: 1;
-    animation: notePaperSettle 0.62s cubic-bezier(0.18, 0.86, 0.28, 1.08) both, notePaperBreathe 6.5s ease-in-out 0.9s infinite;
+    animation: none;
 }
 
 .main-screen.note-ready .note-peel-target.active-content.hidden,
@@ -775,13 +775,13 @@ button {
     --note-fold-size: 28px;
     --note-fold-x: 0px;
     --note-fold-y: 0px;
-    transition: opacity 0.5s ease, transform 0.55s cubic-bezier(0.22, 1, 0.36, 1), filter 0.35s ease, box-shadow 0.35s ease;
+    transition: opacity 0.46s ease, transform 0.42s cubic-bezier(0.2, 0.86, 0.24, 1), filter 0.32s ease, box-shadow 0.32s ease;
     position: absolute;
     left: 50%;
     transform: translateX(-50%) translateY(-4px) rotate(0deg) scale(1.015);
-    width: 231px;
+    width: 254px;
     height: auto;
-    max-height: 270px;
+    max-height: 297px;
     margin: -2px 0;
     border-radius: 16px;
     box-shadow:
@@ -795,16 +795,18 @@ button {
     touch-action: none;
     user-select: none;
     -webkit-user-select: none;
+    will-change: transform, filter;
 }
 
-.note-peel-target:hover,
-.note-peel-target:focus-visible {
-    transform: translateX(-50%) translateY(-7px) rotate(0deg) scale(1.018);
-    box-shadow:
-        0 22px 40px rgba(255, 145, 198, 0.25),
-        0 8px 18px rgba(120, 85, 105, 0.11),
-        0 0 0 1px rgba(255, 255, 255, 0.5);
-    filter: saturate(1.09) brightness(1.045) drop-shadow(0 1px 0 rgba(255, 255, 255, 0.38));
+@media (hover: hover) and (pointer: fine) {
+    .note-peel-target:hover,
+    .note-peel-target:focus-visible {
+        box-shadow:
+            0 20px 38px rgba(255, 145, 198, 0.23),
+            0 7px 17px rgba(120, 85, 105, 0.1),
+            0 0 0 1px rgba(255, 255, 255, 0.48);
+        filter: saturate(1.08) brightness(1.04) drop-shadow(0 1px 0 rgba(255, 255, 255, 0.36));
+    }
 }
 
 .note-peel-target.peeling {
@@ -814,11 +816,17 @@ button {
     z-index: 4;
 }
 
+.note-peel-target.peeling .note-image,
+.note-peel-target.peeling .note-peel-corner,
+.note-peel-target.peeling .note-peel-curl {
+    transition: none;
+}
+
 .note-peel-target.completing {
     cursor: grabbing;
     animation: none !important;
     pointer-events: none;
-    transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), filter 0.18s ease, opacity 0.18s ease;
+    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), filter 0.3s ease, opacity 0.24s ease;
     z-index: 4;
 }
 
@@ -826,7 +834,7 @@ button {
     display: block;
     width: 100%;
     height: auto;
-    max-height: 270px;
+    max-height: 297px;
     border-radius: 16px;
     clip-path: polygon(
         0 0,
@@ -835,10 +843,12 @@ button {
         calc(100% - var(--note-fold-size)) 100%,
         0 100%
     );
-    transition: clip-path 0.28s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.5s ease;
+    transition: clip-path 0.34s cubic-bezier(0.18, 0.86, 0.24, 1), opacity 0.46s ease;
     pointer-events: none;
     user-select: none;
     -webkit-user-drag: none;
+    transform: translateZ(0);
+    will-change: clip-path;
 }
 
 .note-peel-corner,
@@ -855,38 +865,34 @@ button {
     border-radius: 8px 0 14px 0;
     clip-path: polygon(100% 0, 100% 100%, 0 100%);
     background:
-        linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(255, 236, 246, 0.72) 46%, rgba(255, 187, 222, 0.5)),
-        url('notee.jpg') right bottom / 231px auto no-repeat;
+        linear-gradient(135deg, rgba(255, 255, 255, 0.99) 0%, rgba(255, 246, 251, 0.9) 42%, rgba(255, 202, 229, 0.62) 76%, rgba(178, 96, 136, 0.22) 100%),
+        url('notee.jpg') right bottom / 254px auto no-repeat;
     box-shadow:
-        -9px -9px 18px rgba(153, 91, 121, calc(0.04 + var(--note-peel-progress) * 0.2)),
-        inset 1px 1px 0 rgba(255, 255, 255, 0.8);
+        -10px -10px 20px rgba(153, 91, 121, calc(0.035 + var(--note-peel-progress) * 0.18)),
+        inset 1px 1px 0 rgba(255, 255, 255, 0.86),
+        inset -1px -1px 0 rgba(196, 103, 148, calc(0.08 + var(--note-peel-progress) * 0.12));
     transform:
         translate3d(var(--note-fold-x), var(--note-fold-y), 0)
         rotate(calc(-8deg - (var(--note-peel-progress) * 16deg)));
     transform-origin: 100% 100%;
     opacity: calc(0.76 + var(--note-peel-progress) * 0.24);
-    transition: width 0.28s cubic-bezier(0.22, 1, 0.36, 1), height 0.28s cubic-bezier(0.22, 1, 0.36, 1), transform 0.28s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.2s ease;
+    transition: width 0.34s cubic-bezier(0.18, 0.86, 0.24, 1), height 0.34s cubic-bezier(0.18, 0.86, 0.24, 1), transform 0.34s cubic-bezier(0.18, 0.86, 0.24, 1), opacity 0.24s ease;
+    backface-visibility: hidden;
+    will-change: width, height, transform, opacity;
 }
 
 .note-peel-curl {
     width: calc(var(--note-fold-size) * 1.22);
-    height: 2px;
+    height: 2.5px;
     border-radius: 999px;
     background: linear-gradient(90deg, transparent, rgba(139, 89, 112, 0.22), rgba(255, 255, 255, 0.7));
     transform:
         translate3d(calc(var(--note-fold-x) - 6px), calc(var(--note-fold-y) - var(--note-fold-size) * 0.18), 0)
         rotate(-45deg);
-    opacity: calc(0.16 + var(--note-peel-progress) * 0.58);
+    opacity: calc(0.12 + var(--note-peel-progress) * 0.62);
     filter: blur(0.1px);
-    transition: width 0.28s cubic-bezier(0.22, 1, 0.36, 1), transform 0.28s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.2s ease;
-}
-
-.note-peel-target.peel-hint .note-peel-corner {
-    animation: noteCornerHint 0.62s cubic-bezier(0.2, 0.9, 0.26, 1);
-}
-
-.note-peel-target.peel-hint .note-peel-curl {
-    animation: noteCurlHint 0.62s cubic-bezier(0.2, 0.9, 0.26, 1);
+    transition: width 0.34s cubic-bezier(0.18, 0.86, 0.24, 1), transform 0.34s cubic-bezier(0.18, 0.86, 0.24, 1), opacity 0.24s ease;
+    will-change: width, transform, opacity;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -896,64 +902,6 @@ button {
     .note-peel-curl {
         animation: none;
         transition: none;
-    }
-}
-
-@keyframes notePaperSettle {
-    0% {
-        transform: translateX(-50%) translateY(12px) rotate(0deg) scale(0.992);
-        filter: saturate(1.03) brightness(1.01) blur(0.2px);
-    }
-    64% {
-        transform: translateX(-50%) translateY(-8px) rotate(0deg) scale(1.018);
-    }
-    100% {
-        transform: translateX(-50%) translateY(-4px) rotate(0deg) scale(1.015);
-        filter: saturate(1.07) brightness(1.03) drop-shadow(0 1px 0 rgba(255, 255, 255, 0.32));
-    }
-}
-
-@keyframes noteCornerHint {
-    0%, 100% {
-        transform: translate3d(0, 0, 0) rotate(-8deg);
-    }
-    38% {
-        transform: translate3d(-18px, -15px, 0) rotate(-20deg);
-    }
-    68% {
-        transform: translate3d(-7px, -6px, 0) rotate(-13deg);
-    }
-}
-
-@keyframes noteCurlHint {
-    0%, 100% {
-        opacity: 0.16;
-        transform: translate3d(-6px, -5px, 0) rotate(-45deg);
-    }
-    38% {
-        opacity: 0.56;
-        transform: translate3d(-24px, -20px, 0) rotate(-45deg);
-    }
-    68% {
-        opacity: 0.34;
-        transform: translate3d(-13px, -11px, 0) rotate(-45deg);
-    }
-}
-
-@keyframes notePaperBreathe {
-    0%, 100% {
-        transform: translateX(-50%) translateY(-4px) rotate(0deg) scale(1.015);
-        box-shadow:
-            0 18px 36px rgba(255, 145, 198, 0.21),
-            0 6px 16px rgba(120, 85, 105, 0.1),
-            0 0 0 1px rgba(255, 255, 255, 0.42);
-    }
-    50% {
-        transform: translateX(-50%) translateY(-7px) rotate(0deg) scale(1.017);
-        box-shadow:
-            0 22px 42px rgba(255, 145, 198, 0.24),
-            0 8px 17px rgba(120, 85, 105, 0.11),
-            0 0 0 1px rgba(255, 255, 255, 0.5);
     }
 }
 
@@ -999,7 +947,7 @@ button {
     display: flex;
     align-items: center;
     gap: 16px;
-    margin-bottom: 15px;
+    margin-bottom: 25px;
     padding-block: 7px;
     justify-content: center;
     flex-wrap: wrap;
