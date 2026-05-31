@@ -6,8 +6,11 @@
     <meta name="theme-color" content="#fff7fb">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="referrer" content="strict-origin-when-cross-origin">
+    <link rel="icon" type="image/png" href="/favicon.png">
+    <link rel="apple-touch-icon" href="/favicon.png">
+    <link rel="canonical" href="https://doll.gg/stream/">
     <title>Live</title>
-    <link rel="stylesheet" href="../styles.css?v=7.7">
+    <link rel="stylesheet" href="../styles.css?v=8.2">
 </head>
 <body class="stream-page">
     <script>
@@ -18,7 +21,7 @@
                     document.body.classList.add('stream-arriving');
                     window.setTimeout(function() {
                         document.body.classList.remove('stream-arriving');
-                    }, 900);
+                    }, 640);
                 }
             } catch (error) {
                 // Normal entry still works without session storage.
@@ -310,7 +313,7 @@
                 var remaining = getChatCooldownRemaining();
                 if (remaining > 0) {
                     chatSendButton.disabled = true;
-                    chatSendButton.textContent = 'wait ' + Math.ceil(remaining / 1000);
+                    chatSendButton.textContent = String(Math.ceil(remaining / 1000));
                     if (chatState) chatState.textContent = 'cooldown';
                     return;
                 }
@@ -660,7 +663,7 @@
                 var remaining = getChatCooldownRemaining();
                 if (remaining > 0) {
                     startChatCooldownTicker();
-                    showToast('Wait ' + Math.ceil(remaining / 1000) + ' seconds.');
+                    showToast(String(Math.ceil(remaining / 1000)));
                     return;
                 }
 
@@ -700,7 +703,7 @@
                     } else if (lowerMessage.includes('nickname is locked')) {
                         showToast('Use your first nickname.');
                     } else if (lowerMessage.includes('wait') || lowerMessage.includes('seconds')) {
-                        showToast('Wait a few seconds.');
+                        showToast(String(Math.ceil(CHAT_COOLDOWN_MS / 1000)));
                     } else if (lowerMessage.includes('blocked word')) {
                         showToast('Message blocked.');
                     } else {

@@ -156,10 +156,18 @@ canvas {
     background-color: transparent;
     min-height: 100vh;
     min-height: -webkit-fill-available;
+    transform-origin: center;
+    transition: filter 0.18s ease, opacity 0.18s ease, transform 0.18s ease;
+}
+
+body.stream-note-peeling .main-screen {
+    filter: blur(var(--stream-peel-blur, 0px)) saturate(calc(1 - (var(--stream-peel-progress, 0) * 0.08))) brightness(calc(1 + (var(--stream-peel-progress, 0) * 0.03)));
+    opacity: calc(1 - (var(--stream-peel-progress, 0) * 0.14));
+    transform: scale(calc(1 - (var(--stream-peel-progress, 0) * 0.012)));
 }
 
 .main-screen .button-group,
-.main-screen .note-image.active-content {
+.main-screen .note-peel-target.active-content {
     opacity: 0;
 }
 
@@ -168,12 +176,15 @@ canvas {
     transition: opacity 0.45s ease;
 }
 
-.main-screen.note-ready .note-image.active-content {
+.main-screen.note-ready .note-peel-target.active-content {
     opacity: 1;
+    animation: notePaperSettle 0.62s cubic-bezier(0.18, 0.86, 0.28, 1.08) both, notePaperBreathe 6.5s ease-in-out 0.9s infinite;
 }
 
-.main-screen.note-ready .note-image.active-content.hidden {
+.main-screen.note-ready .note-peel-target.active-content.hidden,
+.main-screen.note-ready .note-peel-target.active-content:has(.note-image.hidden) {
     opacity: 0;
+    animation: none;
 }
 
 .corner-text {
@@ -733,10 +744,11 @@ button {
     }
 }
 
-.note-image.hidden {
+.note-peel-target.hidden,
+.note-peel-target:has(.note-image.hidden) {
     opacity: 0;
     pointer-events: none;
-    transform: translateX(-50%) translateY(-20px) rotate(0.55deg) scale(1.015);
+    transform: translateX(-50%) translateY(-20px) rotate(0deg) scale(1.015);
     animation: none;
 }
 
@@ -758,38 +770,190 @@ button {
     width: 100%;
 }
 
-/* Update note image positioning */
-.note-image {
+.note-peel-target {
+    --note-peel-progress: 0;
+    --note-fold-size: 28px;
+    --note-fold-x: 0px;
+    --note-fold-y: 0px;
     transition: opacity 0.5s ease, transform 0.55s cubic-bezier(0.22, 1, 0.36, 1), filter 0.35s ease, box-shadow 0.35s ease;
     position: absolute;
     left: 50%;
-    transform: translateX(-50%) translateY(-4px) rotate(0.55deg) scale(1.015);
+    transform: translateX(-50%) translateY(-4px) rotate(0deg) scale(1.015);
     width: 231px;
     height: auto;
     max-height: 270px;
     margin: -2px 0;
     border-radius: 16px;
     box-shadow:
-        0 14px 30px rgba(255, 145, 198, 0.24),
-        0 4px 12px rgba(120, 85, 105, 0.1);
-    filter: saturate(1.06) brightness(1.025);
+        0 18px 36px rgba(255, 145, 198, 0.21),
+        0 6px 16px rgba(120, 85, 105, 0.1),
+        0 0 0 1px rgba(255, 255, 255, 0.42);
+    filter: saturate(1.07) brightness(1.03) drop-shadow(0 1px 0 rgba(255, 255, 255, 0.32));
     cursor: default;
     overflow: hidden;
     transform-origin: 50% 82%;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
 }
 
-.note-image:hover,
-.note-image:focus-visible {
-    transform: translateX(-50%) translateY(-4px) rotate(0.55deg) scale(1.015);
+.note-peel-target:hover,
+.note-peel-target:focus-visible {
+    transform: translateX(-50%) translateY(-7px) rotate(0deg) scale(1.018);
     box-shadow:
-        0 14px 30px rgba(255, 145, 198, 0.24),
-        0 4px 12px rgba(120, 85, 105, 0.1);
-    filter: saturate(1.06) brightness(1.025);
+        0 22px 40px rgba(255, 145, 198, 0.25),
+        0 8px 18px rgba(120, 85, 105, 0.11),
+        0 0 0 1px rgba(255, 255, 255, 0.5);
+    filter: saturate(1.09) brightness(1.045) drop-shadow(0 1px 0 rgba(255, 255, 255, 0.38));
+}
+
+.note-peel-target.peeling {
+    cursor: grabbing;
+    animation: none !important;
+    transition: none;
+    z-index: 4;
+}
+
+.note-peel-target.completing {
+    cursor: grabbing;
+    animation: none !important;
+    pointer-events: none;
+    transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), filter 0.18s ease, opacity 0.18s ease;
+    z-index: 4;
+}
+
+.note-image {
+    display: block;
+    width: 100%;
+    height: auto;
+    max-height: 270px;
+    border-radius: 16px;
+    clip-path: polygon(
+        0 0,
+        100% 0,
+        100% calc(100% - var(--note-fold-size)),
+        calc(100% - var(--note-fold-size)) 100%,
+        0 100%
+    );
+    transition: clip-path 0.28s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.5s ease;
+    pointer-events: none;
+    user-select: none;
+    -webkit-user-drag: none;
+}
+
+.note-peel-corner,
+.note-peel-curl {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    pointer-events: none;
+}
+
+.note-peel-corner {
+    width: var(--note-fold-size);
+    height: var(--note-fold-size);
+    border-radius: 8px 0 14px 0;
+    clip-path: polygon(100% 0, 100% 100%, 0 100%);
+    background:
+        linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(255, 236, 246, 0.72) 46%, rgba(255, 187, 222, 0.5)),
+        url('notee.jpg') right bottom / 231px auto no-repeat;
+    box-shadow:
+        -9px -9px 18px rgba(153, 91, 121, calc(0.04 + var(--note-peel-progress) * 0.2)),
+        inset 1px 1px 0 rgba(255, 255, 255, 0.8);
+    transform:
+        translate3d(var(--note-fold-x), var(--note-fold-y), 0)
+        rotate(calc(-8deg - (var(--note-peel-progress) * 16deg)));
+    transform-origin: 100% 100%;
+    opacity: calc(0.76 + var(--note-peel-progress) * 0.24);
+    transition: width 0.28s cubic-bezier(0.22, 1, 0.36, 1), height 0.28s cubic-bezier(0.22, 1, 0.36, 1), transform 0.28s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.2s ease;
+}
+
+.note-peel-curl {
+    width: calc(var(--note-fold-size) * 1.22);
+    height: 2px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, transparent, rgba(139, 89, 112, 0.22), rgba(255, 255, 255, 0.7));
+    transform:
+        translate3d(calc(var(--note-fold-x) - 6px), calc(var(--note-fold-y) - var(--note-fold-size) * 0.18), 0)
+        rotate(-45deg);
+    opacity: calc(0.16 + var(--note-peel-progress) * 0.58);
+    filter: blur(0.1px);
+    transition: width 0.28s cubic-bezier(0.22, 1, 0.36, 1), transform 0.28s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.2s ease;
+}
+
+.note-peel-target.peel-hint .note-peel-corner {
+    animation: noteCornerHint 0.62s cubic-bezier(0.2, 0.9, 0.26, 1);
+}
+
+.note-peel-target.peel-hint .note-peel-curl {
+    animation: noteCurlHint 0.62s cubic-bezier(0.2, 0.9, 0.26, 1);
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .note-image {
+    .note-peel-target,
+    .note-image,
+    .note-peel-corner,
+    .note-peel-curl {
         animation: none;
+        transition: none;
+    }
+}
+
+@keyframes notePaperSettle {
+    0% {
+        transform: translateX(-50%) translateY(12px) rotate(0deg) scale(0.992);
+        filter: saturate(1.03) brightness(1.01) blur(0.2px);
+    }
+    64% {
+        transform: translateX(-50%) translateY(-8px) rotate(0deg) scale(1.018);
+    }
+    100% {
+        transform: translateX(-50%) translateY(-4px) rotate(0deg) scale(1.015);
+        filter: saturate(1.07) brightness(1.03) drop-shadow(0 1px 0 rgba(255, 255, 255, 0.32));
+    }
+}
+
+@keyframes noteCornerHint {
+    0%, 100% {
+        transform: translate3d(0, 0, 0) rotate(-8deg);
+    }
+    38% {
+        transform: translate3d(-18px, -15px, 0) rotate(-20deg);
+    }
+    68% {
+        transform: translate3d(-7px, -6px, 0) rotate(-13deg);
+    }
+}
+
+@keyframes noteCurlHint {
+    0%, 100% {
+        opacity: 0.16;
+        transform: translate3d(-6px, -5px, 0) rotate(-45deg);
+    }
+    38% {
+        opacity: 0.56;
+        transform: translate3d(-24px, -20px, 0) rotate(-45deg);
+    }
+    68% {
+        opacity: 0.34;
+        transform: translate3d(-13px, -11px, 0) rotate(-45deg);
+    }
+}
+
+@keyframes notePaperBreathe {
+    0%, 100% {
+        transform: translateX(-50%) translateY(-4px) rotate(0deg) scale(1.015);
+        box-shadow:
+            0 18px 36px rgba(255, 145, 198, 0.21),
+            0 6px 16px rgba(120, 85, 105, 0.1),
+            0 0 0 1px rgba(255, 255, 255, 0.42);
+    }
+    50% {
+        transform: translateX(-50%) translateY(-7px) rotate(0deg) scale(1.017);
+        box-shadow:
+            0 22px 42px rgba(255, 145, 198, 0.24),
+            0 8px 17px rgba(120, 85, 105, 0.11),
+            0 0 0 1px rgba(255, 255, 255, 0.5);
     }
 }
 
@@ -841,6 +1005,18 @@ button {
     flex-wrap: wrap;
 }
 
+.main-screen.ui-ready .button-group > * {
+    animation: iconButtonSettle 0.42s cubic-bezier(0.2, 0.88, 0.28, 1.08) both;
+}
+
+.main-screen.ui-ready .button-group > *:nth-child(2) {
+    animation-delay: 0.06s;
+}
+
+.main-screen.ui-ready .button-group > *:nth-child(3) {
+    animation-delay: 0.12s;
+}
+
 .email-button,
 .next-button {
     background: var(--glass-pink-control);
@@ -850,8 +1026,10 @@ button {
     color: #d7c0c5;
     font-weight: bold;
     cursor: pointer;
-    transition: width 0.22s cubic-bezier(0.22, 1, 0.36, 1), background 0.2s ease, box-shadow 0.2s ease, transform 0.16s ease;
-    box-shadow: var(--glass-pink-shadow-small);
+    transition: width 0.24s cubic-bezier(0.2, 0.86, 0.28, 1), background 0.22s ease, box-shadow 0.22s ease, transform 0.18s ease, filter 0.22s ease;
+    box-shadow:
+        var(--glass-pink-shadow-small),
+        inset 0 1px 0 rgba(255, 255, 255, 0.62);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -933,8 +1111,11 @@ button {
 
 .email-button:hover,
 .next-button:hover {
-    transform: scale(1.05);
+    transform: translateY(-1px) scale(1.045);
     background: linear-gradient(145deg, rgba(255, 248, 252, 0.94), rgba(255, 196, 225, 0.74));
+    box-shadow:
+        0 6px 15px rgba(255, 145, 195, 0.2),
+        inset 0 1px 0 rgba(255, 255, 255, 0.72);
 }
 
 @media (hover: none), (pointer: coarse) {
@@ -950,7 +1131,10 @@ button {
 }
 
 .email-button:active {
-    box-shadow: 0 0 8px rgba(255, 182, 193, 0.8);
+    transform: translateY(1px) scale(0.965);
+    box-shadow:
+        0 2px 6px rgba(255, 145, 195, 0.16),
+        inset 0 2px 5px rgba(199, 111, 152, 0.12);
 }
 
 .support-menu-button {
@@ -962,7 +1146,7 @@ button {
     padding-right: 10px;
     text-decoration: none;
     white-space: nowrap;
-    transition: width 0.22s cubic-bezier(0.22, 1, 0.36, 1), background 0.2s ease, box-shadow 0.2s ease, transform 0.16s ease;
+    transition: width 0.24s cubic-bezier(0.2, 0.86, 0.28, 1), background 0.22s ease, box-shadow 0.22s ease, transform 0.18s ease, filter 0.22s ease;
 }
 
 .wishlist-direct-button {
@@ -988,6 +1172,11 @@ button {
     gap: 6px;
     padding-left: 6px;
     padding-right: 6px;
+    background: linear-gradient(145deg, rgba(255, 250, 253, 0.96), rgba(255, 206, 230, 0.8));
+    box-shadow:
+        0 7px 18px rgba(255, 145, 195, 0.22),
+        inset 0 1px 0 rgba(255, 255, 255, 0.78),
+        inset 0 -1px 0 rgba(255, 168, 207, 0.22);
 }
 
 .support-options {
@@ -1000,7 +1189,7 @@ button {
     z-index: 1;
     transform: translateX(-5px) scale(0.96);
     transform-origin: left center;
-    transition: max-width 0.22s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.16s ease, transform 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+    transition: max-width 0.24s cubic-bezier(0.2, 0.86, 0.28, 1), opacity 0.18s ease, transform 0.22s cubic-bezier(0.2, 0.86, 0.28, 1);
     pointer-events: none;
 }
 
@@ -1025,7 +1214,7 @@ button {
     line-height: 1;
     text-shadow: none;
     box-shadow: none;
-    transition: background 0.2s ease, color 0.2s ease, transform 0.2s ease;
+    transition: background 0.2s ease, color 0.2s ease, transform 0.18s ease, box-shadow 0.18s ease;
 }
 
 .support-option:hover,
@@ -1033,6 +1222,7 @@ button {
     background: rgba(255, 214, 230, 0.5);
     color: rgba(112, 65, 83, 0.9);
     transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(255, 145, 195, 0.13);
     outline: none;
 }
 
@@ -1092,6 +1282,21 @@ button {
 
 .action-menu-button.open .action-options {
     max-width: 114px;
+}
+
+@keyframes iconButtonSettle {
+    0% {
+        opacity: 0;
+        transform: translateY(7px) scale(0.94);
+    }
+    70% {
+        opacity: 1;
+        transform: translateY(-1px) scale(1.025);
+    }
+    100% {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
 }
 
 .action-menu-label {
@@ -2547,13 +2752,14 @@ button {
     border-right: none;
     border-radius: 34px 0 0 34px;
     background:
-        linear-gradient(105deg, rgba(255, 255, 255, 0.46), rgba(255, 255, 255, 0.08) 22%, rgba(255, 255, 255, 0) 46%),
+        linear-gradient(105deg, rgba(255, 255, 255, 0.56), rgba(255, 255, 255, 0.1) 22%, rgba(255, 255, 255, 0) 46%),
         radial-gradient(ellipse at 100% 56%, rgba(255, 255, 255, 0.72), rgba(255, 233, 244, 0.28) 18%, transparent 38%),
         radial-gradient(circle at 70% 78%, rgba(255, 194, 222, 0.18), transparent 26%),
         linear-gradient(145deg, rgba(255, 250, 253, 0.82), rgba(255, 213, 234, 0.72));
     box-shadow:
-        -14px 12px 34px rgba(164, 92, 129, 0.16),
-        inset 0 1px 0 rgba(255, 255, 255, 0.8);
+        -16px 14px 38px rgba(164, 92, 129, 0.17),
+        inset 0 1px 0 rgba(255, 255, 255, 0.82),
+        inset 8px 0 18px rgba(255, 255, 255, 0.22);
     opacity: 0;
     backdrop-filter: blur(9px) saturate(1.08);
     -webkit-backdrop-filter: blur(9px) saturate(1.08);
@@ -2770,11 +2976,13 @@ button {
     border-right: none;
     border-radius: 16px 0 0 16px;
     background:
-        linear-gradient(115deg, rgba(255, 255, 255, 0.5), transparent 36%),
-        linear-gradient(145deg, rgba(255, 250, 253, 0.92), rgba(255, 218, 235, 0.78));
+        linear-gradient(115deg, rgba(255, 255, 255, 0.64), transparent 38%),
+        radial-gradient(circle at 42% 22%, rgba(255, 255, 255, 0.58), transparent 24%),
+        linear-gradient(145deg, rgba(255, 250, 253, 0.94), rgba(255, 218, 235, 0.8));
     box-shadow:
-        -5px 6px 14px rgba(255, 145, 195, 0.14),
-        inset 0 1px 0 rgba(255, 255, 255, 0.7);
+        -6px 7px 16px rgba(255, 145, 195, 0.15),
+        inset 0 1px 0 rgba(255, 255, 255, 0.74),
+        inset 3px 0 8px rgba(255, 255, 255, 0.28);
     cursor: grab;
     z-index: 900;
     opacity: 0;
@@ -2784,7 +2992,7 @@ button {
     -webkit-user-select: none;
     -webkit-tap-highlight-color: transparent;
     transform: translate3d(calc(min(var(--stream-edge-offset), var(--stream-pull)) - var(--stream-pull)), 0, 0);
-    transition: transform 0.3s cubic-bezier(0.2, 0.84, 0.28, 1), box-shadow 0.2s ease, background 0.2s ease;
+    transition: transform 0.3s cubic-bezier(0.2, 0.84, 0.28, 1), box-shadow 0.22s ease, background 0.22s ease, filter 0.22s ease;
     will-change: transform;
 }
 
@@ -2805,12 +3013,25 @@ button {
     box-shadow: 5px 0 0 rgba(255, 205, 228, 0.46);
 }
 
+.stream-pull-tab::after {
+    content: '';
+    position: absolute;
+    inset: 6px 5px 6px 7px;
+    border-radius: 12px 0 0 12px;
+    border-left: 1px solid rgba(255, 255, 255, 0.58);
+    background: linear-gradient(100deg, rgba(255, 255, 255, 0.32), transparent 42%);
+    pointer-events: none;
+    opacity: 0.62;
+}
+
 .stream-pull-tab img {
     width: 28px;
     height: 28px;
     object-fit: contain;
     pointer-events: none;
     filter: drop-shadow(0 2px 4px rgba(122, 76, 92, 0.12));
+    position: relative;
+    z-index: 1;
 }
 
 .stream-pull-tab.tabby-missing::after {
@@ -2833,8 +3054,10 @@ button {
     cursor: grabbing;
     transition: none;
     box-shadow:
-        -8px 8px 20px rgba(255, 145, 195, 0.22),
-        inset 0 1px 0 rgba(255, 255, 255, 0.82);
+        -10px 9px 24px rgba(255, 145, 195, 0.24),
+        inset 0 1px 0 rgba(255, 255, 255, 0.86),
+        inset 4px 0 10px rgba(255, 255, 255, 0.32);
+    filter: saturate(1.05) brightness(1.02);
 }
 
 .stream-pull-sheet.dragging {
@@ -2844,7 +3067,7 @@ button {
 .stream-pull-sheet.completing {
     opacity: 1;
     filter: saturate(1.06) brightness(1.015);
-    transition: none;
+    transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.18s ease, filter 0.18s ease;
 }
 
 .stream-pull-tab.completing {
@@ -2858,11 +3081,11 @@ button {
 }
 
 .stream-pull-tab.stream-tab-peek {
-    animation: streamTabPeek 0.58s cubic-bezier(0.22, 1, 0.36, 1);
+    animation: streamTabPeek 0.62s cubic-bezier(0.2, 0.9, 0.26, 1);
 }
 
 .stream-pull-sheet.stream-tab-peek {
-    animation: streamSheetPeek 0.58s cubic-bezier(0.22, 1, 0.36, 1);
+    animation: streamSheetPeek 0.62s cubic-bezier(0.2, 0.9, 0.26, 1);
 }
 
 @keyframes streamTabPeek {
@@ -3025,31 +3248,24 @@ button {
     inset: 0;
     z-index: 80;
     pointer-events: none;
-    border-left: 1px solid rgba(255, 174, 207, 0.46);
     background:
-        linear-gradient(105deg, rgba(255, 255, 255, 0.46), rgba(255, 255, 255, 0.08) 22%, rgba(255, 255, 255, 0) 46%),
-        radial-gradient(ellipse at 100% 56%, rgba(255, 255, 255, 0.72), rgba(255, 233, 244, 0.28) 18%, transparent 38%),
-        radial-gradient(circle at 70% 78%, rgba(255, 194, 222, 0.18), transparent 26%),
-        linear-gradient(145deg, rgba(255, 250, 253, 0.9), rgba(255, 213, 234, 0.78));
-    box-shadow:
-        -14px 12px 34px rgba(164, 92, 129, 0.16),
-        inset 0 1px 0 rgba(255, 255, 255, 0.8);
-    backdrop-filter: blur(9px) saturate(1.08);
-    -webkit-backdrop-filter: blur(9px) saturate(1.08);
+        radial-gradient(circle at 50% 42%, rgba(255, 244, 250, 0.72), rgba(255, 221, 238, 0.4) 38%, rgba(255, 246, 251, 0.18) 68%),
+        rgba(255, 247, 251, 0.38);
+    backdrop-filter: blur(0) saturate(1);
+    -webkit-backdrop-filter: blur(0) saturate(1);
     opacity: 0;
-    transform: translate3d(100%, 0, 0);
+    transform: scale(1);
 }
 
 .stream-page.stream-arriving::before {
-    opacity: 1;
-    animation: streamArrivalVeil 0.82s cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation: streamArrivalBlur 0.64s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 .stream-page.stream-arriving .stream-back-button,
 .stream-page.stream-arriving .stream-page-drape,
 .stream-page.stream-arriving .stream-page-ornaments,
 .stream-page.stream-arriving .stream-coming-soon {
-    animation: streamArrivalContent 0.62s cubic-bezier(0.22, 1, 0.36, 1) 0.08s both;
+    animation: streamArrivalContent 0.58s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .stream-coming-soon {
@@ -5102,27 +5318,35 @@ button {
     }
 }
 
-@keyframes streamArrivalVeil {
+@keyframes streamArrivalBlur {
     0% {
         opacity: 1;
-        transform: translate3d(0, 0, 0);
+        backdrop-filter: blur(14px) saturate(0.94) brightness(1.03);
+        -webkit-backdrop-filter: blur(14px) saturate(0.94) brightness(1.03);
+        transform: scale(1.018);
     }
-    62% {
-        opacity: 0.96;
-        transform: translate3d(-5%, 0, 0);
+    52% {
+        opacity: 0.72;
+        backdrop-filter: blur(9px) saturate(0.98) brightness(1.02);
+        -webkit-backdrop-filter: blur(9px) saturate(0.98) brightness(1.02);
+        transform: scale(1.008);
     }
     100% {
         opacity: 0;
-        transform: translate3d(-14%, 0, 0);
+        backdrop-filter: blur(0) saturate(1) brightness(1);
+        -webkit-backdrop-filter: blur(0) saturate(1) brightness(1);
+        transform: scale(1);
     }
 }
 
 @keyframes streamArrivalContent {
     from {
-        opacity: 0;
+        opacity: 0.58;
+        filter: blur(8px) saturate(0.96);
     }
     to {
         opacity: 1;
+        filter: blur(0) saturate(1);
     }
 }
 

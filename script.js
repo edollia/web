@@ -321,157 +321,152 @@ document.addEventListener("DOMContentLoaded", async function() {
 
     initAdminGate();
 
-    function initStreamPullTab() {
-        const tab = document.getElementById('stream-pull-tab');
-        const sheet = document.getElementById('stream-pull-sheet');
-        if (!tab) return;
+    function initNoteStreamPeel() {
+        const noteTarget = document.getElementById('note-peel-target');
+        const note = document.querySelector('.note-image');
+        if (!noteTarget || !note) return;
 
         const streamUrl = resolveSiteRoute('stream/');
-        let maxPull = 280;
-        let openThreshold = 168;
         let startX = 0;
-        let currentPull = 0;
-        let pullScale = 1;
+        let startY = 0;
+        let currentProgress = 0;
         let dragging = false;
         let moved = false;
         let opening = false;
+        let openDistance = 190;
         let skipClickUntil = 0;
 
-        function getStreamEdgeOffset() {
-            const bodyRect = document.body.getBoundingClientRect();
-            return Math.max(0, window.innerWidth - bodyRect.right);
+        function updatePeelMetrics() {
+            const noteRect = noteTarget.getBoundingClientRect();
+            openDistance = Math.max(150, Math.min(245, Math.hypot(noteRect.width, noteRect.height) * 0.62));
         }
 
-        function updatePullMetrics(pointerStartX) {
-            const sheetWidth = sheet?.getBoundingClientRect().width || 280;
-            const edgeOffset = getStreamEdgeOffset();
-            const reachablePull = pointerStartX ? Math.max(220, pointerStartX - 2) : sheetWidth;
-            maxPull = sheetWidth + edgeOffset;
-            pullScale = sheetWidth / reachablePull;
-            if (edgeOffset > 0) {
-                pullScale = maxPull / reachablePull;
-            }
-            openThreshold = maxPull * 0.62;
+        function isCornerGesture(e) {
+            const rect = noteTarget.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            return x >= rect.width - 82 && y >= rect.height - 92;
         }
 
-        function setPull(distance) {
-            currentPull = Math.max(0, Math.min(maxPull, distance * pullScale));
-            const pullValue = `${currentPull}px`;
-            tab.style.setProperty('--stream-pull', pullValue);
-            sheet?.style.setProperty('--stream-pull', pullValue);
+        function setPeelProgress(progress) {
+            currentProgress = Math.max(0, Math.min(1, progress));
+            const eased = 1 - Math.pow(1 - currentProgress, 1.8);
+            const foldSize = 28 + eased * 168;
+            const foldX = eased * -92;
+            const foldY = eased * -86;
+
+            noteTarget.style.setProperty('--note-peel-progress', eased.toFixed(3));
+            noteTarget.style.setProperty('--note-fold-size', `${foldSize.toFixed(1)}px`);
+            noteTarget.style.setProperty('--note-fold-x', `${foldX.toFixed(1)}px`);
+            noteTarget.style.setProperty('--note-fold-y', `${foldY.toFixed(1)}px`);
+            noteTarget.style.transform = `translateX(-50%) translateY(${-4 - eased * 8}px) rotate(${-eased * 5.4}deg) scale(${1.015 + eased * 0.018})`;
+            document.body.style.setProperty('--stream-peel-progress', eased.toFixed(3));
+            document.body.style.setProperty('--stream-peel-blur', `${(eased * 12).toFixed(2)}px`);
         }
 
-        function resetPull() {
+        function resetPeel() {
             if (opening) return;
-            tab.classList.remove('dragging');
-            sheet?.classList.remove('dragging');
-            sheet?.classList.remove('completing');
-            tab.classList.remove('completing');
-            setPull(0);
+            dragging = false;
+            noteTarget.classList.remove('peeling', 'completing');
+            setPeelProgress(0);
+            window.setTimeout(() => {
+                if (dragging || opening || currentProgress > 0.01) return;
+                document.body.classList.remove('stream-note-peeling');
+                noteTarget.style.removeProperty('transform');
+                document.body.style.removeProperty('--stream-peel-progress');
+                document.body.style.removeProperty('--stream-peel-blur');
+            }, 320);
         }
 
-        function showPullHint() {
-            if (tab.classList.contains('dragging')) return;
-            tab.classList.remove('stream-tab-peek');
-            sheet?.classList.remove('stream-tab-peek');
-            void tab.offsetWidth;
-            void sheet?.offsetWidth;
-            tab.classList.add('stream-tab-peek');
-            sheet?.classList.add('stream-tab-peek');
+        function showPeelHint() {
+            if (dragging || opening || note.classList.contains('hidden')) return;
+            noteTarget.classList.remove('peel-hint');
+            void noteTarget.offsetWidth;
+            noteTarget.classList.add('peel-hint');
+            window.setTimeout(() => noteTarget.classList.remove('peel-hint'), 700);
         }
 
         function openStreamPage() {
             if (opening) return;
             opening = true;
-            // Uses uiSounds.link, which is CUT2.mp3.
             playUiSound('link');
             try {
                 sessionStorage.setItem('doll_stream_from_pull', '1');
             } catch (error) {
                 // The route still works if session storage is unavailable.
             }
-            tab.classList.remove('dragging');
-            sheet?.classList.remove('dragging');
-            tab.classList.add('completing');
-            sheet?.classList.add('completing');
-            setPull(maxPull);
-            window.requestAnimationFrame(() => {
+
+            noteTarget.classList.remove('peeling');
+            noteTarget.classList.add('completing');
+            document.body.classList.add('stream-note-peeling');
+            setPeelProgress(1);
+            window.setTimeout(() => {
                 window.location.href = streamUrl;
-            });
+            }, 240);
         }
 
-        updatePullMetrics();
+        updatePeelMetrics();
         window.addEventListener('resize', function() {
-            updatePullMetrics();
-            if (!dragging) setPull(0);
+            updatePeelMetrics();
+            if (!dragging && !opening) resetPeel();
         });
 
-        tab.addEventListener('pointerdown', function(e) {
-            if (opening) return;
-            if (!e.isPrimary) return;
+        noteTarget.addEventListener('pointerdown', function(e) {
+            if (opening || !e.isPrimary || note.classList.contains('hidden')) return;
+            if (!isCornerGesture(e)) return;
             dragging = true;
             moved = false;
             startX = e.clientX;
-            updatePullMetrics(startX);
-            tab.classList.remove('stream-tab-peek');
-            sheet?.classList.remove('stream-tab-peek');
-            tab.classList.add('dragging');
-            sheet?.classList.add('dragging');
-            tab.setPointerCapture?.(e.pointerId);
+            startY = e.clientY;
+            updatePeelMetrics();
+            noteTarget.classList.remove('peel-hint');
+            noteTarget.classList.add('peeling');
+            document.body.classList.add('stream-note-peeling');
+            noteTarget.setPointerCapture?.(e.pointerId);
         });
 
-        tab.addEventListener('pointermove', function(e) {
+        noteTarget.addEventListener('pointermove', function(e) {
             if (!dragging || opening) return;
-            const pullDistance = startX - e.clientX;
-            if (pullDistance > 4) {
+            const dx = startX - e.clientX;
+            const dy = startY - e.clientY;
+            const distance = Math.max(0, dx * 0.78 + dy * 0.58);
+            if (distance > 5) {
                 moved = true;
                 e.preventDefault();
             }
-            setPull(pullDistance);
+            setPeelProgress(distance / openDistance);
         });
 
-        function finishPull(e) {
+        function finishPeel(e) {
             if (!dragging || opening) return;
             dragging = false;
-            tab.releasePointerCapture?.(e.pointerId);
+            noteTarget.releasePointerCapture?.(e.pointerId);
             skipClickUntil = Date.now() + 350;
 
-            if (currentPull >= openThreshold) {
+            if (currentProgress >= 0.72) {
                 openStreamPage();
                 return;
             }
 
-            resetPull();
+            resetPeel();
             if (!moved) {
                 playUiSound('tap');
-                showPullHint();
+                showPeelHint();
             }
         }
 
-        tab.addEventListener('pointerup', finishPull);
-        tab.addEventListener('pointercancel', resetPull);
+        noteTarget.addEventListener('pointerup', finishPeel);
+        noteTarget.addEventListener('pointercancel', resetPeel);
 
-        tab.addEventListener('click', function(e) {
-            e.preventDefault();
-            if (opening) return;
-            if (Date.now() < skipClickUntil) return;
+        noteTarget.addEventListener('click', function(e) {
+            if (Date.now() < skipClickUntil || opening) return;
+            if (!isCornerGesture(e)) return;
             playUiSound('tap');
-            showPullHint();
-        });
-
-        tab.addEventListener('keydown', function(e) {
-            if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                showPullHint();
-            }
-            if (e.key === 'ArrowLeft') {
-                e.preventDefault();
-                openStreamPage();
-            }
+            showPeelHint();
         });
     }
 
-    initStreamPullTab();
+    initNoteStreamPeel();
     
     // Global prevention of video fullscreen on mobile
     document.addEventListener('webkitbeginfullscreen', (e) => {
@@ -961,6 +956,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     // ===== TOGGLE NOTE & DRAWING WIDGET =====
     const toggleButton = document.getElementById('toggle-button');
     const noteImage = document.querySelector('.note-image');
+    const notePeelTarget = document.getElementById('note-peel-target');
     const drawingWidget = document.querySelector('.drawing-widget');
     const postsPanel = document.getElementById('posts-popup');
     const postsButton = document.getElementById('posts-button');
@@ -995,10 +991,12 @@ document.addEventListener("DOMContentLoaded", async function() {
         closeQuestionForm();
         closePostsPanel();
         closeActionMenu();
+        notePeelTarget?.classList.remove('hidden');
         noteImage?.classList.remove('hidden');
     }
 
     function hideNoteImage() {
+        notePeelTarget?.classList.add('hidden');
         noteImage?.classList.add('hidden');
     }
 
@@ -1006,6 +1004,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         closeDrawingWidget();
         closeQuestionForm();
         closePostsPanel();
+        notePeelTarget?.classList.remove('hidden');
         noteImage?.classList.remove('hidden');
     }
 

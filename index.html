@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="theme-color" content="#fff7fb">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <link rel="icon" type="image/png" href="/favicon.png">
+    <link rel="apple-touch-icon" href="/favicon.png">
+    <link rel="canonical" href="https://doll.gg/">
     
     <!-- SEO Meta Tags - ADDED -->
     <title>Dollia⋆౨ৎ˚⟡ ♡</title>
@@ -19,6 +22,7 @@
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://doll.gg">
     <meta property="og:site_name" content="Dollia">
+    <meta property="og:image" content="https://doll.gg/dropdown1.png">
     
     <!-- Twitter Card - ADDED -->
     <meta name="twitter:card" content="summary">
@@ -28,7 +32,7 @@
     <!-- Robots Meta - ADDED -->
     <meta name="robots" content="index, follow">
     
-    <link rel="stylesheet" href="styles.css?v=7.7">
+    <link rel="stylesheet" href="styles.css?v=8.2">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
 </head>
 <body>
@@ -88,7 +92,11 @@
             <!-- Content Area -->
             <div class="content-area">
                 <!-- Note Image -->
-                <img src="notee.jpg" alt="Note" class="note-image active-content">
+                <div class="note-peel-target active-content" id="note-peel-target" aria-label="Pull the note corner to open stream">
+                    <img src="notee.jpg" alt="Note" class="note-image">
+                    <span class="note-peel-corner" aria-hidden="true"></span>
+                    <span class="note-peel-curl" aria-hidden="true"></span>
+                </div>
 
                 <div id="ask-form-container" class="ask-form-container">
                     <span class="ask-deco ask-heart-left" aria-hidden="true"></span>
@@ -145,23 +153,6 @@
                 </div>
             </div>
         </div>
-	    </div>
-
-	    <div id="stream-pull-sheet" class="stream-pull-sheet" aria-hidden="true">
-	        <span class="stream-sheet-bubble bubble-one"></span>
-	        <span class="stream-sheet-bubble bubble-two"></span>
-	        <span class="stream-sheet-bubble bubble-three"></span>
-	        <span class="stream-sheet-bubble bubble-four"></span>
-	        <span class="stream-sheet-bubble bubble-five"></span>
-	        <span class="stream-sheet-bubble bubble-six"></span>
-	        <span class="stream-sheet-bubble bubble-seven"></span>
-	        <span class="stream-sheet-heart heart-one"></span>
-	        <span class="stream-sheet-heart heart-two"></span>
-	        <span class="stream-sheet-glint glint-one"></span>
-	        <span class="stream-sheet-glint glint-two"></span>
-	    </div>
-	    <div id="stream-pull-tab" class="stream-pull-tab" role="button" tabindex="0" aria-label="Pull left to open stream">
-	        <img src="tabby.png" alt="" aria-hidden="true" onerror="this.closest('.stream-pull-tab')?.classList.add('tabby-missing'); this.remove();">
 	    </div>
 
 	    <!-- Popup Modals -->
@@ -255,7 +246,7 @@
       }
     </script>
     <script src="throne-overlay-widget.js?v=3.3"></script>
-    <script src="script.js?v=6.4"></script>
+    <script src="script.js?v=6.6"></script>
     
     <!-- GoatCounter Analytics -->
     <script data-goatcounter="https://dollia.goatcounter.com/count"
