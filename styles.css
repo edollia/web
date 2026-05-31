@@ -2533,7 +2533,8 @@ button {
 .stream-pull-sheet,
 .stream-pull-tab {
     position: fixed;
-    right: max(0px, calc((100vw - 600px) / 2));
+    --stream-edge-offset: max(0px, calc((100vw - 600px) / 2));
+    right: var(--stream-edge-offset);
     --stream-pull: 0px;
     visibility: hidden;
 }
@@ -2558,7 +2559,7 @@ button {
     -webkit-backdrop-filter: blur(9px) saturate(1.08);
     pointer-events: none;
     z-index: 880;
-    transform: translate3d(calc(100% - var(--stream-pull)), 0, 0);
+    transform: translate3d(calc(100% + var(--stream-edge-offset) - var(--stream-pull)), 0, 0);
     transition: transform 0.3s cubic-bezier(0.2, 0.84, 0.28, 1), opacity 0.2s ease, filter 0.24s ease;
     overflow: hidden;
     will-change: transform;
@@ -2782,7 +2783,7 @@ button {
     user-select: none;
     -webkit-user-select: none;
     -webkit-tap-highlight-color: transparent;
-    transform: translate3d(calc(var(--stream-pull) * -1), 0, 0);
+    transform: translate3d(calc(min(var(--stream-edge-offset), var(--stream-pull)) - var(--stream-pull)), 0, 0);
     transition: transform 0.3s cubic-bezier(0.2, 0.84, 0.28, 1), box-shadow 0.2s ease, background 0.2s ease;
     will-change: transform;
 }
@@ -2810,6 +2811,22 @@ button {
     object-fit: contain;
     pointer-events: none;
     filter: drop-shadow(0 2px 4px rgba(122, 76, 92, 0.12));
+}
+
+.stream-pull-tab.tabby-missing::after {
+    content: '';
+    width: 24px;
+    height: 24px;
+    border: 1px solid rgba(255, 164, 207, 0.5);
+    border-radius: 9px;
+    background:
+        radial-gradient(circle at 34% 28%, rgba(255, 255, 255, 0.95), transparent 23%),
+        linear-gradient(90deg, transparent 40%, rgba(139, 68, 103, 0.42) 40% 58%, transparent 58%) center / 18px 13px no-repeat,
+        linear-gradient(145deg, rgba(255, 250, 253, 0.88), rgba(255, 197, 225, 0.54));
+    box-shadow:
+        0 4px 8px rgba(255, 145, 195, 0.1),
+        inset 0 1px 0 rgba(255, 255, 255, 0.78);
+    pointer-events: none;
 }
 
 .stream-pull-tab.dragging {
@@ -2862,13 +2879,13 @@ button {
 
 @keyframes streamSheetPeek {
     0%, 100% {
-        transform: translate3d(100%, 0, 0);
+        transform: translate3d(calc(100% + var(--stream-edge-offset)), 0, 0);
     }
     34% {
-        transform: translate3d(calc(100% - 34px), 0, 0);
+        transform: translate3d(calc(100% + var(--stream-edge-offset) - 34px), 0, 0);
     }
     62% {
-        transform: translate3d(calc(100% - 14px), 0, 0);
+        transform: translate3d(calc(100% + var(--stream-edge-offset) - 14px), 0, 0);
     }
 }
 
@@ -3368,7 +3385,8 @@ button {
     font: inherit;
 }
 
-.stream-live-status[data-state="live"] span {
+.stream-live-status[data-state="live"] span,
+.stream-live-status[data-state="online"] span {
     background: rgba(110, 205, 151, 0.86);
     box-shadow: 0 0 0 5px rgba(180, 236, 204, 0.32);
 }
@@ -3413,6 +3431,15 @@ button {
     border: 0;
     display: block;
     background: rgba(255, 247, 251, 0.8);
+}
+
+.stream-player-frame video,
+.stream-local-video {
+    width: 100%;
+    height: 100%;
+    display: block;
+    object-fit: contain;
+    background: rgba(255, 247, 251, 0.82);
 }
 
 .stream-setup-panel {
@@ -3476,38 +3503,9 @@ button {
     font-size: 24px;
 }
 
-.stream-live-actions {
-    position: relative;
-    z-index: 1;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 9px;
-}
-
-.stream-live-actions button {
-    min-height: 34px;
-    padding: 0 15px;
-    border: 1px solid rgba(255, 162, 207, 0.54);
-    border-radius: 999px;
-    background:
-        linear-gradient(180deg, rgba(255, 252, 254, 0.9), rgba(255, 218, 237, 0.62));
-    color: rgba(139, 68, 103, 0.82);
-    font-family: "Comic Sans MS", "Trebuchet MS", cursive;
-    font-size: 12px;
-    font-weight: 700;
-    box-shadow:
-        0 8px 18px rgba(207, 91, 150, 0.11),
-        inset 0 1px 0 rgba(255, 255, 255, 0.88);
-    cursor: pointer;
-}
-
-.stream-live-actions button:active {
-    transform: scale(0.98);
-}
-
 .stream-chat-panel {
     display: grid;
-    grid-template-rows: auto minmax(0, 1fr) auto;
+    grid-template-rows: auto minmax(0, 1fr);
     gap: 12px;
     padding: 16px;
     border-radius: 18px 26px 18px 26px;
@@ -3661,16 +3659,17 @@ button {
 }
 
 .stream-chat-send-row button {
-    min-width: 58px;
+    width: 36px;
+    min-width: 36px;
     min-height: 34px;
-    padding: 0 12px;
+    padding: 0;
     border: 1px solid rgba(255, 147, 203, 0.54);
     border-radius: 999px;
     background:
         linear-gradient(180deg, rgba(255, 252, 254, 0.94), rgba(255, 207, 232, 0.68));
     color: rgba(139, 68, 103, 0.84);
     font-family: "Comic Sans MS", "Trebuchet MS", cursive;
-    font-size: 12px;
+    font-size: 16px;
     font-weight: 700;
     box-shadow:
         0 8px 18px rgba(207, 91, 150, 0.12),
@@ -3696,8 +3695,7 @@ button {
     color: rgba(116, 72, 93, 0.82);
 }
 
-.stream-info-row,
-.stream-mod-strip {
+.stream-info-row {
     position: relative;
     z-index: 1;
     display: flex;
@@ -3706,8 +3704,7 @@ button {
     align-items: center;
 }
 
-.stream-info-row span,
-.stream-mod-strip button {
+.stream-info-row span {
     min-height: 30px;
     display: inline-flex;
     align-items: center;
@@ -3724,10 +3721,6 @@ button {
 .stream-info-row strong {
     margin-right: 4px;
     color: rgba(174, 85, 130, 0.78);
-}
-
-.stream-mod-strip button {
-    cursor: pointer;
 }
 
 .stream-toast {
@@ -3804,6 +3797,1031 @@ button {
 
     .stream-chat-panel {
         min-height: 320px;
+    }
+}
+
+/* Stream room upgrade */
+.stream-page.stream-live-unlocked {
+    min-height: 100svh;
+    overflow: hidden;
+}
+
+.stream-live-shell {
+    min-height: min(760px, calc(100svh - 112px));
+    grid-template-columns: minmax(0, 1.35fr) minmax(300px, 0.65fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    align-content: stretch;
+}
+
+.stream-room-header {
+    position: relative;
+    z-index: 6;
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 12px;
+    align-items: center;
+    padding: 12px 14px;
+    border: 1px solid rgba(255, 178, 215, 0.5);
+    border-radius: 22px 18px 22px 18px;
+    background:
+        linear-gradient(135deg, rgba(255, 255, 255, 0.7), rgba(255, 236, 247, 0.42)),
+        rgba(255, 248, 252, 0.76);
+    box-shadow:
+        0 16px 34px rgba(178, 91, 137, 0.12),
+        inset 0 1px 0 rgba(255, 255, 255, 0.86);
+    backdrop-filter: blur(16px) saturate(1.1);
+    -webkit-backdrop-filter: blur(16px) saturate(1.1);
+}
+
+.stream-room-id,
+.stream-room-actions,
+.stream-room-meta,
+.stream-view-tabs {
+    display: flex;
+    align-items: center;
+}
+
+.stream-room-id {
+    min-width: 0;
+    gap: 0;
+}
+
+.stream-room-header h1 {
+    margin: 2px 0 0;
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: clamp(26px, 3.5vw, 44px);
+    font-weight: 400;
+    line-height: 1;
+    color: rgba(116, 72, 93, 0.84);
+    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.86);
+}
+
+.stream-room-mark {
+    flex: 0 0 auto;
+    width: 42px;
+    height: 42px;
+    border-radius: 16px;
+    border: 1px solid rgba(255, 171, 211, 0.55);
+    background:
+        radial-gradient(circle at 34% 28%, rgba(255, 255, 255, 0.98), transparent 24%),
+        radial-gradient(circle at 62% 58%, rgba(255, 163, 207, 0.5), transparent 28%),
+        linear-gradient(145deg, rgba(255, 241, 248, 0.96), rgba(255, 196, 226, 0.64));
+    box-shadow:
+        0 12px 24px rgba(207, 91, 150, 0.13),
+        inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.stream-room-meta {
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 6px;
+    font-family: "Comic Sans MS", "Trebuchet MS", cursive;
+    font-size: 11px;
+    color: rgba(99, 74, 86, 0.6);
+}
+
+.stream-room-meta span {
+    display: inline-flex;
+    align-items: center;
+    min-height: 22px;
+    padding: 0 8px;
+    border: 1px solid rgba(255, 190, 222, 0.38);
+    border-radius: 999px;
+    background: rgba(255, 250, 253, 0.5);
+}
+
+.stream-room-actions {
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.stream-room-actions button,
+.stream-view-tabs button,
+.stream-player-controls button {
+    min-height: 34px;
+    border: 1px solid rgba(255, 162, 207, 0.52);
+    border-radius: 999px;
+    background:
+        linear-gradient(180deg, rgba(255, 252, 254, 0.94), rgba(255, 218, 237, 0.66));
+    color: rgba(139, 68, 103, 0.84);
+    font-family: "Comic Sans MS", "Trebuchet MS", cursive;
+    font-size: 12px;
+    font-weight: 700;
+    box-shadow:
+        0 8px 18px rgba(207, 91, 150, 0.11),
+        inset 0 1px 0 rgba(255, 255, 255, 0.9);
+    cursor: pointer;
+}
+
+.stream-room-actions button {
+    padding: 0 12px;
+}
+
+.stream-view-tabs {
+    grid-column: 1 / -1;
+    gap: 7px;
+    padding: 4px;
+    border: 1px solid rgba(255, 190, 222, 0.36);
+    border-radius: 999px;
+    background: rgba(255, 250, 253, 0.44);
+    width: fit-content;
+}
+
+.stream-view-tabs button {
+    min-width: 62px;
+    min-height: 30px;
+    padding: 0 12px;
+    border-color: transparent;
+    background: transparent;
+    box-shadow: none;
+    color: rgba(139, 91, 114, 0.58);
+}
+
+.stream-view-tabs button.active {
+    border-color: rgba(255, 153, 205, 0.58);
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(255, 207, 232, 0.7));
+    color: rgba(139, 68, 103, 0.88);
+    box-shadow:
+        0 8px 16px rgba(207, 91, 150, 0.1),
+        inset 0 1px 0 rgba(255, 255, 255, 0.88);
+}
+
+.stream-stage,
+.stream-chat-panel {
+    min-height: 0;
+}
+
+.stream-stage {
+    grid-template-rows: minmax(0, 1fr) auto;
+}
+
+.stream-player-shell {
+    align-items: stretch;
+}
+
+.stream-player-frame {
+    min-height: 0;
+    height: 100%;
+    border-radius: 24px 16px 24px 16px;
+}
+
+.stream-offline-player {
+    height: 100%;
+    min-height: 230px;
+    display: grid;
+    place-items: center;
+    align-content: center;
+    gap: 11px;
+    padding: clamp(20px, 4vw, 36px);
+    text-align: center;
+    background:
+        radial-gradient(circle at 50% 38%, rgba(255, 255, 255, 0.76), transparent 22%),
+        radial-gradient(circle at 26% 28%, rgba(255, 204, 230, 0.28), transparent 28%),
+        linear-gradient(145deg, rgba(255, 248, 252, 0.86), rgba(255, 221, 239, 0.62));
+}
+
+.stream-offline-orb {
+    width: 72px;
+    height: 72px;
+    border: 1px solid rgba(255, 171, 211, 0.52);
+    border-radius: 24px;
+    background:
+        radial-gradient(circle at 34% 28%, rgba(255, 255, 255, 0.98), transparent 22%),
+        radial-gradient(circle at 62% 58%, rgba(255, 163, 207, 0.48), transparent 30%),
+        linear-gradient(145deg, rgba(255, 241, 248, 0.96), rgba(255, 196, 226, 0.64));
+    box-shadow:
+        0 16px 34px rgba(207, 91, 150, 0.14),
+        inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.stream-offline-player h2 {
+    margin: 0;
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: clamp(28px, 4vw, 44px);
+    font-weight: 400;
+    color: rgba(116, 72, 93, 0.8);
+}
+
+.stream-offline-player p {
+    max-width: 330px;
+    margin: 0;
+    color: rgba(99, 74, 86, 0.62);
+    font-size: 13px;
+    line-height: 1.45;
+}
+
+.stream-player-frame.is-offline + .stream-player-controls {
+    display: none;
+}
+
+.stream-player-controls {
+    position: absolute;
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    z-index: 3;
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    pointer-events: none;
+}
+
+.stream-player-controls button {
+    min-width: 58px;
+    padding: 0 12px;
+    background:
+        linear-gradient(180deg, rgba(255, 252, 254, 0.86), rgba(255, 215, 236, 0.68));
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    pointer-events: auto;
+}
+
+.stream-info-row {
+    justify-content: center;
+}
+
+.stream-chat-panel {
+    min-height: 0;
+}
+
+.stream-chat-frame {
+    min-height: 0;
+}
+
+.stream-chat-paused {
+    position: absolute;
+    left: 50%;
+    bottom: 74px;
+    z-index: 4;
+    min-height: 34px;
+    padding: 0 15px;
+    border: 1px solid rgba(255, 162, 207, 0.54);
+    border-radius: 999px;
+    background: rgba(255, 250, 253, 0.88);
+    color: rgba(139, 68, 103, 0.84);
+    font-family: "Comic Sans MS", "Trebuchet MS", cursive;
+    font-size: 12px;
+    font-weight: 700;
+    box-shadow:
+        0 12px 28px rgba(178, 91, 137, 0.18),
+        inset 0 1px 0 rgba(255, 255, 255, 0.9);
+    transform: translateX(-50%);
+    cursor: pointer;
+}
+
+.stream-chat-paused[hidden] {
+    display: none;
+}
+
+.stream-live-shell[data-view="video"] {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+.stream-live-shell[data-view="video"] .stream-chat-panel {
+    display: none;
+}
+
+.stream-live-shell[data-view="chat"] {
+    grid-template-columns: minmax(0, 680px);
+    justify-content: center;
+}
+
+.stream-live-shell[data-view="chat"] .stream-stage {
+    display: none;
+}
+
+.stream-page.stream-theater-mode {
+    overflow: hidden;
+}
+
+.stream-page.stream-theater-mode .stream-live-shell {
+    width: min(1280px, 100%);
+    min-height: calc(100svh - 112px);
+}
+
+.stream-page.stream-theater-mode .stream-stage {
+    min-height: 0;
+}
+
+.stream-page.stream-theater-mode .stream-player-frame {
+    height: 100%;
+}
+
+@media (max-width: 760px) {
+    .stream-page.stream-live-unlocked {
+        padding:
+            max(14px, env(safe-area-inset-top, 0px))
+            0
+            max(8px, env(safe-area-inset-bottom, 0px));
+        background: #fff7fb;
+    }
+
+    .stream-page.stream-live-unlocked .stream-back-button,
+    .stream-page.stream-live-unlocked .stream-page-drape {
+        display: none;
+    }
+
+    .stream-live-shell {
+        width: 100%;
+        min-height: calc(100svh - max(14px, env(safe-area-inset-top, 0px)) - max(8px, env(safe-area-inset-bottom, 0px)));
+        grid-template-columns: 1fr;
+        grid-template-rows: auto auto minmax(0, 1fr);
+        gap: 0;
+        border-radius: 0;
+        animation-duration: 0.28s;
+    }
+
+    .stream-room-header {
+        margin: 0 10px 9px;
+        border-radius: 20px;
+        grid-template-columns: minmax(0, 1fr) auto;
+        padding: 10px;
+    }
+
+    .stream-room-mark {
+        width: 38px;
+        height: 38px;
+        border-radius: 15px;
+    }
+
+    .stream-room-actions {
+        align-self: start;
+    }
+
+    .stream-room-actions .stream-live-status {
+        display: none;
+    }
+
+    .stream-room-actions button {
+        min-height: 31px;
+        padding-inline: 10px;
+    }
+
+    .stream-live-kicker {
+        font-size: 10px;
+    }
+
+    .stream-live-header h1,
+    .stream-room-header h1 {
+        max-width: 50vw;
+        margin-top: 1px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 24px;
+    }
+
+    .stream-room-meta {
+        gap: 5px;
+        font-size: 10px;
+    }
+
+    .stream-room-meta span {
+        min-height: 20px;
+        padding-inline: 7px;
+    }
+
+    .stream-view-tabs {
+        width: 100%;
+        justify-content: stretch;
+    }
+
+    .stream-view-tabs button {
+        flex: 1 1 0;
+        min-width: 0;
+    }
+
+    .stream-stage,
+    .stream-chat-panel {
+        margin: 0;
+        border-inline: 0;
+        border-radius: 0;
+        background:
+            linear-gradient(180deg, rgba(255, 247, 251, 0.9), rgba(255, 235, 245, 0.72)),
+            rgba(255, 248, 252, 0.82);
+        box-shadow: none;
+    }
+
+    .stream-stage::before,
+    .stream-chat-panel::before {
+        display: none;
+    }
+
+    .stream-stage {
+        padding: 0;
+        gap: 0;
+        border-top: 1px solid rgba(255, 190, 222, 0.44);
+        border-bottom: 1px solid rgba(255, 190, 222, 0.44);
+    }
+
+    .stream-player-frame {
+        min-height: 0;
+        height: auto;
+        aspect-ratio: 16 / 9;
+        border: 0;
+        border-radius: 0;
+        box-shadow: none;
+        background: rgba(255, 239, 248, 0.84);
+    }
+
+    .stream-offline-player {
+        min-height: 210px;
+        padding: 22px 18px;
+    }
+
+    .stream-offline-orb {
+        width: 58px;
+        height: 58px;
+        border-radius: 20px;
+    }
+
+    .stream-offline-player h2 {
+        font-size: 28px;
+    }
+
+    .stream-player-controls {
+        left: 9px;
+        right: 9px;
+        bottom: 9px;
+        justify-content: space-between;
+        gap: 6px;
+    }
+
+    .stream-player-controls button {
+        min-width: 0;
+        min-height: 32px;
+        padding-inline: 10px;
+        font-size: 11px;
+    }
+
+    .stream-info-row {
+        display: none;
+    }
+
+    .stream-chat-panel {
+        grid-template-rows: auto minmax(0, 1fr);
+        min-height: 0;
+        padding: 10px 10px 8px;
+    }
+
+    .stream-chat-header {
+        padding: 0 2px;
+    }
+
+    .stream-chat-header strong {
+        font-size: 22px;
+    }
+
+    .stream-chat-frame {
+        border-radius: 19px 19px 19px 11px;
+    }
+
+    .stream-chat-feed {
+        padding: 13px 11px 12px;
+    }
+
+    .stream-live-shell[data-view="video"] {
+        grid-template-rows: auto minmax(0, 1fr);
+    }
+
+    .stream-live-shell[data-view="video"] .stream-stage {
+        min-height: min(68svh, 520px);
+    }
+
+    .stream-live-shell[data-view="video"] .stream-player-shell,
+    .stream-live-shell[data-view="video"] .stream-player-frame {
+        height: 100%;
+    }
+
+    .stream-live-shell[data-view="chat"] {
+        grid-template-rows: auto minmax(0, 1fr);
+    }
+
+    .stream-live-shell[data-view="chat"] .stream-chat-panel {
+        min-height: 0;
+    }
+
+    .stream-page.stream-theater-mode .stream-live-shell {
+        min-height: calc(100svh - max(14px, env(safe-area-inset-top, 0px)) - max(8px, env(safe-area-inset-bottom, 0px)));
+    }
+}
+
+@media (max-width: 940px) and (orientation: landscape) {
+    .stream-page.stream-live-unlocked {
+        padding:
+            max(8px, env(safe-area-inset-top, 0px))
+            max(8px, env(safe-area-inset-right, 0px))
+            max(8px, env(safe-area-inset-bottom, 0px))
+            max(8px, env(safe-area-inset-left, 0px));
+    }
+
+    .stream-page.stream-live-unlocked .stream-back-button,
+    .stream-page.stream-live-unlocked .stream-page-drape {
+        display: none;
+    }
+
+    .stream-live-shell {
+        width: 100%;
+        min-height: calc(100svh - max(8px, env(safe-area-inset-top, 0px)) - max(8px, env(safe-area-inset-bottom, 0px)));
+        grid-template-columns: minmax(0, 1fr) minmax(260px, 34vw);
+        grid-template-rows: auto minmax(0, 1fr);
+        gap: 8px;
+    }
+
+    .stream-room-header {
+        margin: 0;
+        grid-template-columns: minmax(0, 1fr) auto auto;
+        align-items: center;
+        padding: 8px 9px;
+        border-radius: 18px;
+    }
+
+    .stream-view-tabs {
+        grid-column: auto;
+        width: auto;
+    }
+
+    .stream-view-tabs button {
+        min-width: 48px;
+        min-height: 28px;
+        padding-inline: 8px;
+        font-size: 10px;
+    }
+
+    .stream-room-meta {
+        margin-top: 2px;
+    }
+
+    .stream-stage,
+    .stream-chat-panel {
+        border-radius: 18px;
+    }
+
+    .stream-stage {
+        padding: 0;
+    }
+
+    .stream-player-frame {
+        height: 100%;
+        min-height: 0;
+        border-radius: 18px;
+    }
+
+    .stream-chat-panel {
+        min-height: 0;
+        padding: 10px;
+    }
+
+    .stream-chat-header strong {
+        font-size: 20px;
+    }
+
+    .stream-live-shell[data-view="video"],
+    .stream-live-shell[data-view="chat"] {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+/* Minimal stream room: video first, chat second. */
+.stream-page.stream-live-unlocked {
+    display: grid;
+    place-items: stretch center;
+    padding:
+        max(10px, env(safe-area-inset-top, 0px))
+        max(10px, env(safe-area-inset-right, 0px))
+        max(10px, env(safe-area-inset-bottom, 0px))
+        max(10px, env(safe-area-inset-left, 0px));
+    overflow: hidden;
+}
+
+.stream-page.stream-live-unlocked .stream-back-button,
+.stream-page.stream-live-unlocked .stream-page-drape {
+    display: none;
+}
+
+.stream-live-shell {
+    --stream-video-block: auto;
+    --stream-chat-inline: 340px;
+    width: min(980px, 100%);
+    height: calc(100svh - max(20px, env(safe-area-inset-top, 0px)) - max(20px, env(safe-area-inset-bottom, 0px)));
+    min-height: calc(100svh - max(20px, env(safe-area-inset-top, 0px)) - max(20px, env(safe-area-inset-bottom, 0px)));
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto var(--stream-video-block) 9px minmax(0, 1fr);
+    gap: 9px;
+    align-content: stretch;
+}
+
+.stream-room-header {
+    display: flex;
+    position: relative;
+    animation: none;
+    margin: 0;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-height: 42px;
+    padding: 7px 9px 7px 11px;
+    border-radius: 16px;
+    background: rgba(255, 248, 252, 0.64);
+    border-color: rgba(255, 190, 222, 0.34);
+    box-shadow:
+        0 8px 20px rgba(178, 91, 137, 0.08),
+        inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+.stream-room-id {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.stream-room-header h1 {
+    margin: 0;
+    font-size: 18px;
+    line-height: 1;
+    white-space: nowrap;
+}
+
+.stream-room-count {
+    font-family: "Comic Sans MS", "Trebuchet MS", cursive;
+    font-size: 11px;
+    color: rgba(139, 91, 114, 0.58);
+    white-space: nowrap;
+}
+
+.stream-room-updated {
+    display: none;
+}
+
+.stream-room-actions {
+    flex: 0 0 auto;
+}
+
+.stream-room-actions button {
+    width: 30px;
+    height: 30px;
+    min-height: 30px;
+    display: inline-grid;
+    place-items: center;
+    padding: 0;
+    border-radius: 999px;
+    font-size: 16px;
+    line-height: 1;
+}
+
+.stream-view-tabs,
+.stream-info-row {
+    display: none !important;
+}
+
+.stream-stage,
+.stream-chat-panel {
+    border-radius: 18px;
+}
+
+.stream-stage {
+    display: grid;
+    grid-template-rows: minmax(0, 1fr);
+    gap: 0;
+    padding: 0;
+    min-height: 230px;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.stream-player-shell,
+.stream-player-frame {
+    min-height: 0;
+    min-width: 0;
+}
+
+.stream-player-shell {
+    width: 100%;
+    height: 100%;
+}
+
+.stream-player-frame {
+    height: auto;
+    aspect-ratio: 16 / 9;
+    border-radius: 18px;
+}
+
+.stream-chat-panel {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    min-height: 0;
+    overflow: hidden;
+    padding: 11px;
+    gap: 8px;
+}
+
+.stream-layout-resizer {
+    display: grid;
+    place-items: center;
+    align-self: stretch;
+    justify-self: stretch;
+    min-height: 12px;
+    border-radius: 999px;
+    touch-action: none;
+    cursor: row-resize;
+    background:
+        linear-gradient(90deg, transparent, rgba(255, 182, 218, 0.5), transparent);
+    opacity: 0.72;
+    transition: opacity 160ms ease, transform 160ms ease, background 160ms ease;
+}
+
+.stream-layout-resizer::before {
+    content: "";
+    display: block;
+    width: 46px;
+    height: 4px;
+    border-radius: 999px;
+    background: rgba(195, 112, 154, 0.32);
+    box-shadow: 0 0 12px rgba(255, 187, 222, 0.36);
+}
+
+.stream-layout-resizer:hover,
+.stream-layout-resizer:focus-visible,
+.stream-resizing .stream-layout-resizer {
+    opacity: 1;
+    transform: scaleY(1.14);
+    outline: none;
+    background:
+        linear-gradient(90deg, transparent, rgba(255, 153, 207, 0.66), transparent);
+}
+
+.stream-chat-header {
+    min-height: 24px;
+    padding: 0 2px;
+}
+
+.stream-chat-header strong {
+    margin: 0;
+    font-size: 16px;
+    letter-spacing: 0;
+}
+
+.stream-chat-header > span,
+.stream-chat-pill {
+    display: none !important;
+}
+
+.stream-chat-frame {
+    border-radius: 16px 16px 16px 10px;
+    min-height: 0;
+}
+
+.stream-chat-feed {
+    padding: 11px 10px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    align-items: flex-start;
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+}
+
+.stream-chat-message {
+    width: fit-content;
+    max-width: min(92%, 420px);
+    align-self: flex-start;
+    display: block;
+    padding: 7px 9px 8px;
+    border: 1px solid rgba(255, 187, 220, 0.5);
+    border-radius: 15px 15px 15px 7px;
+    background:
+        radial-gradient(circle at 18% 14%, rgba(255, 255, 255, 0.78), transparent 26%),
+        linear-gradient(180deg, rgba(255, 253, 254, 0.88), rgba(255, 232, 244, 0.62));
+    box-shadow:
+        0 7px 16px rgba(185, 88, 137, 0.07),
+        inset 0 1px 0 rgba(255, 255, 255, 0.82);
+}
+
+.stream-chat-message:nth-of-type(2n) {
+    margin-left: 0;
+    border-radius: 15px 15px 7px 15px;
+    background:
+        radial-gradient(circle at 18% 14%, rgba(255, 255, 255, 0.72), transparent 26%),
+        linear-gradient(180deg, rgba(255, 250, 253, 0.82), rgba(255, 239, 247, 0.58));
+}
+
+.stream-chat-message-meta {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin: 0 0 2px;
+}
+
+.stream-chat-message-meta strong {
+    min-width: 0;
+    margin-right: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: "Comic Sans MS", "Trebuchet MS", cursive;
+    font-size: 12px;
+    line-height: 1.35;
+    color: rgba(184, 83, 137, 0.92);
+}
+
+.stream-chat-message-meta time {
+    display: block;
+    flex: 0 0 auto;
+    font-family: "Comic Sans MS", "Trebuchet MS", cursive;
+    font-size: 10px;
+    color: rgba(143, 110, 126, 0.46);
+}
+
+.stream-chat-message p {
+    display: block;
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.35;
+    color: rgba(100, 74, 89, 0.92);
+    overflow-wrap: anywhere;
+}
+
+.stream-chat-form {
+    padding: 8px;
+}
+
+.stream-chat-form.nickname-locked {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+.stream-chat-form.nickname-locked #stream-chat-name {
+    display: none;
+}
+
+.stream-chat-form input,
+.stream-chat-send-row button {
+    min-height: 32px;
+}
+
+.stream-player-controls {
+    left: 10px;
+    right: 10px;
+    bottom: 10px;
+}
+
+.stream-player-controls button {
+    min-height: 32px;
+    min-width: 76px;
+    font-size: 11px;
+}
+
+@media (min-width: 860px), (orientation: landscape) {
+    .stream-live-shell {
+        width: min(1180px, 100%);
+        grid-template-columns: minmax(0, 1fr) 14px minmax(220px, var(--stream-chat-inline, 340px));
+        grid-template-rows: auto minmax(0, 1fr);
+    }
+
+    .stream-room-header {
+        grid-column: 1 / -1;
+    }
+
+    .stream-stage {
+        grid-column: 1;
+        grid-row: 2;
+        min-height: 0;
+    }
+
+    .stream-layout-resizer {
+        grid-column: 2;
+        grid-row: 2;
+        width: 14px;
+        min-height: 0;
+        cursor: col-resize;
+        background:
+            linear-gradient(180deg, transparent, rgba(255, 182, 218, 0.5), transparent);
+    }
+
+    .stream-layout-resizer::before {
+        width: 4px;
+        height: 46px;
+    }
+
+    .stream-layout-resizer:hover,
+    .stream-layout-resizer:focus-visible,
+    .stream-resizing .stream-layout-resizer {
+        transform: scaleX(1.14);
+        background:
+            linear-gradient(180deg, transparent, rgba(255, 153, 207, 0.66), transparent);
+    }
+
+    .stream-chat-panel {
+        grid-column: 3;
+        grid-row: 2;
+        min-width: 0;
+        width: 100%;
+    }
+
+    .stream-player-frame {
+        height: 100%;
+        aspect-ratio: auto;
+    }
+}
+
+.stream-resizing,
+.stream-resizing * {
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.stream-resizing iframe {
+    pointer-events: none;
+}
+
+.stream-live-shell:fullscreen,
+.stream-live-shell:-webkit-full-screen,
+.stream-page.stream-theater-mode .stream-live-shell {
+    width: 100vw;
+    height: 100svh;
+    min-height: 100svh;
+    max-width: none;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+    gap: 0;
+    padding: 0;
+    background: #fff7fb;
+}
+
+.stream-live-shell:fullscreen .stream-layout-resizer,
+.stream-live-shell:-webkit-full-screen .stream-layout-resizer,
+.stream-page.stream-theater-mode .stream-layout-resizer {
+    display: none;
+}
+
+.stream-live-shell:fullscreen .stream-room-header,
+.stream-live-shell:-webkit-full-screen .stream-room-header,
+.stream-page.stream-theater-mode .stream-room-header {
+    display: none;
+}
+
+.stream-live-shell:fullscreen .stream-stage,
+.stream-live-shell:-webkit-full-screen .stream-stage,
+.stream-page.stream-theater-mode .stream-stage {
+    grid-column: 1;
+    grid-row: 1;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+}
+
+.stream-live-shell:fullscreen .stream-player-frame,
+.stream-live-shell:-webkit-full-screen .stream-player-frame,
+.stream-page.stream-theater-mode .stream-player-frame {
+    width: 100%;
+    height: 100%;
+    aspect-ratio: auto;
+    border: 0;
+    border-radius: 0;
+}
+
+.stream-live-shell:fullscreen .stream-chat-panel,
+.stream-live-shell:-webkit-full-screen .stream-chat-panel,
+.stream-page.stream-fullscreen-mode .stream-chat-panel {
+    position: absolute;
+    z-index: 12;
+    top: max(14px, env(safe-area-inset-top, 0px));
+    right: max(14px, env(safe-area-inset-right, 0px));
+    bottom: max(14px, env(safe-area-inset-bottom, 0px));
+    width: min(340px, 34vw);
+    min-width: 260px;
+    border-radius: 22px;
+    background: rgba(255, 248, 252, 0.36);
+    border-color: rgba(255, 214, 235, 0.42);
+    box-shadow:
+        0 20px 46px rgba(90, 47, 70, 0.16),
+        inset 0 1px 0 rgba(255, 255, 255, 0.56);
+    backdrop-filter: blur(18px) saturate(1.12);
+    -webkit-backdrop-filter: blur(18px) saturate(1.12);
+}
+
+.stream-live-shell:fullscreen .stream-chat-frame,
+.stream-live-shell:-webkit-full-screen .stream-chat-frame,
+.stream-page.stream-fullscreen-mode .stream-chat-frame {
+    background: rgba(255, 250, 253, 0.24);
+}
+
+@media (max-width: 760px) {
+    .stream-live-shell:fullscreen .stream-chat-panel,
+    .stream-live-shell:-webkit-full-screen .stream-chat-panel,
+    .stream-page.stream-fullscreen-mode .stream-chat-panel {
+        top: auto;
+        left: max(10px, env(safe-area-inset-left, 0px));
+        right: max(10px, env(safe-area-inset-right, 0px));
+        bottom: max(10px, env(safe-area-inset-bottom, 0px));
+        width: auto;
+        min-width: 0;
+        height: min(42svh, 310px);
     }
 }
 

@@ -337,12 +337,21 @@ document.addEventListener("DOMContentLoaded", async function() {
         let opening = false;
         let skipClickUntil = 0;
 
+        function getStreamEdgeOffset() {
+            const bodyRect = document.body.getBoundingClientRect();
+            return Math.max(0, window.innerWidth - bodyRect.right);
+        }
+
         function updatePullMetrics(pointerStartX) {
             const sheetWidth = sheet?.getBoundingClientRect().width || 280;
+            const edgeOffset = getStreamEdgeOffset();
             const reachablePull = pointerStartX ? Math.max(220, pointerStartX - 2) : sheetWidth;
-            maxPull = sheetWidth;
+            maxPull = sheetWidth + edgeOffset;
             pullScale = sheetWidth / reachablePull;
-            openThreshold = sheetWidth * 0.62;
+            if (edgeOffset > 0) {
+                pullScale = maxPull / reachablePull;
+            }
+            openThreshold = maxPull * 0.62;
         }
 
         function setPull(distance) {

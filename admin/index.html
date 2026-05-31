@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="robots" content="noindex, nofollow">
     <title>Dollia Admin</title>
-    <link rel="stylesheet" href="../admin.css?v=1.4">
+    <link rel="stylesheet" href="../admin.css?v=2.2">
 </head>
 <body>
     <main class="admin-shell">
@@ -38,9 +38,10 @@
             <header class="admin-header">
                 <div>
                     <p class="admin-kicker">dashboard</p>
-                    <h1>submissions</h1>
+                    <h1>control room</h1>
                 </div>
                 <div class="admin-header-actions">
+                    <a class="admin-back-home" href="../index.html">back</a>
                     <button id="refresh-admin">refresh</button>
                     <button id="logout-admin">logout</button>
                 </div>
@@ -49,42 +50,119 @@
             <section class="admin-stats" id="admin-stats"></section>
 
             <nav class="admin-tabs" id="admin-tabs">
-                <button class="active" data-panel="pending-drawings-panel">pending doods</button>
-                <button data-panel="pending-questions-panel">pending asks</button>
-                <button data-panel="published-drawings-panel">posted doods</button>
-                <button data-panel="published-questions-panel">answered asks</button>
+                <button class="active" data-panel="review-panel">review</button>
+                <button data-panel="published-panel">published</button>
+                <button data-panel="chat-panel">live chat</button>
             </nav>
 
             <p class="admin-status" id="admin-status"></p>
 
-            <section class="admin-panel active" id="pending-drawings-panel">
-                <div class="admin-bulk-bar">
-                    <button class="soft" data-bulk-action="select" data-list="pending-drawings-list">select all</button>
-                    <button data-bulk-action="approve" data-list="pending-drawings-list">approve selected</button>
-                    <button class="danger" data-bulk-action="delete" data-list="pending-drawings-list">delete selected</button>
+            <section class="admin-panel active" id="review-panel">
+                <div class="admin-section-heading">
+                    <h2>waiting doods</h2>
+                    <div class="admin-bulk-bar compact">
+                        <button class="soft" data-bulk-action="select" data-list="pending-drawings-list">select all</button>
+                        <button data-bulk-action="approve" data-list="pending-drawings-list">approve</button>
+                        <button class="danger" data-bulk-action="delete" data-list="pending-drawings-list">delete</button>
+                        <button class="danger emergency" data-bulk-action="delete-all-pending-drawings" data-list="pending-drawings-list">clear waiting</button>
+                    </div>
                 </div>
                 <div class="admin-list admin-doods-list" id="pending-drawings-list"></div>
+
+                <div class="admin-section-heading">
+                    <h2>waiting asks</h2>
+                    <div class="admin-bulk-bar compact">
+                        <button class="danger emergency" data-bulk-action="delete-all-pending-questions" data-list="pending-questions-list">clear waiting</button>
+                    </div>
+                </div>
+                <div class="admin-list admin-text-list" id="pending-questions-list"></div>
             </section>
 
-            <section class="admin-panel" id="pending-questions-panel">
-                <div class="admin-list" id="pending-questions-list"></div>
-            </section>
-
-            <section class="admin-panel" id="published-drawings-panel">
-                <div class="admin-bulk-bar">
-                    <button class="soft" data-bulk-action="select" data-list="published-drawings-list">select all</button>
-                    <button class="danger" data-bulk-action="delete" data-list="published-drawings-list">delete selected</button>
+            <section class="admin-panel" id="published-panel">
+                <div class="admin-section-heading">
+                    <h2>posted doods</h2>
+                    <div class="admin-bulk-bar compact">
+                        <button class="soft" data-bulk-action="select" data-list="published-drawings-list">select all</button>
+                        <button class="danger" data-bulk-action="delete" data-list="published-drawings-list">delete</button>
+                    </div>
                 </div>
                 <div class="admin-list admin-doods-list" id="published-drawings-list"></div>
+
+                <div class="admin-section-heading">
+                    <h2>answered asks</h2>
+                </div>
+                <div class="admin-list admin-text-list" id="published-questions-list"></div>
             </section>
 
-            <section class="admin-panel" id="published-questions-panel">
-                <div class="admin-list" id="published-questions-list"></div>
+            <section class="admin-panel" id="chat-panel">
+                <div class="admin-chat-layout">
+                    <section class="admin-chat-main">
+                        <div class="admin-chat-command">
+                            <div>
+                                <p class="admin-kicker">moderation</p>
+                                <h2>live chat control</h2>
+                            </div>
+                            <div class="admin-command-actions">
+                                <button class="soft" data-chat-action="refresh">refresh</button>
+                                <button class="soft" id="chat-pause-toggle" data-chat-action="toggle-pause">pause chat</button>
+                                <button class="danger" data-chat-action="clear-visible">hide visible</button>
+                                <button class="danger emergency" data-chat-action="delete-all">delete all</button>
+                            </div>
+                        </div>
+
+                        <div class="admin-section-heading">
+                            <h2>live chat</h2>
+                        </div>
+                        <div class="admin-list admin-chat-list" id="stream-chat-list"></div>
+                    </section>
+
+                    <aside class="admin-chat-tools">
+                        <form class="admin-tool-card" id="chat-settings-form">
+                            <h2>chat rules</h2>
+                            <p class="admin-tool-note">These apply to public chat after the SQL is installed.</p>
+                            <label>
+                                <span>slow mode seconds</span>
+                                <input id="chat-slow-mode" type="number" min="0" max="120" step="1" value="5">
+                            </label>
+                            <label>
+                                <span>blocked words</span>
+                                <textarea id="chat-blocked-words" placeholder="one per line"></textarea>
+                            </label>
+                            <button type="submit">save rules</button>
+                        </form>
+
+                        <form class="admin-tool-card" id="chat-ban-form">
+                            <h2>manual ban</h2>
+                            <p class="admin-tool-note">Message buttons ban by IP but keep the nickname in the note.</p>
+                            <label>
+                                <span>type</span>
+                                <select id="chat-ban-type">
+                                    <option value="ip">ip</option>
+                                    <option value="nickname">nickname</option>
+                                </select>
+                            </label>
+                            <label>
+                                <span>value</span>
+                                <input id="chat-ban-value" type="text" maxlength="100" placeholder="ip or nickname">
+                            </label>
+                            <label>
+                                <span>note</span>
+                                <input id="chat-ban-note" type="text" maxlength="160" placeholder="optional">
+                            </label>
+                            <button type="submit">add ban</button>
+                        </form>
+
+                        <div class="admin-tool-card">
+                            <h2>bans</h2>
+                            <div class="admin-ban-list" id="stream-ban-list"></div>
+                        </div>
+                    </aside>
+                </div>
             </section>
         </section>
     </main>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="../admin.js?v=1.4"></script>
+    <script src="../admin.js?v=2.2"></script>
 </body>
 </html>

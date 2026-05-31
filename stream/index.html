@@ -6,8 +6,8 @@
     <meta name="theme-color" content="#fff7fb">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="referrer" content="strict-origin-when-cross-origin">
-    <title>Stream</title>
-    <link rel="stylesheet" href="../styles.css?v=6.6">
+    <title>Live</title>
+    <link rel="stylesheet" href="../styles.css?v=7.7">
 </head>
 <body class="stream-page">
     <script>
@@ -43,24 +43,28 @@
         <span class="stream-spark spark-two"></span>
         <span class="stream-spark spark-three"></span>
     </div>
-    <main class="stream-coming-soon" id="stream-coming-soon" aria-label="Stream page">
+    <main class="stream-coming-soon" id="stream-coming-soon" aria-label="Live page">
         <div class="stream-title-wrap">
             <h1>Coming Soon</h1>
         </div>
     </main>
-    <main class="stream-live-shell" id="stream-live-shell" data-stream-base="" data-stream-name="Live" hidden aria-label="Stream page">
-        <section class="stream-stage" aria-label="Stream player">
-            <div class="stream-live-header">
-                <div>
-                    <span class="stream-live-kicker">doll.gg/stream</span>
-                    <h1 id="stream-page-title">Live</h1>
-                </div>
+    <main class="stream-live-shell" id="stream-live-shell" data-stream-base="" data-video-src="../stream_test.mp4" data-stream-name="Live" hidden aria-label="Live page">
+        <div class="stream-room-header">
+            <div class="stream-room-id">
+                <span class="stream-room-count"><strong id="stream-viewer-count">--</strong> watching</span>
+                <span id="stream-updated-line" class="stream-room-updated">waiting</span>
+            </div>
+
+            <div class="stream-room-actions">
                 <div class="stream-live-status" id="stream-live-status">
                     <span aria-hidden="true"></span>
                     <strong id="stream-status-text">offline</strong>
                 </div>
+                <button type="button" id="stream-hide-preview" aria-label="Close">×</button>
             </div>
+        </div>
 
+        <section class="stream-stage" aria-label="Video player">
             <div class="stream-player-shell">
                 <div class="stream-player-frame" id="stream-video-frame">
                     <div class="stream-setup-panel" id="stream-video-setup">
@@ -69,48 +73,33 @@
                         <p>One sec.</p>
                     </div>
                 </div>
-            </div>
-
-            <div class="stream-live-actions" aria-label="Stream controls">
-                <button type="button" id="stream-refresh-status">refresh</button>
-                <button type="button" id="stream-theater-button">theater</button>
-                <button type="button" id="stream-fullscreen-button">fullscreen</button>
-                <button type="button" id="stream-open-source">open stream</button>
-                <button type="button" id="stream-hide-preview">hide</button>
-            </div>
-
-            <div class="stream-info-row" aria-label="Stream details">
-                <span><strong id="stream-viewer-count">--</strong> viewers</span>
-                <span id="stream-server-line">offline</span>
-                <span id="stream-updated-line">waiting</span>
+                <div class="stream-player-controls" aria-label="Video controls">
+                    <button type="button" id="stream-theater-button">Theater</button>
+                    <button type="button" id="stream-fullscreen-button">Fullscreen</button>
+                </div>
             </div>
         </section>
 
-        <aside class="stream-chat-panel" aria-label="Stream chat">
+        <div class="stream-layout-resizer" id="stream-layout-resizer" role="separator" aria-label="Resize video and chat" aria-orientation="horizontal" tabindex="0"></div>
+
+        <aside class="stream-chat-panel" aria-label="Chat">
             <div class="stream-chat-header">
-                <div>
-                    <span>live</span>
-                    <strong>Chat</strong>
-                </div>
-                <span class="stream-chat-pill" id="stream-chat-state">offline</span>
+                <strong>chat</strong>
+                <span class="stream-chat-pill" id="stream-chat-state" hidden>offline</span>
             </div>
 
             <div class="stream-chat-frame" id="stream-chat-frame">
                 <div class="stream-chat-feed" id="stream-chat-feed" role="log" aria-live="polite">
                     <div class="stream-chat-empty" id="stream-chat-empty">chat is waking up...</div>
                 </div>
+                <button type="button" class="stream-chat-paused" id="stream-chat-paused" hidden>chat paused</button>
                 <form class="stream-chat-form" id="stream-chat-form" autocomplete="off">
-                    <input type="text" id="stream-chat-name" name="nickname" maxlength="18" placeholder="nickname">
+                    <input type="text" id="stream-chat-name" name="nickname" maxlength="18" placeholder="pick a name">
                     <div class="stream-chat-send-row">
-                        <input type="text" id="stream-chat-message" name="message" maxlength="220" placeholder="say something">
-                        <button type="submit" id="stream-chat-send">send</button>
+                        <input type="text" id="stream-chat-message" name="message" maxlength="100" placeholder="chat" aria-label="Chat message, 100 characters max">
+                        <button type="submit" id="stream-chat-send" aria-label="Send message">♡</button>
                     </div>
                 </form>
-            </div>
-
-            <div class="stream-mod-strip" aria-label="Chat tools">
-                <button type="button" id="stream-chat-popout">chat</button>
-                <button type="button" id="stream-copy-link">copy link</button>
             </div>
         </aside>
 
@@ -123,15 +112,10 @@
             var comingSoon = document.getElementById('stream-coming-soon');
             var liveShell = document.getElementById('stream-live-shell');
             var hidePreviewButton = document.getElementById('stream-hide-preview');
-            var refreshButton = document.getElementById('stream-refresh-status');
             var theaterButton = document.getElementById('stream-theater-button');
             var fullscreenButton = document.getElementById('stream-fullscreen-button');
-            var openSourceButton = document.getElementById('stream-open-source');
-            var chatPopoutButton = document.getElementById('stream-chat-popout');
-            var copyLinkButton = document.getElementById('stream-copy-link');
             var streamStatus = document.getElementById('stream-live-status');
             var streamStatusText = document.getElementById('stream-status-text');
-            var streamTitle = document.getElementById('stream-page-title');
             var viewerCount = document.getElementById('stream-viewer-count');
             var serverLine = document.getElementById('stream-server-line');
             var updatedLine = document.getElementById('stream-updated-line');
@@ -143,11 +127,14 @@
             var chatMessageInput = document.getElementById('stream-chat-message');
             var chatSendButton = document.getElementById('stream-chat-send');
             var chatEmpty = document.getElementById('stream-chat-empty');
+            var chatPausedButton = document.getElementById('stream-chat-paused');
+            var layoutResizer = document.getElementById('stream-layout-resizer');
             var SUPABASE_URL = 'https://zvqdodzkhmcptwkjlfeu.supabase.co';
             var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp2cWRvZHpraG1jcHR3a2psZmV1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg3NjM1NjAsImV4cCI6MjA2NDMzOTU2MH0.i1xbRIhPHVkDIrnDlQFP0ebNklrx8WVQcQo8Iuo9zG8';
             var STREAM_CHAT_TABLE = 'stream_messages';
             var CHAT_COOLDOWN_MS = 5000;
-            var CHAT_LIMIT = 60;
+            var CHAT_LIMIT = 20;
+            var CHAT_MESSAGE_LIMIT = 100;
             var statusTimer = null;
             var toastTimer = null;
             var chatPollTimer = null;
@@ -157,10 +144,9 @@
             var streamClient = null;
             var clientIpPromise = null;
             var seenMessageIds = new Set();
+            var localTestMessages = [];
             var unlockTaps = 0;
             var unlockResetTimer = null;
-            var easterVideoId = 'GpQSUjNsNm0';
-            var easterVideoUrl = 'https://www.youtube.com/watch?v=GpQSUjNsNm0';
             var currentViewerCount = 1;
             if (!backButton) return;
 
@@ -188,31 +174,12 @@
                 return normalizeStreamUrl(liveShell ? liveShell.dataset.streamBase : '');
             }
 
-            function getShareUrl() {
-                return window.location.origin + window.location.pathname;
+            function getVideoSourceUrl() {
+                return normalizeStreamUrl(liveShell ? liveShell.dataset.videoSrc : '');
             }
 
-            function getEasterEmbedUrl() {
-                var origin = window.location.origin && window.location.origin !== 'null'
-                    ? window.location.origin
-                    : 'https://doll.gg';
-                var pageUrl = window.location.href && window.location.href !== 'about:blank'
-                    ? window.location.href.split('#')[0]
-                    : 'https://doll.gg/stream/';
-                var params = new URLSearchParams({
-                    feature: 'oembed',
-                    autoplay: '1',
-                    mute: '1',
-                    playsinline: '1',
-                    controls: '1',
-                    fs: '1',
-                    rel: '0',
-                    modestbranding: '1',
-                    origin: origin,
-                    widget_referrer: pageUrl
-                });
-
-                return 'https://www.youtube.com/embed/' + easterVideoId + '?' + params.toString();
+            function isChatTestMode() {
+                return liveShell?.dataset.chatMode === 'test';
             }
 
             function showToast(message) {
@@ -278,6 +245,39 @@
                 }
             }
 
+            function lockNickname(nickname) {
+                var cleanName = normalizeText(nickname, 18);
+                if (!cleanName) return;
+                saveNickname(cleanName);
+                if (chatNameInput) {
+                    chatNameInput.value = cleanName;
+                    chatNameInput.readOnly = true;
+                    chatNameInput.tabIndex = -1;
+                }
+                if (chatForm) chatForm.classList.add('nickname-locked');
+            }
+
+            function unlockNicknameForChange() {
+                try {
+                    localStorage.removeItem('doll_stream_chat_nickname');
+                } catch (error) {
+                    // Input still unlocks even if storage is blocked.
+                }
+                if (chatNameInput) {
+                    chatNameInput.readOnly = false;
+                    chatNameInput.tabIndex = 0;
+                    chatNameInput.value = '';
+                    chatNameInput.focus();
+                }
+                if (chatForm) chatForm.classList.remove('nickname-locked');
+            }
+
+            function applyStoredNickname() {
+                var storedName = getStoredNickname();
+                if (!storedName) return;
+                lockNickname(storedName);
+            }
+
             function getLastChatSentAt() {
                 try {
                     return Number(localStorage.getItem('doll_stream_chat_last_sent') || 0);
@@ -301,6 +301,12 @@
 
             function refreshChatButtonState() {
                 if (!chatSendButton) return;
+                if (isChatTestMode()) {
+                    chatSendButton.disabled = false;
+                    chatSendButton.textContent = '♡';
+                    return;
+                }
+
                 var remaining = getChatCooldownRemaining();
                 if (remaining > 0) {
                     chatSendButton.disabled = true;
@@ -310,7 +316,7 @@
                 }
 
                 chatSendButton.disabled = false;
-                chatSendButton.textContent = 'send';
+                chatSendButton.textContent = '♡';
                 if (chatState && chatState.textContent === 'cooldown') {
                     chatState.textContent = 'live';
                 }
@@ -359,9 +365,120 @@
                 chatEmpty.hidden = Boolean(hasMessages);
             }
 
+            function setChatPaused(paused) {
+                document.body.classList.toggle('stream-chat-paused-state', Boolean(paused));
+                if (chatPausedButton) chatPausedButton.hidden = !paused;
+            }
+
             function isChatNearBottom() {
                 if (!chatFeed) return true;
                 return chatFeed.scrollHeight - chatFeed.scrollTop - chatFeed.clientHeight < 90;
+            }
+
+            function scrollChatToBottom() {
+                if (!chatFeed) return;
+                chatFeed.scrollTop = chatFeed.scrollHeight;
+                setChatPaused(false);
+            }
+
+            function trimVisibleChatMessages() {
+                if (!chatFeed) return;
+                var messages = Array.from(chatFeed.querySelectorAll('.stream-chat-message'));
+                while (messages.length > CHAT_LIMIT) {
+                    var oldest = messages.shift();
+                    if (oldest) {
+                        seenMessageIds.delete(oldest.dataset.messageId || '');
+                        oldest.remove();
+                    }
+                }
+                updateChatEmpty();
+            }
+
+            function isSideBySideLayout() {
+                return window.matchMedia('(min-width: 860px), (orientation: landscape)').matches;
+            }
+
+            function updateResizeOrientation() {
+                if (!layoutResizer) return;
+                layoutResizer.setAttribute('aria-orientation', isSideBySideLayout() ? 'vertical' : 'horizontal');
+            }
+
+            function clamp(value, min, max) {
+                return Math.min(Math.max(value, min), max);
+            }
+
+            function setVerticalVideoSize(clientY) {
+                if (!liveShell) return;
+                var shellRect = liveShell.getBoundingClientRect();
+                var header = liveShell.querySelector('.stream-room-header');
+                var headerHeight = header ? header.getBoundingClientRect().height : 0;
+                var available = Math.max(260, shellRect.height - headerHeight - 18);
+                var target = clientY - shellRect.top - headerHeight - 9;
+                liveShell.style.setProperty('--stream-video-block', clamp(target, 230, available * 0.68) + 'px');
+            }
+
+            function setHorizontalChatSize(clientX) {
+                if (!liveShell) return;
+                var shellRect = liveShell.getBoundingClientRect();
+                var target = shellRect.right - clientX - 6;
+                var maxWidth = Math.min(520, shellRect.width * 0.62);
+                liveShell.style.setProperty('--stream-chat-inline', clamp(target, 220, maxWidth) + 'px');
+            }
+
+            function initLayoutResize() {
+                if (!layoutResizer || !liveShell) return;
+                updateResizeOrientation();
+
+                var activePointer = null;
+                function finishResize() {
+                    activePointer = null;
+                    document.body.classList.remove('stream-resizing');
+                }
+
+                layoutResizer.addEventListener('pointerdown', function(event) {
+                    activePointer = event.pointerId;
+                    document.body.classList.add('stream-resizing');
+                    layoutResizer.setPointerCapture?.(event.pointerId);
+                    event.preventDefault();
+                });
+
+                function moveResize(event) {
+                    if (activePointer !== event.pointerId) return;
+                    if (isSideBySideLayout()) {
+                        setHorizontalChatSize(event.clientX);
+                    } else {
+                        setVerticalVideoSize(event.clientY);
+                    }
+                    event.preventDefault();
+                }
+
+                layoutResizer.addEventListener('pointermove', moveResize);
+                document.addEventListener('pointermove', moveResize, { passive: false });
+                document.addEventListener('pointerup', finishResize);
+                document.addEventListener('pointercancel', finishResize);
+                layoutResizer.addEventListener('keydown', function(event) {
+                    var sideBySide = isSideBySideLayout();
+                    var step = event.shiftKey ? 28 : 14;
+                    var handled = false;
+
+                    if (sideBySide && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
+                        var currentWidth = parseFloat(getComputedStyle(liveShell).getPropertyValue('--stream-chat-inline')) || 340;
+                        liveShell.style.setProperty('--stream-chat-inline', clamp(currentWidth + (event.key === 'ArrowLeft' ? step : -step), 220, 520) + 'px');
+                        handled = true;
+                    }
+
+                    if (!sideBySide && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
+                        var currentHeight = parseFloat(getComputedStyle(liveShell).getPropertyValue('--stream-video-block')) || 210;
+                        liveShell.style.setProperty('--stream-video-block', clamp(currentHeight + (event.key === 'ArrowDown' ? step : -step), 230, window.innerHeight * 0.68) + 'px');
+                        handled = true;
+                    }
+
+                    if (handled) {
+                        event.preventDefault();
+                    }
+                });
+
+                window.addEventListener('resize', updateResizeOrientation, { passive: true });
             }
 
             function appendChatMessage(message, forceScroll) {
@@ -371,6 +488,7 @@
 
                 var row = document.createElement('article');
                 row.className = 'stream-chat-message';
+                row.dataset.messageId = message.id;
 
                 var meta = document.createElement('div');
                 meta.className = 'stream-chat-message-meta';
@@ -386,17 +504,20 @@
                     : date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
                 var text = document.createElement('p');
-                text.textContent = normalizeText(message.message || '', 220);
+                text.textContent = normalizeText(message.message || '', CHAT_MESSAGE_LIMIT);
 
                 meta.appendChild(name);
                 meta.appendChild(time);
                 row.appendChild(meta);
                 row.appendChild(text);
                 chatFeed.appendChild(row);
+                trimVisibleChatMessages();
                 updateChatEmpty();
 
                 if (shouldScroll) {
-                    chatFeed.scrollTop = chatFeed.scrollHeight;
+                    scrollChatToBottom();
+                } else {
+                    setChatPaused(true);
                 }
             }
 
@@ -406,14 +527,21 @@
                     node.remove();
                 });
                 seenMessageIds.clear();
-                (messages || []).forEach(function(message) {
+                (messages || []).slice(-CHAT_LIMIT).forEach(function(message) {
                     appendChatMessage(message, true);
                 });
                 updateChatEmpty();
-                chatFeed.scrollTop = chatFeed.scrollHeight;
+                scrollChatToBottom();
             }
 
             async function loadStreamMessages() {
+                if (isChatTestMode()) {
+                    renderChatMessages(localTestMessages);
+                    if (chatState) chatState.textContent = 'test';
+                    refreshChatButtonState();
+                    return true;
+                }
+
                 var client = getStreamClient();
                 if (!client) {
                     if (chatState) chatState.textContent = 'offline';
@@ -441,6 +569,7 @@
             }
 
             function startChatRealtime() {
+                if (isChatTestMode()) return;
                 var client = getStreamClient();
                 if (!client || chatChannel) return;
 
@@ -461,6 +590,7 @@
             }
 
             function startChatPoll() {
+                if (isChatTestMode()) return;
                 window.clearInterval(chatPollTimer);
                 chatPollTimer = window.setInterval(function() {
                     loadStreamMessages();
@@ -468,9 +598,7 @@
             }
 
             async function startStreamChat() {
-                if (chatNameInput && !chatNameInput.value) {
-                    chatNameInput.value = getStoredNickname();
-                }
+                applyStoredNickname();
                 if (chatState) chatState.textContent = 'loading';
                 var ready = await loadStreamMessages();
                 startChatCooldownTicker();
@@ -496,6 +624,33 @@
 
             async function sendStreamChat(event) {
                 event.preventDefault();
+                var nickname = normalizeText(chatNameInput ? chatNameInput.value : getStoredNickname(), 18);
+                var message = normalizeText(chatMessageInput ? chatMessageInput.value : '', CHAT_MESSAGE_LIMIT);
+                if (!nickname) {
+                    showToast('Pick a name first.');
+                    if (chatNameInput) chatNameInput.focus();
+                    return;
+                }
+                if (!message) {
+                    showToast('Type a message first.');
+                    return;
+                }
+
+                if (isChatTestMode()) {
+                    lockNickname(nickname);
+                    localTestMessages.push({
+                        id: 'test-' + Date.now() + '-' + Math.random().toString(16).slice(2),
+                        nickname: nickname,
+                        message: message,
+                        created_at: new Date().toISOString()
+                    });
+                    localTestMessages = localTestMessages.slice(-CHAT_LIMIT);
+                    if (chatMessageInput) chatMessageInput.value = '';
+                    renderChatMessages(localTestMessages);
+                    refreshChatButtonState();
+                    return;
+                }
+
                 var client = getStreamClient();
                 if (!client) {
                     showToast('Chat connection is not ready.');
@@ -509,16 +664,9 @@
                     return;
                 }
 
-                var nickname = normalizeText(chatNameInput ? chatNameInput.value : '', 18) || 'guest';
-                var message = normalizeText(chatMessageInput ? chatMessageInput.value : '', 220);
-                if (!message) {
-                    showToast('Type a message first.');
-                    return;
-                }
-
                 if (chatSendButton) {
                     chatSendButton.disabled = true;
-                    chatSendButton.textContent = 'sending';
+                    chatSendButton.textContent = '...';
                 }
 
                 try {
@@ -530,7 +678,7 @@
                     });
 
                     if (result.error) throw result.error;
-                    saveNickname(nickname);
+                    lockNickname(nickname);
                     if (chatMessageInput) chatMessageInput.value = '';
                     setLastChatSentAt(Date.now());
                     await loadStreamMessages();
@@ -538,9 +686,26 @@
                 } catch (error) {
                     console.warn('Stream chat send failed:', error);
                     var messageText = String(error && error.message ? error.message : '');
-                    showToast(messageText.toLowerCase().includes('5 seconds')
-                        ? 'Wait 5 seconds before chatting.'
-                        : 'Chat could not send.');
+                    var lowerMessage = messageText.toLowerCase();
+                    if (lowerMessage.includes('nickname is banned')) {
+                        unlockNicknameForChange();
+                        showToast('Name banned. Pick another.');
+                    } else if (lowerMessage.includes('banned') || lowerMessage.includes('unavailable for this user')) {
+                        showToast('Banned.');
+                    } else if (lowerMessage.includes('paused')) {
+                        showToast('Chat is paused.');
+                    } else if (lowerMessage.includes('nickname is already')) {
+                        unlockNicknameForChange();
+                        showToast('Name taken. Pick another.');
+                    } else if (lowerMessage.includes('nickname is locked')) {
+                        showToast('Use your first nickname.');
+                    } else if (lowerMessage.includes('wait') || lowerMessage.includes('seconds')) {
+                        showToast('Wait a few seconds.');
+                    } else if (lowerMessage.includes('blocked word')) {
+                        showToast('Message blocked.');
+                    } else {
+                        showToast('Chat could not send.');
+                    }
                 } finally {
                     refreshChatButtonState();
                 }
@@ -608,55 +773,85 @@
 
             function clearStreamFrames() {
                 var videoFrame = getVideoFrame();
-                if (videoFrame) videoFrame.textContent = '';
+                if (videoFrame) {
+                    videoFrame.classList.remove('is-offline');
+                    videoFrame.textContent = '';
+                }
             }
 
-            function mountEasterVideo(forceReload) {
+            function mountOfflinePlayer() {
                 var videoFrame = getVideoFrame();
                 if (!videoFrame) return;
-                var existing = videoFrame.querySelector('iframe');
+                if (videoFrame.querySelector('.stream-offline-player')) return;
+                videoFrame.classList.add('is-offline');
+                videoFrame.innerHTML = [
+                    '<div class="stream-offline-player">',
+                    '  <span class="stream-offline-orb" aria-hidden="true"></span>',
+                    '  <h2>Offline</h2>',
+                    '  <p>local chat test is on.</p>',
+                    '</div>'
+                ].join('');
+            }
 
-                if (existing && !forceReload) return;
+            function mountMp4Player(videoSrc) {
+                var videoFrame = getVideoFrame();
+                if (!videoFrame || !videoSrc) return false;
+                if (videoFrame.querySelector('video')) return true;
+
+                var video = document.createElement('video');
+                video.className = 'stream-local-video';
+                video.src = videoSrc;
+                video.controls = true;
+                video.loop = true;
+                video.muted = true;
+                video.autoplay = true;
+                video.playsInline = true;
+                video.preload = 'metadata';
+                video.addEventListener('error', function() {
+                    videoFrame.textContent = '';
+                    mountOfflinePlayer();
+                    setUpdatedLine('add stream_test.mp4');
+                }, { once: true });
+
+                videoFrame.classList.remove('is-offline');
                 videoFrame.textContent = '';
-
-                var easterVideo = document.createElement('iframe');
-                easterVideo.title = 'Stream video';
-                easterVideo.src = getEasterEmbedUrl();
-                easterVideo.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen';
-                easterVideo.allowFullscreen = true;
-                easterVideo.referrerPolicy = 'strict-origin-when-cross-origin';
-                easterVideo.setAttribute('frameborder', '0');
-                easterVideo.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
-                videoFrame.appendChild(easterVideo);
+                videoFrame.appendChild(video);
+                video.play?.().catch(function() {
+                    // Controls are visible if autoplay is blocked.
+                });
+                return true;
             }
 
             function mountStreamEmbeds() {
                 if (!liveShell) return;
                 var baseUrl = getStreamUrl();
+                var videoSrc = getVideoSourceUrl();
                 var videoFrame = getVideoFrame();
 
                 if (!baseUrl) {
-                    setConnectionState('live', 'live');
-                    if (streamTitle) streamTitle.textContent = 'Live';
+                    setConnectionState(videoSrc ? 'setup' : 'offline', videoSrc ? 'preview' : 'offline');
                     setViewerCount(currentViewerCount || 1, true);
                     if (chatState) chatState.textContent = 'loading';
-                    if (serverLine) serverLine.textContent = 'guest stream';
-                    setUpdatedLine('playing');
-                    mountEasterVideo(false);
+                    if (serverLine) serverLine.textContent = videoSrc ? 'preview video' : 'offline';
+                    setUpdatedLine(videoSrc ? 'preview video' : 'offline');
+                    if (!mountMp4Player(videoSrc)) {
+                        mountOfflinePlayer();
+                    }
                     return;
                 }
 
                 if (serverLine) serverLine.textContent = baseUrl.replace(/^https?:\/\//, '');
                 if (chatState) chatState.textContent = 'loading';
 
-                if (videoFrame && (!videoFrame.querySelector('iframe') || videoFrame.querySelector('iframe')?.src.includes('youtube.com/embed'))) {
+                if (videoFrame && !videoFrame.querySelector('iframe')) {
                     var video = document.createElement('iframe');
-                    video.title = 'Stream video';
+                    video.title = 'Live video';
                     video.src = baseUrl + '/embed/video?initiallyMuted=true';
                     video.loading = 'lazy';
                     video.allow = 'autoplay; fullscreen; picture-in-picture';
                     video.allowFullscreen = true;
                     video.referrerPolicy = 'origin';
+                    videoFrame.classList.remove('is-offline');
                     videoFrame.textContent = '';
                     videoFrame.appendChild(video);
                 }
@@ -665,11 +860,10 @@
             async function refreshStreamStatus(isManual) {
                 var baseUrl = getStreamUrl();
                 if (!baseUrl) {
-                    setConnectionState('live', 'live');
+                    setConnectionState('offline', 'offline');
                     setViewerCount(currentViewerCount || 1, true);
-                    setUpdatedLine('playing');
-                    mountEasterVideo(true);
-                    if (isManual) showToast('Stream refreshed.');
+                    setUpdatedLine('offline');
+                    mountOfflinePlayer();
                     return;
                 }
 
@@ -686,9 +880,8 @@
                     var online = Boolean(status.online);
                     var title = status.streamTitle || liveShell.dataset.streamName || 'Live';
 
-                    if (streamTitle) streamTitle.textContent = title;
                     setViewerCount(Number(status.viewerCount || 0), false);
-                    setConnectionState(online ? 'live' : 'offline', online ? 'live' : 'offline');
+                    setConnectionState(online ? 'online' : 'offline', online ? 'online' : 'offline');
                     setUpdatedLine('updated now');
                     if (isManual) showToast('Stream status refreshed.');
                 } catch (error) {
@@ -711,15 +904,6 @@
                 statusTimer = null;
             }
 
-            async function copyText(text, successMessage) {
-                try {
-                    await navigator.clipboard.writeText(text);
-                    showToast(successMessage);
-                } catch (error) {
-                    showToast(text);
-                }
-            }
-
             function showLivePreview() {
                 if (!comingSoon || !liveShell) return;
                 document.body.classList.add('stream-live-unlocked');
@@ -735,7 +919,8 @@
                 if (!comingSoon || !liveShell) return;
                 document.body.classList.remove('stream-live-unlocked');
                 document.body.classList.remove('stream-theater-mode');
-                if (theaterButton) theaterButton.textContent = 'theater';
+                document.body.classList.remove('stream-fullscreen-mode');
+                if (theaterButton) theaterButton.textContent = 'Theater';
                 liveShell.hidden = true;
                 comingSoon.hidden = false;
                 unlockTaps = 0;
@@ -760,50 +945,47 @@
             });
 
             hidePreviewButton?.addEventListener('click', hideLivePreview);
-            refreshButton?.addEventListener('click', function() {
-                refreshStreamStatus(true);
-            });
-            openSourceButton?.addEventListener('click', function() {
-                var baseUrl = getStreamUrl();
-                if (!baseUrl) {
-                    window.open(easterVideoUrl, '_blank', 'noopener,noreferrer');
-                    return;
-                }
-                window.open(baseUrl, '_blank', 'noopener,noreferrer');
-            });
-            chatPopoutButton?.addEventListener('click', function() {
-                if (chatMessageInput) {
-                    chatMessageInput.focus();
-                }
-                showToast('Chat is right here.');
-            });
+            initLayoutResize();
+            chatPausedButton?.addEventListener('click', scrollChatToBottom);
+            chatFeed?.addEventListener('scroll', function() {
+                setChatPaused(!isChatNearBottom());
+            }, { passive: true });
             chatForm?.addEventListener('submit', sendStreamChat);
             theaterButton?.addEventListener('click', function() {
                 document.body.classList.toggle('stream-theater-mode');
-                theaterButton.textContent = document.body.classList.contains('stream-theater-mode') ? 'normal' : 'theater';
+                document.body.classList.toggle('stream-fullscreen-mode', document.body.classList.contains('stream-theater-mode'));
+                theaterButton.textContent = document.body.classList.contains('stream-theater-mode') ? 'Normal' : 'Theater';
             });
             fullscreenButton?.addEventListener('click', async function() {
-                var videoFrame = getVideoFrame();
-                if (!videoFrame) return;
+                var fullTarget = liveShell || getVideoFrame();
+                if (!fullTarget) return;
 
                 try {
-                    if (videoFrame.requestFullscreen) {
-                        await videoFrame.requestFullscreen();
-                    } else if (videoFrame.webkitRequestFullscreen) {
-                        videoFrame.webkitRequestFullscreen();
+                    if (fullTarget.requestFullscreen) {
+                        await fullTarget.requestFullscreen();
+                    } else if (fullTarget.webkitRequestFullscreen) {
+                        fullTarget.webkitRequestFullscreen();
                     } else {
                         document.body.classList.add('stream-theater-mode');
-                        if (theaterButton) theaterButton.textContent = 'normal';
+                        document.body.classList.add('stream-fullscreen-mode');
+                        if (theaterButton) theaterButton.textContent = 'Normal';
                         showToast('Fullscreen unavailable here, theater mode on.');
                     }
                 } catch (error) {
                     document.body.classList.add('stream-theater-mode');
-                    if (theaterButton) theaterButton.textContent = 'normal';
+                    document.body.classList.add('stream-fullscreen-mode');
+                    if (theaterButton) theaterButton.textContent = 'Normal';
                     showToast('Fullscreen unavailable here, theater mode on.');
                 }
             });
-            copyLinkButton?.addEventListener('click', function() {
-                copyText(getShareUrl(), 'Stream link copied.');
+
+            document.addEventListener('fullscreenchange', function() {
+                var isFullscreen = document.fullscreenElement === liveShell;
+                document.body.classList.toggle('stream-fullscreen-mode', isFullscreen || document.body.classList.contains('stream-theater-mode'));
+            });
+            document.addEventListener('webkitfullscreenchange', function() {
+                var isFullscreen = document.webkitFullscreenElement === liveShell;
+                document.body.classList.toggle('stream-fullscreen-mode', isFullscreen || document.body.classList.contains('stream-theater-mode'));
             });
         }());
     </script>
