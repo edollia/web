@@ -573,7 +573,6 @@ var kofiWidgetOverlayConstants = kofiWidgetOverlayConstants || {
         ctaTextStyle: 'ctaTextStyle',
         cssId: 'cssid'
     },
-    //kofiRoot: 'http://localhost:55640/',
     kofiRoot: 'https://ko-fi.com/',
     paymentModalId: 'paymentModal'
 };

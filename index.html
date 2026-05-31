@@ -8,37 +8,66 @@
     <link rel="icon" type="image/png" href="/favicon.png">
     <link rel="apple-touch-icon" href="/favicon.png">
     <link rel="canonical" href="https://doll.gg/">
-    
-    <!-- SEO Meta Tags - ADDED -->
-    <title>Dollia⋆౨ৎ˚⟡ ♡</title>
-    <meta name="description" content="dollia's little corner ♡ send me anonymous messages, doodles, or just say hi ~ ur secrets r safe here (´• ω •`)">
-    
-    <!-- SEO Keywords - ADDED -->
-    <meta name="keywords" content="dollia, doll, anonymous messages, cute blog, send messages, drawings, ask me anything, secret messages">
-    
-    <!-- Open Graph for social media - ADDED -->
-    <meta property="og:title" content="Dollia⋆౨ৎ˚⟡ - send me stuff ♡">
-    <meta property="og:description" content="dollia's little corner ♡ send me anonymous messages, doodles, or just say hi ~">
+
+    <title>Dollia | doll.gg</title>
+    <meta name="description" content="doll.gg is Dollia's interactive home for anonymous messages, doodles, posts, socials, and support links.">
+    <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1">
+
+    <meta property="og:title" content="Dollia | doll.gg">
+    <meta property="og:description" content="doll.gg is Dollia's interactive home for anonymous messages, doodles, posts, socials, and support links.">
     <meta property="og:type" content="website">
-    <meta property="og:url" content="https://doll.gg">
+    <meta property="og:url" content="https://doll.gg/">
     <meta property="og:site_name" content="Dollia">
     <meta property="og:image" content="https://doll.gg/dropdown1.png">
-    
-    <!-- Twitter Card - ADDED -->
+
     <meta name="twitter:card" content="summary">
-    <meta name="twitter:title" content="Dollia⋆౨ৎ˚⟡ - send me stuff ♡">
-    <meta name="twitter:description" content="dollia's little corner ♡ send me anonymous messages, doodles, or just say hi ~">
-    
-    <!-- Robots Meta - ADDED -->
-    <meta name="robots" content="index, follow">
-    
+    <meta name="twitter:title" content="Dollia | doll.gg">
+    <meta name="twitter:description" content="doll.gg is Dollia's interactive home for anonymous messages, doodles, posts, socials, and support links.">
+
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "WebSite",
+          "@id": "https://doll.gg/#website",
+          "url": "https://doll.gg/",
+          "name": "Dollia",
+          "alternateName": "doll.gg",
+          "description": "doll.gg is Dollia's interactive home for anonymous messages, doodles, posts, socials, and support links.",
+          "inLanguage": "en",
+          "sameAs": [
+            "https://www.instagram.com/pawswirl",
+            "https://www.snapchat.com/add/dumidoll",
+            "https://ko-fi.com/edoll",
+            "https://throne.com/edoll"
+          ]
+        },
+        {
+          "@type": "WebPage",
+          "@id": "https://doll.gg/#webpage",
+          "url": "https://doll.gg/",
+          "name": "Dollia | doll.gg",
+          "description": "doll.gg is Dollia's interactive home for anonymous messages, doodles, posts, socials, and support links.",
+          "isPartOf": {
+            "@id": "https://doll.gg/#website"
+          },
+          "about": {
+            "@id": "https://doll.gg/#website"
+          },
+          "dateModified": "2026-05-31",
+          "inLanguage": "en"
+        }
+      ]
+    }
+    </script>
+
     <link rel="stylesheet" href="styles.css?v=8.2">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
 </head>
 <body>
     <!-- Loading Screen -->
     <div class="loading-screen" id="loading-screen">
-        <div class="corner-text">.. ᵍᵒᵗᵗᵃ ˡᵒᵃᵈ ⁱᵗ ⁱⁿ ᵘ</div>
+        <div class="corner-text">Dollia on doll.gg</div>
         <div class="loading-content">
             <p>𝘎𝘪𝘷𝘦 𝘮𝘦 𝘰𝘯𝘦 𝘧𝘳𝘪𝘤𝘬𝘪𝘯𝘨 𝘴𝘦𝘤𝘰𝘯𝘥..</p> 
             <img src="loading.gif" alt="Loading animation" class="loading-gif">
@@ -53,7 +82,8 @@
     <!-- Main Content -->
     <div class="main-screen" id="main-screen">
         <header>
-            <img src="dropdown1.png" alt="Dropdown Header" class="header-image">
+            <img src="dropdown1.png" alt="Dollia doll.gg header art" class="header-image">
+            <a class="site-identity" href="https://doll.gg/" aria-label="Dollia on doll.gg homepage">Dollia on doll.gg</a>
         </header>
         
         <!-- Interactive Content Area -->
@@ -64,21 +94,21 @@
                         <span class="socials-menu-label menu-main-icon">꩜</span>
                         <span class="menu-back-arrow" aria-hidden="true">↢</span>
                         <span class="support-options socials-options" aria-hidden="true">
-                            <span id="snapchat-option" class="support-option social-option" role="button" tabindex="-1" aria-label="Snapchat">
+                            <a id="snapchat-option" class="support-option social-option" href="https://www.snapchat.com/add/dumidoll" target="_blank" rel="noopener noreferrer" tabindex="-1" aria-label="Snapchat">
                                 <img src="snap.png" alt="Snapchat">
-                            </span>
-                            <span id="instagram-option" class="support-option social-option" role="button" tabindex="-1" aria-label="Instagram">
+                            </a>
+                            <a id="instagram-option" class="support-option social-option" href="https://www.instagram.com/pawswirl" target="_blank" rel="noopener noreferrer" tabindex="-1" aria-label="Instagram">
                                 <img src="insta.png" alt="Instagram">
-                            </span>
-                            <span id="donate-option" class="support-option social-option kofi-social-option" role="button" tabindex="-1" aria-label="Ko-fi">
+                            </a>
+                            <a id="donate-option" class="support-option social-option kofi-social-option" href="https://ko-fi.com/edoll" target="_blank" rel="noopener noreferrer" tabindex="-1" aria-label="Ko-fi">
                                 <img src="mail.png" alt="Ko-fi">
-                            </span>
+                            </a>
                         </span>
                     </div>
                 </div>
-                <div id="support-menu-button" class="email-button support-menu-button wishlist-direct-button" role="button" tabindex="0" aria-label="Open wishlist">
+                <a id="support-menu-button" class="email-button support-menu-button wishlist-direct-button" href="https://throne.com/edoll" target="_blank" rel="noopener noreferrer" aria-label="Open wishlist">
                     <img src="wishlist.png" alt="Wishlist" class="menu-main-icon">
-                </div>
+                </a>
                 <div id="action-menu-button" class="next-button support-menu-button action-menu-button" role="button" tabindex="0" aria-label="Open actions" aria-expanded="false">
                     <span class="action-menu-label menu-main-icon">𓏲ּ𝄢</span>
                     <span class="menu-back-arrow" aria-hidden="true">↢</span>
