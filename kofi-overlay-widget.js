@@ -137,7 +137,7 @@ var kofiWidgetOverlayFloatingChatBuilder = kofiWidgetOverlayFloatingChatBuilder 
 
         if ('' !== styleSheetsValue) {
 
-            styleSheets = JSON.parse(styleSheetsValue);
+            var styleSheets = JSON.parse(styleSheetsValue);
 
             styleSheets.forEach(stylesheetRef => {
                 _utils.loadStyleSheet(stylesheetRef, document);
@@ -455,11 +455,12 @@ var kofiWidgetOverlayFloatingChatBuilder = kofiWidgetOverlayFloatingChatBuilder 
         var pageId = _configManager.getValue(_myType, 'pageId', true);
 
         noticeText = noticeText.replace("%HANDLE%", pageId);
-        handleLink = document.createElement('a');
+        var handleLink = document.createElement('a');
         handleLink.setAttribute('href', "https://"+ noticeText);
         handleLink.setAttribute('target', "_blank");
+        handleLink.setAttribute('rel', 'noopener noreferrer');
         handleLink.setAttribute('class', 'kfds-text-is-link-dark');
-        linkText = document.createTextNode(noticeText);
+        var linkText = document.createTextNode(noticeText);
         handleLink.appendChild(linkText);
         notice.appendChild(handleLink);
         popup.appendChild(notice);
@@ -546,8 +547,8 @@ var kofiWidgetOverlayFloatingChatBuilder = kofiWidgetOverlayFloatingChatBuilder 
         var body = '<style> .hiddenUntilReady { display: none; } </style>' +
             `<div id="${getButtonId()}" class="hiddenUntilReady closed floatingchat-donate-button" style="z-index:10000; background-color: ${donateButtonBackgroundColor}; display:none;">` +
             `<img id="${getButtonImageId()}" src="${donateButtonImage}" class="kofiimg" data-rotation="0" />` +
-            `<span style="margin-left: 8px; color:${donateButtonTextColor}">${donateButtonCTAText}</span>`
-        '</div>';
+            `<span style="margin-left: 8px; color:${donateButtonTextColor}">${donateButtonCTAText}</span>` +
+            '</div>';
         return body;
     };
 

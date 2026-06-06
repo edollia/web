@@ -733,17 +733,9 @@ document.addEventListener("DOMContentLoaded", async function() {
                 'paw1.png',
                 'snap.png',
                 'insta.png',
-                'dropdown-icon.png',
                 'mail.png',
-                'kofi.png',
+                'wishlist.png',
                 'question-bunny.png',
-                'igpf.png',
-                'fbpf.png',
-                'ttpf.png',
-                'scpf.png',
-                'twtpf.png',
-                'ytpf.png',
-                'attpf.png',
                 'reactions.png',
                 'happy.png',
                 'cool.png',
@@ -752,14 +744,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                 'CUT1.mp3',
                 'CUT2.mp3',
                 'CUT3.mp3',
-                'hehe.mp3',
-                'pfps/pfp1.jpg',
-                'pfps/pfp2.jpg',
-                'pfps/pfp4.jpg',
-                'pfps/pfp3.gif',
-                'pfps/pfp9.gif',
-                'pfps/pfp7.mp4',
-                'pfps/pfp8.mp4'
+                'hehe.mp3'
             ];
             
             let loadedCount = 0;
@@ -1555,6 +1540,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                     closePostsPanel();
                     hideNoteImage();
                 } else {
+                    notePeelTarget?.classList.remove('hidden');
                     noteImage?.classList.remove('hidden');
                 }
                 askFormContainer.style.display = open ? 'none' : 'block';
