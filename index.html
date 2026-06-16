@@ -89,7 +89,7 @@
     }
     </script>
 
-    <link rel="stylesheet" href="styles.css?v=9.4">
+    <link rel="stylesheet" href="styles.css?v=9.6">
 </head>
 <body>
     <!-- Loading Screen -->
@@ -97,7 +97,7 @@
         <div class="corner-text">.. ᵍᵒᵗᵗᵃ ˡᵒᵃᵈ ⁱᵗ ⁱⁿ ᵘ</div>
         <div class="loading-content">
             <p>𝘎𝘪𝘷𝘦 𝘮𝘦 𝘰𝘯𝘦 𝘧𝘳𝘪𝘤𝘬𝘪𝘯𝘨 𝘴𝘦𝘤𝘰𝘯𝘥..</p> 
-            <img src="loading.gif" alt="Loading animation" class="loading-gif">
+            <img src="loading.gif" alt="Loading animation" class="loading-gif" width="510" height="960">
             <div class="loading-bar-container" id="loading-bar-container">
                 <div class="loading-bar">
                     <div class="loading-bar-fill" id="loading-bar-fill"></div>
@@ -109,7 +109,7 @@
     <!-- Main Content -->
     <div class="main-screen" id="main-screen">
         <header>
-            <img src="dropdown1.png" alt="Lia doll.gg header art" class="header-image">
+            <img src="dropdown1.png" alt="Lia doll.gg header art" class="header-image" width="1600" height="863">
         </header>
         
         <!-- Interactive Content Area -->
@@ -121,19 +121,19 @@
                         <span class="menu-back-arrow" aria-hidden="true">↢</span>
                         <span class="support-options socials-options" aria-hidden="true">
                             <a id="snapchat-option" class="support-option social-option" href="https://www.snapchat.com/add/dumidoll" target="_blank" rel="noopener noreferrer" tabindex="-1" aria-label="Snapchat">
-                                <img src="snap.png" alt="Snapchat">
+                                <img src="snap.png" alt="Snapchat" width="1203" height="1203">
                             </a>
                             <a id="instagram-option" class="support-option social-option" href="https://www.instagram.com/pawswirl" target="_blank" rel="noopener noreferrer" tabindex="-1" aria-label="Instagram">
-                                <img src="insta.png" alt="Instagram">
+                                <img src="insta.png" alt="Instagram" width="1290" height="1290">
                             </a>
                             <a id="donate-option" class="support-option social-option kofi-social-option" href="https://ko-fi.com/edoll" target="_blank" rel="noopener noreferrer" tabindex="-1" aria-label="Ko-fi">
-                                <img src="mail.png" alt="Ko-fi">
+                                <img src="mail.png" alt="Ko-fi" width="96" height="96">
                             </a>
                         </span>
                     </div>
                 </div>
                 <a id="support-menu-button" class="email-button support-menu-button wishlist-direct-button" href="https://throne.com/edoll" target="_blank" rel="noopener noreferrer" aria-label="Open wishlist">
-                    <img src="wishlist.png" alt="Wishlist" class="menu-main-icon">
+                    <img src="wishlist.png" alt="Wishlist" class="menu-main-icon" width="491" height="508">
                 </a>
                 <div id="action-menu-button" class="next-button support-menu-button action-menu-button" role="button" tabindex="0" aria-label="Open actions" aria-expanded="false">
                     <span class="action-menu-label menu-main-icon">𓏲ּ𝄢</span>
@@ -149,7 +149,7 @@
             <div class="content-area">
                 <!-- Note Image -->
                 <div class="note-peel-target active-content" id="note-peel-target" aria-label="Pull the note corner to open stream">
-                    <img src="notee.jpg" alt="Note" class="note-image">
+                    <img src="notee.jpg" alt="Note" class="note-image" width="736" height="1039">
                     <span class="note-peel-corner" aria-hidden="true"></span>
                     <span class="note-peel-curl" aria-hidden="true"></span>
                 </div>
@@ -164,7 +164,7 @@
                         <span id="char-count">0/200</span>
                         <button id="send-question" class="send-button">Send</button>
                     </div>
-                    <img src="question-bunny.png" alt="" class="ask-corner-mascot" aria-hidden="true" onerror="this.style.display='none'">
+                    <img src="question-bunny.png" alt="" class="ask-corner-mascot" aria-hidden="true" width="1536" height="1024" onerror="this.style.display='none'">
                 </div>
                 
                 <!-- Drawing Widget -->
@@ -211,17 +211,26 @@
         </div>
 
         <footer class="site-brand-footer" aria-label="Site home">
-            <a href="https://doll.gg/" rel="home">
+            <a id="site-brand-button" href="https://doll.gg/" rel="home">
                 <span class="site-brand-name">doll</span><span class="site-brand-dot">.</span><span class="site-brand-gg">gg</span>
             </a>
         </footer>
+        <section class="latest-note" id="latest-note" hidden>
+            <button class="latest-note-toggle" id="latest-note-toggle" type="button" aria-expanded="false" aria-controls="latest-note-body">
+                <span id="latest-note-title">latest note</span>
+                <span class="latest-note-caret" aria-hidden="true">⌄</span>
+            </button>
+            <div class="latest-note-body" id="latest-note-body" hidden></div>
+        </section>
 	    </div>
+
+    <div class="footer-bubble-field" id="footer-bubble-field" aria-hidden="true"></div>
 
 	    <!-- Popup Modals -->
     <div class="popup" id="popup">
         <div class="popup-content">
             <button id="close-popup" aria-label="Close">
-                <img src="paw1.png" alt="Paw Image" class="paw-image">
+                <img src="paw1.png" alt="Paw Image" class="paw-image" width="274" height="207">
             </button>
         </div>
     </div>
@@ -247,6 +256,17 @@
             <p id="admin-gate-error"></p>
         </form>
     </div>
+
+    <section class="site-maintenance-overlay" id="site-maintenance-overlay" aria-hidden="true">
+        <div class="site-maintenance-card">
+            <span class="site-maintenance-bubble site-maintenance-bubble-one"></span>
+            <span class="site-maintenance-bubble site-maintenance-bubble-two"></span>
+            <p class="site-maintenance-kicker">working</p>
+            <h2 id="site-maintenance-title">tiny update in progress</h2>
+            <p id="site-maintenance-message">Lia is polishing things. Come back in a bit.</p>
+            <p class="site-maintenance-eta" id="site-maintenance-eta"></p>
+        </div>
+    </section>
 
     <!-- Privacy Policy & Terms of Service Modal -->
     <div class="terms-privacy-modal" id="terms-privacy-modal" style="display: none;" data-nosnippet>
@@ -308,7 +328,7 @@
       }
     </script>
     <script src="throne-overlay-widget.js?v=3.6"></script>
-    <script src="script.js?v=8.0"></script>
+    <script src="script.js?v=8.2"></script>
     
     <!-- GoatCounter Analytics -->
     <script data-goatcounter="https://dollia.goatcounter.com/count"

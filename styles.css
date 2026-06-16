@@ -833,6 +833,113 @@ button {
     transform: rotate(-4deg);
 }
 
+.latest-note {
+    width: min(88vw, 348px);
+    margin: 18px auto 0;
+    opacity: 0;
+    transform: translateY(6px);
+}
+
+.main-screen.note-ready .latest-note:not([hidden]) {
+    animation: brandFooterIn 0.6s ease 0.62s forwards;
+}
+
+.latest-note-toggle {
+    width: 100%;
+    min-height: 44px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 13px 10px 15px;
+    border: 1px solid rgba(255, 180, 212, 0.5);
+    border-radius: 18px;
+    background:
+        linear-gradient(rgba(255, 255, 255, 0.74), rgba(255, 246, 251, 0.56)),
+        repeating-linear-gradient(90deg, rgba(255, 231, 242, 0.25) 0 9px, rgba(255, 250, 253, 0.25) 9px 18px);
+    color: rgba(122, 76, 92, 0.76);
+    font-family: "Comic Sans MS", "Trebuchet MS", cursive;
+    font-size: 13px;
+    font-weight: 700;
+    text-align: left;
+    box-shadow:
+        0 6px 15px rgba(255, 145, 195, 0.11),
+        inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+.latest-note-toggle span:first-child {
+    overflow-wrap: anywhere;
+}
+
+.latest-note-caret {
+    width: 24px;
+    height: 24px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    background: rgba(255, 218, 234, 0.7);
+    color: rgba(174, 85, 130, 0.78);
+    transition: transform 0.18s ease;
+}
+
+.latest-note.open .latest-note-caret {
+    transform: rotate(180deg);
+}
+
+.latest-note-body {
+    margin-top: 8px;
+    padding: 12px 14px;
+    border: 1px solid rgba(255, 214, 230, 0.58);
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.68);
+    color: rgba(82, 75, 80, 0.78);
+    font-size: 13px;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    box-shadow: 0 8px 18px rgba(255, 145, 195, 0.1);
+}
+
+.footer-bubble-field {
+    position: fixed;
+    inset: 0;
+    z-index: 34;
+    pointer-events: none;
+    overflow: hidden;
+    contain: strict;
+}
+
+.footer-play-bubble {
+    position: absolute;
+    left: var(--bubble-x);
+    top: var(--bubble-y);
+    width: var(--bubble-size);
+    height: var(--bubble-size);
+    border-radius: 999px;
+    background:
+        radial-gradient(circle at 32% 28%, rgba(255, 255, 255, 0.96) 0 13%, transparent 15%),
+        radial-gradient(circle at 44% 44%, rgba(255, 238, 247, 0.9), rgba(255, 166, 205, 0.34) 54%, rgba(255, 145, 195, 0.12));
+    border: 1px solid rgba(255, 180, 212, 0.32);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.74),
+        0 10px 24px rgba(255, 145, 195, 0.12);
+    opacity: 0;
+    transform: translate(-50%, 18px) scale(0.58);
+    will-change: transform, opacity;
+    animation:
+        footerBubbleBorn 0.58s cubic-bezier(0.18, 0.9, 0.22, 1.24) forwards,
+        footerBubbleFloat var(--bubble-duration, 5.8s) ease-in-out 0.58s infinite;
+}
+
+.footer-play-bubble.settled {
+    will-change: transform;
+}
+
+.footer-play-bubble.popping {
+    animation: footerBubblePop 0.42s cubic-bezier(0.25, 0.86, 0.3, 1) var(--pop-delay, 0ms) forwards;
+}
+
 @media (max-height: 720px) {
     .site-brand-footer {
         margin-top: 42px;
@@ -843,6 +950,41 @@ button {
     to {
         opacity: 1;
         transform: translateY(0);
+    }
+}
+
+@keyframes footerBubbleBorn {
+    64% {
+        opacity: 0.82;
+        transform: translate(-50%, -10px) scale(1.08);
+    }
+
+    to {
+        opacity: 0.72;
+        transform: translate(-50%, 0) scale(1);
+    }
+}
+
+@keyframes footerBubbleFloat {
+    0%,
+    100% {
+        transform: translate(-50%, 0) translateX(0) scale(1);
+    }
+
+    50% {
+        transform: translate(-50%, -22px) translateX(var(--bubble-drift, 26px)) scale(1.035);
+    }
+}
+
+@keyframes footerBubblePop {
+    55% {
+        opacity: 0.82;
+        transform: translate(-50%, -10px) scale(1.16);
+    }
+
+    to {
+        opacity: 0;
+        transform: translate(-50%, -16px) scale(0);
     }
 }
 
@@ -1298,6 +1440,137 @@ body.kofi-public-hidden #doll-kofi-scrim {
     pointer-events: none !important;
 }
 
+body.site-maintenance-active {
+    overflow: hidden;
+}
+
+body.site-maintenance-active .main-screen,
+body.site-maintenance-active .popup,
+body.site-maintenance-active .submit-popup,
+body.site-maintenance-active .admin-gate,
+body.site-maintenance-active .terms-privacy-modal {
+    filter: blur(6px);
+    pointer-events: none;
+    user-select: none;
+}
+
+body.site-maintenance-active [id^="kofi-widget-overlay-"],
+body.site-maintenance-active .floatingchat-container,
+body.site-maintenance-active .floatingchat-container-mobi,
+body.site-maintenance-active #doll-kofi-scrim,
+body.site-maintenance-active #doll-throne-overlay {
+    display: none !important;
+}
+
+.site-maintenance-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 12000;
+    display: grid;
+    place-items: center;
+    padding: 22px;
+    background:
+        radial-gradient(circle at 18% 22%, rgba(255, 255, 255, 0.58), transparent 22%),
+        radial-gradient(circle at 78% 68%, rgba(255, 204, 228, 0.34), transparent 26%),
+        rgba(255, 247, 251, 0.42);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 0.34s ease, visibility 0.34s ease;
+}
+
+body.site-maintenance-active .site-maintenance-overlay {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+}
+
+.site-maintenance-card {
+    position: relative;
+    width: min(86vw, 360px);
+    padding: 28px 24px 26px;
+    border: 1px solid rgba(255, 180, 212, 0.58);
+    border-radius: 24px;
+    background:
+        linear-gradient(rgba(255, 255, 255, 0.84), rgba(255, 246, 251, 0.76)),
+        repeating-linear-gradient(90deg, rgba(255, 231, 242, 0.26) 0 10px, rgba(255, 250, 253, 0.26) 10px 20px);
+    color: rgba(82, 75, 80, 0.82);
+    text-align: center;
+    box-shadow:
+        0 18px 40px rgba(255, 145, 195, 0.2),
+        inset 0 1px 0 rgba(255, 255, 255, 0.82);
+    overflow: hidden;
+    transform: translateY(8px) scale(0.98);
+    transition: transform 0.34s ease;
+}
+
+body.site-maintenance-active .site-maintenance-card {
+    transform: translateY(0) scale(1);
+}
+
+.site-maintenance-kicker {
+    margin: 0 0 8px;
+    color: rgba(174, 85, 130, 0.72);
+    font-family: "Comic Sans MS", "Trebuchet MS", cursive;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.site-maintenance-card h2 {
+    position: relative;
+    margin: 0 0 10px;
+    color: rgba(122, 76, 92, 0.88);
+    font-family: "Comic Sans MS", "Trebuchet MS", cursive;
+    font-size: 24px;
+    line-height: 1.1;
+}
+
+.site-maintenance-card > p:not(.site-maintenance-kicker):not(.site-maintenance-eta) {
+    position: relative;
+    margin: 0;
+    color: rgba(122, 76, 92, 0.68);
+    font-size: 14px;
+    line-height: 1.45;
+}
+
+.site-maintenance-eta:not(:empty) {
+    width: fit-content;
+    max-width: 100%;
+    margin: 14px auto 0;
+    padding: 6px 11px;
+    border: 1px solid rgba(255, 180, 212, 0.46);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.54);
+    color: rgba(174, 85, 130, 0.74);
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.site-maintenance-bubble {
+    position: absolute;
+    border-radius: 999px;
+    background:
+        radial-gradient(circle at 34% 30%, rgba(255, 255, 255, 0.95) 0 16%, transparent 18%),
+        radial-gradient(circle at 50% 52%, rgba(255, 212, 232, 0.62), rgba(255, 145, 195, 0.16));
+    opacity: 0.5;
+    animation: tourBubbleFloat 4.8s ease-in-out infinite;
+}
+
+.site-maintenance-bubble-one {
+    width: 74px;
+    height: 74px;
+    left: -24px;
+    top: -22px;
+}
+
+.site-maintenance-bubble-two {
+    width: 42px;
+    height: 42px;
+    right: 20px;
+    bottom: 18px;
+    animation-delay: -1.2s;
+}
+
 body.first-visit-tour-active .main-screen header,
 body.first-visit-tour-active .main-screen .content-area,
 body.first-visit-tour-active .main-screen .site-brand-footer {
@@ -1428,6 +1701,15 @@ body.first-visit-tour-active .tour-highlight-target {
     top: 57%;
     --bubble-speed: 4.9s;
     animation-delay: 0s, -2s;
+}
+
+.tour-bubble-six {
+    width: 86px;
+    height: 86px;
+    right: 24%;
+    top: 40%;
+    --bubble-speed: 5.6s;
+    animation-delay: 0s, -1.1s;
 }
 
 .tour-arrow-svg {

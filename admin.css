@@ -914,9 +914,172 @@ h1 {
     font-weight: 700;
 }
 
+.admin-url-field input,
+.admin-url-field textarea {
+    width: 100%;
+    border: 1px solid var(--admin-line);
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.76);
+    color: var(--admin-ink);
+    outline: none;
+    box-shadow: inset 0 1px 3px rgba(255, 145, 198, 0.08);
+}
+
 .admin-url-field input {
     min-height: 42px;
+    padding: 0 12px;
     font-size: 13px;
+}
+
+.admin-url-field textarea {
+    min-height: 86px;
+    padding: 10px 12px;
+    resize: vertical;
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+.admin-field-grid {
+    display: grid;
+    gap: 10px;
+}
+
+.admin-inline-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+}
+
+.admin-inline-actions button,
+.admin-soft-link {
+    min-height: 34px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 12px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.admin-soft-link {
+    border: 1px solid var(--admin-line);
+    background: rgba(255, 255, 255, 0.78);
+    color: rgba(122, 76, 92, 0.78);
+    text-decoration: none;
+}
+
+.admin-health-list {
+    display: grid;
+    gap: 7px;
+    margin-top: 10px;
+}
+
+.admin-health-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    align-items: center;
+    min-height: 34px;
+    padding: 8px 10px;
+    border: 1px solid rgba(255, 214, 230, 0.58);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.5);
+    color: var(--admin-muted);
+    font-size: 12px;
+}
+
+.admin-health-row strong,
+.admin-preview-pill {
+    flex: 0 0 auto;
+    min-width: 38px;
+    padding: 4px 8px;
+    border-radius: 999px;
+    text-align: center;
+    font-size: 10px;
+    font-weight: 800;
+}
+
+.admin-health-row.is-pending strong {
+    background: rgba(255, 238, 247, 0.9);
+    color: rgba(174, 85, 130, 0.62);
+}
+
+.admin-health-row.is-ok strong {
+    background: rgba(226, 255, 236, 0.9);
+    color: rgba(64, 132, 88, 0.82);
+}
+
+.admin-health-row.is-bad strong {
+    background: rgba(255, 229, 236, 0.92);
+    color: rgba(193, 70, 103, 0.88);
+}
+
+.admin-toggle-grid {
+    display: grid;
+    gap: 9px;
+}
+
+.admin-toggle-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 12px;
+    align-items: center;
+    padding: 12px;
+    border: 1px solid rgba(255, 214, 230, 0.58);
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.46);
+}
+
+.admin-toggle-row > span:first-child {
+    min-width: 0;
+    display: grid;
+    gap: 3px;
+}
+
+.admin-toggle-row strong {
+    color: rgba(122, 76, 92, 0.86);
+    font-size: 13px;
+}
+
+.admin-toggle-row small {
+    color: var(--admin-muted);
+    font-size: 11px;
+}
+
+.admin-seo-preview {
+    display: grid;
+    gap: 5px;
+    padding: 13px;
+    border: 1px solid rgba(255, 214, 230, 0.58);
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.58);
+}
+
+.admin-seo-preview span {
+    color: rgba(64, 118, 76, 0.84);
+    font-size: 11px;
+}
+
+.admin-seo-preview strong {
+    color: rgba(88, 77, 154, 0.88);
+    font-size: 15px;
+    line-height: 1.22;
+    overflow-wrap: anywhere;
+}
+
+.admin-seo-preview p {
+    margin: 0;
+    color: rgba(82, 75, 80, 0.72);
+    font-size: 12px;
+    line-height: 1.35;
+}
+
+.admin-preview-pill {
+    border: 1px solid rgba(255, 214, 230, 0.64);
+    background: rgba(255, 255, 255, 0.56);
+    color: rgba(174, 85, 130, 0.68);
 }
 
 .admin-widget-note {

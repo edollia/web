@@ -10,7 +10,19 @@ const DEFAULT_LINK_SETTINGS = {
     kofi_url: 'https://ko-fi.com/edoll',
     kofi_enabled: true,
     throne_url: 'https://throne.com/edoll',
-    throne_enabled: true
+    throne_enabled: true,
+    latest_note_enabled: false,
+    latest_note_title: 'latest note',
+    latest_note_body: '',
+    maintenance_enabled: false,
+    maintenance_title: 'tiny update in progress',
+    maintenance_message: 'Lia is polishing things. Come back in a bit.',
+    maintenance_eta: '',
+    drawings_enabled: true,
+    questions_enabled: true,
+    seo_title: 'Lia | doll.gg',
+    seo_description: "Lia's little space for messages, posts, socials and more.",
+    site_tagline: "Lia's little space for messages, posts, socials and more."
 };
 
 const adminClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -85,7 +97,28 @@ const els = {
     kofiState: document.getElementById('kofi-state'),
     throneEnabled: document.getElementById('throne-enabled'),
     throneUrl: document.getElementById('throne-url'),
-    throneState: document.getElementById('throne-state')
+    throneState: document.getElementById('throne-state'),
+    latestNoteEnabled: document.getElementById('latest-note-enabled'),
+    latestNoteTitle: document.getElementById('latest-note-title'),
+    latestNoteBody: document.getElementById('latest-note-body-input'),
+    latestNoteState: document.getElementById('latest-note-state'),
+    maintenanceEnabled: document.getElementById('maintenance-enabled'),
+    maintenanceTitle: document.getElementById('maintenance-title'),
+    maintenanceMessage: document.getElementById('maintenance-message'),
+    maintenanceEta: document.getElementById('maintenance-eta'),
+    maintenanceState: document.getElementById('maintenance-state'),
+    drawingsEnabled: document.getElementById('drawings-enabled'),
+    questionsEnabled: document.getElementById('questions-enabled'),
+    submissionsState: document.getElementById('submissions-state'),
+    seoTitle: document.getElementById('seo-title'),
+    seoDescription: document.getElementById('seo-description'),
+    siteTagline: document.getElementById('site-tagline'),
+    seoState: document.getElementById('seo-state'),
+    seoPreviewTitle: document.getElementById('seo-preview-title'),
+    seoPreviewDescription: document.getElementById('seo-preview-description'),
+    healthState: document.getElementById('health-state'),
+    healthCheck: document.getElementById('admin-health-check'),
+    runHealthCheck: document.getElementById('run-health-check')
 };
 
 function showPanel(panel) {
@@ -295,7 +328,19 @@ function normalizeLinkSettings(value) {
         kofi_url: String(settings.kofi_url || DEFAULT_LINK_SETTINGS.kofi_url),
         kofi_enabled: settings.kofi_enabled !== false,
         throne_url: String(settings.throne_url || DEFAULT_LINK_SETTINGS.throne_url),
-        throne_enabled: settings.throne_enabled !== false
+        throne_enabled: settings.throne_enabled !== false,
+        latest_note_enabled: settings.latest_note_enabled === true,
+        latest_note_title: String(settings.latest_note_title || DEFAULT_LINK_SETTINGS.latest_note_title),
+        latest_note_body: String(settings.latest_note_body || ''),
+        maintenance_enabled: settings.maintenance_enabled === true,
+        maintenance_title: String(settings.maintenance_title || DEFAULT_LINK_SETTINGS.maintenance_title),
+        maintenance_message: String(settings.maintenance_message || DEFAULT_LINK_SETTINGS.maintenance_message),
+        maintenance_eta: String(settings.maintenance_eta || ''),
+        drawings_enabled: settings.drawings_enabled !== false,
+        questions_enabled: settings.questions_enabled !== false,
+        seo_title: String(settings.seo_title || DEFAULT_LINK_SETTINGS.seo_title),
+        seo_description: String(settings.seo_description || DEFAULT_LINK_SETTINGS.seo_description),
+        site_tagline: String(settings.site_tagline || DEFAULT_LINK_SETTINGS.site_tagline)
     };
 }
 
@@ -312,6 +357,22 @@ function renderLinkSettings() {
     if (els.throneEnabled) els.throneEnabled.checked = settings.throne_enabled !== false;
     if (els.throneUrl) els.throneUrl.value = settings.throne_url || '';
     if (els.throneState) els.throneState.textContent = settings.throne_enabled !== false ? 'visible' : 'hidden';
+    if (els.latestNoteEnabled) els.latestNoteEnabled.checked = settings.latest_note_enabled === true;
+    if (els.latestNoteTitle) els.latestNoteTitle.value = settings.latest_note_title || '';
+    if (els.latestNoteBody) els.latestNoteBody.value = settings.latest_note_body || '';
+    if (els.latestNoteState) els.latestNoteState.textContent = settings.latest_note_enabled === true ? 'visible' : 'hidden';
+    if (els.maintenanceEnabled) els.maintenanceEnabled.checked = settings.maintenance_enabled === true;
+    if (els.maintenanceTitle) els.maintenanceTitle.value = settings.maintenance_title || '';
+    if (els.maintenanceMessage) els.maintenanceMessage.value = settings.maintenance_message || '';
+    if (els.maintenanceEta) els.maintenanceEta.value = settings.maintenance_eta || '';
+    if (els.maintenanceState) els.maintenanceState.textContent = settings.maintenance_enabled === true ? 'on' : 'off';
+    if (els.drawingsEnabled) els.drawingsEnabled.checked = settings.drawings_enabled !== false;
+    if (els.questionsEnabled) els.questionsEnabled.checked = settings.questions_enabled !== false;
+    if (els.submissionsState) els.submissionsState.textContent = getSubmissionsStateLabel(settings);
+    if (els.seoTitle) els.seoTitle.value = settings.seo_title || '';
+    if (els.seoDescription) els.seoDescription.value = settings.seo_description || '';
+    if (els.siteTagline) els.siteTagline.value = settings.site_tagline || '';
+    if (els.seoState) els.seoState.textContent = 'ready';
     if (els.linkSettingsForm) {
         els.linkSettingsForm.classList.toggle('settings-unavailable', !state.linkSettingsAvailable);
     }
@@ -327,8 +388,28 @@ function getDraftLinkSettings() {
         kofi_url: state.linkSettings.kofi_url || DEFAULT_LINK_SETTINGS.kofi_url,
         kofi_enabled: els.kofiEnabled?.checked !== false,
         throne_url: els.throneUrl?.value.trim() || state.linkSettings.throne_url || DEFAULT_LINK_SETTINGS.throne_url,
-        throne_enabled: els.throneEnabled?.checked !== false
+        throne_enabled: els.throneEnabled?.checked !== false,
+        latest_note_enabled: els.latestNoteEnabled?.checked === true,
+        latest_note_title: els.latestNoteTitle?.value.trim() || DEFAULT_LINK_SETTINGS.latest_note_title,
+        latest_note_body: els.latestNoteBody?.value.trim() || '',
+        maintenance_enabled: els.maintenanceEnabled?.checked === true,
+        maintenance_title: els.maintenanceTitle?.value.trim() || DEFAULT_LINK_SETTINGS.maintenance_title,
+        maintenance_message: els.maintenanceMessage?.value.trim() || DEFAULT_LINK_SETTINGS.maintenance_message,
+        maintenance_eta: els.maintenanceEta?.value.trim() || '',
+        drawings_enabled: els.drawingsEnabled?.checked !== false,
+        questions_enabled: els.questionsEnabled?.checked !== false,
+        seo_title: els.seoTitle?.value.trim() || DEFAULT_LINK_SETTINGS.seo_title,
+        seo_description: els.seoDescription?.value.trim() || DEFAULT_LINK_SETTINGS.seo_description,
+        site_tagline: els.siteTagline?.value.trim() || DEFAULT_LINK_SETTINGS.site_tagline
     };
+}
+
+function getSubmissionsStateLabel(settings) {
+    const doods = settings.drawings_enabled !== false;
+    const asks = settings.questions_enabled !== false;
+    if (doods && asks) return 'open';
+    if (!doods && !asks) return 'paused';
+    return doods ? 'asks paused' : 'doods paused';
 }
 
 function syncLinkDraftLabels(settings = getDraftLinkSettings()) {
@@ -336,9 +417,17 @@ function syncLinkDraftLabels(settings = getDraftLinkSettings()) {
     if (els.instagramState) els.instagramState.textContent = settings.instagram_enabled !== false ? 'visible' : 'hidden';
     if (els.kofiState) els.kofiState.textContent = settings.kofi_enabled !== false ? 'visible' : 'hidden';
     if (els.throneState) els.throneState.textContent = settings.throne_enabled !== false ? 'visible' : 'hidden';
-    ['snapchat', 'instagram', 'kofi', 'throne'].forEach(key => {
-        document.querySelector(`[data-link-card="${key}"]`)
-            ?.classList.toggle('is-disabled', settings[`${key}_enabled`] === false);
+    if (els.latestNoteState) els.latestNoteState.textContent = settings.latest_note_enabled === true ? 'visible' : 'hidden';
+    if (els.maintenanceState) els.maintenanceState.textContent = settings.maintenance_enabled === true ? 'on' : 'off';
+    if (els.submissionsState) els.submissionsState.textContent = getSubmissionsStateLabel(settings);
+    if (els.seoPreviewTitle) els.seoPreviewTitle.textContent = settings.seo_title || DEFAULT_LINK_SETTINGS.seo_title;
+    if (els.seoPreviewDescription) els.seoPreviewDescription.textContent = settings.seo_description || DEFAULT_LINK_SETTINGS.seo_description;
+    ['snapchat', 'instagram', 'kofi', 'throne', 'latest-note', 'maintenance', 'submissions'].forEach(key => {
+        const settingKey = key.replace('-', '_');
+        const disabled = key === 'submissions'
+            ? settings.drawings_enabled === false && settings.questions_enabled === false
+            : settings[`${settingKey}_enabled`] === false;
+        document.querySelector(`[data-link-card="${key}"]`)?.classList.toggle('is-disabled', disabled);
     });
 }
 
@@ -350,19 +439,26 @@ function renderLinkPreview() {
         ['Snapchat', 'snapchat'],
         ['Instagram', 'instagram'],
         ['Ko-fi', 'kofi'],
-        ['Throne', 'throne']
+        ['Throne', 'throne'],
+        ['Doodles', 'drawings'],
+        ['Questions', 'questions'],
+        ['Latest note', 'latest_note'],
+        ['Working mode', 'maintenance']
     ];
 
     els.linkSettingsPreview.innerHTML = rows.map(([label, key]) => {
         const enabled = settings[`${key}_enabled`] !== false;
         const url = settings[`${key}_url`] || DEFAULT_LINK_SETTINGS[`${key}_url`];
+        const isLink = Boolean(url);
         return `
             <article class="admin-link-preview-row ${enabled ? '' : 'is-disabled'}">
                 <div>
                     <strong>${escapeHtml(label)}</strong>
                     <span>${enabled ? 'visible' : 'hidden'}</span>
                 </div>
-                <button class="soft" type="button" data-link-preview="${escapeHtml(url)}">open</button>
+                ${isLink
+                    ? `<button class="soft" type="button" data-link-preview="${escapeHtml(url)}">open</button>`
+                    : '<span class="admin-preview-pill">setting</span>'}
             </article>
         `;
     }).join('');
@@ -712,14 +808,26 @@ async function saveLinkSettings(event) {
             kofi_url: state.linkSettings.kofi_url || DEFAULT_LINK_SETTINGS.kofi_url,
             kofi_enabled: els.kofiEnabled?.checked !== false,
             throne_url: cleanUrl(els.throneUrl?.value, 'Throne'),
-            throne_enabled: els.throneEnabled?.checked !== false
+            throne_enabled: els.throneEnabled?.checked !== false,
+            latest_note_enabled: els.latestNoteEnabled?.checked === true,
+            latest_note_title: els.latestNoteTitle?.value.trim() || DEFAULT_LINK_SETTINGS.latest_note_title,
+            latest_note_body: els.latestNoteBody?.value.trim() || '',
+            maintenance_enabled: els.maintenanceEnabled?.checked === true,
+            maintenance_title: els.maintenanceTitle?.value.trim() || DEFAULT_LINK_SETTINGS.maintenance_title,
+            maintenance_message: els.maintenanceMessage?.value.trim() || DEFAULT_LINK_SETTINGS.maintenance_message,
+            maintenance_eta: els.maintenanceEta?.value.trim() || '',
+            drawings_enabled: els.drawingsEnabled?.checked !== false,
+            questions_enabled: els.questionsEnabled?.checked !== false,
+            seo_title: els.seoTitle?.value.trim() || DEFAULT_LINK_SETTINGS.seo_title,
+            seo_description: els.seoDescription?.value.trim() || DEFAULT_LINK_SETTINGS.seo_description,
+            site_tagline: els.siteTagline?.value.trim() || DEFAULT_LINK_SETTINGS.site_tagline
         };
     } catch (error) {
         setStatus(els.adminStatus, error.message || 'Check the links.');
         return;
     }
 
-    setStatus(els.adminStatus, 'saving links...');
+    setStatus(els.adminStatus, 'saving settings...');
     const { error } = await adminClient
         .from('site_settings')
         .upsert({
@@ -736,13 +844,86 @@ async function saveLinkSettings(event) {
     }
 
     await loadAdminData();
-    setStatus(els.adminStatus, 'links saved');
+    setStatus(els.adminStatus, 'settings saved');
 }
 
 function resetLinkSettings() {
     state.linkSettings = { ...DEFAULT_LINK_SETTINGS };
     renderLinkSettings();
     setStatus(els.adminStatus, 'defaults loaded, save to publish');
+}
+
+async function runSiteHealthCheck() {
+    if (!els.healthCheck) return;
+    const checks = [
+        {
+            label: 'settings table',
+            run: async () => state.linkSettingsAvailable
+        },
+        {
+            label: 'front page',
+            run: async () => {
+                const response = await fetch('../index.html', { cache: 'no-store' });
+                const text = await response.text();
+                return response.ok && text.includes('site-structured-data');
+            }
+        },
+        {
+            label: 'sitemap',
+            run: async () => (await fetch('../sitemap.xml', { cache: 'no-store' })).ok
+        },
+        {
+            label: 'robots',
+            run: async () => {
+                const response = await fetch('../robots.txt', { cache: 'no-store' });
+                const text = await response.text();
+                return response.ok && text.includes('Sitemap: https://doll.gg/sitemap.xml');
+            }
+        },
+        {
+            label: 'admin noindex',
+            run: async () => {
+                const response = await fetch('./index.html', { cache: 'no-store' });
+                const text = await response.text();
+                return response.ok && text.includes('noindex');
+            }
+        },
+        {
+            label: 'favicon',
+            run: async () => (await fetch('../favicon.png', { method: 'HEAD', cache: 'no-store' })).ok
+        },
+        {
+            label: 'share image',
+            run: async () => (await fetch('../og-image.png', { method: 'HEAD', cache: 'no-store' })).ok
+        }
+    ];
+
+    if (els.healthState) els.healthState.textContent = 'checking';
+    els.healthCheck.innerHTML = checks.map(check => `
+        <div class="admin-health-row is-pending">
+            <span>${escapeHtml(check.label)}</span>
+            <strong>...</strong>
+        </div>
+    `).join('');
+
+    const rows = Array.from(els.healthCheck.querySelectorAll('.admin-health-row'));
+    let passed = 0;
+    for (let index = 0; index < checks.length; index += 1) {
+        let ok = false;
+        try {
+            ok = await checks[index].run();
+        } catch (error) {
+            ok = false;
+        }
+        rows[index]?.classList.toggle('is-pending', false);
+        rows[index]?.classList.toggle('is-ok', ok);
+        rows[index]?.classList.toggle('is-bad', !ok);
+        const result = rows[index]?.querySelector('strong');
+        if (result) result.textContent = ok ? 'ok' : 'fix';
+        if (ok) passed += 1;
+    }
+
+    if (els.healthState) els.healthState.textContent = `${passed}/${checks.length}`;
 }
 
 async function runBanAction(button) {
@@ -923,6 +1104,7 @@ async function init() {
     els.chatBanForm?.addEventListener('submit', saveChatBan);
     els.linkSettingsForm?.addEventListener('submit', saveLinkSettings);
     els.linkSettingsReset?.addEventListener('click', resetLinkSettings);
+    els.runHealthCheck?.addEventListener('click', runSiteHealthCheck);
     els.linkSettingsPreview?.addEventListener('click', e => {
         const button = e.target.closest('button[data-link-preview]');
         const url = button?.dataset.linkPreview;
@@ -933,7 +1115,19 @@ async function init() {
         toggle.addEventListener('keydown', e => e.stopPropagation());
         toggle.addEventListener('change', renderLinkPreview);
     });
-    [els.snapchatUrl, els.instagramUrl, els.throneUrl].forEach(input => {
+    [
+        els.snapchatUrl,
+        els.instagramUrl,
+        els.throneUrl,
+        els.latestNoteTitle,
+        els.latestNoteBody,
+        els.maintenanceTitle,
+        els.maintenanceMessage,
+        els.maintenanceEta,
+        els.seoTitle,
+        els.seoDescription,
+        els.siteTagline
+    ].forEach(input => {
         input?.addEventListener('input', renderLinkPreview);
     });
     els.streamBans?.addEventListener('click', e => {

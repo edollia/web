@@ -30,7 +30,19 @@ values (
         "kofi_url": "https://ko-fi.com/edoll",
         "kofi_enabled": true,
         "throne_url": "https://throne.com/edoll",
-        "throne_enabled": true
+        "throne_enabled": true,
+        "latest_note_enabled": false,
+        "latest_note_title": "latest note",
+        "latest_note_body": "",
+        "maintenance_enabled": false,
+        "maintenance_title": "tiny update in progress",
+        "maintenance_message": "Lia is polishing things. Come back in a bit.",
+        "maintenance_eta": "",
+        "drawings_enabled": true,
+        "questions_enabled": true,
+        "seo_title": "Lia | doll.gg",
+        "seo_description": "Lia''s little space for messages, posts, socials and more.",
+        "site_tagline": "Lia''s little space for messages, posts, socials and more."
     }'::jsonb
 )
 on conflict (id) do update

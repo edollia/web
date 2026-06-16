@@ -7,7 +7,19 @@ document.addEventListener("DOMContentLoaded", async function() {
         kofi_url: 'https://ko-fi.com/edoll',
         kofi_enabled: true,
         throne_url: 'https://throne.com/edoll',
-        throne_enabled: true
+        throne_enabled: true,
+        latest_note_enabled: false,
+        latest_note_title: 'latest note',
+        latest_note_body: '',
+        maintenance_enabled: false,
+        maintenance_title: 'tiny update in progress',
+        maintenance_message: 'Lia is polishing things. Come back in a bit.',
+        maintenance_eta: '',
+        drawings_enabled: true,
+        questions_enabled: true,
+        seo_title: 'Lia | doll.gg',
+        seo_description: "Lia's little space for messages, posts, socials and more.",
+        site_tagline: "Lia's little space for messages, posts, socials and more."
     };
     let siteLinkSettings = { ...DEFAULT_LINK_SETTINGS };
     let applySiteLinkSettingsToDom = null;
@@ -760,7 +772,19 @@ document.addEventListener("DOMContentLoaded", async function() {
             kofi_url: String(settings.kofi_url || DEFAULT_LINK_SETTINGS.kofi_url),
             kofi_enabled: settings.kofi_enabled !== false,
             throne_url: String(settings.throne_url || DEFAULT_LINK_SETTINGS.throne_url),
-            throne_enabled: settings.throne_enabled !== false
+            throne_enabled: settings.throne_enabled !== false,
+            latest_note_enabled: settings.latest_note_enabled === true,
+            latest_note_title: String(settings.latest_note_title || DEFAULT_LINK_SETTINGS.latest_note_title),
+            latest_note_body: String(settings.latest_note_body || ''),
+            maintenance_enabled: settings.maintenance_enabled === true,
+            maintenance_title: String(settings.maintenance_title || DEFAULT_LINK_SETTINGS.maintenance_title),
+            maintenance_message: String(settings.maintenance_message || DEFAULT_LINK_SETTINGS.maintenance_message),
+            maintenance_eta: String(settings.maintenance_eta || ''),
+            drawings_enabled: settings.drawings_enabled !== false,
+            questions_enabled: settings.questions_enabled !== false,
+            seo_title: String(settings.seo_title || DEFAULT_LINK_SETTINGS.seo_title),
+            seo_description: String(settings.seo_description || DEFAULT_LINK_SETTINGS.seo_description),
+            site_tagline: String(settings.site_tagline || DEFAULT_LINK_SETTINGS.site_tagline)
         };
     }
 
@@ -1080,6 +1104,10 @@ document.addEventListener("DOMContentLoaded", async function() {
         toggleButton.addEventListener('click', function(e) {
             e.preventDefault();
             e.stopPropagation();
+            if (siteLinkSettings.drawings_enabled === false) {
+                showSubmitPopup("Doodles are paused for a bit.");
+                return;
+            }
             playUiSound('tap');
             const open = drawingWidget.classList.contains('active');
             if (open) {
@@ -1118,9 +1146,20 @@ document.addEventListener("DOMContentLoaded", async function() {
     const supportMenuButton = document.getElementById('support-menu-button');
     const actionMenuButton = document.getElementById('action-menu-button');
     const actionOptions = actionMenuButton?.querySelector('.action-options');
+    const publicAskButton = document.getElementById('ask-button');
     const donateOption = document.getElementById('donate-option');
+    const siteBrandButton = document.getElementById('site-brand-button');
+    const footerBubbleField = document.getElementById('footer-bubble-field');
+    const latestNote = document.getElementById('latest-note');
+    const latestNoteToggle = document.getElementById('latest-note-toggle');
+    const latestNoteTitle = document.getElementById('latest-note-title');
+    const latestNoteBody = document.getElementById('latest-note-body');
+    const maintenanceOverlay = document.getElementById('site-maintenance-overlay');
+    const maintenanceTitle = document.getElementById('site-maintenance-title');
+    const maintenanceMessage = document.getElementById('site-maintenance-message');
+    const maintenanceEta = document.getElementById('site-maintenance-eta');
     const FIRST_VISIT_TOUR_KEY = 'doll_first_visit_tour_seen_v1';
-    const FIRST_VISIT_TOUR_DEBUG = false;
+    const FIRST_VISIT_TOUR_FORCE = new URLSearchParams(window.location.search).get('previewTour') === '1';
     let activeKofiWidgetHandle = 'edoll';
 
     function getPublicLink(key) {
@@ -1144,20 +1183,99 @@ document.addEventListener("DOMContentLoaded", async function() {
             const data = JSON.parse(structuredData.textContent);
             const graph = Array.isArray(data['@graph']) ? data['@graph'] : [];
             const websiteNode = graph.find(node => node['@type'] === 'WebSite');
+            const pageTitle = siteLinkSettings.seo_title || DEFAULT_LINK_SETTINGS.seo_title;
+            const pageDescription = siteLinkSettings.seo_description || DEFAULT_LINK_SETTINGS.seo_description;
             const sameAs = ['instagram', 'snapchat', 'kofi', 'throne']
                 .filter(isPublicLinkEnabled)
                 .map(getPublicLink)
                 .filter(Boolean);
 
-            if (websiteNode) websiteNode.sameAs = sameAs;
+            if (websiteNode) {
+                websiteNode.sameAs = sameAs;
+                websiteNode.description = pageDescription;
+            }
             graph
                 .filter(node => node['@type'] === 'Person')
                 .forEach(node => {
                     node.sameAs = sameAs;
                 });
+            graph
+                .filter(node => node['@type'] === 'WebPage' || node['@type'] === 'ProfilePage')
+                .forEach(node => {
+                    node.name = pageTitle;
+                    node.description = pageDescription;
+                });
             structuredData.textContent = JSON.stringify(data, null, 2);
         } catch (error) {
             // Keep the static structured data if parsing ever fails.
+        }
+    }
+
+    function renderLatestNote() {
+        if (!latestNote || !latestNoteTitle || !latestNoteBody || !latestNoteToggle) return;
+        const enabled = siteLinkSettings.latest_note_enabled === true && siteLinkSettings.latest_note_body.trim();
+        latestNote.hidden = !enabled;
+        latestNoteToggle.setAttribute('aria-expanded', latestNoteBody.hidden ? 'false' : 'true');
+        if (!enabled) {
+            latestNoteBody.hidden = true;
+            latestNote.classList.remove('open');
+            return;
+        }
+
+        latestNoteTitle.textContent = siteLinkSettings.latest_note_title || DEFAULT_LINK_SETTINGS.latest_note_title;
+        latestNoteBody.textContent = siteLinkSettings.latest_note_body;
+    }
+
+    function renderMaintenanceMode() {
+        const enabled = siteLinkSettings.maintenance_enabled === true;
+        document.body.classList.toggle('site-maintenance-active', enabled);
+        if (!maintenanceOverlay) return;
+        maintenanceOverlay.setAttribute('aria-hidden', enabled ? 'false' : 'true');
+        if (maintenanceTitle) maintenanceTitle.textContent = siteLinkSettings.maintenance_title || DEFAULT_LINK_SETTINGS.maintenance_title;
+        if (maintenanceMessage) maintenanceMessage.textContent = siteLinkSettings.maintenance_message || DEFAULT_LINK_SETTINGS.maintenance_message;
+        if (maintenanceEta) {
+            maintenanceEta.textContent = siteLinkSettings.maintenance_eta ? siteLinkSettings.maintenance_eta : '';
+            maintenanceEta.hidden = !siteLinkSettings.maintenance_eta;
+        }
+    }
+
+    function syncMetaContent(selector, value) {
+        const element = document.head.querySelector(selector);
+        if (element) element.setAttribute('content', value);
+    }
+
+    function renderSeoSettings() {
+        const title = siteLinkSettings.seo_title || DEFAULT_LINK_SETTINGS.seo_title;
+        const description = siteLinkSettings.seo_description || DEFAULT_LINK_SETTINGS.seo_description;
+        document.title = title;
+        syncMetaContent('meta[name="description"]', description);
+        syncMetaContent('meta[property="og:title"]', title);
+        syncMetaContent('meta[property="og:description"]', description);
+        syncMetaContent('meta[name="twitter:title"]', title);
+        syncMetaContent('meta[name="twitter:description"]', description);
+    }
+
+    function renderSubmissionControls() {
+        const drawingsEnabled = siteLinkSettings.drawings_enabled !== false;
+        const questionsEnabled = siteLinkSettings.questions_enabled !== false;
+        if (toggleButton) {
+            toggleButton.classList.toggle('site-link-hidden', !drawingsEnabled);
+            toggleButton.setAttribute('aria-hidden', drawingsEnabled ? 'false' : 'true');
+            toggleButton.setAttribute('tabindex', drawingsEnabled ? '-1' : '-1');
+            if (!drawingsEnabled) closeDrawingWidget();
+        }
+        if (publicAskButton) {
+            publicAskButton.classList.toggle('site-link-hidden', !questionsEnabled);
+            publicAskButton.setAttribute('aria-hidden', questionsEnabled ? 'false' : 'true');
+            publicAskButton.setAttribute('tabindex', questionsEnabled ? '-1' : '-1');
+            if (!questionsEnabled) closeQuestionForm();
+        }
+        if (actionMenuButton) {
+            const hasActions = drawingsEnabled || questionsEnabled || Boolean(postsButton);
+            actionMenuButton.classList.toggle('site-link-hidden', !hasActions);
+            actionMenuButton.setAttribute('aria-hidden', hasActions ? 'false' : 'true');
+            actionMenuButton.setAttribute('tabindex', hasActions ? '0' : '-1');
+            if (!hasActions) closeActionMenu();
         }
     }
 
@@ -1202,6 +1320,10 @@ document.addEventListener("DOMContentLoaded", async function() {
             if (!hasVisibleLinks) closeSocialsMenu();
         }
         syncStructuredDataLinks();
+        renderSeoSettings();
+        renderSubmissionControls();
+        renderLatestNote();
+        renderMaintenanceMode();
     }
 
     function setKofiWidgetVisibility(visible) {
@@ -1359,7 +1481,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     }
 
     function scheduleFirstVisitTour() {
-        if (!FIRST_VISIT_TOUR_DEBUG) {
+        if (!FIRST_VISIT_TOUR_FORCE) {
             if (hasSeenFirstVisitTour()) return;
             markFirstVisitTourSeen();
         }
@@ -1367,6 +1489,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     }
 
     function startFirstVisitTour() {
+        if (siteLinkSettings.maintenance_enabled === true) return;
         const steps = [
             { element: socialsButton, label: 'contact', placement: 'up' },
             { element: supportMenuButton, label: 'wishlist', placement: 'down' },
@@ -1384,6 +1507,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             <span class="tour-bubble tour-bubble-three"></span>
             <span class="tour-bubble tour-bubble-four"></span>
             <span class="tour-bubble tour-bubble-five"></span>
+            <span class="tour-bubble tour-bubble-six"></span>
             <div class="tour-step-layer"></div>
         `;
         document.body.appendChild(overlay);
@@ -1480,6 +1604,60 @@ document.addEventListener("DOMContentLoaded", async function() {
 
         showStep();
     }
+
+    latestNoteToggle?.addEventListener('click', () => {
+        if (!latestNote || !latestNoteBody) return;
+        const nextOpen = latestNoteBody.hidden;
+        latestNoteBody.hidden = !nextOpen;
+        latestNote.classList.toggle('open', nextOpen);
+        latestNoteToggle.setAttribute('aria-expanded', nextOpen ? 'true' : 'false');
+    });
+
+    const footerBubblePool = [];
+    const footerBubbleLimit = 7;
+
+    function clearFooterBubbles(pop = false) {
+        if (!footerBubbleField) return;
+        const bubbles = Array.from(footerBubbleField.children);
+        footerBubblePool.length = 0;
+        if (!bubbles.length) return;
+        bubbles.forEach((bubble, index) => {
+            if (pop) {
+                bubble.style.setProperty('--pop-delay', `${index * 38}ms`);
+                bubble.classList.add('popping');
+                window.setTimeout(() => bubble.remove(), 520 + index * 38);
+            } else {
+                bubble.remove();
+            }
+        });
+    }
+
+    function addFooterBubble() {
+        if (!footerBubbleField) return;
+        if (footerBubblePool.length >= footerBubbleLimit) {
+            clearFooterBubbles(true);
+            return;
+        }
+
+        const bubble = document.createElement('span');
+        const size = Math.round(34 + Math.random() * 86);
+        const x = Math.round(8 + Math.random() * 84);
+        const y = Math.round(46 + Math.random() * 44);
+        const drift = Math.round((Math.random() - 0.5) * 84);
+        const duration = (4.8 + Math.random() * 2.6).toFixed(2);
+        bubble.className = 'footer-play-bubble';
+        bubble.style.cssText = `--bubble-size:${size}px;--bubble-x:${x}vw;--bubble-y:${y}vh;--bubble-drift:${drift}px;--bubble-duration:${duration}s;`;
+        footerBubbleField.appendChild(bubble);
+        footerBubblePool.push(bubble);
+        window.setTimeout(() => bubble.classList.add('settled'), 560);
+    }
+
+    siteBrandButton?.addEventListener('click', event => {
+        if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+        event.preventDefault();
+        playUiSound('tap');
+        addFooterBubble();
+    });
 
     socialsButton?.addEventListener('keydown', function(e) {
         if ((e.key === 'Enter' || e.key === ' ') && e.target === socialsButton) {
@@ -1835,6 +2013,11 @@ document.addEventListener("DOMContentLoaded", async function() {
         document.getElementById("send-drawing")?.addEventListener("click", async function() {
             const sendButton = this;
             if (sendButton.disabled) return;
+            if (siteLinkSettings.drawings_enabled === false) {
+                showSubmitPopup("Doodles are paused for a bit.");
+                showNoteImage();
+                return;
+            }
             const qualityError = getDrawingQualityError();
             if (qualityError) {
                 showSubmitPopup(qualityError);
@@ -1903,6 +2086,10 @@ document.addEventListener("DOMContentLoaded", async function() {
             askButton.addEventListener('click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
+                if (siteLinkSettings.questions_enabled === false) {
+                    showSubmitPopup("Questions are paused for a bit.");
+                    return;
+                }
                 playUiSound('tap');
                 const open = askFormContainer.style.display === 'block';
                 if (!open) {
@@ -1935,6 +2122,11 @@ document.addEventListener("DOMContentLoaded", async function() {
             sendQuestionBtn?.addEventListener('click', async function() {
                 const sendButton = this;
                 if (sendButton.disabled) return;
+                if (siteLinkSettings.questions_enabled === false) {
+                    showSubmitPopup("Questions are paused for a bit.");
+                    showNoteImage();
+                    return;
+                }
                 const question = askTextarea.value.trim();
                 if (!question) {
                     showSubmitPopup("Please enter a question first!");

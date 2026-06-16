@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="robots" content="noindex, nofollow">
     <title>Lia Admin</title>
-    <link rel="stylesheet" href="../admin.css?v=3.2">
+    <link rel="stylesheet" href="../admin.css?v=3.4">
 </head>
 <body>
     <main class="admin-shell">
@@ -187,11 +187,151 @@
                     <form class="admin-tool-card admin-links-card" id="link-settings-form">
                         <div>
                             <p class="admin-kicker">public buttons</p>
-                            <h2>social links</h2>
+                            <h2>site controls</h2>
                         </div>
-                        <p class="admin-tool-note">Turn a link off to hide it from the public menu without deleting the URL.</p>
+                        <p class="admin-tool-note">Turn links off without deleting URLs, preview the first-visit intro, post a cute note, or cover the site during updates.</p>
 
                         <div class="admin-link-card-stack">
+                            <details class="admin-link-card admin-control-card" open>
+                                <summary>
+                                    <div class="admin-link-card-title">
+                                        <span class="admin-link-icon">★</span>
+                                        <div>
+                                            <strong>quick checks</strong>
+                                            <small id="health-state">ready</small>
+                                        </div>
+                                    </div>
+                                </summary>
+                                <div class="admin-link-card-body">
+                                    <div class="admin-inline-actions">
+                                        <a class="admin-soft-link" href="../index.html?previewTour=1" target="_blank" rel="noopener noreferrer">preview intro</a>
+                                        <button class="soft" type="button" id="run-health-check">run health check</button>
+                                    </div>
+                                    <div class="admin-health-list" id="admin-health-check"></div>
+                                </div>
+                            </details>
+
+                            <details class="admin-link-card admin-control-card" data-link-card="maintenance">
+                                <summary>
+                                    <div class="admin-link-card-title">
+                                        <span class="admin-link-icon">W</span>
+                                        <div>
+                                            <strong>working mode</strong>
+                                            <small id="maintenance-state">off</small>
+                                        </div>
+                                    </div>
+                                    <label class="admin-switch">
+                                        <input id="maintenance-enabled" type="checkbox">
+                                        <span></span>
+                                    </label>
+                                </summary>
+                                <div class="admin-link-card-body admin-field-grid">
+                                    <label class="admin-url-field">
+                                        <span>headline</span>
+                                        <input id="maintenance-title" type="text" maxlength="80" placeholder="tiny update in progress">
+                                    </label>
+                                    <label class="admin-url-field">
+                                        <span>message</span>
+                                        <textarea id="maintenance-message" maxlength="220" placeholder="Lia is polishing things. Come back in a bit."></textarea>
+                                    </label>
+                                    <label class="admin-url-field">
+                                        <span>back around</span>
+                                        <input id="maintenance-eta" type="text" maxlength="80" placeholder="back around 8pm">
+                                    </label>
+                                </div>
+                            </details>
+
+                            <details class="admin-link-card admin-control-card" data-link-card="submissions">
+                                <summary>
+                                    <div class="admin-link-card-title">
+                                        <span class="admin-link-icon">P</span>
+                                        <div>
+                                            <strong>panic switches</strong>
+                                            <small id="submissions-state">open</small>
+                                        </div>
+                                    </div>
+                                </summary>
+                                <div class="admin-link-card-body admin-toggle-grid">
+                                    <label class="admin-toggle-row">
+                                        <span>
+                                            <strong>doodles</strong>
+                                            <small>hide drawing + block sends</small>
+                                        </span>
+                                        <span class="admin-switch">
+                                            <input id="drawings-enabled" type="checkbox">
+                                            <span></span>
+                                        </span>
+                                    </label>
+                                    <label class="admin-toggle-row">
+                                        <span>
+                                            <strong>questions</strong>
+                                            <small>hide ask + block sends</small>
+                                        </span>
+                                        <span class="admin-switch">
+                                            <input id="questions-enabled" type="checkbox">
+                                            <span></span>
+                                        </span>
+                                    </label>
+                                </div>
+                            </details>
+
+                            <details class="admin-link-card admin-control-card" data-link-card="seo">
+                                <summary>
+                                    <div class="admin-link-card-title">
+                                        <span class="admin-link-icon">G</span>
+                                        <div>
+                                            <strong>search preview</strong>
+                                            <small id="seo-state">ready</small>
+                                        </div>
+                                    </div>
+                                </summary>
+                                <div class="admin-link-card-body admin-field-grid">
+                                    <div class="admin-seo-preview">
+                                        <span>https://doll.gg/</span>
+                                        <strong id="seo-preview-title">Lia | doll.gg</strong>
+                                        <p id="seo-preview-description">Lia's little space for messages, posts, socials and more.</p>
+                                    </div>
+                                    <label class="admin-url-field">
+                                        <span>search title</span>
+                                        <input id="seo-title" type="text" maxlength="70" placeholder="Lia | doll.gg">
+                                    </label>
+                                    <label class="admin-url-field">
+                                        <span>search description</span>
+                                        <textarea id="seo-description" maxlength="180" placeholder="Lia's little space for messages, posts, socials and more."></textarea>
+                                    </label>
+                                    <label class="admin-url-field">
+                                        <span>tagline</span>
+                                        <input id="site-tagline" type="text" maxlength="120" placeholder="Lia's little space for messages, posts, socials and more.">
+                                    </label>
+                                </div>
+                            </details>
+
+                            <details class="admin-link-card admin-control-card" data-link-card="latest-note">
+                                <summary>
+                                    <div class="admin-link-card-title">
+                                        <span class="admin-link-icon">N</span>
+                                        <div>
+                                            <strong>latest note</strong>
+                                            <small id="latest-note-state">hidden</small>
+                                        </div>
+                                    </div>
+                                    <label class="admin-switch">
+                                        <input id="latest-note-enabled" type="checkbox">
+                                        <span></span>
+                                    </label>
+                                </summary>
+                                <div class="admin-link-card-body admin-field-grid">
+                                    <label class="admin-url-field">
+                                        <span>note title</span>
+                                        <input id="latest-note-title" type="text" maxlength="80" placeholder="latest note">
+                                    </label>
+                                    <label class="admin-url-field">
+                                        <span>note body</span>
+                                        <textarea id="latest-note-body-input" maxlength="420" placeholder="write the public note here"></textarea>
+                                    </label>
+                                </div>
+                            </details>
+
                             <details class="admin-link-card" data-link-card="snapchat" open>
                                 <summary>
                                     <div class="admin-link-card-title">
@@ -279,7 +419,7 @@
                         </div>
 
                         <div class="admin-actions">
-                            <button type="submit">save links</button>
+                            <button type="submit">save settings</button>
                             <button class="soft" type="button" id="link-settings-reset">restore defaults</button>
                         </div>
                     </form>
@@ -289,6 +429,6 @@
     </main>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="../admin.js?v=3.3"></script>
+    <script src="../admin.js?v=3.5"></script>
 </body>
 </html>
