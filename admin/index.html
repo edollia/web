@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="robots" content="noindex, nofollow">
     <title>Lia Admin</title>
-    <link rel="stylesheet" href="../admin.css?v=3.1">
+    <link rel="stylesheet" href="../admin.css?v=3.2">
 </head>
 <body>
     <main class="admin-shell">
@@ -236,7 +236,7 @@
                                 </div>
                             </details>
 
-                            <details class="admin-link-card" data-link-card="kofi" open>
+                            <details class="admin-link-card admin-widget-card" data-link-card="kofi" open>
                                 <summary>
                                     <div class="admin-link-card-title">
                                         <span class="admin-link-icon">K</span>
@@ -251,10 +251,7 @@
                                     </label>
                                 </summary>
                                 <div class="admin-link-card-body">
-                                    <label class="admin-url-field">
-                                        <span>destination URL</span>
-                                        <input id="kofi-url" type="url" inputmode="url" placeholder="https://ko-fi.com/name">
-                                    </label>
+                                    <p class="admin-widget-note">Ko-fi uses the custom pop-up widget on the site. This switch only shows or hides it.</p>
                                 </div>
                             </details>
                         </div>
@@ -270,6 +267,6 @@
     </main>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="../admin.js?v=3.1"></script>
+    <script src="../admin.js?v=3.2"></script>
 </body>
 </html>

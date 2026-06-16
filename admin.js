@@ -80,7 +80,6 @@ const els = {
     instagramUrl: document.getElementById('instagram-url'),
     instagramState: document.getElementById('instagram-state'),
     kofiEnabled: document.getElementById('kofi-enabled'),
-    kofiUrl: document.getElementById('kofi-url'),
     kofiState: document.getElementById('kofi-state')
 };
 
@@ -302,7 +301,6 @@ function renderLinkSettings() {
     if (els.instagramUrl) els.instagramUrl.value = settings.instagram_url || '';
     if (els.instagramState) els.instagramState.textContent = settings.instagram_enabled !== false ? 'visible' : 'hidden';
     if (els.kofiEnabled) els.kofiEnabled.checked = settings.kofi_enabled !== false;
-    if (els.kofiUrl) els.kofiUrl.value = settings.kofi_url || '';
     if (els.kofiState) els.kofiState.textContent = settings.kofi_enabled !== false ? 'visible' : 'hidden';
     if (els.linkSettingsForm) {
         els.linkSettingsForm.classList.toggle('settings-unavailable', !state.linkSettingsAvailable);
@@ -316,7 +314,7 @@ function getDraftLinkSettings() {
         snapchat_enabled: els.snapchatEnabled?.checked !== false,
         instagram_url: els.instagramUrl?.value.trim() || state.linkSettings.instagram_url || DEFAULT_LINK_SETTINGS.instagram_url,
         instagram_enabled: els.instagramEnabled?.checked !== false,
-        kofi_url: els.kofiUrl?.value.trim() || state.linkSettings.kofi_url || DEFAULT_LINK_SETTINGS.kofi_url,
+        kofi_url: state.linkSettings.kofi_url || DEFAULT_LINK_SETTINGS.kofi_url,
         kofi_enabled: els.kofiEnabled?.checked !== false
     };
 }
@@ -697,7 +695,7 @@ async function saveLinkSettings(event) {
             snapchat_enabled: els.snapchatEnabled?.checked !== false,
             instagram_url: cleanUrl(els.instagramUrl?.value, 'Instagram'),
             instagram_enabled: els.instagramEnabled?.checked !== false,
-            kofi_url: cleanUrl(els.kofiUrl?.value, 'Ko-fi'),
+            kofi_url: state.linkSettings.kofi_url || DEFAULT_LINK_SETTINGS.kofi_url,
             kofi_enabled: els.kofiEnabled?.checked !== false
         };
     } catch (error) {
@@ -919,7 +917,7 @@ async function init() {
         toggle.addEventListener('keydown', e => e.stopPropagation());
         toggle.addEventListener('change', renderLinkPreview);
     });
-    [els.snapchatUrl, els.instagramUrl, els.kofiUrl].forEach(input => {
+    [els.snapchatUrl, els.instagramUrl].forEach(input => {
         input?.addEventListener('input', renderLinkPreview);
     });
     els.streamBans?.addEventListener('click', e => {

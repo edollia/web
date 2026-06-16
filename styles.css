@@ -770,6 +770,12 @@ button {
     width: 100%;
 }
 
+.main-screen header,
+.main-screen .content-area,
+.main-screen .site-brand-footer {
+    transition: filter 0.42s ease;
+}
+
 .site-brand-footer {
     display: flex;
     justify-content: center;
@@ -777,7 +783,12 @@ button {
     padding-bottom: max(14px, env(safe-area-inset-bottom));
     opacity: 0;
     transform: translateY(6px);
-    animation: brandFooterIn 0.6s ease 0.7s forwards;
+    pointer-events: none;
+}
+
+.main-screen.note-ready .site-brand-footer {
+    pointer-events: auto;
+    animation: brandFooterIn 0.6s ease 0.45s forwards;
 }
 
 .site-brand-footer a {
@@ -1247,6 +1258,22 @@ button {
     max-width: 106px;
 }
 
+.socials-button.open[data-visible-count="1"] {
+    width: 84px;
+}
+
+.socials-button.open[data-visible-count="1"] .socials-options {
+    max-width: 31px;
+}
+
+.socials-button.open[data-visible-count="2"] {
+    width: 116px;
+}
+
+.socials-button.open[data-visible-count="2"] .socials-options {
+    max-width: 68px;
+}
+
 .social-option {
     min-width: 31px;
     width: 31px;
@@ -1258,6 +1285,217 @@ button {
 
 .site-link-hidden {
     display: none !important;
+}
+
+body:not(.site-links-ready) #socials-button,
+body:not(.site-links-ready) .social-option,
+body.kofi-public-hidden [id^="kofi-widget-overlay-"],
+body.kofi-public-hidden .floatingchat-container,
+body.kofi-public-hidden .floatingchat-container-mobi,
+body.kofi-public-hidden #doll-kofi-scrim {
+    display: none !important;
+    pointer-events: none !important;
+}
+
+body.first-visit-tour-active .main-screen header,
+body.first-visit-tour-active .main-screen .content-area,
+body.first-visit-tour-active .main-screen .site-brand-footer {
+    filter: blur(2px) saturate(0.96) brightness(1.02);
+}
+
+body.first-visit-tour-active .button-group {
+    position: relative;
+    z-index: 10003;
+    filter: none;
+    transform: translateZ(0);
+}
+
+body.first-visit-tour-active .button-group::before {
+    content: "";
+    position: absolute;
+    inset: -10px -14px;
+    border-radius: 999px;
+    background: rgba(255, 247, 251, 0.36);
+    backdrop-filter: blur(1px);
+    -webkit-backdrop-filter: blur(1px);
+    z-index: -1;
+}
+
+body.first-visit-tour-active .tour-highlight-target {
+    filter: none !important;
+    box-shadow:
+        0 8px 20px rgba(255, 145, 195, 0.28),
+        0 0 0 4px rgba(255, 255, 255, 0.46),
+        inset 0 1px 0 rgba(255, 255, 255, 0.78);
+}
+
+.first-visit-tour {
+    position: fixed;
+    inset: 0;
+    z-index: 10004;
+    pointer-events: none;
+    opacity: 1;
+    transition: opacity 0.68s ease;
+}
+
+.first-visit-tour::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: rgba(255, 247, 251, 0.08);
+    opacity: 0;
+    animation: tourVeilIn 0.42s ease forwards;
+}
+
+.first-visit-tour.leaving {
+    opacity: 0;
+}
+
+.tour-step-layer {
+    position: absolute;
+    inset: 0;
+}
+
+.tour-bubble {
+    position: absolute;
+    border-radius: 999px;
+    background:
+        radial-gradient(circle at 34% 30%, rgba(255, 255, 255, 0.95) 0 16%, transparent 18%),
+        radial-gradient(circle at 50% 52%, rgba(255, 212, 232, 0.58), rgba(255, 145, 195, 0.16));
+    border: 1px solid rgba(255, 180, 212, 0.34);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.62),
+        0 8px 20px rgba(255, 145, 195, 0.12);
+    opacity: 0;
+    transform: translateY(10px) scale(0.84);
+    animation:
+        tourBubbleIn 0.5s ease forwards,
+        tourBubbleFloat var(--bubble-speed, 4.8s) ease-in-out 0.5s infinite;
+}
+
+.tour-bubble-one {
+    width: 74px;
+    height: 74px;
+    left: 8%;
+    top: 18%;
+    --bubble-speed: 4.4s;
+}
+
+.tour-bubble-two {
+    width: 34px;
+    height: 34px;
+    right: 13%;
+    top: 24%;
+    --bubble-speed: 3.7s;
+    animation-delay: 0s, -0.8s;
+}
+
+.tour-bubble-three {
+    width: 52px;
+    height: 52px;
+    left: 16%;
+    bottom: 22%;
+    --bubble-speed: 5.2s;
+    animation-delay: 0s, -1.4s;
+}
+
+.tour-bubble-four {
+    width: 26px;
+    height: 26px;
+    right: 20%;
+    bottom: 18%;
+    --bubble-speed: 3.5s;
+    animation-delay: 0s, -0.4s;
+}
+
+.tour-bubble-five {
+    width: 44px;
+    height: 44px;
+    right: 6%;
+    top: 57%;
+    --bubble-speed: 4.9s;
+    animation-delay: 0s, -2s;
+}
+
+.tour-arrow-svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    color: rgba(184, 83, 132, 0.82);
+    overflow: visible;
+}
+
+.tour-arrow-line {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 3;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-dasharray: 1;
+    stroke-dashoffset: 1;
+    filter: drop-shadow(0 2px 5px rgba(255, 145, 195, 0.24));
+    animation: tourArrowDraw 1.28s cubic-bezier(0.28, 0.72, 0.2, 1) forwards;
+}
+
+.tour-label {
+    position: absolute;
+    min-width: 72px;
+    padding: 8px 12px 9px;
+    border: 1px solid rgba(255, 180, 212, 0.66);
+    border-radius: 999px;
+    background:
+        linear-gradient(rgba(255, 255, 255, 0.9), rgba(255, 239, 247, 0.78)),
+        repeating-linear-gradient(90deg, rgba(255, 231, 242, 0.28) 0 8px, rgba(255, 250, 253, 0.28) 8px 16px);
+    color: rgba(146, 74, 108, 0.88);
+    font-family: "Comic Sans MS", "Trebuchet MS", cursive;
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1;
+    text-align: center;
+    box-shadow:
+        0 9px 22px rgba(255, 145, 195, 0.18),
+        inset 0 1px 0 rgba(255, 255, 255, 0.86);
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.86) rotate(-2deg);
+    animation: tourLabelPop 0.38s cubic-bezier(0.2, 0.86, 0.24, 1) 0.92s forwards;
+}
+
+@keyframes tourVeilIn {
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes tourArrowDraw {
+    to {
+        stroke-dashoffset: 0;
+    }
+}
+
+@keyframes tourLabelPop {
+    to {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1) rotate(-2deg);
+    }
+}
+
+@keyframes tourBubbleFloat {
+    0%,
+    100% {
+        transform: translateY(0) translateX(0) scale(1);
+    }
+
+    50% {
+        transform: translateY(-13px) translateX(5px) scale(1.04);
+    }
+}
+
+@keyframes tourBubbleIn {
+    to {
+        opacity: 0.72;
+        transform: translateY(0) scale(1);
+    }
 }
 
 .social-option img {

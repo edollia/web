@@ -8,6 +8,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         kofi_enabled: true
     };
     let siteLinkSettings = { ...DEFAULT_LINK_SETTINGS };
+    let applySiteLinkSettingsToDom = null;
 
     // ===== ENHANCED AUDIO HANDLING =====
     const audio = new Audio('hehe.mp3');
@@ -720,6 +721,10 @@ document.addEventListener("DOMContentLoaded", async function() {
             siteLinkSettings = normalizeSiteLinkSettings(data[0].value);
         } catch (error) {
             siteLinkSettings = { ...DEFAULT_LINK_SETTINGS };
+        } finally {
+            if (typeof applySiteLinkSettingsToDom === 'function') {
+                applySiteLinkSettingsToDom();
+            }
         }
     }
 
@@ -944,7 +949,10 @@ document.addEventListener("DOMContentLoaded", async function() {
                 mainScreen.classList.remove('ui-ready', 'note-ready');
                 mainScreen.style.display = "block";
                 setTimeout(() => mainScreen.classList.add('ui-ready'), 780);
-                setTimeout(() => mainScreen.classList.add('note-ready'), 1080);
+                setTimeout(() => {
+                    mainScreen.classList.add('note-ready');
+                    scheduleFirstVisitTour();
+                }, 1080);
             }
 
             if (!audioPlayed) {
@@ -1059,6 +1067,9 @@ document.addEventListener("DOMContentLoaded", async function() {
     const actionMenuButton = document.getElementById('action-menu-button');
     const actionOptions = actionMenuButton?.querySelector('.action-options');
     const donateOption = document.getElementById('donate-option');
+    const FIRST_VISIT_TOUR_KEY = 'doll_first_visit_tour_seen_v1';
+    const FIRST_VISIT_TOUR_DEBUG = true;
+    let activeKofiWidgetHandle = 'edoll';
 
     function getPublicLink(key) {
         return siteLinkSettings[`${key}_url`] || DEFAULT_LINK_SETTINGS[`${key}_url`];
@@ -1074,24 +1085,92 @@ document.addEventListener("DOMContentLoaded", async function() {
     }
 
     function applyPublicLinkSettings() {
+        document.body.classList.add('site-links-ready');
         if (snapchatOption) {
             snapchatOption.href = getPublicLink('snapchat');
             snapchatOption.classList.toggle('site-link-hidden', !isPublicLinkEnabled('snapchat'));
+            snapchatOption.setAttribute('aria-hidden', isPublicLinkEnabled('snapchat') ? 'false' : 'true');
+            snapchatOption.setAttribute('tabindex', '-1');
         }
         if (instagramOption) {
             instagramOption.href = getPublicLink('instagram');
             instagramOption.classList.toggle('site-link-hidden', !isPublicLinkEnabled('instagram'));
+            instagramOption.setAttribute('aria-hidden', isPublicLinkEnabled('instagram') ? 'false' : 'true');
+            instagramOption.setAttribute('tabindex', '-1');
         }
         if (donateOption) {
             donateOption.href = getPublicLink('kofi');
             donateOption.classList.toggle('site-link-hidden', !isPublicLinkEnabled('kofi'));
+            donateOption.setAttribute('aria-hidden', isPublicLinkEnabled('kofi') ? 'false' : 'true');
+            donateOption.setAttribute('tabindex', '-1');
+            syncKofiWidgetHandle();
+            setKofiWidgetVisibility(isPublicLinkEnabled('kofi'));
         }
         if (socialsButton) {
             const hasVisibleLinks = getVisibleSocialOptions().length > 0;
+            const visibleCount = getVisibleSocialOptions().length;
+            socialsButton.dataset.visibleCount = String(visibleCount);
             socialsButton.classList.toggle('site-link-hidden', !hasVisibleLinks);
             socialsButton.setAttribute('aria-hidden', hasVisibleLinks ? 'false' : 'true');
+            socialsButton.setAttribute('tabindex', hasVisibleLinks ? '0' : '-1');
             if (!hasVisibleLinks) closeSocialsMenu();
         }
+    }
+
+    function setKofiWidgetVisibility(visible) {
+        document.body.classList.toggle('kofi-public-hidden', !visible);
+        if (!visible && typeof window.closeKofiOverlay === 'function') {
+            window.closeKofiOverlay();
+        }
+        document.querySelectorAll('[id^="kofi-widget-overlay-"], .floatingchat-container, .floatingchat-container-mobi')
+            .forEach(element => {
+                element.style.display = visible ? '' : 'none';
+                element.style.pointerEvents = visible ? '' : 'none';
+            });
+    }
+
+    function getKofiHandleFromUrl() {
+        try {
+            const url = new URL(getPublicLink('kofi'));
+            const handle = url.hostname.includes('ko-fi.com')
+                ? url.pathname.split('/').filter(Boolean)[0]
+                : '';
+            return handle || 'edoll';
+        } catch (error) {
+            return 'edoll';
+        }
+    }
+
+    function syncKofiWidgetHandle() {
+        const nextHandle = getKofiHandleFromUrl();
+        if (nextHandle === activeKofiWidgetHandle || typeof kofiWidgetOverlay === 'undefined') return;
+        activeKofiWidgetHandle = nextHandle;
+        kofiWidgetOverlay.draw(nextHandle, {
+            'type': 'floating-chat',
+            'floating-chat.donateButton.text': 'Support me',
+            'floating-chat.donateButton.background-color': '#323842',
+            'floating-chat.donateButton.text-color': '#fff'
+        });
+    }
+
+    function openKofiOverlay() {
+        let attempts = 0;
+        const maxAttempts = 36;
+
+        function tryOpen() {
+            attempts += 1;
+            if (typeof window.openKofiOverlay === 'function') {
+                window.openKofiOverlay();
+                return;
+            }
+            if (attempts < maxAttempts) {
+                window.setTimeout(tryOpen, 80);
+            } else {
+                window.open(getPublicLink('kofi'), '_blank', 'noopener,noreferrer');
+            }
+        }
+
+        tryOpen();
     }
 
     function closeSocialsMenu() {
@@ -1164,8 +1243,105 @@ document.addEventListener("DOMContentLoaded", async function() {
         });
     }
 
+    applySiteLinkSettingsToDom = applyPublicLinkSettings;
     applyPublicLinkSettings();
     addMenuActivation(socialsButton, handleSocialsButtonActivate);
+
+    function hasSeenFirstVisitTour() {
+        try {
+            return localStorage.getItem(FIRST_VISIT_TOUR_KEY) === '1';
+        } catch (error) {
+            return true;
+        }
+    }
+
+    function markFirstVisitTourSeen() {
+        try {
+            localStorage.setItem(FIRST_VISIT_TOUR_KEY, '1');
+        } catch (error) {
+            // Storage can be unavailable in private browsing.
+        }
+    }
+
+    function scheduleFirstVisitTour() {
+        if (!FIRST_VISIT_TOUR_DEBUG) {
+            if (hasSeenFirstVisitTour()) return;
+            markFirstVisitTourSeen();
+        }
+        window.setTimeout(startFirstVisitTour, 2000);
+    }
+
+    function startFirstVisitTour() {
+        const steps = [
+            { element: socialsButton, label: 'contact', placement: 'up' },
+            { element: supportMenuButton, label: 'wishlist', placement: 'down' },
+            { element: actionMenuButton, label: ':p', placement: 'up' }
+        ].filter(step => step.element && !step.element.classList.contains('site-link-hidden'));
+        if (!steps.length) return;
+
+        const overlay = document.createElement('div');
+        overlay.className = 'first-visit-tour';
+        overlay.setAttribute('aria-hidden', 'true');
+        overlay.innerHTML = `
+            <span class="tour-bubble tour-bubble-one"></span>
+            <span class="tour-bubble tour-bubble-two"></span>
+            <span class="tour-bubble tour-bubble-three"></span>
+            <span class="tour-bubble tour-bubble-four"></span>
+            <span class="tour-bubble tour-bubble-five"></span>
+            <div class="tour-step-layer"></div>
+        `;
+        document.body.appendChild(overlay);
+        document.body.classList.add('first-visit-tour-active');
+        steps.forEach(step => step.element.classList.add('tour-highlight-target'));
+
+        let index = 0;
+        let stepTimer = null;
+        const stepLayer = overlay.querySelector('.tour-step-layer');
+
+        function finishTour() {
+            window.clearTimeout(stepTimer);
+            overlay.classList.add('leaving');
+            document.body.classList.remove('first-visit-tour-active');
+            steps.forEach(step => step.element.classList.remove('tour-highlight-target'));
+            window.setTimeout(() => overlay.remove(), 360);
+        }
+
+        function showStep() {
+            const step = steps[index];
+            if (!step) {
+                finishTour();
+                return;
+            }
+
+            const rect = step.element.getBoundingClientRect();
+            const targetX = rect.left + rect.width / 2;
+            const labelAbove = step.placement !== 'down';
+            const labelX = Math.max(58, Math.min(window.innerWidth - 58, targetX + (index - 1) * 14));
+            const labelY = labelAbove
+                ? Math.max(54, rect.top - 72)
+                : Math.min(window.innerHeight - 54, rect.bottom + 68);
+            const startY = labelAbove ? rect.top + 5 : rect.bottom - 5;
+            const endY = labelAbove ? labelY + 24 : labelY - 24;
+            const curveY = labelAbove ? (startY + endY) / 2 - 26 : (startY + endY) / 2 + 26;
+
+            stepLayer.insertAdjacentHTML('beforeend', `
+                <svg class="tour-arrow-svg" viewBox="0 0 ${window.innerWidth} ${window.innerHeight}" aria-hidden="true">
+                    <defs>
+                        <marker id="tour-arrow-head-${index}" viewBox="0 0 12 12" refX="9" refY="6" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+                            <path d="M2 2 L10 6 L2 10" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </marker>
+                    </defs>
+                    <path class="tour-arrow-line" pathLength="1" d="M ${targetX} ${startY} C ${targetX - 32} ${curveY}, ${labelX + 28} ${curveY}, ${labelX} ${endY}" marker-start="url(#tour-arrow-head-${index})"/>
+                </svg>
+                <div class="tour-label" style="left:${labelX}px; top:${labelY}px">${step.label}</div>
+            `);
+
+            index += 1;
+            stepTimer = window.setTimeout(showStep, index >= steps.length ? 2400 : 1660);
+        }
+
+        showStep();
+    }
 
     socialsButton?.addEventListener('keydown', function(e) {
         if ((e.key === 'Enter' || e.key === ' ') && e.target === socialsButton) {
@@ -1217,7 +1393,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         e.stopPropagation();
         if (!isPublicLinkEnabled('kofi')) return;
         playUiSound('link');
-        window.open(getPublicLink('kofi'), '_blank', 'noopener,noreferrer');
+        openKofiOverlay();
     });
 
     function handleActionMenuActivate(e) {
