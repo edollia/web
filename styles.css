@@ -1288,6 +1288,7 @@ button {
 }
 
 body:not(.site-links-ready) #socials-button,
+body:not(.site-links-ready) #support-menu-button,
 body:not(.site-links-ready) .social-option,
 body.kofi-public-hidden [id^="kofi-widget-overlay-"],
 body.kofi-public-hidden .floatingchat-container,

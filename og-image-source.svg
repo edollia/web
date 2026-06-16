@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fff7fb"/>
+      <stop offset="0.52" stop-color="#ffe4f1"/>
+      <stop offset="1" stop-color="#fffafd"/>
+    </linearGradient>
+    <filter id="soft" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="9"/>
+    </filter>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="16" stdDeviation="18" flood-color="#d65f9d" flood-opacity="0.22"/>
+    </filter>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <g opacity="0.34">
+    <rect x="96" width="140" height="630" fill="#ffffff"/>
+    <rect x="392" width="140" height="630" fill="#ffffff"/>
+    <rect x="688" width="140" height="630" fill="#ffffff"/>
+    <rect x="984" width="140" height="630" fill="#ffffff"/>
+  </g>
+  <g filter="url(#soft)" opacity="0.72">
+    <circle cx="138" cy="132" r="86" fill="#ffd4e8"/>
+    <circle cx="1038" cy="150" r="110" fill="#ffc7e0"/>
+    <circle cx="940" cy="506" r="96" fill="#ffd9eb"/>
+    <circle cx="260" cy="508" r="80" fill="#ffcde5"/>
+  </g>
+  <g opacity="0.42">
+    <circle cx="116" cy="502" r="30" fill="#ff9ecb"/>
+    <circle cx="170" cy="458" r="22" fill="#ffffff"/>
+    <circle cx="1034" cy="472" r="42" fill="#ffbad9"/>
+    <circle cx="1090" cy="520" r="19" fill="#ffffff"/>
+    <circle cx="976" cy="100" r="24" fill="#ffffff"/>
+    <circle cx="232" cy="156" r="18" fill="#ffbad9"/>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="-106" y="112" width="892" height="392" rx="54" fill="#ffffff" opacity="0.58"/>
+    <rect x="-84" y="134" width="848" height="348" rx="42" fill="#fffafd" opacity="0.82"/>
+  </g>
+  <text x="214" y="344"
+        font-family="'Comic Sans MS', 'Trebuchet MS', Arial, sans-serif"
+        font-size="150" font-weight="700" fill="#ffb3d4"
+        stroke="#ffffff" stroke-width="20" paint-order="stroke" filter="url(#shadow)">Lia</text>
+  <g transform="translate(214 380)">
+    <rect width="252" height="74" rx="37" fill="#ffe2f0" stroke="#ffb4d4" stroke-width="3"/>
+    <text x="58" y="48"
+          font-family="'Comic Sans MS', 'Trebuchet MS', Arial, sans-serif"
+          font-size="36" font-weight="700" fill="#a95682">doll.gg</text>
+  </g>
+  <text x="66" y="502"
+        font-family="'Comic Sans MS', 'Trebuchet MS', Arial, sans-serif"
+        font-size="34" font-weight="700" fill="#8d6174">messages - posts - socials and more</text>
+  <g opacity="0.58">
+    <circle cx="72" cy="570" r="18" fill="#ff9ecb"/>
+    <circle cx="140" cy="570" r="18" fill="#ff9ecb"/>
+    <circle cx="208" cy="570" r="18" fill="#ff9ecb"/>
+    <circle cx="276" cy="570" r="18" fill="#ff9ecb"/>
+    <circle cx="344" cy="570" r="18" fill="#ff9ecb"/>
+    <circle cx="412" cy="570" r="18" fill="#ff9ecb"/>
+    <circle cx="480" cy="570" r="18" fill="#ff9ecb"/>
+    <circle cx="548" cy="570" r="18" fill="#ff9ecb"/>
+    <circle cx="616" cy="570" r="18" fill="#ff9ecb"/>
+    <circle cx="684" cy="570" r="18" fill="#ff9ecb"/>
+    <circle cx="752" cy="570" r="18" fill="#ff9ecb"/>
+    <circle cx="820" cy="570" r="18" fill="#ff9ecb"/>
+    <circle cx="888" cy="570" r="18" fill="#ff9ecb"/>
+    <circle cx="956" cy="570" r="18" fill="#ff9ecb"/>
+    <circle cx="1024" cy="570" r="18" fill="#ff9ecb"/>
+    <circle cx="1092" cy="570" r="18" fill="#ff9ecb"/>
+  </g>
+</svg>

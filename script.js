@@ -5,7 +5,9 @@ document.addEventListener("DOMContentLoaded", async function() {
         instagram_url: 'https://www.instagram.com/pawswirl',
         instagram_enabled: true,
         kofi_url: 'https://ko-fi.com/edoll',
-        kofi_enabled: true
+        kofi_enabled: true,
+        throne_url: 'https://throne.com/edoll',
+        throne_enabled: true
     };
     let siteLinkSettings = { ...DEFAULT_LINK_SETTINGS };
     let applySiteLinkSettingsToDom = null;
@@ -707,7 +709,9 @@ document.addEventListener("DOMContentLoaded", async function() {
             instagram_url: String(settings.instagram_url || DEFAULT_LINK_SETTINGS.instagram_url),
             instagram_enabled: settings.instagram_enabled !== false,
             kofi_url: String(settings.kofi_url || DEFAULT_LINK_SETTINGS.kofi_url),
-            kofi_enabled: settings.kofi_enabled !== false
+            kofi_enabled: settings.kofi_enabled !== false,
+            throne_url: String(settings.throne_url || DEFAULT_LINK_SETTINGS.throne_url),
+            throne_enabled: settings.throne_enabled !== false
         };
     }
 
@@ -1058,7 +1062,6 @@ document.addEventListener("DOMContentLoaded", async function() {
     }
 
     // ===== SOCIALS AND SUPPORT MENUS =====
-    const wishlistUrl = 'https://throne.com/edoll';
     const socialsButton = document.getElementById('socials-button');
     const socialsOptions = socialsButton?.querySelector('.socials-options');
     const snapchatOption = document.getElementById('snapchat-option');
@@ -1068,7 +1071,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     const actionOptions = actionMenuButton?.querySelector('.action-options');
     const donateOption = document.getElementById('donate-option');
     const FIRST_VISIT_TOUR_KEY = 'doll_first_visit_tour_seen_v1';
-    const FIRST_VISIT_TOUR_DEBUG = true;
+    const FIRST_VISIT_TOUR_DEBUG = false;
     let activeKofiWidgetHandle = 'edoll';
 
     function getPublicLink(key) {
@@ -1082,6 +1085,26 @@ document.addEventListener("DOMContentLoaded", async function() {
     function getVisibleSocialOptions() {
         return Array.from(socialsButton?.querySelectorAll('.social-option') || [])
             .filter(option => !option.classList.contains('site-link-hidden'));
+    }
+
+    function syncStructuredDataLinks() {
+        const structuredData = document.getElementById('site-structured-data');
+        if (!structuredData) return;
+
+        try {
+            const data = JSON.parse(structuredData.textContent);
+            const graph = Array.isArray(data['@graph']) ? data['@graph'] : [];
+            const websiteNode = graph.find(node => node['@type'] === 'WebSite');
+            if (!websiteNode) return;
+
+            websiteNode.sameAs = ['instagram', 'snapchat', 'kofi', 'throne']
+                .filter(isPublicLinkEnabled)
+                .map(getPublicLink)
+                .filter(Boolean);
+            structuredData.textContent = JSON.stringify(data, null, 2);
+        } catch (error) {
+            // Keep the static structured data if parsing ever fails.
+        }
     }
 
     function applyPublicLinkSettings() {
@@ -1106,6 +1129,15 @@ document.addEventListener("DOMContentLoaded", async function() {
             syncKofiWidgetHandle();
             setKofiWidgetVisibility(isPublicLinkEnabled('kofi'));
         }
+        if (supportMenuButton) {
+            const throneEnabled = isPublicLinkEnabled('throne');
+            supportMenuButton.href = getPublicLink('throne');
+            supportMenuButton.classList.toggle('site-link-hidden', !throneEnabled);
+            supportMenuButton.setAttribute('aria-hidden', throneEnabled ? 'false' : 'true');
+            supportMenuButton.setAttribute('tabindex', throneEnabled ? '0' : '-1');
+            syncThroneWidgetUrl();
+            if (!throneEnabled) closeSupportMenu();
+        }
         if (socialsButton) {
             const hasVisibleLinks = getVisibleSocialOptions().length > 0;
             const visibleCount = getVisibleSocialOptions().length;
@@ -1115,6 +1147,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             socialsButton.setAttribute('tabindex', hasVisibleLinks ? '0' : '-1');
             if (!hasVisibleLinks) closeSocialsMenu();
         }
+        syncStructuredDataLinks();
     }
 
     function setKofiWidgetVisibility(visible) {
@@ -1151,6 +1184,14 @@ document.addEventListener("DOMContentLoaded", async function() {
             'floating-chat.donateButton.background-color': '#323842',
             'floating-chat.donateButton.text-color': '#fff'
         });
+    }
+
+    function syncThroneWidgetUrl() {
+        if (typeof window.setDollThroneUrl === 'function') {
+            window.setDollThroneUrl(getPublicLink('throne'));
+        } else {
+            window.dollThroneUrl = getPublicLink('throne');
+        }
     }
 
     function openKofiOverlay() {
@@ -1372,10 +1413,11 @@ document.addEventListener("DOMContentLoaded", async function() {
         closeSocialsMenu();
         closeActionMenu();
         playUiSound('link');
+        if (!isPublicLinkEnabled('throne')) return;
         if (typeof window.openThroneOverlay === 'function') {
             window.openThroneOverlay();
         } else {
-            window.open(wishlistUrl, '_blank', 'noopener,noreferrer');
+            window.open(getPublicLink('throne'), '_blank', 'noopener,noreferrer');
         }
     }
 

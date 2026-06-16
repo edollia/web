@@ -1,5 +1,5 @@
 (function() {
-    const wishlistUrl = 'https://throne.com/edoll';
+    let wishlistUrl = window.dollThroneUrl || 'https://throne.com/edoll';
     const widgetId = 'doll-throne-overlay';
     const styleId = 'doll-throne-overlay-style';
     let overlay = null;
@@ -425,6 +425,7 @@
             .doll-throne-ornaments span:nth-child(6) { --size: 14px; --speed: 2.9s; left: 28%; top: 7%; opacity: 0.88; animation-name: dollThroneBubbleJitter; animation-delay: -1.1s; }
             .doll-throne-ornaments span:nth-child(7) { --size: 31px; --speed: 5.2s; left: 13%; top: 58%; opacity: 0.64; animation-name: dollThroneBubbleWander; animation-delay: -4.1s; }
             .doll-throne-ornaments span:nth-child(8) { --size: 19px; --speed: 3.6s; right: 18%; bottom: 34%; opacity: 0.82; animation-name: dollThroneBubbleJitter; animation-delay: -2.3s; }
+            .doll-throne-ornaments span:nth-child(9) { --size: 86px; --speed: 4.4s; left: -32px; bottom: 5%; opacity: 0.38; animation-name: dollThroneBubbleBounce; animation-delay: -0.6s; }
 
             .doll-throne-ornaments i {
                 width: 16px;
@@ -475,6 +476,13 @@
                 82% { transform: translate3d(3px, -5px, 0) scale(1.04); }
             }
 
+            @keyframes dollThroneBubbleBounce {
+                0%, 100% { transform: translate3d(0, 0, 0) scale(0.98); }
+                28% { transform: translate3d(9px, -22px, 0) scale(1.06); }
+                52% { transform: translate3d(4px, -12px, 0) scale(0.95); }
+                78% { transform: translate3d(14px, -28px, 0) scale(1.09); }
+            }
+
             @keyframes dollThroneHeartFloat {
                 from { translate: 0 0; }
                 to { translate: -5px -13px; }
@@ -501,6 +509,17 @@
         playSound('link');
         hideFullWebsiteHint();
         window.open(wishlistUrl, '_blank', 'noopener,noreferrer');
+    }
+
+    function setDollThroneUrl(nextUrl) {
+        if (!nextUrl) return;
+        wishlistUrl = nextUrl;
+        window.dollThroneUrl = nextUrl;
+        const iframe = overlay?.querySelector('.doll-throne-iframe');
+        if (iframe && iframe.src !== nextUrl) {
+            iframeLoaded = false;
+            iframe.src = nextUrl;
+        }
     }
 
     function hideFullWebsiteHint() {
@@ -575,7 +594,7 @@
                     <button type="button">open full website</button>
                 </div>
                 <div class="doll-throne-ornaments" aria-hidden="true">
-                    <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><i></i><i></i><i></i><i></i>
+                    <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><i></i><i></i><i></i><i></i>
                 </div>
             </section>
         `;
@@ -711,6 +730,7 @@
 
     window.openThroneOverlay = openThroneOverlay;
     window.closeThroneOverlay = closeThroneOverlay;
+    window.setDollThroneUrl = setDollThroneUrl;
 
     if (document.body) {
         buildOverlay();

@@ -53,7 +53,7 @@
             <nav class="admin-tabs" id="admin-tabs">
                 <button class="active" data-panel="review-panel"><span>review <b id="review-tab-count">0</b></span><small>new things</small></button>
                 <button data-panel="published-panel"><span>published <b id="published-tab-count">0</b></span><small>live posts</small></button>
-                <button data-panel="settings-panel"><span>socials <b id="links-tab-count">0/3</b></span><small>links + ko-fi</small></button>
+                <button data-panel="settings-panel"><span>socials <b id="links-tab-count">0/4</b></span><small>links + widgets</small></button>
                 <button data-panel="chat-panel"><span>live chat <b id="chat-tab-count">0</b></span><small>moderation</small></button>
             </nav>
 
@@ -252,6 +252,28 @@
                                 </summary>
                                 <div class="admin-link-card-body">
                                     <p class="admin-widget-note">Ko-fi uses the custom pop-up widget on the site. This switch only shows or hides it.</p>
+                                </div>
+                            </details>
+
+                            <details class="admin-link-card admin-widget-card" data-link-card="throne" open>
+                                <summary>
+                                    <div class="admin-link-card-title">
+                                        <span class="admin-link-icon">T</span>
+                                        <div>
+                                            <strong>Throne</strong>
+                                            <small id="throne-state">visible</small>
+                                        </div>
+                                    </div>
+                                    <label class="admin-switch">
+                                        <input id="throne-enabled" type="checkbox">
+                                        <span></span>
+                                    </label>
+                                </summary>
+                                <div class="admin-link-card-body">
+                                    <label class="admin-url-field">
+                                        <span>wishlist URL</span>
+                                        <input id="throne-url" type="url" inputmode="url" placeholder="https://throne.com/name">
+                                    </label>
                                 </div>
                             </details>
                         </div>

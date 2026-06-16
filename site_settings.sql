@@ -28,7 +28,11 @@ values (
         "instagram_url": "https://www.instagram.com/pawswirl",
         "instagram_enabled": true,
         "kofi_url": "https://ko-fi.com/edoll",
-        "kofi_enabled": true
+        "kofi_enabled": true,
+        "throne_url": "https://throne.com/edoll",
+        "throne_enabled": true
     }'::jsonb
 )
-on conflict (id) do nothing;
+on conflict (id) do update
+set value = excluded.value || public.site_settings.value,
+    updated_at = now();
