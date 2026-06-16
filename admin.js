@@ -2,6 +2,14 @@ const SUPABASE_URL = 'https://zvqdodzkhmcptwkjlfeu.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp2cWRvZHpraG1jcHR3a2psZmV1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg3NjM1NjAsImV4cCI6MjA2NDMzOTU2MH0.i1xbRIhPHVkDIrnDlQFP0ebNklrx8WVQcQo8Iuo9zG8';
 const ADMIN_UID = '1b12f04e-c1a9-42c5-bd3a-04b6186245c3';
 const ADMIN_PASSCODE = '7769';
+const DEFAULT_LINK_SETTINGS = {
+    snapchat_url: 'https://www.snapchat.com/add/dumidoll',
+    snapchat_enabled: true,
+    instagram_url: 'https://www.instagram.com/pawswirl',
+    instagram_enabled: true,
+    kofi_url: 'https://ko-fi.com/edoll',
+    kofi_enabled: true
+};
 
 const adminClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     auth: {
@@ -19,6 +27,8 @@ const state = {
     questions: [],
     streamMessages: [],
     streamBans: [],
+    linkSettings: { ...DEFAULT_LINK_SETTINGS },
+    linkSettingsAvailable: true,
     chatSettings: {
         chat_enabled: true,
         slow_mode_seconds: 5,
@@ -55,7 +65,15 @@ const els = {
     chatBanForm: document.getElementById('chat-ban-form'),
     chatBanType: document.getElementById('chat-ban-type'),
     chatBanValue: document.getElementById('chat-ban-value'),
-    chatBanNote: document.getElementById('chat-ban-note')
+    chatBanNote: document.getElementById('chat-ban-note'),
+    linkSettingsForm: document.getElementById('link-settings-form'),
+    linkSettingsReset: document.getElementById('link-settings-reset'),
+    snapchatEnabled: document.getElementById('snapchat-enabled'),
+    snapchatUrl: document.getElementById('snapchat-url'),
+    instagramEnabled: document.getElementById('instagram-enabled'),
+    instagramUrl: document.getElementById('instagram-url'),
+    kofiEnabled: document.getElementById('kofi-enabled'),
+    kofiUrl: document.getElementById('kofi-url')
 };
 
 function showPanel(panel) {
@@ -129,6 +147,8 @@ function renderStats() {
     const publishedQuestions = state.questions.filter(hasAnswer).length;
     const visibleChat = state.streamMessages.filter(item => !item.is_hidden).length;
     const hiddenChat = state.streamMessages.filter(item => item.is_hidden).length;
+    const activeLinks = ['snapchat', 'instagram', 'kofi']
+        .filter(key => state.linkSettings[`${key}_enabled`] !== false).length;
 
     els.stats.innerHTML = `
         <div class="admin-stat"><strong>${pendingDrawings}</strong><span>pending doods</span></div>
@@ -139,6 +159,7 @@ function renderStats() {
         <div class="admin-stat"><strong>${hiddenChat}</strong><span>hidden chat</span></div>
         <div class="admin-stat"><strong>${state.streamBans.length}</strong><span>chat bans</span></div>
         <div class="admin-stat"><strong>${state.chatSettings.chat_enabled === false ? 'off' : 'on'}</strong><span>chat status</span></div>
+        <div class="admin-stat"><strong>${activeLinks}/3</strong><span>public links</span></div>
     `;
 }
 
@@ -248,6 +269,31 @@ function renderBans() {
     `).join('');
 }
 
+function normalizeLinkSettings(value) {
+    const settings = value && typeof value === 'object' ? value : {};
+    return {
+        snapchat_url: String(settings.snapchat_url || DEFAULT_LINK_SETTINGS.snapchat_url),
+        snapchat_enabled: settings.snapchat_enabled !== false,
+        instagram_url: String(settings.instagram_url || DEFAULT_LINK_SETTINGS.instagram_url),
+        instagram_enabled: settings.instagram_enabled !== false,
+        kofi_url: String(settings.kofi_url || DEFAULT_LINK_SETTINGS.kofi_url),
+        kofi_enabled: settings.kofi_enabled !== false
+    };
+}
+
+function renderLinkSettings() {
+    const settings = state.linkSettings;
+    if (els.snapchatEnabled) els.snapchatEnabled.checked = settings.snapchat_enabled !== false;
+    if (els.snapchatUrl) els.snapchatUrl.value = settings.snapchat_url || '';
+    if (els.instagramEnabled) els.instagramEnabled.checked = settings.instagram_enabled !== false;
+    if (els.instagramUrl) els.instagramUrl.value = settings.instagram_url || '';
+    if (els.kofiEnabled) els.kofiEnabled.checked = settings.kofi_enabled !== false;
+    if (els.kofiUrl) els.kofiUrl.value = settings.kofi_url || '';
+    if (els.linkSettingsForm) {
+        els.linkSettingsForm.classList.toggle('settings-unavailable', !state.linkSettingsAvailable);
+    }
+}
+
 function renderAll() {
     renderStats();
     renderDrawings(state.drawings.filter(item => !item.approved), els.pendingDrawings, false);
@@ -257,6 +303,7 @@ function renderAll() {
     renderChatMessages();
     renderChatSettings();
     renderBans();
+    renderLinkSettings();
 }
 
 async function ensureAdminSession() {
@@ -274,12 +321,13 @@ async function ensureAdminSession() {
 async function loadAdminData() {
     setStatus(els.adminStatus, 'loading...');
 
-    const [drawingsResult, questionsResult, chatResult, bansResult, settingsResult] = await Promise.all([
+    const [drawingsResult, questionsResult, chatResult, bansResult, settingsResult, linkSettingsResult] = await Promise.all([
         adminClient.from('drawings').select('*').order('created_at', { ascending: false }),
         adminClient.from('questions').select('*').order('created_at', { ascending: false }),
         adminClient.from('stream_messages').select('*').order('created_at', { ascending: false }).limit(120),
         adminClient.from('stream_chat_bans').select('*').eq('is_active', true).order('created_at', { ascending: false }),
-        adminClient.from('stream_chat_settings').select('*').eq('id', true).maybeSingle()
+        adminClient.from('stream_chat_settings').select('*').eq('id', true).maybeSingle(),
+        adminClient.from('site_settings').select('value').eq('id', 'links').maybeSingle()
     ]);
 
     if (drawingsResult.error) throw drawingsResult.error;
@@ -287,6 +335,7 @@ async function loadAdminData() {
     if (chatResult.error && chatResult.error.code !== '42P01') throw chatResult.error;
     if (bansResult.error && bansResult.error.code !== '42P01') throw bansResult.error;
     if (settingsResult.error && settingsResult.error.code !== '42P01' && settingsResult.error.code !== 'PGRST116') throw settingsResult.error;
+    if (linkSettingsResult.error && linkSettingsResult.error.code !== '42P01' && linkSettingsResult.error.code !== 'PGRST116') throw linkSettingsResult.error;
 
     state.drawings = drawingsResult.data || [];
     state.questions = questionsResult.data || [];
@@ -299,6 +348,8 @@ async function loadAdminData() {
             blocked_words: Array.isArray(settingsResult.data.blocked_words) ? settingsResult.data.blocked_words : []
         };
     }
+    state.linkSettingsAvailable = !linkSettingsResult.error || linkSettingsResult.error.code === 'PGRST116';
+    state.linkSettings = normalizeLinkSettings(linkSettingsResult.data?.value);
     renderAll();
     setStatus(els.adminStatus, '');
 }
@@ -564,6 +615,60 @@ async function saveChatBan(event) {
     }
 }
 
+function cleanUrl(value, label) {
+    const cleanValue = String(value || '').trim();
+    if (!cleanValue) throw new Error(`${label} link is missing`);
+    try {
+        return new URL(cleanValue).href;
+    } catch (error) {
+        throw new Error(`${label} link is not a valid URL`);
+    }
+}
+
+async function saveLinkSettings(event) {
+    event.preventDefault();
+    let nextSettings;
+
+    try {
+        nextSettings = {
+            snapchat_url: cleanUrl(els.snapchatUrl?.value, 'Snapchat'),
+            snapchat_enabled: els.snapchatEnabled?.checked !== false,
+            instagram_url: cleanUrl(els.instagramUrl?.value, 'Instagram'),
+            instagram_enabled: els.instagramEnabled?.checked !== false,
+            kofi_url: cleanUrl(els.kofiUrl?.value, 'Ko-fi'),
+            kofi_enabled: els.kofiEnabled?.checked !== false
+        };
+    } catch (error) {
+        setStatus(els.adminStatus, error.message || 'Check the links.');
+        return;
+    }
+
+    setStatus(els.adminStatus, 'saving links...');
+    const { error } = await adminClient
+        .from('site_settings')
+        .upsert({
+            id: 'links',
+            value: nextSettings,
+            updated_at: new Date().toISOString()
+        });
+
+    if (error) {
+        setStatus(els.adminStatus, error.code === '42P01'
+            ? 'Install site_settings.sql in Supabase first.'
+            : (error.message || 'Could not save links.'));
+        return;
+    }
+
+    await loadAdminData();
+    setStatus(els.adminStatus, 'links saved');
+}
+
+function resetLinkSettings() {
+    state.linkSettings = { ...DEFAULT_LINK_SETTINGS };
+    renderLinkSettings();
+    setStatus(els.adminStatus, 'defaults loaded, save to publish');
+}
+
 async function runBanAction(button) {
     const row = button.closest('.admin-ban-row');
     const id = row?.dataset.id;
@@ -740,6 +845,8 @@ async function init() {
 
     els.chatSettingsForm?.addEventListener('submit', saveChatSettings);
     els.chatBanForm?.addEventListener('submit', saveChatBan);
+    els.linkSettingsForm?.addEventListener('submit', saveLinkSettings);
+    els.linkSettingsReset?.addEventListener('click', resetLinkSettings);
     els.streamBans?.addEventListener('click', e => {
         const button = e.target.closest('button[data-ban-action]');
         if (button) runBanAction(button);

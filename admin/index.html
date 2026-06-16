@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="robots" content="noindex, nofollow">
-    <title>Dollia Admin</title>
-    <link rel="stylesheet" href="../admin.css?v=2.2">
+    <title>Lia Admin</title>
+    <link rel="stylesheet" href="../admin.css?v=2.3">
 </head>
 <body>
     <main class="admin-shell">
@@ -52,6 +52,7 @@
             <nav class="admin-tabs" id="admin-tabs">
                 <button class="active" data-panel="review-panel">review</button>
                 <button data-panel="published-panel">published</button>
+                <button data-panel="settings-panel">links</button>
                 <button data-panel="chat-panel">live chat</button>
             </nav>
 
@@ -159,10 +160,63 @@
                     </aside>
                 </div>
             </section>
+
+            <section class="admin-panel" id="settings-panel">
+                <div class="admin-settings-layout">
+                    <form class="admin-tool-card admin-links-card" id="link-settings-form">
+                        <div>
+                            <p class="admin-kicker">public buttons</p>
+                            <h2>social links</h2>
+                        </div>
+                        <p class="admin-tool-note">Turn a link off to hide it from the public menu without deleting the URL.</p>
+
+                        <fieldset class="admin-link-fieldset">
+                            <legend>Snapchat</legend>
+                            <label class="admin-toggle-row">
+                                <input id="snapchat-enabled" type="checkbox">
+                                <span>show Snapchat</span>
+                            </label>
+                            <label>
+                                <span>link</span>
+                                <input id="snapchat-url" type="url" inputmode="url" placeholder="https://www.snapchat.com/add/name">
+                            </label>
+                        </fieldset>
+
+                        <fieldset class="admin-link-fieldset">
+                            <legend>Instagram</legend>
+                            <label class="admin-toggle-row">
+                                <input id="instagram-enabled" type="checkbox">
+                                <span>show Instagram</span>
+                            </label>
+                            <label>
+                                <span>link</span>
+                                <input id="instagram-url" type="url" inputmode="url" placeholder="https://www.instagram.com/name">
+                            </label>
+                        </fieldset>
+
+                        <fieldset class="admin-link-fieldset">
+                            <legend>Ko-fi</legend>
+                            <label class="admin-toggle-row">
+                                <input id="kofi-enabled" type="checkbox">
+                                <span>show Ko-fi</span>
+                            </label>
+                            <label>
+                                <span>link</span>
+                                <input id="kofi-url" type="url" inputmode="url" placeholder="https://ko-fi.com/name">
+                            </label>
+                        </fieldset>
+
+                        <div class="admin-actions">
+                            <button type="submit">save links</button>
+                            <button class="soft" type="button" id="link-settings-reset">restore defaults</button>
+                        </div>
+                    </form>
+                </div>
+            </section>
         </section>
     </main>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="../admin.js?v=2.2"></script>
+    <script src="../admin.js?v=2.3"></script>
 </body>
 </html>

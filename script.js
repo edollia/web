@@ -1,4 +1,14 @@
 document.addEventListener("DOMContentLoaded", async function() {
+    const DEFAULT_LINK_SETTINGS = {
+        snapchat_url: 'https://www.snapchat.com/add/dumidoll',
+        snapchat_enabled: true,
+        instagram_url: 'https://www.instagram.com/pawswirl',
+        instagram_enabled: true,
+        kofi_url: 'https://ko-fi.com/edoll',
+        kofi_enabled: true
+    };
+    let siteLinkSettings = { ...DEFAULT_LINK_SETTINGS };
+
     // ===== ENHANCED AUDIO HANDLING =====
     const audio = new Audio('hehe.mp3');
     audio.loop = true;
@@ -688,6 +698,38 @@ document.addEventListener("DOMContentLoaded", async function() {
         }
     }
 
+    function normalizeSiteLinkSettings(value) {
+        const settings = value && typeof value === 'object' ? value : {};
+        return {
+            snapchat_url: String(settings.snapchat_url || DEFAULT_LINK_SETTINGS.snapchat_url),
+            snapchat_enabled: settings.snapchat_enabled !== false,
+            instagram_url: String(settings.instagram_url || DEFAULT_LINK_SETTINGS.instagram_url),
+            instagram_enabled: settings.instagram_enabled !== false,
+            kofi_url: String(settings.kofi_url || DEFAULT_LINK_SETTINGS.kofi_url),
+            kofi_enabled: settings.kofi_enabled !== false
+        };
+    }
+
+    async function loadSiteLinkSettings() {
+        try {
+            const { data, error } = await window.supabase
+                .from('site_settings')
+                .select('value')
+                .eq('id', 'links');
+            if (error || !Array.isArray(data) || !data[0]) return;
+            siteLinkSettings = normalizeSiteLinkSettings(data[0].value);
+        } catch (error) {
+            siteLinkSettings = { ...DEFAULT_LINK_SETTINGS };
+        }
+    }
+
+    async function loadSiteLinkSettingsWithTimeout() {
+        await Promise.race([
+            loadSiteLinkSettings(),
+            wait(1200)
+        ]);
+    }
+
     // Enhanced loading logic: wait for min time, window load, AND ALL critical resources
     Promise.all([
         new Promise(resolve => setTimeout(() => {
@@ -854,7 +896,10 @@ document.addEventListener("DOMContentLoaded", async function() {
             setLoadingProgress(94);
         }
 
-        await preloadSubmissionsWithTimeout();
+        await Promise.all([
+            preloadSubmissionsWithTimeout(),
+            loadSiteLinkSettingsWithTimeout()
+        ]);
         setLoadingProgress(100);
 
         // Final check - ensure everything is ready
@@ -1006,8 +1051,6 @@ document.addEventListener("DOMContentLoaded", async function() {
 
     // ===== SOCIALS AND SUPPORT MENUS =====
     const wishlistUrl = 'https://throne.com/edoll';
-    const snapchatUrl = 'https://www.snapchat.com/add/dumidoll';
-    const instagramUrl = 'https://www.instagram.com/pawswirl';
     const socialsButton = document.getElementById('socials-button');
     const socialsOptions = socialsButton?.querySelector('.socials-options');
     const snapchatOption = document.getElementById('snapchat-option');
@@ -1016,6 +1059,40 @@ document.addEventListener("DOMContentLoaded", async function() {
     const actionMenuButton = document.getElementById('action-menu-button');
     const actionOptions = actionMenuButton?.querySelector('.action-options');
     const donateOption = document.getElementById('donate-option');
+
+    function getPublicLink(key) {
+        return siteLinkSettings[`${key}_url`] || DEFAULT_LINK_SETTINGS[`${key}_url`];
+    }
+
+    function isPublicLinkEnabled(key) {
+        return siteLinkSettings[`${key}_enabled`] !== false;
+    }
+
+    function getVisibleSocialOptions() {
+        return Array.from(socialsButton?.querySelectorAll('.social-option') || [])
+            .filter(option => !option.classList.contains('site-link-hidden'));
+    }
+
+    function applyPublicLinkSettings() {
+        if (snapchatOption) {
+            snapchatOption.href = getPublicLink('snapchat');
+            snapchatOption.classList.toggle('site-link-hidden', !isPublicLinkEnabled('snapchat'));
+        }
+        if (instagramOption) {
+            instagramOption.href = getPublicLink('instagram');
+            instagramOption.classList.toggle('site-link-hidden', !isPublicLinkEnabled('instagram'));
+        }
+        if (donateOption) {
+            donateOption.href = getPublicLink('kofi');
+            donateOption.classList.toggle('site-link-hidden', !isPublicLinkEnabled('kofi'));
+        }
+        if (socialsButton) {
+            const hasVisibleLinks = getVisibleSocialOptions().length > 0;
+            socialsButton.classList.toggle('site-link-hidden', !hasVisibleLinks);
+            socialsButton.setAttribute('aria-hidden', hasVisibleLinks ? 'false' : 'true');
+            if (!hasVisibleLinks) closeSocialsMenu();
+        }
+    }
 
     function closeSocialsMenu() {
         if (!socialsButton) return;
@@ -1026,7 +1103,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         if (wasOpen && typeof window.closeKofiOverlay === 'function') {
             window.closeKofiOverlay();
         }
-        socialsButton.querySelectorAll('.social-option').forEach(option => {
+        getVisibleSocialOptions().forEach(option => {
             option.setAttribute('tabindex', '-1');
         });
     }
@@ -1051,32 +1128,6 @@ document.addEventListener("DOMContentLoaded", async function() {
         actionMenuButton.querySelectorAll('.action-option').forEach(option => {
             option.setAttribute('tabindex', '-1');
         });
-    }
-
-    function openKofiOverlay() {
-        var maxAttempts = 50;
-        var attempt = 0;
-        
-        var tryOpen = function() {
-            attempt++;
-            
-            if (typeof window.openKofiOverlay === 'function') {
-                try {
-                    window.openKofiOverlay();
-                    return;
-                } catch(err) {
-                    console.error('Error opening Ko-fi overlay:', err);
-                }
-            }
-            
-            if (attempt < maxAttempts) {
-                setTimeout(tryOpen, 100);
-            } else {
-                console.warn('Ko-fi overlay widget not ready after maximum attempts');
-            }
-        };
-        
-        tryOpen();
     }
 
     function addMenuActivation(element, handler) {
@@ -1108,11 +1159,12 @@ document.addEventListener("DOMContentLoaded", async function() {
         if (!isOpen && typeof window.closeKofiOverlay === 'function') {
             window.closeKofiOverlay();
         }
-        socialsButton.querySelectorAll('.social-option').forEach(option => {
+        getVisibleSocialOptions().forEach(option => {
             option.setAttribute('tabindex', isOpen ? '0' : '-1');
         });
     }
 
+    applyPublicLinkSettings();
     addMenuActivation(socialsButton, handleSocialsButtonActivate);
 
     socialsButton?.addEventListener('keydown', function(e) {
@@ -1125,15 +1177,17 @@ document.addEventListener("DOMContentLoaded", async function() {
     snapchatOption?.addEventListener('click', function(e) {
         e.preventDefault();
         e.stopPropagation();
+        if (!isPublicLinkEnabled('snapchat')) return;
         playUiSound('link');
-        window.open(snapchatUrl, '_blank', 'noopener,noreferrer');
+        window.open(getPublicLink('snapchat'), '_blank', 'noopener,noreferrer');
     });
 
     instagramOption?.addEventListener('click', function(e) {
         e.preventDefault();
         e.stopPropagation();
+        if (!isPublicLinkEnabled('instagram')) return;
         playUiSound('link');
-        window.open(instagramUrl, '_blank', 'noopener,noreferrer');
+        window.open(getPublicLink('instagram'), '_blank', 'noopener,noreferrer');
     });
 
     function handleWishlistButtonActivate(e) {
@@ -1161,8 +1215,9 @@ document.addEventListener("DOMContentLoaded", async function() {
     donateOption?.addEventListener('click', function(e) {
         e.preventDefault();
         e.stopPropagation();
+        if (!isPublicLinkEnabled('kofi')) return;
         playUiSound('link');
-        openKofiOverlay();
+        window.open(getPublicLink('kofi'), '_blank', 'noopener,noreferrer');
     });
 
     function handleActionMenuActivate(e) {

@@ -1191,6 +1191,10 @@ button {
     text-shadow: none;
 }
 
+.site-link-hidden {
+    display: none !important;
+}
+
 .social-option img {
     width: 30px;
     height: 30px;

@@ -575,6 +575,57 @@ h1 {
     resize: vertical;
 }
 
+.admin-settings-layout {
+    width: min(720px, 100%);
+}
+
+.admin-links-card {
+    gap: 14px;
+}
+
+.admin-link-fieldset {
+    display: grid;
+    gap: 9px;
+    margin: 0;
+    padding: 12px;
+    border: 1px solid rgba(255, 214, 230, 0.66);
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.46);
+}
+
+.admin-link-fieldset legend {
+    padding: 0 6px;
+    color: rgba(174, 85, 130, 0.88);
+    font-family: "Comic Sans MS", "Trebuchet MS", cursive;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.admin-toggle-row {
+    display: flex !important;
+    grid-template-columns: none !important;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px !important;
+}
+
+.admin-toggle-row input {
+    width: 18px;
+    min-height: 18px;
+    accent-color: rgba(255, 132, 187, 0.9);
+}
+
+.settings-unavailable::after {
+    content: "Install site_settings.sql in Supabase before these controls can save.";
+    display: block;
+    padding: 9px 10px;
+    border: 1px solid rgba(255, 180, 212, 0.5);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.54);
+    color: var(--admin-muted);
+    font-size: 12px;
+}
+
 .admin-tool-card button {
     min-height: 34px;
 }
