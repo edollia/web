@@ -301,7 +301,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                 tapCount = 0;
             }, 2600);
 
-            if (tapCount >= 10) {
+            if (tapCount >= 5) {
                 tapCount = 0;
                 clearTimeout(tapResetTimer);
                 playUiSound('tap');

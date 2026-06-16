@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="robots" content="noindex, nofollow">
     <title>Lia Admin</title>
-    <link rel="stylesheet" href="../admin.css?v=2.3">
+    <link rel="stylesheet" href="../admin.css?v=3.1">
 </head>
 <body>
     <main class="admin-shell">
@@ -36,9 +36,10 @@
 
         <section class="admin-dashboard hidden" id="dashboard-panel">
             <header class="admin-header">
-                <div>
+                <div class="admin-title-block">
                     <p class="admin-kicker">dashboard</p>
                     <h1>control room</h1>
+                    <p class="admin-header-note">review messages, tune links, and keep the live room tidy</p>
                 </div>
                 <div class="admin-header-actions">
                     <a class="admin-back-home" href="../index.html">back</a>
@@ -50,15 +51,22 @@
             <section class="admin-stats" id="admin-stats"></section>
 
             <nav class="admin-tabs" id="admin-tabs">
-                <button class="active" data-panel="review-panel">review</button>
-                <button data-panel="published-panel">published</button>
-                <button data-panel="settings-panel">links</button>
-                <button data-panel="chat-panel">live chat</button>
+                <button class="active" data-panel="review-panel"><span>review <b id="review-tab-count">0</b></span><small>new things</small></button>
+                <button data-panel="published-panel"><span>published <b id="published-tab-count">0</b></span><small>live posts</small></button>
+                <button data-panel="settings-panel"><span>socials <b id="links-tab-count">0/3</b></span><small>links + ko-fi</small></button>
+                <button data-panel="chat-panel"><span>live chat <b id="chat-tab-count">0</b></span><small>moderation</small></button>
             </nav>
 
             <p class="admin-status" id="admin-status"></p>
 
             <section class="admin-panel active" id="review-panel">
+                <div class="admin-panel-intro">
+                    <div>
+                        <p class="admin-kicker">inbox</p>
+                        <h2>waiting room</h2>
+                    </div>
+                    <p>Approve doodles, answer asks, or clear things out quickly.</p>
+                </div>
                 <div class="admin-section-heading">
                     <h2>waiting doods</h2>
                     <div class="admin-bulk-bar compact">
@@ -80,6 +88,13 @@
             </section>
 
             <section class="admin-panel" id="published-panel">
+                <div class="admin-panel-intro">
+                    <div>
+                        <p class="admin-kicker">public</p>
+                        <h2>posted things</h2>
+                    </div>
+                    <p>Everything here is already visible on the posts panel.</p>
+                </div>
                 <div class="admin-section-heading">
                     <h2>posted doods</h2>
                     <div class="admin-bulk-bar compact">
@@ -163,6 +178,12 @@
 
             <section class="admin-panel" id="settings-panel">
                 <div class="admin-settings-layout">
+                    <aside class="admin-tool-card admin-settings-help">
+                        <p class="admin-kicker">settings</p>
+                        <h2>public controls</h2>
+                        <p class="admin-tool-note">These update the buttons on the front page after the Supabase settings table is installed.</p>
+                        <div class="admin-link-preview" id="link-settings-preview"></div>
+                    </aside>
                     <form class="admin-tool-card admin-links-card" id="link-settings-form">
                         <div>
                             <p class="admin-kicker">public buttons</p>
@@ -170,41 +191,73 @@
                         </div>
                         <p class="admin-tool-note">Turn a link off to hide it from the public menu without deleting the URL.</p>
 
-                        <fieldset class="admin-link-fieldset">
-                            <legend>Snapchat</legend>
-                            <label class="admin-toggle-row">
-                                <input id="snapchat-enabled" type="checkbox">
-                                <span>show Snapchat</span>
-                            </label>
-                            <label>
-                                <span>link</span>
-                                <input id="snapchat-url" type="url" inputmode="url" placeholder="https://www.snapchat.com/add/name">
-                            </label>
-                        </fieldset>
+                        <div class="admin-link-card-stack">
+                            <details class="admin-link-card" data-link-card="snapchat" open>
+                                <summary>
+                                    <div class="admin-link-card-title">
+                                        <span class="admin-link-icon">S</span>
+                                        <div>
+                                            <strong>Snapchat</strong>
+                                            <small id="snapchat-state">visible</small>
+                                        </div>
+                                    </div>
+                                    <label class="admin-switch">
+                                        <input id="snapchat-enabled" type="checkbox">
+                                        <span></span>
+                                    </label>
+                                </summary>
+                                <div class="admin-link-card-body">
+                                    <label class="admin-url-field">
+                                        <span>destination URL</span>
+                                        <input id="snapchat-url" type="url" inputmode="url" placeholder="https://www.snapchat.com/add/name">
+                                    </label>
+                                </div>
+                            </details>
 
-                        <fieldset class="admin-link-fieldset">
-                            <legend>Instagram</legend>
-                            <label class="admin-toggle-row">
-                                <input id="instagram-enabled" type="checkbox">
-                                <span>show Instagram</span>
-                            </label>
-                            <label>
-                                <span>link</span>
-                                <input id="instagram-url" type="url" inputmode="url" placeholder="https://www.instagram.com/name">
-                            </label>
-                        </fieldset>
+                            <details class="admin-link-card" data-link-card="instagram" open>
+                                <summary>
+                                    <div class="admin-link-card-title">
+                                        <span class="admin-link-icon">I</span>
+                                        <div>
+                                            <strong>Instagram</strong>
+                                            <small id="instagram-state">visible</small>
+                                        </div>
+                                    </div>
+                                    <label class="admin-switch">
+                                        <input id="instagram-enabled" type="checkbox">
+                                        <span></span>
+                                    </label>
+                                </summary>
+                                <div class="admin-link-card-body">
+                                    <label class="admin-url-field">
+                                        <span>destination URL</span>
+                                        <input id="instagram-url" type="url" inputmode="url" placeholder="https://www.instagram.com/name">
+                                    </label>
+                                </div>
+                            </details>
 
-                        <fieldset class="admin-link-fieldset">
-                            <legend>Ko-fi</legend>
-                            <label class="admin-toggle-row">
-                                <input id="kofi-enabled" type="checkbox">
-                                <span>show Ko-fi</span>
-                            </label>
-                            <label>
-                                <span>link</span>
-                                <input id="kofi-url" type="url" inputmode="url" placeholder="https://ko-fi.com/name">
-                            </label>
-                        </fieldset>
+                            <details class="admin-link-card" data-link-card="kofi" open>
+                                <summary>
+                                    <div class="admin-link-card-title">
+                                        <span class="admin-link-icon">K</span>
+                                        <div>
+                                            <strong>Ko-fi</strong>
+                                            <small id="kofi-state">visible</small>
+                                        </div>
+                                    </div>
+                                    <label class="admin-switch">
+                                        <input id="kofi-enabled" type="checkbox">
+                                        <span></span>
+                                    </label>
+                                </summary>
+                                <div class="admin-link-card-body">
+                                    <label class="admin-url-field">
+                                        <span>destination URL</span>
+                                        <input id="kofi-url" type="url" inputmode="url" placeholder="https://ko-fi.com/name">
+                                    </label>
+                                </div>
+                            </details>
+                        </div>
 
                         <div class="admin-actions">
                             <button type="submit">save links</button>
@@ -217,6 +270,6 @@
     </main>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="../admin.js?v=2.3"></script>
+    <script src="../admin.js?v=3.1"></script>
 </body>
 </html>

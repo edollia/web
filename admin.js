@@ -50,6 +50,10 @@ const els = {
     adminStatus: document.getElementById('admin-status'),
     stats: document.getElementById('admin-stats'),
     tabs: document.getElementById('admin-tabs'),
+    reviewTabCount: document.getElementById('review-tab-count'),
+    publishedTabCount: document.getElementById('published-tab-count'),
+    linksTabCount: document.getElementById('links-tab-count'),
+    chatTabCount: document.getElementById('chat-tab-count'),
     refresh: document.getElementById('refresh-admin'),
     logout: document.getElementById('logout-admin'),
     pendingDrawings: document.getElementById('pending-drawings-list'),
@@ -68,12 +72,16 @@ const els = {
     chatBanNote: document.getElementById('chat-ban-note'),
     linkSettingsForm: document.getElementById('link-settings-form'),
     linkSettingsReset: document.getElementById('link-settings-reset'),
+    linkSettingsPreview: document.getElementById('link-settings-preview'),
     snapchatEnabled: document.getElementById('snapchat-enabled'),
     snapchatUrl: document.getElementById('snapchat-url'),
+    snapchatState: document.getElementById('snapchat-state'),
     instagramEnabled: document.getElementById('instagram-enabled'),
     instagramUrl: document.getElementById('instagram-url'),
+    instagramState: document.getElementById('instagram-state'),
     kofiEnabled: document.getElementById('kofi-enabled'),
-    kofiUrl: document.getElementById('kofi-url')
+    kofiUrl: document.getElementById('kofi-url'),
+    kofiState: document.getElementById('kofi-state')
 };
 
 function showPanel(panel) {
@@ -149,6 +157,10 @@ function renderStats() {
     const hiddenChat = state.streamMessages.filter(item => item.is_hidden).length;
     const activeLinks = ['snapchat', 'instagram', 'kofi']
         .filter(key => state.linkSettings[`${key}_enabled`] !== false).length;
+    if (els.reviewTabCount) els.reviewTabCount.textContent = String(pendingDrawings + pendingQuestions);
+    if (els.publishedTabCount) els.publishedTabCount.textContent = String(publishedDrawings + publishedQuestions);
+    if (els.linksTabCount) els.linksTabCount.textContent = `${activeLinks}/3`;
+    if (els.chatTabCount) els.chatTabCount.textContent = String(visibleChat + hiddenChat);
 
     els.stats.innerHTML = `
         <div class="admin-stat"><strong>${pendingDrawings}</strong><span>pending doods</span></div>
@@ -285,13 +297,63 @@ function renderLinkSettings() {
     const settings = state.linkSettings;
     if (els.snapchatEnabled) els.snapchatEnabled.checked = settings.snapchat_enabled !== false;
     if (els.snapchatUrl) els.snapchatUrl.value = settings.snapchat_url || '';
+    if (els.snapchatState) els.snapchatState.textContent = settings.snapchat_enabled !== false ? 'visible' : 'hidden';
     if (els.instagramEnabled) els.instagramEnabled.checked = settings.instagram_enabled !== false;
     if (els.instagramUrl) els.instagramUrl.value = settings.instagram_url || '';
+    if (els.instagramState) els.instagramState.textContent = settings.instagram_enabled !== false ? 'visible' : 'hidden';
     if (els.kofiEnabled) els.kofiEnabled.checked = settings.kofi_enabled !== false;
     if (els.kofiUrl) els.kofiUrl.value = settings.kofi_url || '';
+    if (els.kofiState) els.kofiState.textContent = settings.kofi_enabled !== false ? 'visible' : 'hidden';
     if (els.linkSettingsForm) {
         els.linkSettingsForm.classList.toggle('settings-unavailable', !state.linkSettingsAvailable);
     }
+    renderLinkPreview();
+}
+
+function getDraftLinkSettings() {
+    return {
+        snapchat_url: els.snapchatUrl?.value.trim() || state.linkSettings.snapchat_url || DEFAULT_LINK_SETTINGS.snapchat_url,
+        snapchat_enabled: els.snapchatEnabled?.checked !== false,
+        instagram_url: els.instagramUrl?.value.trim() || state.linkSettings.instagram_url || DEFAULT_LINK_SETTINGS.instagram_url,
+        instagram_enabled: els.instagramEnabled?.checked !== false,
+        kofi_url: els.kofiUrl?.value.trim() || state.linkSettings.kofi_url || DEFAULT_LINK_SETTINGS.kofi_url,
+        kofi_enabled: els.kofiEnabled?.checked !== false
+    };
+}
+
+function syncLinkDraftLabels(settings = getDraftLinkSettings()) {
+    if (els.snapchatState) els.snapchatState.textContent = settings.snapchat_enabled !== false ? 'visible' : 'hidden';
+    if (els.instagramState) els.instagramState.textContent = settings.instagram_enabled !== false ? 'visible' : 'hidden';
+    if (els.kofiState) els.kofiState.textContent = settings.kofi_enabled !== false ? 'visible' : 'hidden';
+    ['snapchat', 'instagram', 'kofi'].forEach(key => {
+        document.querySelector(`[data-link-card="${key}"]`)
+            ?.classList.toggle('is-disabled', settings[`${key}_enabled`] === false);
+    });
+}
+
+function renderLinkPreview() {
+    if (!els.linkSettingsPreview) return;
+    const settings = getDraftLinkSettings();
+    syncLinkDraftLabels(settings);
+    const rows = [
+        ['Snapchat', 'snapchat'],
+        ['Instagram', 'instagram'],
+        ['Ko-fi', 'kofi']
+    ];
+
+    els.linkSettingsPreview.innerHTML = rows.map(([label, key]) => {
+        const enabled = settings[`${key}_enabled`] !== false;
+        const url = settings[`${key}_url`] || DEFAULT_LINK_SETTINGS[`${key}_url`];
+        return `
+            <article class="admin-link-preview-row ${enabled ? '' : 'is-disabled'}">
+                <div>
+                    <strong>${escapeHtml(label)}</strong>
+                    <span>${enabled ? 'visible' : 'hidden'}</span>
+                </div>
+                <button class="soft" type="button" data-link-preview="${escapeHtml(url)}">open</button>
+            </article>
+        `;
+    }).join('');
 }
 
 function renderAll() {
@@ -847,6 +909,19 @@ async function init() {
     els.chatBanForm?.addEventListener('submit', saveChatBan);
     els.linkSettingsForm?.addEventListener('submit', saveLinkSettings);
     els.linkSettingsReset?.addEventListener('click', resetLinkSettings);
+    els.linkSettingsPreview?.addEventListener('click', e => {
+        const button = e.target.closest('button[data-link-preview]');
+        const url = button?.dataset.linkPreview;
+        if (url) window.open(url, '_blank', 'noopener,noreferrer');
+    });
+    document.querySelectorAll('.admin-switch').forEach(toggle => {
+        toggle.addEventListener('click', e => e.stopPropagation());
+        toggle.addEventListener('keydown', e => e.stopPropagation());
+        toggle.addEventListener('change', renderLinkPreview);
+    });
+    [els.snapchatUrl, els.instagramUrl, els.kofiUrl].forEach(input => {
+        input?.addEventListener('input', renderLinkPreview);
+    });
     els.streamBans?.addEventListener('click', e => {
         const button = e.target.closest('button[data-ban-action]');
         if (button) runBanAction(button);
