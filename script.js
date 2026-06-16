@@ -1337,15 +1337,27 @@ document.addEventListener("DOMContentLoaded", async function() {
 
         let index = 0;
         let stepTimer = null;
+        let tourFinished = false;
         const stepLayer = overlay.querySelector('.tour-step-layer');
 
         function finishTour() {
+            if (tourFinished) return;
+            tourFinished = true;
             window.clearTimeout(stepTimer);
+            document.removeEventListener('keydown', handleTourKeydown);
             overlay.classList.add('leaving');
             document.body.classList.remove('first-visit-tour-active');
             steps.forEach(step => step.element.classList.remove('tour-highlight-target'));
             window.setTimeout(() => overlay.remove(), 360);
         }
+
+        function handleTourKeydown(event) {
+            if (event.key === 'Escape') {
+                finishTour();
+            }
+        }
+
+        document.addEventListener('keydown', handleTourKeydown);
 
         function showStep() {
             const step = steps[index];
@@ -1412,8 +1424,8 @@ document.addEventListener("DOMContentLoaded", async function() {
         e.stopPropagation();
         closeSocialsMenu();
         closeActionMenu();
-        playUiSound('link');
         if (!isPublicLinkEnabled('throne')) return;
+        playUiSound('link');
         if (typeof window.openThroneOverlay === 'function') {
             window.openThroneOverlay();
         } else {
@@ -1970,9 +1982,9 @@ document.addEventListener("DOMContentLoaded", async function() {
                 const safeHref = escapeHtml(href);
                 const safeText = escapeHtml(match);
                 if (/\.gif(?:[?#].*)?$/i.test(href)) {
-                    html += `<a href="${safeHref}" target="_blank" rel="noopener noreferrer" class="answer-gif-link"><img src="${safeHref}" alt="" class="answer-gif" loading="lazy"></a>`;
+                    html += `<a href="${safeHref}" target="_blank" rel="nofollow ugc noopener noreferrer" class="answer-gif-link"><img src="${safeHref}" alt="" class="answer-gif" loading="lazy" referrerpolicy="no-referrer"></a>`;
                 } else {
-                    html += `<a href="${safeHref}" target="_blank" rel="noopener noreferrer" class="answer-link">${safeText}</a>`;
+                    html += `<a href="${safeHref}" target="_blank" rel="nofollow ugc noopener noreferrer" class="answer-link">${safeText}</a>`;
                 }
                 lastIndex = offset + match.length;
                 return match;
@@ -2068,6 +2080,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         };
         const defaultReactionIcon = 'reactions.png';
         let currentOpenPicker = null; // Track currently open picker
+        let currentOpenPickerCleanup = null;
         let lastClickTime = 0; // Prevent rapid-fire clicks
         let lastTouchReactionTime = 0;
 
@@ -2242,6 +2255,10 @@ document.addEventListener("DOMContentLoaded", async function() {
             // Append to the drawing element instead of body
             drawingElement.appendChild(picker);
             currentOpenPicker = picker;
+            if (currentOpenPickerCleanup) {
+                currentOpenPickerCleanup();
+                currentOpenPickerCleanup = null;
+            }
             
                             // Animate the roll transition with improved timing
             setTimeout(() => {
@@ -2324,28 +2341,37 @@ document.addEventListener("DOMContentLoaded", async function() {
             });
             
             // Close picker when clicking outside
+            let outsideClickHandler = null;
+            const cleanupPickerListeners = () => {
+                if (outsideClickHandler) {
+                    document.removeEventListener('click', outsideClickHandler);
+                }
+                document.removeEventListener('scroll', scrollHandler);
+            };
+
             setTimeout(() => {
-                const closePicker = (e) => {
+                if (currentOpenPicker !== picker) return;
+                outsideClickHandler = (e) => {
                     if (!picker.contains(e.target) && !likeButton.contains(e.target)) {
                         closeReactionPicker();
-                        document.removeEventListener('click', closePicker);
                     }
                 };
-                document.addEventListener('click', closePicker);
-                
-                // Store reference for cleanup
-                picker.dataset.closeHandler = 'true';
+                document.addEventListener('click', outsideClickHandler);
             }, 100);
             
             // Close picker on scroll
             const scrollHandler = () => {
                 closeReactionPicker();
-                document.removeEventListener('scroll', scrollHandler);
             };
             document.addEventListener('scroll', scrollHandler);
+            currentOpenPickerCleanup = cleanupPickerListeners;
         }
 
         function closeReactionPicker() {
+            if (currentOpenPickerCleanup) {
+                currentOpenPickerCleanup();
+                currentOpenPickerCleanup = null;
+            }
             if (currentOpenPicker && currentOpenPicker.parentElement) {
                 // Find the original like button
                 const drawingId = currentOpenPicker.dataset.drawingId;
@@ -2471,7 +2497,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                     .select('reaction_type')
                     .eq('drawing_id', drawingId);
                 
-                if (remainingLikes.length === 0) {
+                if (!remainingLikes?.length) {
                     likeIconElement.src = defaultReactionIcon;
                 } else {
                     // Update to most common remaining reaction

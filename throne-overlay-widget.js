@@ -47,6 +47,10 @@
                 transition: visibility 0s linear 0.58s;
             }
 
+            body.has-throne-overlay-open {
+                overflow: hidden;
+            }
+
             .doll-throne-overlay.show {
                 visibility: visible;
                 pointer-events: auto;
