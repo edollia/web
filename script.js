@@ -271,6 +271,44 @@ document.addEventListener("DOMContentLoaded", async function() {
             : button.dataset.defaultText;
     }
 
+    function getFocusableElements(container) {
+        if (!container) return [];
+        return Array.from(container.querySelectorAll([
+            'a[href]',
+            'button:not([disabled])',
+            'input:not([disabled])',
+            'textarea:not([disabled])',
+            'select:not([disabled])',
+            '[role="button"]',
+            '[tabindex]:not([tabindex="-1"])'
+        ].join(','))).filter(element => {
+            const style = window.getComputedStyle(element);
+            return style.display !== 'none'
+                && style.visibility !== 'hidden'
+                && element.getClientRects().length > 0;
+        });
+    }
+
+    function trapFocusWithin(container, event) {
+        if (event.key !== 'Tab') return;
+        const focusable = getFocusableElements(container);
+        if (!focusable.length) {
+            event.preventDefault();
+            container.focus?.({ preventScroll: true });
+            return;
+        }
+
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+            event.preventDefault();
+            last.focus({ preventScroll: true });
+        } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault();
+            first.focus({ preventScroll: true });
+        }
+    }
+
     function initAdminGate() {
         const headerImage = document.querySelector('.header-image');
         const gate = document.getElementById('admin-gate');
@@ -283,8 +321,10 @@ document.addEventListener("DOMContentLoaded", async function() {
         const adminCode = '7769';
         let tapCount = 0;
         let tapResetTimer = null;
+        let gateReturnFocus = null;
 
         function showGate() {
+            gateReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
             gate.classList.add('show');
             gate.setAttribute('aria-hidden', 'false');
             input.value = '';
@@ -295,6 +335,8 @@ document.addEventListener("DOMContentLoaded", async function() {
         function hideGate() {
             gate.classList.remove('show');
             gate.setAttribute('aria-hidden', 'true');
+            gateReturnFocus?.focus?.({ preventScroll: true });
+            gateReturnFocus = null;
         }
 
         headerImage.addEventListener('click', function() {
@@ -329,6 +371,13 @@ document.addEventListener("DOMContentLoaded", async function() {
         closeButton?.addEventListener('click', hideGate);
         gate.addEventListener('click', function(e) {
             if (e.target === gate) hideGate();
+        });
+        gate.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                hideGate();
+                return;
+            }
+            trapFocusWithin(gate, e);
         });
     }
 
@@ -1095,12 +1144,17 @@ document.addEventListener("DOMContentLoaded", async function() {
             const data = JSON.parse(structuredData.textContent);
             const graph = Array.isArray(data['@graph']) ? data['@graph'] : [];
             const websiteNode = graph.find(node => node['@type'] === 'WebSite');
-            if (!websiteNode) return;
-
-            websiteNode.sameAs = ['instagram', 'snapchat', 'kofi', 'throne']
+            const sameAs = ['instagram', 'snapchat', 'kofi', 'throne']
                 .filter(isPublicLinkEnabled)
                 .map(getPublicLink)
                 .filter(Boolean);
+
+            if (websiteNode) websiteNode.sameAs = sameAs;
+            graph
+                .filter(node => node['@type'] === 'Person')
+                .forEach(node => {
+                    node.sameAs = sameAs;
+                });
             structuredData.textContent = JSON.stringify(data, null, 2);
         } catch (error) {
             // Keep the static structured data if parsing ever fails.

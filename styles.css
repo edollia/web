@@ -773,7 +773,7 @@ button {
 .main-screen header,
 .main-screen .content-area,
 .main-screen .site-brand-footer {
-    transition: filter 0.42s ease;
+    transition: opacity 0.32s ease;
 }
 
 .site-brand-footer {
@@ -1301,7 +1301,7 @@ body.kofi-public-hidden #doll-kofi-scrim {
 body.first-visit-tour-active .main-screen header,
 body.first-visit-tour-active .main-screen .content-area,
 body.first-visit-tour-active .main-screen .site-brand-footer {
-    filter: blur(2px) saturate(0.96) brightness(1.02);
+    filter: none;
 }
 
 body.first-visit-tour-active .button-group {
@@ -1316,9 +1316,7 @@ body.first-visit-tour-active .button-group::before {
     position: absolute;
     inset: -10px -14px;
     border-radius: 999px;
-    background: rgba(255, 247, 251, 0.36);
-    backdrop-filter: blur(1px);
-    -webkit-backdrop-filter: blur(1px);
+    background: rgba(255, 247, 251, 0.46);
     z-index: -1;
 }
 
@@ -1336,6 +1334,8 @@ body.first-visit-tour-active .tour-highlight-target {
     z-index: 10004;
     pointer-events: none;
     opacity: 1;
+    contain: strict;
+    isolation: isolate;
     transition: opacity 0.68s ease;
 }
 
@@ -1343,8 +1343,16 @@ body.first-visit-tour-active .tour-highlight-target {
     content: "";
     position: absolute;
     inset: 0;
-    background: rgba(255, 247, 251, 0.08);
+    background:
+        radial-gradient(circle at 50% 42%, rgba(255, 255, 255, 0.2), transparent 34%),
+        radial-gradient(circle at 12% 18%, rgba(255, 210, 232, 0.18), transparent 26%),
+        radial-gradient(circle at 88% 70%, rgba(255, 196, 224, 0.16), transparent 28%),
+        rgba(255, 247, 251, 0.16);
+    backdrop-filter: blur(1px);
+    -webkit-backdrop-filter: blur(1px);
     opacity: 0;
+    transform: translateZ(0);
+    will-change: opacity;
     animation: tourVeilIn 0.42s ease forwards;
 }
 
@@ -1435,7 +1443,6 @@ body.first-visit-tour-active .tour-highlight-target {
     stroke-linejoin: round;
     stroke-dasharray: 1;
     stroke-dashoffset: 1;
-    filter: drop-shadow(0 2px 5px rgba(255, 145, 195, 0.24));
     animation: tourArrowDraw 1.28s cubic-bezier(0.28, 0.72, 0.2, 1) forwards;
 }
 

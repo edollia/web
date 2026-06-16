@@ -13,6 +13,7 @@
     let fullWebsiteHintTimer = null;
     let fullWebsiteHintHideTimer = null;
     let fullWebsiteHintCycle = 0;
+    let throneReturnFocus = null;
 
     function playSound(type) {
         if (typeof window.dollPlayUiSound === 'function') {
@@ -515,6 +516,37 @@
         window.open(wishlistUrl, '_blank', 'noopener,noreferrer');
     }
 
+    function getFocusableElements(container) {
+        if (!container) return [];
+        return Array.from(container.querySelectorAll([
+            'a[href]',
+            'button:not([disabled])',
+            'iframe',
+            '[role="button"]',
+            '[tabindex]:not([tabindex="-1"])'
+        ].join(','))).filter(element => {
+            const style = window.getComputedStyle(element);
+            return style.display !== 'none'
+                && style.visibility !== 'hidden'
+                && element.getClientRects().length > 0;
+        });
+    }
+
+    function trapFocus(event) {
+        if (event.key !== 'Tab' || !overlay?.classList.contains('show')) return;
+        const focusable = getFocusableElements(overlay);
+        if (!focusable.length) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+            event.preventDefault();
+            last.focus({ preventScroll: true });
+        } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault();
+            first.focus({ preventScroll: true });
+        }
+    }
+
     function setDollThroneUrl(nextUrl) {
         if (!nextUrl) return;
         wishlistUrl = nextUrl;
@@ -578,6 +610,7 @@
         overlay.id = widgetId;
         overlay.className = 'doll-throne-overlay';
         overlay.setAttribute('aria-hidden', 'true');
+        overlay.setAttribute('tabindex', '-1');
         overlay.innerHTML = `
             <div class="doll-throne-scrim" data-throne-close></div>
             <section class="doll-throne-frame" role="dialog" aria-label="Wishlist">
@@ -696,6 +729,7 @@
 
     function openThroneOverlay() {
         if (!overlay) buildOverlay();
+        throneReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
         window.clearTimeout(unloadIframeTimer);
         ensureIframe();
         overlay.setAttribute('aria-hidden', 'false');
@@ -704,6 +738,9 @@
         showOpeningVeil();
         window.requestAnimationFrame(function() {
             overlay.classList.add('show');
+            window.setTimeout(() => {
+                overlay.querySelector('.doll-throne-close')?.focus({ preventScroll: true });
+            }, 80);
         });
         showFallbackIfNeeded();
         scheduleFullWebsiteHint();
@@ -715,6 +752,8 @@
         overlay.classList.remove('show');
         overlay.setAttribute('aria-hidden', 'true');
         document.body.classList.remove('has-throne-overlay-open');
+        throneReturnFocus?.focus?.({ preventScroll: true });
+        throneReturnFocus = null;
         window.clearTimeout(fallbackTimer);
         window.clearTimeout(openVeilTimer);
         hideFullWebsiteHint();
@@ -729,7 +768,9 @@
     document.addEventListener('keydown', function(event) {
         if (event.key === 'Escape' && overlay?.classList.contains('show')) {
             closeThroneOverlay();
+            return;
         }
+        trapFocus(event);
     });
 
     window.openThroneOverlay = openThroneOverlay;

@@ -24,6 +24,57 @@ var kofiWidgetOverlayFloatingChatBuilder = kofiWidgetOverlayFloatingChatBuilder 
     var widgetPageLoadInitiatedStates = [];
 
     var closeButtonActionBlocked = false;
+    var kofiReturnFocus = null;
+
+    function getFocusableElements(container) {
+        if (!container) return [];
+        return Array.from(container.querySelectorAll([
+            'a[href]',
+            'button:not([disabled])',
+            'iframe',
+            '[role="button"]',
+            '[tabindex]:not([tabindex="-1"])'
+        ].join(','))).filter(function(element) {
+            var style = window.getComputedStyle(element);
+            return style.display !== 'none'
+                && style.visibility !== 'hidden'
+                && element.getClientRects().length > 0;
+        });
+    }
+
+    function getActiveKofiPopup() {
+        return document.querySelector('[data-kofi-open="true"]');
+    }
+
+    function trapKofiFocus(event) {
+        var popup = getActiveKofiPopup();
+        if (!popup) return;
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            popup.querySelector('[aria-label="Close Ko-fi"]')?.click();
+            return;
+        }
+        if (event.key !== 'Tab') return;
+
+        var focusable = getFocusableElements(popup);
+        if (!focusable.length) {
+            event.preventDefault();
+            popup.focus({ preventScroll: true });
+            return;
+        }
+
+        var first = focusable[0];
+        var last = focusable[focusable.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+            event.preventDefault();
+            last.focus({ preventScroll: true });
+        } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault();
+            first.focus({ preventScroll: true });
+        }
+    }
+
+    document.addEventListener('keydown', trapKofiFocus);
    
     function getButtonId() {
         return `${_configManager.getValue(_myType, 'cssId')}-donate-button`;
@@ -264,19 +315,27 @@ var kofiWidgetOverlayFloatingChatBuilder = kofiWidgetOverlayFloatingChatBuilder 
     };
 
     function slidePopupOpen(popup, finalHeight) {
+        kofiReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
         var displayHeight = Math.min(Math.round(finalHeight * 1.4), Math.round(window.innerHeight * 0.94));
         var topOffset = 0;
         popup.dataset.kofiTopOffset = topOffset;
+        popup.dataset.kofiOpen = 'true';
+        popup.setAttribute('aria-hidden', 'false');
         popup.style = `z-index:10000;position:fixed!important;top:calc(50% + ${topOffset}px)!important;left:50%!important;right:auto!important;bottom:auto!important;width:328px!important;height:${displayHeight}px!important;max-height:92vh!important;transform:translate(-50%, -50%) scale(0.7)!important;transform-origin:center center!important;transition:height 0.5s ease, opacity 0.3s linear; opacity:1;`;
         var noticeMobi = document.getElementsByClassName("floating-chat-kofi-popup-iframe-notice-mobi")[0];
         var notice = document.getElementsByClassName("floating-chat-kofi-popup-iframe-notice")[0];
         if (noticeMobi) noticeMobi.style.display = "block";
         if (notice) notice.style.display = "block";
+        window.setTimeout(function() {
+            popup.querySelector('[aria-label="Close Ko-fi"]')?.focus({ preventScroll: true });
+        }, 80);
     };
 
     function closePopup(popup, donateButton) {
         // ar popup = document.getElementById(popupId);
         var topOffset = popup.dataset.kofiTopOffset || 0;
+        popup.dataset.kofiOpen = 'false';
+        popup.setAttribute('aria-hidden', 'true');
         popup.style = `z-index:10000;position:fixed!important;top:calc(50% + ${topOffset}px)!important;left:50%!important;right:auto!important;bottom:auto!important;width:328px!important;height:0px!important;transform:translate(-50%, -50%) scale(0.7)!important;transform-origin:center center!important;transition:height 0.3s ease 0s, opacity 0.3s linear; opacity:0;`;
         updateClass(donateButton, 'open', 'closed');
         var noticeMobi = document.getElementsByClassName("floating-chat-kofi-popup-iframe-notice-mobi")[0];
@@ -284,6 +343,8 @@ var kofiWidgetOverlayFloatingChatBuilder = kofiWidgetOverlayFloatingChatBuilder 
         if (noticeMobi) noticeMobi.style.display = "none";
         if (notice) notice.style.display = "none";
         hideKofiScrim();
+        kofiReturnFocus?.focus?.({ preventScroll: true });
+        kofiReturnFocus = null;
     }
 
     function ensureKofiScrim() {
@@ -431,6 +492,8 @@ var kofiWidgetOverlayFloatingChatBuilder = kofiWidgetOverlayFloatingChatBuilder 
         var popup = document.createElement('div');
         popup.id = popupId;
         popup.classList = selectors.popupClass;
+        popup.setAttribute('aria-hidden', 'true');
+        popup.setAttribute('tabindex', '-1');
         popup.style = `z-index:10000;height: 0px; width:0px; opacity: 0; transition: all 0.6s ease 0s;`;
 
         if (parentElementId) {
