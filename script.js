@@ -1378,6 +1378,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         overlay.className = 'first-visit-tour';
         overlay.setAttribute('aria-hidden', 'true');
         overlay.innerHTML = `
+            <div class="tour-veil-layer"></div>
             <span class="tour-bubble tour-bubble-one"></span>
             <span class="tour-bubble tour-bubble-two"></span>
             <span class="tour-bubble tour-bubble-three"></span>
@@ -1392,13 +1393,41 @@ document.addEventListener("DOMContentLoaded", async function() {
         let index = 0;
         let stepTimer = null;
         let tourFinished = false;
+        const veilLayer = overlay.querySelector('.tour-veil-layer');
         const stepLayer = overlay.querySelector('.tour-step-layer');
+
+        function updateTourVeil() {
+            if (!veilLayer) return;
+            const iconRect = document.querySelector('.button-group')?.getBoundingClientRect();
+            if (!iconRect) return;
+
+            const padding = 18;
+            const gap = {
+                top: Math.max(0, iconRect.top - padding),
+                left: Math.max(0, iconRect.left - padding),
+                right: Math.min(window.innerWidth, iconRect.right + padding),
+                bottom: Math.min(window.innerHeight, iconRect.bottom + padding)
+            };
+
+            const pieces = [
+                { left: 0, top: 0, width: window.innerWidth, height: gap.top },
+                { left: 0, top: gap.bottom, width: window.innerWidth, height: window.innerHeight - gap.bottom },
+                { left: 0, top: gap.top, width: gap.left, height: gap.bottom - gap.top },
+                { left: gap.right, top: gap.top, width: window.innerWidth - gap.right, height: gap.bottom - gap.top }
+            ];
+
+            veilLayer.innerHTML = pieces
+                .filter(piece => piece.width > 0 && piece.height > 0)
+                .map(piece => `<span class="tour-veil-piece" style="left:${piece.left}px;top:${piece.top}px;width:${piece.width}px;height:${piece.height}px"></span>`)
+                .join('');
+        }
 
         function finishTour() {
             if (tourFinished) return;
             tourFinished = true;
             window.clearTimeout(stepTimer);
             document.removeEventListener('keydown', handleTourKeydown);
+            window.removeEventListener('resize', updateTourVeil);
             overlay.classList.add('leaving');
             document.body.classList.remove('first-visit-tour-active');
             steps.forEach(step => step.element.classList.remove('tour-highlight-target'));
@@ -1412,6 +1441,8 @@ document.addEventListener("DOMContentLoaded", async function() {
         }
 
         document.addEventListener('keydown', handleTourKeydown);
+        window.addEventListener('resize', updateTourVeil);
+        updateTourVeil();
 
         function showStep() {
             const step = steps[index];

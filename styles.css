@@ -1306,18 +1306,13 @@ body.first-visit-tour-active .main-screen .site-brand-footer {
 
 body.first-visit-tour-active .button-group {
     position: relative;
-    z-index: 10003;
+    z-index: 10006;
     filter: none;
     transform: translateZ(0);
 }
 
 body.first-visit-tour-active .button-group::before {
-    content: "";
-    position: absolute;
-    inset: -10px -14px;
-    border-radius: 999px;
-    background: rgba(255, 247, 251, 0.46);
-    z-index: -1;
+    content: none;
 }
 
 body.first-visit-tour-active .tour-highlight-target {
@@ -1331,7 +1326,7 @@ body.first-visit-tour-active .tour-highlight-target {
 .first-visit-tour {
     position: fixed;
     inset: 0;
-    z-index: 10004;
+    z-index: 10005;
     pointer-events: none;
     opacity: 1;
     contain: strict;
@@ -1339,10 +1334,19 @@ body.first-visit-tour-active .tour-highlight-target {
     transition: opacity 0.68s ease;
 }
 
-.first-visit-tour::before {
-    content: "";
+.tour-veil-layer,
+.tour-step-layer {
     position: absolute;
     inset: 0;
+}
+
+.tour-veil-layer {
+    z-index: 0;
+}
+
+.tour-veil-piece {
+    position: fixed;
+    display: block;
     background:
         radial-gradient(circle at 50% 42%, rgba(255, 255, 255, 0.2), transparent 34%),
         radial-gradient(circle at 12% 18%, rgba(255, 210, 232, 0.18), transparent 26%),
@@ -1361,12 +1365,12 @@ body.first-visit-tour-active .tour-highlight-target {
 }
 
 .tour-step-layer {
-    position: absolute;
-    inset: 0;
+    z-index: 3;
 }
 
 .tour-bubble {
     position: absolute;
+    z-index: 1;
     border-radius: 999px;
     background:
         radial-gradient(circle at 34% 30%, rgba(255, 255, 255, 0.95) 0 16%, transparent 18%),
