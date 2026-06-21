@@ -23,6 +23,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     };
     let siteLinkSettings = { ...DEFAULT_LINK_SETTINGS };
     let applySiteLinkSettingsToDom = null;
+    let siteSettingsLoadExpired = false;
 
     // ===== ENHANCED AUDIO HANDLING =====
     const audio = new Audio('hehe.mp3');
@@ -799,7 +800,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         } catch (error) {
             siteLinkSettings = { ...DEFAULT_LINK_SETTINGS };
         } finally {
-            if (typeof applySiteLinkSettingsToDom === 'function') {
+            if (!siteSettingsLoadExpired && typeof applySiteLinkSettingsToDom === 'function') {
                 applySiteLinkSettingsToDom();
             }
         }
@@ -808,7 +809,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     async function loadSiteLinkSettingsWithTimeout() {
         await Promise.race([
             loadSiteLinkSettings(),
-            wait(1200)
+            wait(3000).then(() => { siteSettingsLoadExpired = true; })
         ]);
     }
 
@@ -1228,6 +1229,13 @@ document.addEventListener("DOMContentLoaded", async function() {
 
     function renderMaintenanceMode() {
         const enabled = siteLinkSettings.maintenance_enabled === true;
+        if (enabled) {
+            closeSocialsMenu();
+            closeSupportMenu();
+            closeActionMenu();
+        }
+        const mainScreen = document.getElementById('main-screen');
+        if (mainScreen) mainScreen.inert = enabled;
         document.body.classList.toggle('site-maintenance-active', enabled);
         if (!maintenanceOverlay) return;
         maintenanceOverlay.setAttribute('aria-hidden', enabled ? 'false' : 'true');
@@ -1669,6 +1677,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     snapchatOption?.addEventListener('click', function(e) {
         e.preventDefault();
         e.stopPropagation();
+        if (siteLinkSettings.maintenance_enabled === true) return;
         if (!isPublicLinkEnabled('snapchat')) return;
         playUiSound('link');
         window.open(getPublicLink('snapchat'), '_blank', 'noopener,noreferrer');
@@ -1677,6 +1686,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     instagramOption?.addEventListener('click', function(e) {
         e.preventDefault();
         e.stopPropagation();
+        if (siteLinkSettings.maintenance_enabled === true) return;
         if (!isPublicLinkEnabled('instagram')) return;
         playUiSound('link');
         window.open(getPublicLink('instagram'), '_blank', 'noopener,noreferrer');
@@ -1685,6 +1695,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     function handleWishlistButtonActivate(e) {
         e.preventDefault();
         e.stopPropagation();
+        if (siteLinkSettings.maintenance_enabled === true) return;
         closeSocialsMenu();
         closeActionMenu();
         if (!isPublicLinkEnabled('throne')) return;
@@ -1708,6 +1719,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     donateOption?.addEventListener('click', function(e) {
         e.preventDefault();
         e.stopPropagation();
+        if (siteLinkSettings.maintenance_enabled === true) return;
         if (!isPublicLinkEnabled('kofi')) return;
         playUiSound('link');
         openKofiOverlay();

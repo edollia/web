@@ -801,13 +801,13 @@ async function saveLinkSettings(event) {
 
     try {
         nextSettings = {
-            snapchat_url: cleanUrl(els.snapchatUrl?.value, 'Snapchat'),
+            snapchat_url: cleanUrl(els.snapchatUrl?.value || state.linkSettings.snapchat_url, 'Snapchat'),
             snapchat_enabled: els.snapchatEnabled?.checked !== false,
-            instagram_url: cleanUrl(els.instagramUrl?.value, 'Instagram'),
+            instagram_url: cleanUrl(els.instagramUrl?.value || state.linkSettings.instagram_url, 'Instagram'),
             instagram_enabled: els.instagramEnabled?.checked !== false,
             kofi_url: state.linkSettings.kofi_url || DEFAULT_LINK_SETTINGS.kofi_url,
             kofi_enabled: els.kofiEnabled?.checked !== false,
-            throne_url: cleanUrl(els.throneUrl?.value, 'Throne'),
+            throne_url: cleanUrl(els.throneUrl?.value || state.linkSettings.throne_url, 'Throne'),
             throne_enabled: els.throneEnabled?.checked !== false,
             latest_note_enabled: els.latestNoteEnabled?.checked === true,
             latest_note_title: els.latestNoteTitle?.value.trim() || DEFAULT_LINK_SETTINGS.latest_note_title,
