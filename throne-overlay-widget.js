@@ -95,15 +95,15 @@
                     0 0 0 7px rgba(255, 255, 255, 0.22);
                 opacity: 0;
                 overflow: visible;
-                transform: translateY(18px) scale(calc(var(--throne-scale) * 0.96));
+                transform: scale(calc(var(--throne-scale) * 0.82));
                 transition:
-                    opacity 0.34s ease 0.08s,
-                    transform 0.46s cubic-bezier(0.18, 0.9, 0.24, 1);
+                    opacity 0.3s linear,
+                    transform 0.48s ease;
             }
 
             .doll-throne-overlay.show .doll-throne-frame {
                 opacity: 1;
-                transform: translateY(0) scale(var(--throne-scale));
+                transform: scale(var(--throne-scale));
             }
 
             .doll-throne-frame::before {

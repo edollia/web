@@ -35,6 +35,7 @@ const adminClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY
 let adminChatChannel = null;
 let adminChatPollTimer = null;
 let chatPollInFlight = false;
+let autoSaveTimer = null;
 
 const state = {
     drawings: [],
@@ -795,10 +796,8 @@ function cleanUrl(value, label) {
     }
 }
 
-async function saveLinkSettings(event) {
-    event.preventDefault();
+async function saveLinkSettingsNow() {
     let nextSettings;
-
     try {
         nextSettings = {
             snapchat_url: cleanUrl(els.snapchatUrl?.value || state.linkSettings.snapchat_url, 'Snapchat'),
@@ -827,7 +826,6 @@ async function saveLinkSettings(event) {
         return;
     }
 
-    setStatus(els.adminStatus, 'saving settings...');
     const { error } = await adminClient
         .from('site_settings')
         .upsert({
@@ -843,14 +841,24 @@ async function saveLinkSettings(event) {
         return;
     }
 
-    await loadAdminData();
-    setStatus(els.adminStatus, 'settings saved');
+    state.linkSettings = nextSettings;
+    syncLinkDraftLabels();
+    renderLinkPreview();
+    setStatus(els.adminStatus, 'saved ✓');
+    setTimeout(() => {
+        if (els.adminStatus?.textContent === 'saved ✓') setStatus(els.adminStatus, '');
+    }, 2000);
+}
+
+function scheduleAutoSave() {
+    clearTimeout(autoSaveTimer);
+    autoSaveTimer = setTimeout(saveLinkSettingsNow, 700);
 }
 
 function resetLinkSettings() {
     state.linkSettings = { ...DEFAULT_LINK_SETTINGS };
     renderLinkSettings();
-    setStatus(els.adminStatus, 'defaults loaded, save to publish');
+    scheduleAutoSave();
 }
 
 async function runSiteHealthCheck() {
@@ -894,7 +902,7 @@ async function runSiteHealthCheck() {
         },
         {
             label: 'share image',
-            run: async () => (await fetch('../og-image.png', { method: 'HEAD', cache: 'no-store' })).ok
+            run: async () => (await fetch('../screenshotbackground.png', { method: 'HEAD', cache: 'no-store' })).ok
         }
     ];
 
@@ -1102,7 +1110,7 @@ async function init() {
 
     els.chatSettingsForm?.addEventListener('submit', saveChatSettings);
     els.chatBanForm?.addEventListener('submit', saveChatBan);
-    els.linkSettingsForm?.addEventListener('submit', saveLinkSettings);
+    els.linkSettingsForm?.addEventListener('submit', e => e.preventDefault());
     els.linkSettingsReset?.addEventListener('click', resetLinkSettings);
     els.runHealthCheck?.addEventListener('click', runSiteHealthCheck);
     els.linkSettingsPreview?.addEventListener('click', e => {
@@ -1113,7 +1121,7 @@ async function init() {
     document.querySelectorAll('.admin-switch').forEach(toggle => {
         toggle.addEventListener('click', e => e.stopPropagation());
         toggle.addEventListener('keydown', e => e.stopPropagation());
-        toggle.addEventListener('change', renderLinkPreview);
+        toggle.addEventListener('change', () => { renderLinkPreview(); scheduleAutoSave(); });
     });
     [
         els.snapchatUrl,
@@ -1128,7 +1136,7 @@ async function init() {
         els.seoDescription,
         els.siteTagline
     ].forEach(input => {
-        input?.addEventListener('input', renderLinkPreview);
+        input?.addEventListener('input', () => { renderLinkPreview(); scheduleAutoSave(); });
     });
     els.streamBans?.addEventListener('click', e => {
         const button = e.target.closest('button[data-ban-action]');

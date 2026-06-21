@@ -661,11 +661,11 @@ document.addEventListener("DOMContentLoaded", async function() {
     // Static resources are most of the load, but final app setup owns the last 16%.
     function updateLoadingBar(loadedCount, totalResources) {
         if (!totalResources) return;
-        const resourceProgress = (loadedCount / totalResources) * 84;
+        const resourceProgress = (loadedCount / totalResources) * 76;
         setLoadingProgress(resourceProgress);
     }
 
-    setLoadingProgress(2);
+    setLoadingProgress(4);
 
     function waitForKofiOverlayReady() {
         return new Promise(resolve => {
@@ -815,39 +815,28 @@ document.addEventListener("DOMContentLoaded", async function() {
 
     // Enhanced loading logic: wait for min time, window load, AND ALL critical resources
     Promise.all([
-        new Promise(resolve => setTimeout(() => {
-            setLoadingProgress(6);
-            resolve();
-        }, minLoadingTime)),
+        new Promise(resolve => setTimeout(resolve, minLoadingTime)),
         new Promise(resolve => {
             if (document.readyState === 'complete') {
-                setLoadingProgress(10);
                 resolve();
                 return;
             }
 
-            window.addEventListener('load', () => {
-                setLoadingProgress(10);
-                resolve();
-            }, { once: true });
+            window.addEventListener('load', resolve, { once: true });
         }),
         // Wait for DOM to be fully ready
         new Promise(resolve => {
             if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', () => {
-                    setLoadingProgress(14);
-                    resolve();
-                });
+                document.addEventListener('DOMContentLoaded', resolve);
             } else {
-                setLoadingProgress(14);
                 resolve();
             }
         }),
         Promise.race([
             uiSoundBuffersReady.catch(() => {}),
             new Promise(resolve => setTimeout(resolve, 2000))
-        ]).then(() => setLoadingProgress(18)),
-        waitForKofiOverlayReady().then(() => setLoadingProgress(22)),
+        ]),
+        waitForKofiOverlayReady(),
         // Wait for critical resources to load
         new Promise(resolve => {
             const criticalResources = [
@@ -955,8 +944,8 @@ document.addEventListener("DOMContentLoaded", async function() {
         })
     ]).then(async () => {
         // Load Supabase only after the initial loading is complete
-        setLoadingProgress(88);
-        
+        setLoadingProgress(82);
+
         try {
             const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
             window.supabase = createClient(
@@ -972,17 +961,23 @@ document.addEventListener("DOMContentLoaded", async function() {
                     }
                 }
             );
-            setLoadingProgress(94);
+            setLoadingProgress(89);
         } catch (supabaseError) {
             // Create a dummy supabase object to prevent errors
             window.supabase = createUnavailableSupabaseClient();
-            setLoadingProgress(94);
+            setLoadingProgress(89);
         }
+
+        // Tick the bar forward while data fetches to avoid a long plateau
+        const progressTick = setInterval(() => {
+            if (loadingProgress < 97) setLoadingProgress(loadingProgress + 0.25);
+        }, 350);
 
         await Promise.all([
             preloadSubmissionsWithTimeout(),
             loadSiteLinkSettingsWithTimeout()
         ]);
+        clearInterval(progressTick);
         setLoadingProgress(100);
 
         // Final check - ensure everything is ready
