@@ -235,34 +235,56 @@ var kofiWidgetOverlayFloatingChatBuilder = kofiWidgetOverlayFloatingChatBuilder 
                 showKofiScrim();
                 var iframeId = getContainerFrameId();
                 var mobiIframeId = getMobiContainerFrameId();
-                
-                // Try desktop first
-                var iframe = document.getElementById(iframeId);
-                if (iframe && iframe.contentDocument) {
-                    try {
-                        activateKofiIframe(iframeId, {
+
+                var prefersMobilePopup = window.matchMedia
+                    && (window.matchMedia('(max-width: 640px)').matches
+                        || window.matchMedia('(pointer: coarse)').matches);
+                var popupTargets = prefersMobilePopup
+                    ? [
+                        {
+                            iframeId: mobiIframeId,
+                            popupId: 'kofi-popup-iframe-mobi',
+                            popupIframeContainerIdSuffix: 'popup-iframe-container-mobi',
+                            heightLimits: { maxHeight: 690, minHeight: 350 }
+                        },
+                        {
+                            iframeId: iframeId,
                             popupId: 'kofi-popup-iframe',
-                            popupIframeContainerIdSuffix: 'popup-iframe-container'
-                        }, { maxHeight: 690, minHeight: 400 });
+                            popupIframeContainerIdSuffix: 'popup-iframe-container',
+                            heightLimits: { maxHeight: 690, minHeight: 400 }
+                        }
+                    ]
+                    : [
+                        {
+                            iframeId: iframeId,
+                            popupId: 'kofi-popup-iframe',
+                            popupIframeContainerIdSuffix: 'popup-iframe-container',
+                            heightLimits: { maxHeight: 690, minHeight: 400 }
+                        },
+                        {
+                            iframeId: mobiIframeId,
+                            popupId: 'kofi-popup-iframe-mobi',
+                            popupIframeContainerIdSuffix: 'popup-iframe-container-mobi',
+                            heightLimits: { maxHeight: 690, minHeight: 350 }
+                        }
+                    ];
+
+                for (var target of popupTargets) {
+                    var targetIframe = document.getElementById(target.iframeId);
+                    if (!targetIframe || !targetIframe.contentDocument) continue;
+                    try {
+                        activateKofiIframe(target.iframeId, {
+                            popupId: target.popupId,
+                            popupIframeContainerIdSuffix: target.popupIframeContainerIdSuffix
+                        }, target.heightLimits);
                         return;
                     } catch(e) {
-                        // Try mobile if desktop fails
+                        // Continue to the other popup variant before failing.
                     }
                 }
-                
-                // Try mobile
-                var mobiIframe = document.getElementById(mobiIframeId);
-                if (mobiIframe && mobiIframe.contentDocument) {
-                    try {
-                        activateKofiIframe(mobiIframeId, {
-                            popupId: 'kofi-popup-iframe-mobi',
-                            popupIframeContainerIdSuffix: 'popup-iframe-container-mobi'
-                        }, { maxHeight: 690, minHeight: 350 });
-                    } catch(e) {
-                        hideKofiScrim();
-                        console.error('Error opening Ko-fi overlay:', e);
-                    }
-                }
+
+                hideKofiScrim();
+                console.error('Error opening Ko-fi overlay.');
             };
 
             window.closeKofiOverlay = function() {

@@ -1008,10 +1008,12 @@ document.addEventListener("DOMContentLoaded", async function() {
 
     // ===== PAW POPUP =====
     const popup = document.getElementById("popup");
+    let pawDismissalInProgress = false;
     if (popup) popup.style.display = "flex";
 
     document.getElementById("close-popup")?.addEventListener("click", function() {
-        if (!popup) return;
+        if (!popup || pawDismissalInProgress) return;
+        pawDismissalInProgress = true;
         playUiSound('link');
         warmUiSounds();
         popup.style.opacity = 0;
@@ -1028,17 +1030,21 @@ document.addEventListener("DOMContentLoaded", async function() {
                 }, 1080);
             }
 
-            if (!audioPlayed) {
-                audioPlayed = true;
-                backgroundFadeLevel = 0;
-                applyBackgroundMusicVolume();
-                audio.play()
-                    .then(startBackgroundFadeLoop)
-                    .catch(e => {
-                        audioPlayed = false;
-                    });
-            }
         }, 500);
+
+        // CUT2 is 0.6 seconds long. Start the page music after it ends so older
+        // mobile browsers do not make the paw press sound like a double trigger.
+        window.setTimeout(() => {
+            if (audioPlayed) return;
+            audioPlayed = true;
+            backgroundFadeLevel = 0;
+            applyBackgroundMusicVolume();
+            audio.play()
+                .then(startBackgroundFadeLoop)
+                .catch(e => {
+                    audioPlayed = false;
+                });
+        }, 700);
     });
 
     // ===== TOGGLE NOTE & DRAWING WIDGET =====
@@ -1373,15 +1379,6 @@ document.addEventListener("DOMContentLoaded", async function() {
         }
     }
 
-    function shouldOpenThroneAsFullWebsite() {
-        try {
-            return typeof window.ApplePaySession?.canMakePayments === 'function'
-                && window.ApplePaySession.canMakePayments();
-        } catch (error) {
-            return false;
-        }
-    }
-
     function openKofiOverlay() {
         let attempts = 0;
         const maxAttempts = 36;
@@ -1704,13 +1701,6 @@ document.addEventListener("DOMContentLoaded", async function() {
         closeActionMenu();
         if (!isPublicLinkEnabled('throne')) return;
         playUiSound('link');
-        // Throne's embedded checkout cannot complete Apple Pay merchant validation
-        // for this site. Preserve the full wishlist overlay elsewhere, but send a
-        // wallet-capable browser to Throne's top-level checkout where Apple Pay works.
-        if (shouldOpenThroneAsFullWebsite()) {
-            window.open(getPublicLink('throne'), '_blank', 'noopener,noreferrer');
-            return;
-        }
         if (typeof window.openThroneOverlay === 'function') {
             window.openThroneOverlay();
         } else {
