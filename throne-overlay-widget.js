@@ -517,31 +517,6 @@
         window.open(wishlistUrl, '_blank', 'noopener,noreferrer');
     }
 
-    function needsTopLevelWishlist() {
-        const iosVersion = navigator.userAgent.match(/(?:CPU (?:iPhone )?OS|iPhone OS) (\d+)[._]/);
-        return /iPad|iPhone|iPod/.test(navigator.userAgent)
-            && iosVersion
-            && Number(iosVersion[1]) <= 15;
-    }
-
-    function openTopLevelWishlist() {
-        // This runs directly from the visitor's wishlist tap. A top-level page
-        // gives Throne/Vercel first-party storage, which iOS 15 denies to its
-        // verification screen when it is embedded as a third-party iframe.
-        const openedWishlist = window.open(wishlistUrl, '_blank');
-        if (openedWishlist) {
-            // Keep the new tab isolated without mistaking an intentionally
-            // unavailable WindowProxy for a blocked popup.
-            try {
-                openedWishlist.opener = null;
-            } catch (error) {
-                // The new tab is already open; isolation is best-effort here.
-            }
-            return;
-        }
-        window.location.assign(wishlistUrl);
-    }
-
     function getFocusableElements(container) {
         if (!container) return [];
         return Array.from(container.querySelectorAll([
@@ -756,10 +731,6 @@
     }
 
     function openThroneOverlay() {
-        if (needsTopLevelWishlist()) {
-            openTopLevelWishlist();
-            return;
-        }
         if (!overlay) buildOverlay();
         throneReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
         window.clearTimeout(unloadIframeTimer);

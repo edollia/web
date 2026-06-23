@@ -1608,13 +1608,19 @@ document.addEventListener("DOMContentLoaded", async function() {
             stepLayer.insertAdjacentHTML('beforeend', `
                 <svg class="tour-arrow-svg" viewBox="0 0 ${window.innerWidth} ${window.innerHeight}" aria-hidden="true">
                     <defs>
-                        <marker id="tour-arrow-head-${index}" viewBox="0 0 8 8" refX="6.5" refY="4" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-                            <path d="M1 1.5 L6 4 L1 6.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <marker id="tour-arrow-head-${index}" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="4" markerHeight="4" orient="auto-start-reverse">
+                            <path d="M0.75 1.25 L4.75 3 L0.75 4.75" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
                         </marker>
                     </defs>
                     <path class="tour-arrow-line" pathLength="1" d="M ${targetX} ${startY} C ${targetX - 32} ${curveY}, ${labelX + 28} ${curveY}, ${labelX} ${endY}" marker-start="url(#tour-arrow-head-${index})"/>
                 </svg>
-                <div class="tour-label" style="left:${labelX}px; top:${labelY}px">${step.label}</div>
+                <div class="tour-label tour-label-${index + 1}" style="left:${labelX}px; top:${labelY}px">
+                    <span class="tour-label-heart tour-label-heart-one" aria-hidden="true">♥</span>
+                    <span class="tour-label-heart tour-label-heart-two" aria-hidden="true">♥</span>
+                    <span class="tour-label-sparkle tour-label-sparkle-one" aria-hidden="true">✦</span>
+                    <span class="tour-label-sparkle tour-label-sparkle-two" aria-hidden="true">+</span>
+                    <span class="tour-label-text">${step.label}</span>
+                </div>
             `);
 
             index += 1;
