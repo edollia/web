@@ -1533,8 +1533,24 @@ document.addEventListener("DOMContentLoaded", async function() {
         let index = 0;
         let stepTimer = null;
         let tourFinished = false;
+        const tourStepDuration = 2050;
+        const finalTourHoldDuration = 3100;
         const veilLayer = overlay.querySelector('.tour-veil-layer');
         const stepLayer = overlay.querySelector('.tour-step-layer');
+
+        function makeHandwrittenLabel(label) {
+            const letterTurns = [-3, 1, -1, 2, -2, 1, 3];
+            const letterLifts = [1, -1, 0, -2, 1, -1, 0];
+            return Array.from(label).map((letter, letterIndex) => {
+                if (letter === ' ') {
+                    return '<span class="tour-label-letter space">&nbsp;</span>';
+                }
+                const turn = letterTurns[letterIndex % letterTurns.length];
+                const lift = letterLifts[letterIndex % letterLifts.length];
+                const delay = letterIndex * 0.045;
+                return `<span class="tour-label-letter" style="--tour-letter-turn:${turn}deg;--tour-letter-lift:${lift}px;--tour-letter-delay:${delay}s">${letter}</span>`;
+            }).join('');
+        }
 
         function updateTourVeil() {
             if (!veilLayer) return;
@@ -1615,16 +1631,17 @@ document.addEventListener("DOMContentLoaded", async function() {
                     <path class="tour-arrow-line" pathLength="1" d="M ${targetX} ${startY} C ${targetX - 32} ${curveY}, ${labelX + 28} ${curveY}, ${labelX} ${endY}" marker-start="url(#tour-arrow-head-${index})"/>
                 </svg>
                 <div class="tour-label tour-label-${index + 1}" style="left:${labelX}px; top:${labelY}px">
-                    <span class="tour-label-heart tour-label-heart-one" aria-hidden="true">♥</span>
-                    <span class="tour-label-heart tour-label-heart-two" aria-hidden="true">♥</span>
-                    <span class="tour-label-sparkle tour-label-sparkle-one" aria-hidden="true">✦</span>
-                    <span class="tour-label-sparkle tour-label-sparkle-two" aria-hidden="true">+</span>
-                    <span class="tour-label-text">${step.label}</span>
+                    <span class="tour-label-text">${makeHandwrittenLabel(step.label)}</span>
                 </div>
             `);
 
             index += 1;
-            stepTimer = window.setTimeout(showStep, index >= steps.length ? 2400 : 1660);
+            // Let each arrow finish, its label finish drawing, and the last
+            // scene linger before the existing gentle tour fade-out begins.
+            stepTimer = window.setTimeout(
+                showStep,
+                index >= steps.length ? finalTourHoldDuration : tourStepDuration
+            );
         }
 
         showStep();

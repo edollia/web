@@ -1467,8 +1467,8 @@ body.first-visit-tour-active .tour-highlight-target {
         radial-gradient(circle at 12% 18%, rgba(255, 210, 232, 0.18), transparent 26%),
         radial-gradient(circle at 88% 70%, rgba(255, 196, 224, 0.16), transparent 28%),
         rgba(255, 247, 251, 0.16);
-    backdrop-filter: blur(1.4px);
-    -webkit-backdrop-filter: blur(1.4px);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
     opacity: 0;
     transform: translateZ(0);
     will-change: opacity;
@@ -1580,17 +1580,16 @@ body.first-visit-tour-active .tour-highlight-target {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    padding: 5px 9px 7px;
-    color: #6e4031;
-    font-family: "Comic Sans MS", "Trebuchet MS", cursive;
-    font-size: 21px;
+    padding: 7px 11px 9px;
+    color: #613b30;
+    font-family: "Chalkboard SE", "Bradley Hand", "Segoe Print", cursive;
+    font-size: 24px;
     font-weight: 700;
-    line-height: 1;
-    letter-spacing: -0.65px;
+    line-height: 0.96;
+    letter-spacing: -0.7px;
     text-align: center;
-    opacity: 0;
-    transform: translate(-50%, -50%) scale(0.86) rotate(var(--tour-label-rotation));
-    animation: tourLabelPop 0.38s cubic-bezier(0.2, 0.86, 0.24, 1) 0.92s forwards;
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1) rotate(var(--tour-label-rotation));
     pointer-events: none;
     white-space: nowrap;
 }
@@ -1598,60 +1597,31 @@ body.first-visit-tour-active .tour-highlight-target {
 .tour-label-text {
     position: relative;
     z-index: 2;
-    -webkit-text-stroke: 3px rgba(255, 255, 255, 0.96);
+    display: inline-flex;
+    align-items: baseline;
+    -webkit-text-stroke: 3px rgba(255, 255, 255, 0.98);
     paint-order: stroke fill;
     text-shadow:
-        0 3px 0 rgba(217, 126, 157, 0.58),
-        0 0 5px rgba(255, 255, 255, 0.96),
-        0 5px 10px rgba(212, 112, 151, 0.16);
+        0 2px 0 rgba(255, 255, 255, 0.92),
+        0 4px 8px rgba(97, 59, 48, 0.18);
 }
 
-.tour-label-heart,
-.tour-label-sparkle {
-    position: absolute;
-    z-index: 3;
-    display: grid;
-    place-items: center;
-    font-family: Arial, sans-serif;
-    font-weight: 700;
-    line-height: 1;
-    -webkit-text-stroke: 2px rgba(255, 255, 255, 0.96);
-    paint-order: stroke fill;
-    text-shadow: 0 2px 4px rgba(211, 108, 147, 0.18);
+.tour-label-letter {
+    display: inline-block;
+    transform: translateY(var(--tour-letter-lift)) rotate(var(--tour-letter-turn));
+    transform-origin: center bottom;
+    margin-right: -1px;
+    opacity: 0;
+    animation: tourLabelLetterDraw 0.18s cubic-bezier(0.18, 0.9, 0.24, 1) forwards;
+    /* The first letter becomes visible as the 1.28s arrow draw completes. */
+    animation-delay: calc(1.18s + var(--tour-letter-delay));
 }
 
-.tour-label-heart {
-    color: #ff83ad;
-    font-size: 14px;
-}
-
-.tour-label-sparkle {
-    color: #f4a0bd;
-    font-size: 13px;
-}
-
-.tour-label-heart-one {
-    left: -3px;
-    top: -5px;
-}
-
-.tour-label-heart-two {
-    right: -3px;
-    bottom: -4px;
-    font-size: 11px;
-}
-
-.tour-label-sparkle-one {
-    right: 3px;
-    top: -8px;
-    font-size: 12px;
-}
-
-.tour-label-sparkle-two {
-    left: 6px;
-    bottom: -6px;
-    color: #ff9abb;
-    font-size: 12px;
+.tour-label-letter.space {
+    width: 0.18em;
+    margin-right: 0;
+    opacity: 1;
+    animation: none;
 }
 
 .tour-label-2 {
@@ -1660,26 +1630,6 @@ body.first-visit-tour-active .tour-highlight-target {
 
 .tour-label-3 {
     --tour-label-rotation: -3deg;
-}
-
-.tour-label-2 .tour-label-heart-one {
-    left: 7px;
-    top: -7px;
-}
-
-.tour-label-2 .tour-label-sparkle-one {
-    right: -5px;
-    top: -4px;
-}
-
-.tour-label-3 .tour-label-heart-one {
-    left: -6px;
-    top: 1px;
-}
-
-.tour-label-3 .tour-label-sparkle-two {
-    left: 2px;
-    bottom: -7px;
 }
 
 @keyframes tourVeilIn {
@@ -1694,10 +1644,17 @@ body.first-visit-tour-active .tour-highlight-target {
     }
 }
 
-@keyframes tourLabelPop {
+@keyframes tourLabelLetterDraw {
+    from {
+        opacity: 0;
+        filter: blur(0.5px);
+        transform: translateY(calc(var(--tour-letter-lift) + 4px)) rotate(var(--tour-letter-turn)) scale(0.58);
+    }
+
     to {
         opacity: 1;
-        transform: translate(-50%, -50%) scale(1) rotate(var(--tour-label-rotation));
+        filter: blur(0);
+        transform: translateY(var(--tour-letter-lift)) rotate(var(--tour-letter-turn)) scale(1);
     }
 }
 
