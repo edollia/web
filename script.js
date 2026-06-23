@@ -1009,13 +1009,20 @@ document.addEventListener("DOMContentLoaded", async function() {
     // ===== PAW POPUP =====
     const popup = document.getElementById("popup");
     let pawDismissalInProgress = false;
+    const legacyIOSMatch = navigator.userAgent.match(/(?:CPU (?:iPhone )?OS|iPhone OS) (\d+)[._]/);
+    const isLegacyIOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
+        && legacyIOSMatch
+        && Number(legacyIOSMatch[1]) <= 15;
     if (popup) popup.style.display = "flex";
 
     document.getElementById("close-popup")?.addEventListener("click", function() {
         if (!popup || pawDismissalInProgress) return;
         pawDismissalInProgress = true;
         playUiSound('link');
-        warmUiSounds();
+        // iOS 15 can briefly make the muted pre-warm sounds audible. Keep the
+        // established warm-up on newer browsers, but never start CUT1/CUT3 here
+        // on the affected older phones.
+        if (!isLegacyIOS) warmUiSounds();
         popup.style.opacity = 0;
         setTimeout(() => {
             popup.style.display = "none";
@@ -1032,8 +1039,8 @@ document.addEventListener("DOMContentLoaded", async function() {
 
         }, 500);
 
-        // CUT2 is 0.6 seconds long. Start the page music after it ends so older
-        // mobile browsers do not make the paw press sound like a double trigger.
+        // CUT2 is 0.6 seconds long. Give legacy iOS a little extra separation
+        // before page music starts, while retaining the current timing elsewhere.
         window.setTimeout(() => {
             if (audioPlayed) return;
             audioPlayed = true;
@@ -1044,7 +1051,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                 .catch(e => {
                     audioPlayed = false;
                 });
-        }, 700);
+        }, isLegacyIOS ? 900 : 700);
     });
 
     // ===== TOGGLE NOTE & DRAWING WIDGET =====
@@ -1591,15 +1598,18 @@ document.addEventListener("DOMContentLoaded", async function() {
             const labelY = labelAbove
                 ? Math.max(54, rect.top - 72)
                 : Math.min(window.innerHeight - 54, rect.bottom + 68);
-            const startY = labelAbove ? rect.top + 5 : rect.bottom - 5;
+            // Start just beyond the highlighted button's circular ring, rather
+            // than underneath it, so the arrowhead stays clearly visible.
+            const arrowTargetGap = 14;
+            const startY = labelAbove ? rect.top - arrowTargetGap : rect.bottom + arrowTargetGap;
             const endY = labelAbove ? labelY + 24 : labelY - 24;
             const curveY = labelAbove ? (startY + endY) / 2 - 26 : (startY + endY) / 2 + 26;
 
             stepLayer.insertAdjacentHTML('beforeend', `
                 <svg class="tour-arrow-svg" viewBox="0 0 ${window.innerWidth} ${window.innerHeight}" aria-hidden="true">
                     <defs>
-                        <marker id="tour-arrow-head-${index}" viewBox="0 0 12 12" refX="9" refY="6" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
-                            <path d="M2 2 L10 6 L2 10" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <marker id="tour-arrow-head-${index}" viewBox="0 0 8 8" refX="6.5" refY="4" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                            <path d="M1 1.5 L6 4 L1 6.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                         </marker>
                     </defs>
                     <path class="tour-arrow-line" pathLength="1" d="M ${targetX} ${startY} C ${targetX - 32} ${curveY}, ${labelX + 28} ${curveY}, ${labelX} ${endY}" marker-start="url(#tour-arrow-head-${index})"/>
