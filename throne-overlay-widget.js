@@ -695,9 +695,11 @@
         iframe.className = 'doll-throne-iframe';
         iframe.title = 'Throne wishlist';
         iframe.loading = 'eager';
-        iframe.allow = 'payment';
+        // Explicitly delegate payment across checkout navigations. The legacy
+        // attribute remains for older Safari/WebView implementations.
+        iframe.allow = 'payment *';
         iframe.allowPaymentRequest = true;
-        iframe.setAttribute('allow', 'payment');
+        iframe.setAttribute('allow', 'payment *');
         iframe.setAttribute('allowpaymentrequest', 'true');
         iframe.referrerPolicy = 'strict-origin-when-cross-origin';
         iframe.src = wishlistUrl;

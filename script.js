@@ -1373,6 +1373,15 @@ document.addEventListener("DOMContentLoaded", async function() {
         }
     }
 
+    function shouldOpenThroneAsFullWebsite() {
+        try {
+            return typeof window.ApplePaySession?.canMakePayments === 'function'
+                && window.ApplePaySession.canMakePayments();
+        } catch (error) {
+            return false;
+        }
+    }
+
     function openKofiOverlay() {
         let attempts = 0;
         const maxAttempts = 36;
@@ -1695,6 +1704,13 @@ document.addEventListener("DOMContentLoaded", async function() {
         closeActionMenu();
         if (!isPublicLinkEnabled('throne')) return;
         playUiSound('link');
+        // Throne's embedded checkout cannot complete Apple Pay merchant validation
+        // for this site. Preserve the full wishlist overlay elsewhere, but send a
+        // wallet-capable browser to Throne's top-level checkout where Apple Pay works.
+        if (shouldOpenThroneAsFullWebsite()) {
+            window.open(getPublicLink('throne'), '_blank', 'noopener,noreferrer');
+            return;
+        }
         if (typeof window.openThroneOverlay === 'function') {
             window.openThroneOverlay();
         } else {
