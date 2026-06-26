@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="robots" content="noindex, nofollow">
     <title>Lia Admin</title>
-    <link rel="stylesheet" href="../admin.css?v=3.6">
+    <link rel="stylesheet" href="../admin.css?v=3.7">
 </head>
 <body>
     <main class="admin-shell">
@@ -37,9 +37,7 @@
         <section class="admin-dashboard hidden" id="dashboard-panel">
             <header class="admin-header">
                 <div class="admin-title-block">
-                    <p class="admin-kicker">dashboard</p>
-                    <h1>control room</h1>
-                    <p class="admin-header-note">review messages, tune links, and keep the live room tidy</p>
+                    <h1>dashboard</h1>
                 </div>
                 <div class="admin-header-actions">
                     <a class="admin-back-home" href="../index.html">back</a>
@@ -51,12 +49,12 @@
             <section class="admin-stats" id="admin-stats"></section>
 
             <nav class="admin-tabs" id="admin-tabs">
-                <button class="active" data-panel="review-panel"><span>review <b id="review-tab-count">0</b></span><small>new things</small></button>
-                <button data-panel="published-panel"><span>published <b id="published-tab-count">0</b></span><small>live posts</small></button>
-                <button data-panel="site-panel"><span>site</span><small>switches</small></button>
-                <button data-panel="links-panel"><span>links <b id="links-tab-count">0/4</b></span><small>socials</small></button>
-                <button data-panel="search-panel"><span>search</span><small>preview</small></button>
-                <button data-panel="chat-panel"><span>live chat <b id="chat-tab-count">0</b></span><small>moderation</small></button>
+                <button class="active" data-panel="review-panel"><span>review <b id="review-tab-count">0</b></span></button>
+                <button data-panel="published-panel"><span>published <b id="published-tab-count">0</b></span></button>
+                <button data-panel="site-panel"><span>site</span></button>
+                <button data-panel="links-panel"><span>links <b id="links-tab-count">0/4</b></span></button>
+                <button data-panel="search-panel"><span>search</span></button>
+                <button data-panel="chat-panel"><span>live chat <b id="chat-tab-count">0</b></span></button>
             </nav>
 
             <p class="admin-status" id="admin-status"></p>
@@ -67,7 +65,6 @@
                         <p class="admin-kicker">inbox</p>
                         <h2>waiting room</h2>
                     </div>
-                    <p>Approve doodles, answer asks, or clear things out quickly.</p>
                 </div>
                 <div class="admin-section-heading">
                     <h2>waiting doods</h2>
@@ -95,7 +92,6 @@
                         <p class="admin-kicker">public</p>
                         <h2>posted things</h2>
                     </div>
-                    <p>Everything here is already visible on the posts panel.</p>
                 </div>
                 <div class="admin-section-heading">
                     <h2>posted doods</h2>
@@ -119,6 +115,14 @@
                             <div>
                                 <p class="admin-kicker">moderation</p>
                                 <h2>live chat control</h2>
+                            </div>
+                            <div class="admin-chat-filters">
+                                <input id="chat-filter" type="search" maxlength="80" placeholder="filter chat">
+                                <select id="chat-visibility-filter">
+                                    <option value="all">all</option>
+                                    <option value="visible">visible</option>
+                                    <option value="hidden">hidden</option>
+                                </select>
                             </div>
                             <div class="admin-command-actions">
                                 <button class="soft" data-chat-action="refresh">refresh</button>
@@ -185,7 +189,6 @@
                             <p class="admin-kicker">site</p>
                             <h2>public switches</h2>
                         </div>
-                        <p>Maintenance, posting controls, and the public note live here.</p>
                     </div>
 
                     <div class="admin-control-grid">
@@ -287,103 +290,109 @@
                             <p class="admin-kicker">links</p>
                             <h2>social buttons</h2>
                         </div>
-                        <p>Visible links, widgets, and destinations.</p>
+                        <button class="soft" type="button" id="link-settings-reset">restore defaults</button>
                     </div>
 
-                    <div class="admin-settings-layout">
-                        <aside class="admin-tool-card admin-settings-help">
-                            <p class="admin-kicker">preview</p>
-                            <h2>public links</h2>
-                            <div class="admin-link-preview" id="link-settings-preview"></div>
-                            <button class="soft" type="button" id="link-settings-reset">restore defaults</button>
-                        </aside>
-
-                        <div class="admin-link-card-stack">
-                            <details class="admin-link-card" data-link-card="snapchat" open>
-                                <summary>
-                                    <div class="admin-link-card-title">
-                                        <span class="admin-link-icon">S</span>
-                                        <div>
-                                            <strong>Snapchat</strong>
-                                            <small id="snapchat-state">visible</small>
-                                        </div>
+                    <div class="admin-link-grid">
+                        <details class="admin-link-card" data-link-card="snapchat" open>
+                            <summary>
+                                <div class="admin-link-card-title">
+                                    <span class="admin-link-icon">S</span>
+                                    <div>
+                                        <strong>Snapchat</strong>
+                                        <small id="snapchat-state">visible</small>
                                     </div>
+                                </div>
+                                <div class="admin-link-card-actions">
+                                    <button class="soft admin-link-open" type="button" data-link-open="snapchat">open</button>
                                     <label class="admin-switch">
                                         <input id="snapchat-enabled" type="checkbox">
                                         <span></span>
                                     </label>
-                                </summary>
-                                <div class="admin-link-card-body">
-                                    <label class="admin-url-field">
-                                        <span>destination URL</span>
-                                        <input id="snapchat-url" type="url" inputmode="url" placeholder="https://www.snapchat.com/add/name">
-                                    </label>
                                 </div>
-                            </details>
+                            </summary>
+                            <div class="admin-link-card-body">
+                                <label class="admin-url-field">
+                                    <span>destination URL</span>
+                                    <input id="snapchat-url" type="url" inputmode="url" placeholder="https://www.snapchat.com/add/name">
+                                </label>
+                            </div>
+                        </details>
 
-                            <details class="admin-link-card" data-link-card="instagram" open>
-                                <summary>
-                                    <div class="admin-link-card-title">
-                                        <span class="admin-link-icon">I</span>
-                                        <div>
-                                            <strong>Instagram</strong>
-                                            <small id="instagram-state">visible</small>
-                                        </div>
+                        <details class="admin-link-card" data-link-card="instagram" open>
+                            <summary>
+                                <div class="admin-link-card-title">
+                                    <span class="admin-link-icon">I</span>
+                                    <div>
+                                        <strong>Instagram</strong>
+                                        <small id="instagram-state">visible</small>
                                     </div>
+                                </div>
+                                <div class="admin-link-card-actions">
+                                    <button class="soft admin-link-open" type="button" data-link-open="instagram">open</button>
                                     <label class="admin-switch">
                                         <input id="instagram-enabled" type="checkbox">
                                         <span></span>
                                     </label>
-                                </summary>
-                                <div class="admin-link-card-body">
-                                    <label class="admin-url-field">
-                                        <span>destination URL</span>
-                                        <input id="instagram-url" type="url" inputmode="url" placeholder="https://www.instagram.com/name">
-                                    </label>
                                 </div>
-                            </details>
+                            </summary>
+                            <div class="admin-link-card-body">
+                                <label class="admin-url-field">
+                                    <span>destination URL</span>
+                                    <input id="instagram-url" type="url" inputmode="url" placeholder="https://www.instagram.com/name">
+                                </label>
+                            </div>
+                        </details>
 
-                            <details class="admin-link-card admin-widget-card" data-link-card="kofi" open>
-                                <summary>
-                                    <div class="admin-link-card-title">
-                                        <span class="admin-link-icon">K</span>
-                                        <div>
-                                            <strong>Ko-fi</strong>
-                                            <small id="kofi-state">visible</small>
-                                        </div>
+                        <details class="admin-link-card admin-widget-card" data-link-card="kofi" open>
+                            <summary>
+                                <div class="admin-link-card-title">
+                                    <span class="admin-link-icon">K</span>
+                                    <div>
+                                        <strong>Ko-fi</strong>
+                                        <small id="kofi-state">visible</small>
                                     </div>
+                                </div>
+                                <div class="admin-link-card-actions">
+                                    <button class="soft admin-link-open" type="button" data-link-open="kofi">open</button>
                                     <label class="admin-switch">
                                         <input id="kofi-enabled" type="checkbox">
                                         <span></span>
                                     </label>
-                                </summary>
-                                <div class="admin-link-card-body">
-                                    <p class="admin-widget-note">Custom pop-up widget.</p>
                                 </div>
-                            </details>
+                            </summary>
+                            <div class="admin-link-card-body">
+                                <label class="admin-url-field">
+                                    <span>destination URL</span>
+                                    <input id="kofi-url" type="url" inputmode="url" placeholder="https://ko-fi.com/name">
+                                </label>
+                            </div>
+                        </details>
 
-                            <details class="admin-link-card admin-widget-card" data-link-card="throne" open>
-                                <summary>
-                                    <div class="admin-link-card-title">
-                                        <span class="admin-link-icon">T</span>
-                                        <div>
-                                            <strong>Throne</strong>
-                                            <small id="throne-state">visible</small>
-                                        </div>
+                        <details class="admin-link-card admin-widget-card" data-link-card="throne" open>
+                            <summary>
+                                <div class="admin-link-card-title">
+                                    <span class="admin-link-icon">T</span>
+                                    <div>
+                                        <strong>Throne</strong>
+                                        <small id="throne-state">visible</small>
                                     </div>
+                                </div>
+                                <div class="admin-link-card-actions">
+                                    <button class="soft admin-link-open" type="button" data-link-open="throne">open</button>
                                     <label class="admin-switch">
                                         <input id="throne-enabled" type="checkbox">
                                         <span></span>
                                     </label>
-                                </summary>
-                                <div class="admin-link-card-body">
-                                    <label class="admin-url-field">
-                                        <span>wishlist URL</span>
-                                        <input id="throne-url" type="url" inputmode="url" placeholder="https://throne.com/name">
-                                    </label>
                                 </div>
-                            </details>
-                        </div>
+                            </summary>
+                            <div class="admin-link-card-body">
+                                <label class="admin-url-field">
+                                    <span>wishlist URL</span>
+                                    <input id="throne-url" type="url" inputmode="url" placeholder="https://throne.com/name">
+                                </label>
+                            </div>
+                        </details>
                     </div>
                 </section>
 
@@ -393,7 +402,6 @@
                             <p class="admin-kicker">search</p>
                             <h2>preview + crawler file</h2>
                         </div>
-                        <p>Live metadata, static HTML status, and quick checks.</p>
                     </div>
 
                     <div class="admin-search-layout">
@@ -457,6 +465,6 @@
     </main>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="../admin.js?v=3.6"></script>
+    <script src="../admin.js?v=3.7"></script>
 </body>
 </html>

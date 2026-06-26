@@ -94,6 +94,8 @@ const els = {
     streamChat: document.getElementById('stream-chat-list'),
     streamBans: document.getElementById('stream-ban-list'),
     chatPauseToggle: document.getElementById('chat-pause-toggle'),
+    chatFilter: document.getElementById('chat-filter'),
+    chatVisibilityFilter: document.getElementById('chat-visibility-filter'),
     chatSettingsForm: document.getElementById('chat-settings-form'),
     chatSlowMode: document.getElementById('chat-slow-mode'),
     chatBlockedWords: document.getElementById('chat-blocked-words'),
@@ -103,7 +105,6 @@ const els = {
     chatBanNote: document.getElementById('chat-ban-note'),
     linkSettingsForm: document.getElementById('link-settings-form'),
     linkSettingsReset: document.getElementById('link-settings-reset'),
-    linkSettingsPreview: document.getElementById('link-settings-preview'),
     snapchatEnabled: document.getElementById('snapchat-enabled'),
     snapchatUrl: document.getElementById('snapchat-url'),
     snapchatState: document.getElementById('snapchat-state'),
@@ -111,6 +112,7 @@ const els = {
     instagramUrl: document.getElementById('instagram-url'),
     instagramState: document.getElementById('instagram-state'),
     kofiEnabled: document.getElementById('kofi-enabled'),
+    kofiUrl: document.getElementById('kofi-url'),
     kofiState: document.getElementById('kofi-state'),
     throneEnabled: document.getElementById('throne-enabled'),
     throneUrl: document.getElementById('throne-url'),
@@ -312,12 +314,26 @@ function renderQuestions(list, container, published) {
 
 function renderChatMessages() {
     if (!els.streamChat) return;
-    if (!state.streamMessages.length) {
-        els.streamChat.innerHTML = emptyMessage('no stream chat yet');
+    const query = String(els.chatFilter?.value || '').trim().toLowerCase();
+    const visibility = els.chatVisibilityFilter?.value || 'all';
+    const messages = state.streamMessages.filter(item => {
+        const matchesVisibility = visibility === 'all'
+            || (visibility === 'hidden' ? item.is_hidden : !item.is_hidden);
+        if (!matchesVisibility) return false;
+        if (!query) return true;
+        return [
+            item.nickname,
+            item.message,
+            item.ip_address,
+            item.id
+        ].some(value => String(value || '').toLowerCase().includes(query));
+    });
+    if (!messages.length) {
+        els.streamChat.innerHTML = emptyMessage(state.streamMessages.length ? 'no matching chat' : 'no stream chat yet');
         return;
     }
 
-    els.streamChat.innerHTML = state.streamMessages.map(item => `
+    els.streamChat.innerHTML = messages.map(item => `
         <article class="admin-card admin-chat-card ${item.is_hidden ? 'is-hidden-chat' : ''}" data-id="${escapeHtml(item.id)}">
             <div class="admin-chat-message">
                 <strong>${escapeHtml(item.nickname || 'guest')}</strong>
@@ -413,6 +429,7 @@ function renderLinkSettings({ preserveDraft = false } = {}) {
     if (els.instagramUrl) els.instagramUrl.value = settings.instagram_url || '';
     if (els.instagramState) els.instagramState.textContent = settings.instagram_enabled !== false ? 'visible' : 'hidden';
     if (els.kofiEnabled) els.kofiEnabled.checked = settings.kofi_enabled !== false;
+    if (els.kofiUrl) els.kofiUrl.value = settings.kofi_url || '';
     if (els.kofiState) els.kofiState.textContent = settings.kofi_enabled !== false ? 'visible' : 'hidden';
     if (els.throneEnabled) els.throneEnabled.checked = settings.throne_enabled !== false;
     if (els.throneUrl) els.throneUrl.value = settings.throne_url || '';
@@ -443,7 +460,7 @@ function getDraftLinkSettings() {
         snapchat_enabled: els.snapchatEnabled?.checked !== false,
         instagram_url: els.instagramUrl?.value.trim() || state.linkSettings.instagram_url || DEFAULT_LINK_SETTINGS.instagram_url,
         instagram_enabled: els.instagramEnabled?.checked !== false,
-        kofi_url: state.linkSettings.kofi_url || DEFAULT_LINK_SETTINGS.kofi_url,
+        kofi_url: els.kofiUrl?.value.trim() || state.linkSettings.kofi_url || DEFAULT_LINK_SETTINGS.kofi_url,
         kofi_enabled: els.kofiEnabled?.checked !== false,
         throne_url: els.throneUrl?.value.trim() || state.linkSettings.throne_url || DEFAULT_LINK_SETTINGS.throne_url,
         throne_enabled: els.throneEnabled?.checked !== false,
@@ -497,34 +514,21 @@ function syncLinkDraftLabels(settings = getDraftLinkSettings()) {
 function renderLinkPreview() {
     const settings = getDraftLinkSettings();
     syncLinkDraftLabels(settings);
-    if (!els.linkSettingsPreview) return;
-    const rows = [
-        ['Snapchat', 'snapchat'],
-        ['Instagram', 'instagram'],
-        ['Ko-fi', 'kofi'],
-        ['Throne', 'throne'],
-        ['Doodles', 'drawings'],
-        ['Questions', 'questions'],
-        ['Latest note', 'latest_note'],
-        ['Update mode', 'maintenance']
-    ];
+}
 
-    els.linkSettingsPreview.innerHTML = rows.map(([label, key]) => {
-        const enabled = settings[`${key}_enabled`] !== false;
-        const url = settings[`${key}_url`] || DEFAULT_LINK_SETTINGS[`${key}_url`];
-        const isLink = Boolean(url);
-        return `
-            <article class="admin-link-preview-row ${enabled ? '' : 'is-disabled'}">
-                <div>
-                    <strong>${escapeHtml(label)}</strong>
-                    <span>${enabled ? 'visible' : 'hidden'}</span>
-                </div>
-                ${isLink
-                    ? `<button class="soft" type="button" data-link-preview="${escapeHtml(url)}">open</button>`
-                    : '<span class="admin-preview-pill">setting</span>'}
-            </article>
-        `;
-    }).join('');
+function openPublicLinkPreview(key) {
+    const settings = getDraftLinkSettings();
+    const url = settings[`${key}_url`];
+    if (!url) {
+        setStatus(els.adminStatus, 'no destination set');
+        return;
+    }
+
+    try {
+        window.open(new URL(url).href, '_blank', 'noopener,noreferrer');
+    } catch (error) {
+        setStatus(els.adminStatus, `${key} link is not a valid URL`);
+    }
 }
 
 function renderStaticSeoStatus(settings = getDraftLinkSettings()) {
@@ -947,7 +951,7 @@ async function saveLinkSettingsNow() {
             snapchat_enabled: els.snapchatEnabled?.checked !== false,
             instagram_url: cleanUrl(els.instagramUrl?.value || state.linkSettings.instagram_url, 'Instagram'),
             instagram_enabled: els.instagramEnabled?.checked !== false,
-            kofi_url: state.linkSettings.kofi_url || DEFAULT_LINK_SETTINGS.kofi_url,
+            kofi_url: cleanUrl(els.kofiUrl?.value || state.linkSettings.kofi_url, 'Ko-fi'),
             kofi_enabled: els.kofiEnabled?.checked !== false,
             throne_url: cleanUrl(els.throneUrl?.value || state.linkSettings.throne_url, 'Throne'),
             throne_enabled: els.throneEnabled?.checked !== false,
@@ -1263,15 +1267,19 @@ async function init() {
     [els.chatSlowMode, els.chatBlockedWords].forEach(input => {
         input?.addEventListener('input', () => { chatSettingsDraftDirty = true; });
     });
+    els.chatFilter?.addEventListener('input', renderChatMessages);
+    els.chatVisibilityFilter?.addEventListener('change', renderChatMessages);
     els.chatBanForm?.addEventListener('submit', saveChatBan);
     els.linkSettingsForm?.addEventListener('submit', e => e.preventDefault());
     els.linkSettingsReset?.addEventListener('click', resetLinkSettings);
     els.runHealthCheck?.addEventListener('click', runSiteHealthCheck);
     els.staticSeoCheck?.addEventListener('click', checkStaticSeoStatus);
-    els.linkSettingsPreview?.addEventListener('click', e => {
-        const button = e.target.closest('button[data-link-preview]');
-        const url = button?.dataset.linkPreview;
-        if (url) window.open(url, '_blank', 'noopener,noreferrer');
+    document.querySelectorAll('[data-link-open]').forEach(button => {
+        button.addEventListener('click', e => {
+            e.preventDefault();
+            e.stopPropagation();
+            openPublicLinkPreview(button.dataset.linkOpen);
+        });
     });
     document.querySelectorAll('.admin-switch').forEach(toggle => {
         toggle.addEventListener('click', e => e.stopPropagation());
@@ -1285,6 +1293,7 @@ async function init() {
     [
         els.snapchatUrl,
         els.instagramUrl,
+        els.kofiUrl,
         els.throneUrl,
         els.latestNoteTitle,
         els.latestNoteBody,
