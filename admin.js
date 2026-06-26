@@ -36,6 +36,22 @@ let adminChatChannel = null;
 let adminChatPollTimer = null;
 let chatPollInFlight = false;
 let autoSaveTimer = null;
+let settingsDraftDirty = false;
+let chatSettingsDraftDirty = false;
+let staticSeoSnapshot = null;
+let staticSeoCheckFailed = false;
+
+const ADMIN_TIME_ZONE = 'America/Los_Angeles';
+const adminDateFormatter = new Intl.DateTimeFormat(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    second: '2-digit',
+    timeZone: ADMIN_TIME_ZONE,
+    timeZoneName: 'short'
+});
 
 const state = {
     drawings: [],
@@ -117,6 +133,12 @@ const els = {
     seoState: document.getElementById('seo-state'),
     seoPreviewTitle: document.getElementById('seo-preview-title'),
     seoPreviewDescription: document.getElementById('seo-preview-description'),
+    seoTitleCount: document.getElementById('seo-title-count'),
+    seoDescriptionCount: document.getElementById('seo-description-count'),
+    siteTaglineCount: document.getElementById('site-tagline-count'),
+    staticSeoState: document.getElementById('static-seo-state'),
+    staticSeoCheck: document.getElementById('static-seo-check'),
+    staticSeoRows: document.getElementById('static-seo-checks'),
     healthState: document.getElementById('health-state'),
     healthCheck: document.getElementById('admin-health-check'),
     runHealthCheck: document.getElementById('run-health-check')
@@ -139,17 +161,49 @@ function hasAnswer(question) {
     return Boolean(question.answer && question.answer.trim());
 }
 
-function formatDate(value) {
-    if (!value) return 'unknown date';
+function parseAdminDate(value) {
+    if (!value) return null;
     const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return String(value);
-    return date.toLocaleString([], {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-        hour: 'numeric',
-        minute: '2-digit'
-    });
+    return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function formatDate(value) {
+    const date = parseAdminDate(value);
+    return date ? adminDateFormatter.format(date) : String(value || 'unknown date');
+}
+
+function formatRelativeDate(value) {
+    const date = parseAdminDate(value);
+    if (!date) return 'unknown';
+    const seconds = Math.round((date.getTime() - Date.now()) / 1000);
+    const absSeconds = Math.abs(seconds);
+    if (absSeconds < 45) return 'just now';
+
+    const units = [
+        ['year', 31536000],
+        ['month', 2592000],
+        ['day', 86400],
+        ['hr', 3600],
+        ['min', 60]
+    ];
+    const match = units.find(([, size]) => absSeconds >= size) || ['sec', 1];
+    const amount = Math.round(absSeconds / match[1]);
+    const suffix = amount === 1 ? match[0] : `${match[0]}s`;
+    return seconds < 0 ? `${amount} ${suffix} ago` : `in ${amount} ${suffix}`;
+}
+
+function renderTimestamp(value, compact = false) {
+    const date = parseAdminDate(value);
+    if (!date) {
+        return `<span class="admin-time admin-time-unknown">${escapeHtml(String(value || 'unknown date'))}</span>`;
+    }
+    const absolute = formatDate(value);
+    return `
+        <time class="admin-time ${compact ? 'compact' : ''}" datetime="${escapeHtml(date.toISOString())}" title="${escapeHtml(date.toISOString())}">
+            <strong>${escapeHtml(formatRelativeDate(value))}</strong>
+            <span>${escapeHtml(absolute)}</span>
+        </time>
+    `;
 }
 
 function escapeHtml(value) {
@@ -170,7 +224,7 @@ function getDrawingSrc(imageData) {
 function renderMeta(item) {
     return `
         <div class="admin-meta">
-            <span>${escapeHtml(formatDate(item.created_at))}</span>
+            ${renderTimestamp(item.created_at)}
             <span>ip: ${escapeHtml(item.ip_address || 'unknown')}</span>
             <span>id: ${escapeHtml(item.id)}</span>
         </div>
@@ -180,7 +234,7 @@ function renderMeta(item) {
 function renderShortMeta(item) {
     return `
         <div class="admin-meta compact">
-            <span>${escapeHtml(formatDate(item.created_at))}</span>
+            ${renderTimestamp(item.created_at, true)}
             <span>ip: ${escapeHtml(item.ip_address || 'unknown')}</span>
         </div>
     `;
@@ -201,13 +255,9 @@ function renderStats() {
     if (els.chatTabCount) els.chatTabCount.textContent = String(visibleChat + hiddenChat);
 
     els.stats.innerHTML = `
-        <div class="admin-stat"><strong>${pendingDrawings}</strong><span>pending doods</span></div>
-        <div class="admin-stat"><strong>${pendingQuestions}</strong><span>pending asks</span></div>
-        <div class="admin-stat"><strong>${publishedDrawings}</strong><span>posted doods</span></div>
-        <div class="admin-stat"><strong>${publishedQuestions}</strong><span>answered asks</span></div>
-        <div class="admin-stat"><strong>${visibleChat}</strong><span>visible chat</span></div>
-        <div class="admin-stat"><strong>${hiddenChat}</strong><span>hidden chat</span></div>
-        <div class="admin-stat"><strong>${state.streamBans.length}</strong><span>chat bans</span></div>
+        <div class="admin-stat"><strong>${pendingDrawings + pendingQuestions}</strong><span>waiting review</span></div>
+        <div class="admin-stat"><strong>${publishedDrawings + publishedQuestions}</strong><span>published posts</span></div>
+        <div class="admin-stat"><strong>${visibleChat + hiddenChat}</strong><span>chat messages</span></div>
         <div class="admin-stat"><strong>${state.chatSettings.chat_enabled === false ? 'off' : 'on'}</strong><span>chat status</span></div>
         <div class="admin-stat"><strong>${activeLinks}/4</strong><span>public links</span></div>
     `;
@@ -284,7 +334,7 @@ function renderChatMessages() {
     `).join('');
 }
 
-function renderChatSettings() {
+function renderChatSettings({ preserveDraft = false } = {}) {
     if (els.chatPauseToggle) {
         const paused = state.chatSettings.chat_enabled === false;
         els.chatPauseToggle.textContent = paused ? 'resume chat' : 'pause chat';
@@ -292,12 +342,14 @@ function renderChatSettings() {
         els.chatPauseToggle.classList.toggle('soft', paused);
         els.chatPauseToggle.classList.toggle('emergency', !paused);
     }
+    if (preserveDraft && chatSettingsDraftDirty) return;
     if (els.chatSlowMode) {
         els.chatSlowMode.value = String(state.chatSettings.slow_mode_seconds ?? 5);
     }
     if (els.chatBlockedWords) {
         els.chatBlockedWords.value = (state.chatSettings.blocked_words || []).join('\n');
     }
+    chatSettingsDraftDirty = false;
 }
 
 function renderBans() {
@@ -312,7 +364,7 @@ function renderBans() {
             <div>
                 <strong>${escapeHtml(item.ban_type)}: ${escapeHtml(item.ban_value)}</strong>
                 <span>${escapeHtml(item.note || 'no note')}</span>
-                <small>${escapeHtml(formatDate(item.created_at))}</small>
+                ${renderTimestamp(item.created_at, true)}
             </div>
             <button class="soft" data-ban-action="unban">remove</button>
         </article>
@@ -345,8 +397,15 @@ function normalizeLinkSettings(value) {
     };
 }
 
-function renderLinkSettings() {
+function renderLinkSettings({ preserveDraft = false } = {}) {
     const settings = state.linkSettings;
+    if (els.linkSettingsForm) {
+        els.linkSettingsForm.classList.toggle('settings-unavailable', !state.linkSettingsAvailable);
+    }
+    if (preserveDraft && settingsDraftDirty) {
+        renderLinkPreview();
+        return;
+    }
     if (els.snapchatEnabled) els.snapchatEnabled.checked = settings.snapchat_enabled !== false;
     if (els.snapchatUrl) els.snapchatUrl.value = settings.snapchat_url || '';
     if (els.snapchatState) els.snapchatState.textContent = settings.snapchat_enabled !== false ? 'visible' : 'hidden';
@@ -374,9 +433,7 @@ function renderLinkSettings() {
     if (els.seoDescription) els.seoDescription.value = settings.seo_description || '';
     if (els.siteTagline) els.siteTagline.value = settings.site_tagline || '';
     if (els.seoState) els.seoState.textContent = 'ready';
-    if (els.linkSettingsForm) {
-        els.linkSettingsForm.classList.toggle('settings-unavailable', !state.linkSettingsAvailable);
-    }
+    settingsDraftDirty = false;
     renderLinkPreview();
 }
 
@@ -423,6 +480,10 @@ function syncLinkDraftLabels(settings = getDraftLinkSettings()) {
     if (els.submissionsState) els.submissionsState.textContent = getSubmissionsStateLabel(settings);
     if (els.seoPreviewTitle) els.seoPreviewTitle.textContent = settings.seo_title || DEFAULT_LINK_SETTINGS.seo_title;
     if (els.seoPreviewDescription) els.seoPreviewDescription.textContent = settings.seo_description || DEFAULT_LINK_SETTINGS.seo_description;
+    if (els.seoTitleCount) els.seoTitleCount.textContent = `${settings.seo_title.length}/70`;
+    if (els.seoDescriptionCount) els.seoDescriptionCount.textContent = `${settings.seo_description.length}/180`;
+    if (els.siteTaglineCount) els.siteTaglineCount.textContent = `${settings.site_tagline.length}/120`;
+    if (els.seoState) els.seoState.textContent = settingsDraftDirty ? 'editing' : 'ready';
     ['snapchat', 'instagram', 'kofi', 'throne', 'latest-note', 'maintenance', 'submissions'].forEach(key => {
         const settingKey = key.replace('-', '_');
         const disabled = key === 'submissions'
@@ -430,12 +491,13 @@ function syncLinkDraftLabels(settings = getDraftLinkSettings()) {
             : settings[`${settingKey}_enabled`] === false;
         document.querySelector(`[data-link-card="${key}"]`)?.classList.toggle('is-disabled', disabled);
     });
+    renderStaticSeoStatus(settings);
 }
 
 function renderLinkPreview() {
-    if (!els.linkSettingsPreview) return;
     const settings = getDraftLinkSettings();
     syncLinkDraftLabels(settings);
+    if (!els.linkSettingsPreview) return;
     const rows = [
         ['Snapchat', 'snapchat'],
         ['Instagram', 'instagram'],
@@ -465,16 +527,88 @@ function renderLinkPreview() {
     }).join('');
 }
 
-function renderAll() {
+function renderStaticSeoStatus(settings = getDraftLinkSettings()) {
+    if (!els.staticSeoRows) return;
+    if (!staticSeoSnapshot) {
+        if (els.staticSeoState) els.staticSeoState.textContent = staticSeoCheckFailed ? 'check failed' : 'not checked';
+        els.staticSeoRows.innerHTML = `
+            <div class="admin-health-row ${staticSeoCheckFailed ? 'is-bad' : 'is-pending'}">
+                <span>static title</span>
+                <strong>${staticSeoCheckFailed ? 'fix' : 'check'}</strong>
+            </div>
+            <div class="admin-health-row ${staticSeoCheckFailed ? 'is-bad' : 'is-pending'}">
+                <span>static description</span>
+                <strong>${staticSeoCheckFailed ? 'fix' : 'check'}</strong>
+            </div>
+        `;
+        return;
+    }
+
+    const rows = [
+        ['static title', staticSeoSnapshot.title, settings.seo_title],
+        ['static description', staticSeoSnapshot.description, settings.seo_description],
+        ['schema title', staticSeoSnapshot.structuredTitle, settings.seo_title],
+        ['schema description', staticSeoSnapshot.structuredDescription, settings.seo_description]
+    ];
+    const allMatch = rows.every(([, actual, expected]) => actual === expected);
+    if (els.staticSeoState) els.staticSeoState.textContent = allMatch ? 'static matches' : 'dynamic only';
+    els.staticSeoRows.innerHTML = rows.map(([label, actual, expected]) => {
+        const ok = actual === expected;
+        return `
+            <div class="admin-health-row admin-static-row ${ok ? 'is-ok' : 'is-bad'}">
+                <span>${escapeHtml(label)}</span>
+                <strong>${ok ? 'ok' : 'fix'}</strong>
+                <small>${escapeHtml(actual || 'missing')}</small>
+            </div>
+        `;
+    }).join('');
+}
+
+async function checkStaticSeoStatus() {
+    if (els.staticSeoState) els.staticSeoState.textContent = 'checking';
+    try {
+        staticSeoCheckFailed = false;
+        const response = await fetch('../index.html', { cache: 'no-store' });
+        const text = await response.text();
+        if (!response.ok) throw new Error('index.html could not load');
+        const doc = new DOMParser().parseFromString(text, 'text/html');
+        const structuredText = doc.getElementById('site-structured-data')?.textContent || '';
+        let structuredTitle = '';
+        let structuredDescription = '';
+        try {
+            const data = JSON.parse(structuredText);
+            const graph = Array.isArray(data['@graph']) ? data['@graph'] : [];
+            const pageNode = graph.find(node => node['@type'] === 'WebPage' || node['@type'] === 'ProfilePage') || {};
+            structuredTitle = String(pageNode.name || '');
+            structuredDescription = String(pageNode.description || '');
+        } catch (error) {
+            structuredTitle = '';
+            structuredDescription = '';
+        }
+        staticSeoSnapshot = {
+            title: doc.querySelector('title')?.textContent.trim() || '',
+            description: doc.querySelector('meta[name="description"]')?.getAttribute('content') || '',
+            structuredTitle,
+            structuredDescription
+        };
+    } catch (error) {
+        staticSeoSnapshot = null;
+        staticSeoCheckFailed = true;
+        if (els.staticSeoState) els.staticSeoState.textContent = 'check failed';
+    }
+    renderStaticSeoStatus();
+}
+
+function renderAll({ preserveDrafts = false } = {}) {
     renderStats();
     renderDrawings(state.drawings.filter(item => !item.approved), els.pendingDrawings, false);
     renderDrawings(state.drawings.filter(item => item.approved), els.publishedDrawings, true);
     renderQuestions(state.questions.filter(item => !hasAnswer(item)), els.pendingQuestions, false);
     renderQuestions(state.questions.filter(hasAnswer), els.publishedQuestions, true);
     renderChatMessages();
-    renderChatSettings();
+    renderChatSettings({ preserveDraft: preserveDrafts });
     renderBans();
-    renderLinkSettings();
+    renderLinkSettings({ preserveDraft: preserveDrafts });
 }
 
 async function ensureAdminSession() {
@@ -489,7 +623,7 @@ async function ensureAdminSession() {
     return true;
 }
 
-async function loadAdminData() {
+async function loadAdminData({ preserveDrafts = true } = {}) {
     setStatus(els.adminStatus, 'loading...');
 
     const [drawingsResult, questionsResult, chatResult, bansResult, settingsResult, linkSettingsResult] = await Promise.all([
@@ -521,7 +655,7 @@ async function loadAdminData() {
     }
     state.linkSettingsAvailable = !linkSettingsResult.error || linkSettingsResult.error.code === 'PGRST116';
     state.linkSettings = normalizeLinkSettings(linkSettingsResult.data?.value);
-    renderAll();
+    renderAll({ preserveDrafts });
     setStatus(els.adminStatus, '');
 }
 
@@ -553,6 +687,10 @@ function getItemById(collection, id) {
     return collection.find(item => item.id === id) || null;
 }
 
+function confirmDangerAction(message) {
+    return window.confirm(message);
+}
+
 async function addChatBan(type, value, note) {
     const cleanType = type === 'nickname' ? 'nickname' : 'ip';
     const cleanValue = String(value || '').trim();
@@ -571,9 +709,10 @@ async function addChatBan(type, value, note) {
 async function openDashboard() {
     showPanel(els.dashboardPanel);
     try {
-        await loadAdminData();
+        await loadAdminData({ preserveDrafts: false });
         startAdminRealtime();
         startAdminChatPolling();
+        checkStaticSeoStatus().catch(() => renderStaticSeoStatus());
     } catch (error) {
         setStatus(els.adminStatus, error.message || 'Could not load admin data.');
     }
@@ -599,7 +738,7 @@ function startAdminRealtime() {
             schema: 'public',
             table: 'stream_messages'
         }, () => {
-            loadAdminData().catch(error => {
+            loadStreamChatOnly().catch(error => {
                 setStatus(els.adminStatus, error.message || 'Could not refresh chat.');
             });
         })
@@ -699,9 +838,12 @@ async function runChatAction(button) {
     if (!action) return;
 
     if (action === 'refresh') {
-        await loadAdminData();
+        await loadStreamChatOnly();
         return;
     }
+
+    if (action === 'clear-visible' && !confirmDangerAction('Hide every visible chat message?')) return;
+    if (action === 'delete-all' && !confirmDangerAction('Delete every chat message? This cannot be undone.')) return;
 
     button.disabled = true;
     setStatus(els.adminStatus, 'saving chat...');
@@ -769,7 +911,8 @@ async function saveChatSettings(event) {
         return;
     }
 
-    await loadAdminData();
+    chatSettingsDraftDirty = false;
+    await loadAdminData({ preserveDrafts: false });
 }
 
 async function saveChatBan(event) {
@@ -825,6 +968,8 @@ async function saveLinkSettingsNow() {
         setStatus(els.adminStatus, error.message || 'Check the links.');
         return;
     }
+    const savedSettingsKey = JSON.stringify(nextSettings);
+    if (els.seoState) els.seoState.textContent = 'saving';
 
     const { error } = await adminClient
         .from('site_settings')
@@ -835,6 +980,7 @@ async function saveLinkSettingsNow() {
         });
 
     if (error) {
+        if (els.seoState) els.seoState.textContent = 'error';
         setStatus(els.adminStatus, error.code === '42P01'
             ? 'Install site_settings.sql in Supabase first.'
             : (error.message || 'Could not save links.'));
@@ -842,6 +988,7 @@ async function saveLinkSettingsNow() {
     }
 
     state.linkSettings = nextSettings;
+    settingsDraftDirty = JSON.stringify(getDraftLinkSettings()) !== savedSettingsKey;
     syncLinkDraftLabels();
     renderLinkPreview();
     setStatus(els.adminStatus, 'saved ✓');
@@ -858,6 +1005,7 @@ function scheduleAutoSave() {
 function resetLinkSettings() {
     state.linkSettings = { ...DEFAULT_LINK_SETTINGS };
     renderLinkSettings();
+    settingsDraftDirty = true;
     scheduleAutoSave();
 }
 
@@ -985,6 +1133,7 @@ async function runBulkAction(button) {
             setStatus(els.adminStatus, 'no waiting doods');
             return;
         }
+        if (!confirmDangerAction(`Delete ${pendingIds.length} waiting doods? This cannot be undone.`)) return;
 
         button.disabled = true;
         setStatus(els.adminStatus, `deleting ${pendingIds.length} waiting doods...`);
@@ -1009,6 +1158,7 @@ async function runBulkAction(button) {
             setStatus(els.adminStatus, 'no waiting asks');
             return;
         }
+        if (!confirmDangerAction(`Delete ${pendingIds.length} waiting asks? This cannot be undone.`)) return;
 
         button.disabled = true;
         setStatus(els.adminStatus, `deleting ${pendingIds.length} waiting asks...`);
@@ -1036,6 +1186,7 @@ async function runBulkAction(button) {
         setStatus(els.adminStatus, 'select items first');
         return;
     }
+    if (action === 'delete' && !confirmDangerAction(`Delete ${ids.length} selected doods? This cannot be undone.`)) return;
 
     button.disabled = true;
     setStatus(els.adminStatus, `${action} ${ids.length}...`);
@@ -1109,10 +1260,14 @@ async function init() {
     });
 
     els.chatSettingsForm?.addEventListener('submit', saveChatSettings);
+    [els.chatSlowMode, els.chatBlockedWords].forEach(input => {
+        input?.addEventListener('input', () => { chatSettingsDraftDirty = true; });
+    });
     els.chatBanForm?.addEventListener('submit', saveChatBan);
     els.linkSettingsForm?.addEventListener('submit', e => e.preventDefault());
     els.linkSettingsReset?.addEventListener('click', resetLinkSettings);
     els.runHealthCheck?.addEventListener('click', runSiteHealthCheck);
+    els.staticSeoCheck?.addEventListener('click', checkStaticSeoStatus);
     els.linkSettingsPreview?.addEventListener('click', e => {
         const button = e.target.closest('button[data-link-preview]');
         const url = button?.dataset.linkPreview;
@@ -1121,7 +1276,11 @@ async function init() {
     document.querySelectorAll('.admin-switch').forEach(toggle => {
         toggle.addEventListener('click', e => e.stopPropagation());
         toggle.addEventListener('keydown', e => e.stopPropagation());
-        toggle.addEventListener('change', () => { renderLinkPreview(); scheduleAutoSave(); });
+        toggle.addEventListener('change', () => {
+            settingsDraftDirty = true;
+            renderLinkPreview();
+            scheduleAutoSave();
+        });
     });
     [
         els.snapchatUrl,
@@ -1136,7 +1295,11 @@ async function init() {
         els.seoDescription,
         els.siteTagline
     ].forEach(input => {
-        input?.addEventListener('input', () => { renderLinkPreview(); scheduleAutoSave(); });
+        input?.addEventListener('input', () => {
+            settingsDraftDirty = true;
+            renderLinkPreview();
+            scheduleAutoSave();
+        });
     });
     els.streamBans?.addEventListener('click', e => {
         const button = e.target.closest('button[data-ban-action]');

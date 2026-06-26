@@ -520,105 +520,6 @@ document.addEventListener("DOMContentLoaded", async function() {
 
     initNoteStreamPeel();
     
-    // Global prevention of video fullscreen on mobile
-    document.addEventListener('webkitbeginfullscreen', (e) => {
-        e.preventDefault();
-        if (e.target.webkitExitFullscreen) {
-            e.target.webkitExitFullscreen();
-        }
-    }, true);
-    
-    document.addEventListener('webkitendfullscreen', (e) => {
-        e.preventDefault();
-    }, true);
-    
-    // Prevent any video from entering fullscreen
-    document.addEventListener('fullscreenchange', (e) => {
-        if (document.fullscreenElement && document.fullscreenElement.tagName === 'VIDEO') {
-            document.exitFullscreen();
-        }
-    });
-    
-    // Audio management system for MP4 files
-    let currentVideoAudio = null;
-    let backgroundAudioMuted = false;
-    let backgroundAudioWasPlaying = false; // Track if audio was playing before muting
-    
-    // Function to mute background music
-    function muteBackgroundMusic() {
-        if (audioPlayed) {
-            // Track if audio was playing before muting
-            backgroundAudioWasPlaying = !audio.paused;
-            setBackgroundMusicVolume(0);
-            backgroundAudioMuted = true;
-        }
-    }
-    
-    // Function to unmute background music
-    function unmuteBackgroundMusic() {
-        if (backgroundAudioMuted) {
-            setBackgroundMusicVolume(backgroundMusicVolume);
-            backgroundAudioMuted = false;
-            
-            // Resume audio if it was playing before and is now paused
-            if (backgroundAudioWasPlaying && audio.paused) {
-                audio.play().catch(e => {});
-            }
-        } else {
-            // Even if not muted, ensure audio is playing if it should be
-            if (audioPlayed && audio.paused) {
-                audio.play().catch(e => {});
-            }
-        }
-    }
-    
-    // Function to handle video audio
-    function handleVideoAudio(videoElement) {
-        if (!videoElement) return;
-        
-        // Remove any existing audio handler
-        if (currentVideoAudio) {
-            currentVideoAudio.removeEventListener('play', muteBackgroundMusic);
-            currentVideoAudio.removeEventListener('pause', unmuteBackgroundMusic);
-            currentVideoAudio.removeEventListener('ended', unmuteBackgroundMusic);
-        }
-        
-        // Set up new audio handler
-        currentVideoAudio = videoElement;
-        
-        // Mute background when video starts
-        videoElement.addEventListener('play', () => {
-            muteBackgroundMusic();
-        });
-        
-        // Unmute background when video pauses
-        videoElement.addEventListener('pause', () => {
-            unmuteBackgroundMusic();
-        });
-        
-        // Unmute background when video ends
-        videoElement.addEventListener('ended', () => {
-            unmuteBackgroundMusic();
-        });
-        
-        // Handle video state changes
-        videoElement.addEventListener('canplay', () => {
-            if (!videoElement.paused) {
-                muteBackgroundMusic();
-            }
-        });
-        
-        // Simple audio state management
-        const audioCheckInterval = setInterval(() => {
-            if (videoElement.paused || videoElement.ended) {
-                unmuteBackgroundMusic();
-                clearInterval(audioCheckInterval);
-            } else if (!videoElement.paused && videoElement.volume > 0) {
-                muteBackgroundMusic();
-            }
-        }, 1000);
-    }
-
     // ===== LOADING SCREEN =====
     const loadingScreen = document.getElementById("loading-screen");
     const loadingBarContainer = document.getElementById("loading-bar-container");
@@ -1061,11 +962,9 @@ document.addEventListener("DOMContentLoaded", async function() {
     const drawingWidget = document.querySelector('.drawing-widget');
     const postsPanel = document.getElementById('posts-popup');
     const postsButton = document.getElementById('posts-button');
-    let showingNote = true;
 
     function closeDrawingWidget() {
         if (!toggleButton || !noteImage || !drawingWidget) return;
-        showingNote = true;
         drawingWidget.classList.remove('active');
         toggleButton.classList.remove('drawing-open');
         toggleButton.textContent = '✎';
@@ -1125,7 +1024,6 @@ document.addEventListener("DOMContentLoaded", async function() {
                 closeQuestionForm();
                 closePostsPanel();
                 hideNoteImage();
-                showingNote = false;
                 drawingWidget.classList.add('active');
                 toggleButton.classList.add('drawing-open');
                 toggleButton.textContent = '✖';
@@ -1135,17 +1033,6 @@ document.addEventListener("DOMContentLoaded", async function() {
 
     // ===== CONTACT FORM REMOVED - Now using Ko-fi widget only =====
     // All contact form code has been removed - using Ko-fi widget instead
-
-    // Helper function to get IP address (used by questions and drawings features)
-    async function getIPAddress() {
-        try {
-            const ipResponse = await fetch('https://api.ipify.org?format=json');
-            const ipData = await ipResponse.json();
-            return ipData.ip;
-        } catch (ipError) {
-            return 'unknown';
-        }
-    }
 
     // ===== SOCIALS AND SUPPORT MENUS =====
     const socialsButton = document.getElementById('socials-button');
@@ -2192,13 +2079,12 @@ document.addEventListener("DOMContentLoaded", async function() {
                         // IP address fetch failed
                     }
 
-                    const { data, error } = await window.supabase
+                    const { error } = await window.supabase
                         .from('questions')
                         .insert([{ 
                             question, 
                             answer: null, 
-                            ip_address: ipAddress,
-                            created_at: new Date().toISOString() 
+                            ip_address: ipAddress
                         }]);
                     
                     if (error) throw error;
@@ -2394,7 +2280,6 @@ document.addEventListener("DOMContentLoaded", async function() {
         }
 
         // ===== LIKE SYSTEM =====
-        const reactionTypes = ['happy', 'cool', 'meh', 'sad'];
         const reactionIcons = {
             'happy': 'happy.png',
             'cool': 'cool.png', 
@@ -2515,13 +2400,6 @@ document.addEventListener("DOMContentLoaded", async function() {
             } catch (error) {
                 console.error("Error loading likes:", error);
             }
-        }
-
-        function formatLikeCount(count) {
-            if (count === 0) return '';
-            if (count === 1) return '1';
-            if (count <= 99) return `${count - 1}+`;
-            return '99+';
         }
 
         function showReactionPickerInternal(likeButton, drawingId, ipAddress, likeIconElement, currentReaction = null) {
@@ -2837,28 +2715,6 @@ document.addEventListener("DOMContentLoaded", async function() {
             } catch (error) {
                 console.error("Error removing like:", error);
                 showSubmitPopup("Failed to remove reaction. Please try again.");
-            }
-        }
-
-        async function updateLikeCount(drawingId, likeCountElement) {
-            try {
-                const { data: likes, error } = await window.supabase
-                    .from('drawing_likes')
-                    .select('*')
-                    .eq('drawing_id', drawingId);
-                
-                if (error) throw error;
-                
-                likeCountElement.textContent = likes.length > 0 ? likes.length : '';
-                
-                // Animate count change
-                likeCountElement.style.transform = 'scale(1.2)';
-                setTimeout(() => {
-                    likeCountElement.style.transform = 'scale(1)';
-                }, 200);
-                
-            } catch (error) {
-                console.error("Error updating like count:", error);
             }
         }
 

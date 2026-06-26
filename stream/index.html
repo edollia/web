@@ -52,7 +52,7 @@
             <h1>Coming Soon</h1>
         </div>
     </main>
-    <main class="stream-live-shell" id="stream-live-shell" data-stream-base="" data-video-src="../stream_test.mp4" data-stream-name="Live" hidden aria-label="Live page">
+    <main class="stream-live-shell" id="stream-live-shell" data-stream-base="" data-video-src="" data-stream-name="Live" hidden aria-label="Live page">
         <div class="stream-room-header">
             <div class="stream-room-id">
                 <span class="stream-room-count"><strong id="stream-viewer-count">--</strong> watching</span>
@@ -814,7 +814,7 @@
                 video.addEventListener('error', function() {
                     videoFrame.textContent = '';
                     mountOfflinePlayer();
-                    setUpdatedLine('add stream_test.mp4');
+                    setUpdatedLine('preview unavailable');
                 }, { once: true });
 
                 videoFrame.classList.remove('is-offline');

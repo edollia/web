@@ -29,10 +29,6 @@ html {
     touch-action: manipulation;
 }
 
-body.loading {
-    overflow: hidden;
-}
-
 body {
     background-color: transparent;
     background-image: url('background1.png');
@@ -1289,8 +1285,7 @@ body.site-maintenance-active {
 body.site-maintenance-active .main-screen,
 body.site-maintenance-active .popup,
 body.site-maintenance-active .submit-popup,
-body.site-maintenance-active .admin-gate,
-body.site-maintenance-active .terms-privacy-modal {
+body.site-maintenance-active .admin-gate {
     filter: blur(6px);
     pointer-events: none;
     user-select: none;
@@ -2325,22 +2320,6 @@ body.first-visit-tour-active .tour-highlight-target {
     display: block;
 }
 
-.post-item .delete-btn {
-    position: absolute;
-    top: 5px;
-    right: 5px;
-    background: #ff6b6b;
-    color: white;
-    border: none;
-    width: 20px;
-    height: 20px;
-    border-radius: 50%;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
 .question-item {
     background:
         linear-gradient(rgba(255, 255, 255, 0.74), rgba(255, 255, 255, 0.74)),
@@ -2803,94 +2782,6 @@ body.first-visit-tour-active .tour-highlight-target {
     right: 32px;
     bottom: 22px;
     font-size: 12px;
-}
-
-/* Terms & Privacy Modal Styles */
-.terms-privacy-modal {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 10001;
-    opacity: 1;
-    transition: opacity 0.3s ease;
-}
-
-.terms-overlay {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0, 0, 0, 0.5);
-    backdrop-filter: blur(5px);
-}
-
-.terms-form {
-    position: relative;
-    background: linear-gradient(135deg, #fdedf5, #fff5f8);
-    border-radius: 20px;
-    padding: 30px;
-    max-width: 90%;
-    width: 600px;
-    max-height: 80vh;
-    overflow-y: auto;
-    box-shadow: 0 20px 60px rgba(255, 105, 180, 0.3);
-    border: 2px solid rgba(255, 182, 193, 0.4);
-    backdrop-filter: blur(15px);
-    animation: slideInUp 0.3s ease;
-}
-
-.terms-header {
-    display: flex;
-    justify-content: flex-end;
-    margin-bottom: 20px;
-}
-
-.terms-close-btn {
-    background: rgba(255, 182, 193, 0.9);
-    border: none;
-    color: white;
-    width: 30px;
-    height: 30px;
-    border-radius: 50%;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 18px;
-    transition: all 0.3s ease;
-}
-
-.terms-close-btn:hover {
-    background: rgba(255, 182, 193, 1);
-    transform: scale(1.1);
-}
-
-.terms-title {
-    text-align: center;
-    color: #ff69b4;
-    font-size: 20px;
-    font-weight: 600;
-    margin-bottom: 20px;
-    margin-top: 0;
-}
-
-/* Animations */
-
-@keyframes slideInUp {
-    from {
-        opacity: 0;
-        transform: translateY(30px) scale(0.95);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0) scale(1);
-    }
 }
 
 /* Hide Ko-fi default floating button */
