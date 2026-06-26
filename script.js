@@ -12,8 +12,8 @@ document.addEventListener("DOMContentLoaded", async function() {
         latest_note_title: 'latest note',
         latest_note_body: '',
         maintenance_enabled: false,
-        maintenance_title: 'tiny update in progress',
-        maintenance_message: 'Lia is polishing things. Come back in a bit.',
+        maintenance_title: '',
+        maintenance_message: '',
         maintenance_eta: '',
         drawings_enabled: true,
         questions_enabled: true,
@@ -1051,6 +1051,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     const latestNoteTitle = document.getElementById('latest-note-title');
     const latestNoteBody = document.getElementById('latest-note-body');
     const maintenanceOverlay = document.getElementById('site-maintenance-overlay');
+    const maintenanceKicker = document.getElementById('site-maintenance-kicker');
     const maintenanceTitle = document.getElementById('site-maintenance-title');
     const maintenanceMessage = document.getElementById('site-maintenance-message');
     const maintenanceEta = document.getElementById('site-maintenance-eta');
@@ -1134,11 +1135,22 @@ document.addEventListener("DOMContentLoaded", async function() {
         document.body.classList.toggle('site-maintenance-active', enabled);
         if (!maintenanceOverlay) return;
         maintenanceOverlay.setAttribute('aria-hidden', enabled ? 'false' : 'true');
-        if (maintenanceTitle) maintenanceTitle.textContent = siteLinkSettings.maintenance_title || DEFAULT_LINK_SETTINGS.maintenance_title;
-        if (maintenanceMessage) maintenanceMessage.textContent = siteLinkSettings.maintenance_message || DEFAULT_LINK_SETTINGS.maintenance_message;
+        maintenanceOverlay.toggleAttribute('data-nosnippet', true);
+        if (maintenanceKicker) maintenanceKicker.textContent = enabled ? 'update' : '';
+        if (maintenanceTitle) {
+            maintenanceTitle.textContent = enabled
+                ? (siteLinkSettings.maintenance_title || DEFAULT_LINK_SETTINGS.maintenance_title)
+                : '';
+        }
+        if (maintenanceMessage) {
+            maintenanceMessage.textContent = enabled
+                ? (siteLinkSettings.maintenance_message || DEFAULT_LINK_SETTINGS.maintenance_message)
+                : '';
+        }
         if (maintenanceEta) {
-            maintenanceEta.textContent = siteLinkSettings.maintenance_eta ? siteLinkSettings.maintenance_eta : '';
-            maintenanceEta.hidden = !siteLinkSettings.maintenance_eta;
+            const eta = enabled && siteLinkSettings.maintenance_eta ? siteLinkSettings.maintenance_eta : '';
+            maintenanceEta.textContent = eta;
+            maintenanceEta.hidden = !eta;
         }
     }
 

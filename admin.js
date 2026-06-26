@@ -15,8 +15,8 @@ const DEFAULT_LINK_SETTINGS = {
     latest_note_title: 'latest note',
     latest_note_body: '',
     maintenance_enabled: false,
-    maintenance_title: 'tiny update in progress',
-    maintenance_message: 'Lia is polishing things. Come back in a bit.',
+    maintenance_title: 'site update in progress',
+    maintenance_message: 'Please check back soon.',
     maintenance_eta: '',
     drawings_enabled: true,
     questions_enabled: true,
@@ -506,7 +506,7 @@ function renderLinkPreview() {
         ['Doodles', 'drawings'],
         ['Questions', 'questions'],
         ['Latest note', 'latest_note'],
-        ['Working mode', 'maintenance']
+        ['Update mode', 'maintenance']
     ];
 
     els.linkSettingsPreview.innerHTML = rows.map(([label, key]) => {
