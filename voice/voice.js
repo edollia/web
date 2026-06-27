@@ -15,7 +15,10 @@ const SUPABASE_URL  = 'https://karogcjefsnnrvlxlgpf.supabase.co';
 const SUPABASE_ANON = 'sb_publishable_z2jS9qvQUvkSXVspdi2U5w_dFGM_rG-';
 const LIVEKIT_WS_URL = 'wss://pawsweb-z0kamke4.livekit.cloud'; // public WS URL only — secret stays server-side
 
-const OFFLINE = !SUPABASE_ANON;
+// Force offline mode on localhost so local testing always works with seed data
+const OFFLINE = !SUPABASE_ANON ||
+  location.hostname === '127.0.0.1' ||
+  location.hostname === 'localhost';
 const sb = OFFLINE ? null : createClient(SUPABASE_URL, SUPABASE_ANON, {
   realtime: { params: { eventsPerSecond: 10 } },
 });

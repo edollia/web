@@ -1,0 +1,24 @@
+# ── macOS ───────────────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+*.swp
+*.swo
+
+# ── Local-only / do not publish ─────────────────────────────────────
+_local/
+.claude/
+ROOMS_BLUEPRINT.md
+docs/
+tele.png
+
+# ── Supabase CLI (Edge Function source is fine to publish,
+#    but local supabase CLI state should stay local) ─────────────────
+.supabase/
+supabase/.branches/
+supabase/.temp/
+
+# ── Node / tooling (if ever used) ───────────────────────────────────
+node_modules/
