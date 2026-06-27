@@ -4,11 +4,15 @@
 // ════════════════════════════════════════════════════════════════
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import {
-  Room, RoomEvent, Track,
-  createLocalAudioTrack, createLocalVideoTrack, createLocalScreenTracks,
-  ConnectionState,
-} from 'https://esm.sh/livekit-client@2';
+
+// LiveKit is loaded lazily when a user first enters a room.
+// Keeping it out of the static import list means a CDN hiccup
+// or browser incompatibility can't prevent the lobby from loading.
+let _lk = null;
+async function ensureLk() {
+  if (!_lk) _lk = await import('https://esm.sh/livekit-client@2');
+  return _lk;
+}
 
 // ── § CONFIG ─────────────────────────────────────────────────────
 const SUPABASE_URL  = 'https://karogcjefsnnrvlxlgpf.supabase.co';
@@ -494,6 +498,7 @@ async function lkConnect(slug) {
   lkSetStatusDot('lk-connecting');
   try {
     const { token, lkUrl } = await fetchLkToken(slug);
+    const { Room, RoomEvent } = await ensureLk();
 
     const room = new Room({ adaptiveStream: true, dynacast: true });
     room
@@ -510,6 +515,7 @@ async function lkConnect(slug) {
 
     // If user enabled mic before LK connected, publish it now
     if (state.media.micOn) {
+      const { createLocalAudioTrack } = await ensureLk();
       try {
         const track = await createLocalAudioTrack({
           echoCancellation: true, noiseSuppression: state.settings.noiseSuppression, autoGainControl: true,
@@ -543,7 +549,8 @@ function lkCleanLocalTracks() {
 // ── LiveKit event handlers ────────────────────────────────────────
 
 function lkOnTrackSubscribed(track, publication, participant) {
-  if (track.kind === Track.Kind.Audio) {
+  const Track = _lk?.Track;
+  if (!Track || track.kind === Track.Kind.Audio) {
     const el = track.attach();
     el.className = 'lk-audio';
     el.dataset.sid = participant.identity;
@@ -559,10 +566,11 @@ function lkOnTrackSubscribed(track, publication, participant) {
 }
 
 function lkOnTrackUnsubscribed(track, publication, participant) {
+  const Track = _lk?.Track;
   track.detach().forEach(el => el.remove());
-  if (publication.source === Track.Source.ScreenShare) {
+  if (Track && publication.source === Track.Source.ScreenShare) {
     hideScreenShareArea();
-  } else if (track.kind === Track.Kind.Video) {
+  } else if (!Track || track.kind === Track.Kind.Video) {
     hideParticipantVideo(participant.identity);
   }
 }
@@ -604,14 +612,15 @@ function lkSetStatusDot(cls) {
 }
 
 function lkOnConnectionState(connState) {
-  if (connState === ConnectionState.Reconnecting) {
+  const CS = _lk?.ConnectionState;
+  if (CS && connState === CS.Reconnecting) {
     lkSetStatusDot('lk-reconnecting');
     showBanner('Reconnecting to voice…', '', () => {});
-  } else if (connState === ConnectionState.Connected) {
+  } else if (CS && connState === CS.Connected) {
     lkSetStatusDot('lk-connected');
     if (state.media.micOn) hideBanner();
     else showBanner('Microphone is off.', 'Enable mic', toggleMic);
-  } else if (connState === ConnectionState.Disconnected) {
+  } else if (CS && connState === CS.Disconnected) {
     lkSetStatusDot('lk-error');
   } else {
     lkSetStatusDot('lk-connecting');
@@ -1214,6 +1223,7 @@ async function toggleMic() {
   }
 
   if (!state.media.micOn) {
+    const { createLocalAudioTrack } = await ensureLk();
     try {
       const track = await createLocalAudioTrack({
         echoCancellation: true,
@@ -1269,6 +1279,7 @@ async function toggleCamera() {
   }
 
   if (!state.media.cameraOn) {
+    const { createLocalVideoTrack } = await ensureLk();
     try {
       // Build constraints — if no explicit device selected, let browser pick any camera
       const camConstraints = {};
@@ -1328,6 +1339,7 @@ async function toggleScreen() {
   }
 
   if (!state.media.screenOn) {
+    const { createLocalScreenTracks } = await ensureLk();
     try {
       const tracks = await createLocalScreenTracks({ audio: true });
       const videoTrack = tracks[0];
