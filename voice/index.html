@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#fff7fb">
+  <title>rooms · doll.gg</title>
+  <meta name="description" content="voice rooms on doll.gg — jump in or start your own.">
+  <meta property="og:title" content="rooms · doll.gg">
+  <meta property="og:description" content="join a room">
+  <meta property="og:url" content="https://doll.gg/voice/">
+  <link rel="stylesheet" href="voice.css">
+</head>
+<body>
+
+<!-- ─── MODALS ──────────────────────────────────────────────────────────── -->
+
+<div id="modal-overlay" class="modal-overlay" hidden></div>
+
+<!-- Nickname modal: shown on first visit before any room action -->
+<div id="modal-nickname" class="modal" hidden aria-modal="true" role="dialog" aria-labelledby="modal-nick-title">
+  <div class="modal-box">
+    <h2 class="modal-title" id="modal-nick-title">choose a name</h2>
+    <p class="modal-sub">this is how others see you in rooms.</p>
+    <input id="input-nickname" class="modal-input" type="text"
+           placeholder="your nickname" maxlength="24"
+           autocomplete="off" spellcheck="false" autocorrect="off" autocapitalize="off">
+    <div id="nickname-error" class="modal-error" hidden></div>
+    <button id="btn-nickname-confirm" class="btn-primary btn-full">continue →</button>
+  </div>
+</div>
+
+<!-- Create room modal -->
+<div id="modal-create" class="modal" hidden aria-modal="true" role="dialog" aria-labelledby="modal-create-title">
+  <div class="modal-box">
+    <h2 class="modal-title" id="modal-create-title">start a room</h2>
+    <input id="input-room-title" class="modal-input" type="text"
+           placeholder="room title (optional)" maxlength="48" autocomplete="off">
+    <label class="toggle-row">
+      <span class="toggle-label-text">lock room</span>
+      <div class="toggle-wrap">
+        <input type="checkbox" id="chk-room-locked" class="toggle-input">
+        <span class="toggle-thumb"></span>
+      </div>
+    </label>
+    <p class="modal-hint">locked rooms are visible but only you control who enters.</p>
+    <div class="modal-actions">
+      <button id="btn-create-cancel" class="btn-ghost">cancel</button>
+      <button id="btn-create-confirm" class="btn-primary">create room</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── LOBBY VIEW ──────────────────────────────────────────────────────── -->
+
+<div id="view-lobby" class="view view-lobby">
+
+  <header class="lobby-header">
+    <div class="lobby-header-text">
+      <h1 class="lobby-title">rooms</h1>
+      <p class="lobby-sub">jump into any room, or start your own. locked rooms show here but can't be entered.</p>
+    </div>
+    <button id="btn-create" class="btn-primary">start a room</button>
+  </header>
+
+  <main class="lobby-main">
+    <div id="rooms-grid" class="rooms-grid"></div>
+    <div id="empty-state" class="empty-state" hidden>
+      <div class="empty-icon">🎙</div>
+      <p class="empty-text">no one's in a room right now.</p>
+      <button id="btn-create-empty" class="btn-primary">be the first. start your room</button>
+    </div>
+  </main>
+
+  <footer class="lobby-footer">
+    <span class="lobby-nick-display" id="lobby-nick-display"></span>
+    <button id="btn-change-nick" class="btn-text-sm">change name</button>
+    <a href="/" class="btn-text-sm lobby-home-link">← home</a>
+  </footer>
+
+</div>
+
+<!-- ─── ROOM VIEW ───────────────────────────────────────────────────────── -->
+
+<div id="view-room" class="view view-room" hidden>
+
+  <!-- Top bar -->
+  <div class="room-topbar">
+    <div class="topbar-left">
+      <button id="btn-back" class="btn-back" aria-label="Back to lobby" title="Back to lobby">←</button>
+      <span id="topbar-name" class="topbar-name"></span>
+      <span id="lk-status-dot" class="lk-status-dot lk-connecting" title="Connecting…"></span>
+      <span id="topbar-locked-badge" class="badge badge-locked" hidden>🔒 locked</span>
+    </div>
+    <div class="topbar-right">
+      <span id="topbar-count" class="topbar-count"></span>
+      <button id="btn-copy-link" class="btn-ghost btn-sm">copy link</button>
+      <button id="btn-toggle-chat" class="btn-ghost btn-sm">hide chat</button>
+    </div>
+  </div>
+
+  <!-- Warning banner: fixed height so layout never jumps -->
+  <div id="room-banner" class="room-banner" role="alert" aria-live="polite">
+    <span id="banner-text" class="banner-text"></span>
+    <button id="banner-action-btn" class="banner-action"></button>
+  </div>
+
+  <!-- Main content area -->
+  <div class="room-main" id="room-main">
+
+    <!-- Mobile tab switcher (hidden on desktop via CSS) -->
+    <div class="room-tabs" id="room-tabs">
+      <button class="tab-btn active" data-tab="participants">participants</button>
+      <button class="tab-btn" data-tab="chat">chat</button>
+    </div>
+
+    <!-- Participants panel -->
+    <div id="panel-participants" class="panel panel-participants" data-panel="participants">
+      <div id="screenshare-area" class="screenshare-area" hidden></div>
+      <div class="section-label">
+        in the room (<span id="participant-count">0</span>)
+      </div>
+      <div id="participant-grid" class="participant-grid"></div>
+      <div id="room-hint" class="room-hint" hidden>
+        just you so far. share the link to get people in.
+      </div>
+    </div>
+
+    <!-- Chat panel -->
+    <div id="panel-chat" class="panel panel-chat" data-panel="chat">
+      <div class="chat-header-bar">room chat</div>
+      <div id="chat-messages" class="chat-messages" aria-live="polite"></div>
+      <div class="chat-input-row">
+        <input id="chat-input" class="chat-input" type="text"
+               placeholder="message the room" maxlength="500"
+               autocomplete="off" autocorrect="off">
+        <button id="btn-send" class="btn-primary btn-sm">send</button>
+      </div>
+    </div>
+
+  </div><!-- .room-main -->
+
+  <!-- Bottom dock -->
+  <div class="room-dock" id="room-dock">
+
+    <div class="dock-left">
+      <span id="dock-role-badge" class="badge badge-role" hidden></span>
+    </div>
+
+    <div class="dock-center">
+      <!-- aria-pressed reflects current toggle state -->
+      <button id="btn-mic"      class="dock-btn" aria-pressed="false" aria-label="Mic off" title="Mic (M)">
+        <span class="dock-icon dock-icon-mic"></span>
+      </button>
+      <button id="btn-deafen"   class="dock-btn" aria-pressed="false" aria-label="Deafen" title="Deafen — mute all others for you only (D)">
+        <span class="dock-icon dock-icon-deafen"></span>
+      </button>
+      <button id="btn-camera"   class="dock-btn" aria-pressed="false" aria-label="Camera" title="Camera">
+        <span class="dock-icon dock-icon-camera"></span>
+      </button>
+      <button id="btn-screen"   class="dock-btn" aria-pressed="false" aria-label="Screen share" title="Screen share">
+        <span class="dock-icon dock-icon-screen"></span>
+      </button>
+      <button id="btn-settings" class="dock-btn dock-btn-settings" aria-label="Settings" title="Settings">
+        <span class="dock-icon dock-icon-settings"></span>
+      </button>
+    </div>
+
+    <div class="dock-right">
+      <button id="btn-ghost"    class="btn-text admin-ctrl" hidden>go ghost</button>
+      <button id="btn-muteall"  class="btn-text host-ctrl" hidden>mute all</button>
+      <button id="btn-lock"     class="btn-text host-ctrl" hidden>lock</button>
+      <button id="btn-audience" class="btn-text host-ctrl" hidden title="Audience mode — mute all non-hosts">audience</button>
+      <button id="btn-leave"    class="btn-danger dock-leave">leave</button>
+    </div>
+
+  </div><!-- .room-dock -->
+
+  <!-- Settings panel: popover on desktop, sheet on mobile -->
+  <div id="settings-panel" class="settings-panel" hidden>
+    <div class="settings-inner">
+      <label class="settings-label" for="sel-mic">microphone</label>
+      <select id="sel-mic" class="settings-select">
+        <option value="default">Default</option>
+      </select>
+
+      <label class="settings-label" for="sel-speaker">speaker</label>
+      <select id="sel-speaker" class="settings-select">
+        <option value="default">Default</option>
+      </select>
+
+      <label class="settings-label" for="sel-camera">camera</label>
+      <select id="sel-camera" class="settings-select">
+        <option value="default">Default</option>
+      </select>
+
+      <label class="settings-check-row">
+        <input type="checkbox" id="chk-noise" checked>
+        <span>noise suppression</span>
+      </label>
+      <label class="settings-check-row">
+        <input type="checkbox" id="chk-joinsound" checked>
+        <span>join sound</span>
+      </label>
+
+      <div class="settings-mictest">
+        <span class="mictest-label">mic test (speak)</span>
+        <div class="mictest-bar">
+          <div id="mictest-fill" class="mictest-fill"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Per-user context menu (host only, shown on participant card right-click/long-press) -->
+  <div id="user-menu" class="user-menu" hidden>
+    <button class="user-menu-item" data-action="mute">mute</button>
+    <button class="user-menu-item" data-action="kick">kick</button>
+    <button class="user-menu-item" data-action="ban">ban</button>
+    <button class="user-menu-item danger" data-action="promote">make host</button>
+  </div>
+
+</div><!-- #view-room -->
+
+<script type="module" src="voice.js"></script>
+</body>
+</html>
