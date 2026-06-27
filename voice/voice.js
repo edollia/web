@@ -330,14 +330,17 @@ function sbWatchMessages(roomId, onMsg) {
     .subscribe();
 }
 
-function sbWatchCurrentRoom(roomId, onEnded) {
+function sbWatchCurrentRoom(roomId, onEnded, onUpdated) {
   if (OFFLINE || !roomId) return null;
   return sb.channel(`room-status:${roomId}`)
     .on('postgres_changes', {
       event: 'UPDATE', schema: 'public', table: 'rooms',
       filter: `id=eq.${roomId}`,
     }, (payload) => {
-      if (payload.new?.status === 'ended') onEnded();
+      const r = payload.new;
+      if (!r) return;
+      if (r.status === 'ended') { onEnded(); return; }
+      if (onUpdated) onUpdated(r);
     })
     .subscribe();
 }
@@ -680,6 +683,13 @@ function hideScreenShareArea() {
   if (area) { area.hidden = true; area.innerHTML = ''; }
 }
 
+// Re-attach local video preview after participant grid is re-rendered by presence sync
+function reattachLocalVideo() {
+  if (state.media.cameraOn && state._localCamTrack) {
+    showParticipantVideo(state._localCamTrack, state.user.sessionId);
+  }
+}
+
 // ── § ROUTER ──────────────────────────────────────────────────────
 function parseSlug() {
   return new URLSearchParams(location.search).get('room') || null;
@@ -854,15 +864,39 @@ async function enterRoom(room, pushNav) {
       appendMessage(msg.nick, msg.body, msg.time, false);
     });
 
-    // Watch for room ended (host left / crashed)
-    state._sbRoomStatusSub = sbWatchCurrentRoom(room.id, () => {
-      if (state.user.role !== 'host') {
-        showBanner('The host ended this room.', 'Back to lobby', () => leaveRoom());
-        setTimeout(() => {
-          if (state.view === 'room' && state.room?.slug === room.slug) leaveRoom();
-        }, 4000);
+    // Watch for room ended or updated (host toggled lock/audience/etc.)
+    state._sbRoomStatusSub = sbWatchCurrentRoom(room.id,
+      () => {
+        if (state.user.role !== 'host') {
+          showBanner('The host ended this room.', 'Back to lobby', () => leaveRoom());
+          setTimeout(() => {
+            if (state.view === 'room' && state.room?.slug === room.slug) leaveRoom();
+          }, 4000);
+        }
+      },
+      (updated) => {
+        if (!state.room) return;
+        if (typeof updated.locked !== 'undefined') state.room.locked = updated.locked;
+        if (typeof updated.audience_mode !== 'undefined') {
+          const wasAudience = state.room.audience;
+          state.room.audience = updated.audience_mode;
+          // Non-host: enforce audience mode on our mic track
+          if (state.user.role !== 'host' && updated.audience_mode !== wasAudience) {
+            if (updated.audience_mode && state.media.micOn) toggleMic();
+            const micBtn = document.getElementById('btn-mic');
+            if (micBtn) micBtn.classList.toggle('audience-locked', !!updated.audience_mode);
+            appendSystemMessage(
+              updated.audience_mode
+                ? 'Audience mode ON — only host can speak'
+                : 'Audience mode OFF — everyone can speak',
+              'action'
+            );
+          }
+        }
+        updateTopbar();
+        updateDock();
       }
-    });
+    );
   } else {
     // Offline mode: seed data
     const seedParts = SEED_PARTICIPANTS[room.slug] || [];
@@ -1017,6 +1051,7 @@ function renderParticipants() {
   hintEl.hidden = state.participants.length > 1;
   document.getElementById('participant-count').textContent = state.participants.length;
   document.getElementById('topbar-count').textContent = `👥 ${state.participants.length}`;
+  reattachLocalVideo();
 }
 
 function renderParticipantCard(p, isHost) {
@@ -1211,23 +1246,15 @@ async function toggleMic() {
 }
 
 function toggleDeafen() {
-  if (!state.media.deafened) {
-    // Going deafened — remember mic state
-    state.media._preDeafenMicOn = state.media.micOn;
-    state.media.deafened = true;
-    if (state.media.micOn) toggleMic(); // mute mic while deafened
-  } else {
-    // Coming out of deafen
-    state.media.deafened = false;
-    if (state.media._preDeafenMicOn && !state.media.micOn) toggleMic(); // restore mic
-  }
+  // Deafen = mute all incoming audio for yourself only. Does NOT touch your mic.
+  state.media.deafened = !state.media.deafened;
+  document.querySelectorAll('.lk-audio').forEach(el => { el.muted = state.media.deafened; });
   const btn = document.getElementById('btn-deafen');
   if (btn) {
     btn.classList.toggle('deafened', state.media.deafened);
     btn.setAttribute('aria-pressed', state.media.deafened ? 'true' : 'false');
-    btn.setAttribute('aria-label', state.media.deafened ? 'Deafened (click to undeafen)' : 'Deafen');
+    btn.setAttribute('aria-label', state.media.deafened ? 'Deafened — click to undeafen' : 'Deafen');
   }
-  document.querySelectorAll('.lk-audio').forEach(el => { el.muted = state.media.deafened; });
 }
 
 async function toggleCamera() {
@@ -1240,9 +1267,22 @@ async function toggleCamera() {
 
   if (!state.media.cameraOn) {
     try {
-      const track = await createLocalVideoTrack({
-        deviceId: state.settings.cameraDeviceId !== 'default' ? state.settings.cameraDeviceId : undefined,
-      });
+      // Build constraints — if no explicit device selected, let browser pick any camera
+      const camConstraints = {};
+      if (state.settings.cameraDeviceId && state.settings.cameraDeviceId !== 'default') {
+        camConstraints.deviceId = { exact: state.settings.cameraDeviceId };
+      }
+      let track;
+      try {
+        track = await createLocalVideoTrack(camConstraints);
+      } catch (firstErr) {
+        // If exact deviceId failed or no camera found, try without any constraints (picks first available)
+        if (Object.keys(camConstraints).length > 0 || firstErr.name === 'NotFoundError') {
+          track = await createLocalVideoTrack({});
+        } else {
+          throw firstErr;
+        }
+      }
       await state._lkRoom.localParticipant.publishTrack(track);
       state._localCamTrack = track;
       state.media.cameraOn = true;
@@ -1250,6 +1290,8 @@ async function toggleCamera() {
     } catch (err) {
       if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
         showBanner('Camera access denied.', 'OK', hideBanner);
+      } else if (err.name === 'NotFoundError') {
+        showBanner('No camera found. Connect a camera or enable Continuity Camera on your iPhone.', 'OK', hideBanner);
       } else {
         showBanner('Could not start camera.', 'Retry', toggleCamera);
       }
@@ -1434,11 +1476,7 @@ async function toggleLock() {
 
   await sbUpdateRoom(state.room.slug, { locked: state.room.locked });
 
-  // Broadcast so all participants in room see the badge update immediately
-  state._sbPresenceChan?.send({
-    type: 'broadcast', event: 'room:update',
-    payload: { locked: state.room.locked },
-  }).catch(() => {});
+  // postgres_changes subscription in sbWatchCurrentRoom notifies all participants
 
   const r = state.rooms.find(x => x.slug === state.room.slug);
   if (r) r.locked = state.room.locked;
@@ -1461,11 +1499,8 @@ async function toggleMuteAll() {
     appendSystemMessage('Host unmuted everyone', 'action');
   }
 
-  // Broadcast so all participants enforce it
-  state._sbPresenceChan?.send({
-    type: 'broadcast', event: 'room:update',
-    payload: { mutedAll: state.room.mutedAll },
-  }).catch(() => {});
+  // Persist mute state so it survives reconnects
+  sbUpdateRoom(state.room.slug, { /* member_count only; mute is presence-driven */ }).catch(() => {});
 
   if (OFFLINE) renderParticipants();
 }
@@ -1488,11 +1523,8 @@ function toggleAudience() {
     'action'
   );
 
-  // Broadcast so all participants enforce it
-  state._sbPresenceChan?.send({
-    type: 'broadcast', event: 'room:update',
-    payload: { audience: state.room.audience },
-  }).catch(() => {});
+  // Persist to DB so postgres_changes notifies all participants
+  await sbUpdateRoom(state.room.slug, { audience_mode: state.room.audience });
 
   if (OFFLINE) renderParticipants();
 }
@@ -1513,22 +1545,34 @@ function toggleGhost() {
 }
 
 // ── § CHAT ────────────────────────────────────────────────────────
+const _msgBurst = []; // rolling timestamps of recent sends
+
+function chatCooldownMs() {
+  const now = Date.now();
+  // Drop entries older than 6s
+  while (_msgBurst.length && now - _msgBurst[0] > 6000) _msgBurst.shift();
+  const count = _msgBurst.length;
+  if (count < 3) return 0;                           // burst of 3 allowed
+  if (count >= 5) return Math.max(0, 5000 - (now - _msgBurst[_msgBurst.length - 1])); // heavy spam → 5s
+  return Math.max(0, 2000 - (now - _msgBurst[_msgBurst.length - 1]));                 // light spam → 2s
+}
+
 async function sendMessage() {
   const input = document.getElementById('chat-input');
   const body  = input.value.trim();
   if (!body) return;
 
-  const now      = Date.now();
-  const COOLDOWN = 1500;
-  const remaining = COOLDOWN - (now - state._lastMsgTime);
-  if (remaining > 0) {
+  const wait = chatCooldownMs();
+  if (wait > 0) {
     const orig = input.placeholder;
-    input.placeholder = `slow down… ${Math.ceil(remaining / 1000)}s`;
+    input.placeholder = `slow down… ${Math.ceil(wait / 1000)}s`;
     input.disabled = true;
-    setTimeout(() => { input.placeholder = orig; input.disabled = false; input.focus(); }, remaining);
+    setTimeout(() => { input.placeholder = orig; input.disabled = false; input.focus(); }, wait);
     return;
   }
-  state._lastMsgTime = now;
+
+  _msgBurst.push(Date.now());
+  state._lastMsgTime = Date.now();
 
   input.value = '';
   const msg = { nick: state.user.nickname, body, time: Date.now() };
