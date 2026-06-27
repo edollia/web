@@ -1,13 +1,11 @@
 // ════════════════════════════════════════════════════════════════
 //  voice.js — doll.gg /voice rooms — Phase 3 (LiveKit audio/video)
-//  OFFLINE mode: works with seed data when SUPABASE_ANON is empty.
 // ════════════════════════════════════════════════════════════════
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-// LiveKit is loaded lazily when a user first enters a room.
-// Keeping it out of the static import list means a CDN hiccup
-// or browser incompatibility can't prevent the lobby from loading.
+// LiveKit is loaded lazily when a user first enters a room so a CDN
+// hiccup never kills the lobby buttons.
 let _lk = null;
 async function ensureLk() {
   if (!_lk) _lk = await import('https://esm.sh/livekit-client@2');
@@ -15,15 +13,11 @@ async function ensureLk() {
 }
 
 // ── § CONFIG ─────────────────────────────────────────────────────
-const SUPABASE_URL  = 'https://karogcjefsnnrvlxlgpf.supabase.co';
-const SUPABASE_ANON = 'sb_publishable_z2jS9qvQUvkSXVspdi2U5w_dFGM_rG-';
-const LIVEKIT_WS_URL = 'wss://pawsweb-z0kamke4.livekit.cloud'; // public WS URL only — secret stays server-side
+const SUPABASE_URL   = 'https://karogcjefsnnrvlxlgpf.supabase.co';
+const SUPABASE_ANON  = 'sb_publishable_z2jS9qvQUvkSXVspdi2U5w_dFGM_rG-';
+const LIVEKIT_WS_URL = 'wss://pawsweb-z0kamke4.livekit.cloud';
 
-// Force offline mode on localhost so local testing always works with seed data
-const OFFLINE = !SUPABASE_ANON ||
-  location.hostname === '127.0.0.1' ||
-  location.hostname === 'localhost';
-const sb = OFFLINE ? null : createClient(SUPABASE_URL, SUPABASE_ANON, {
+const sb = createClient(SUPABASE_URL, SUPABASE_ANON, {
   realtime: { params: { eventsPerSecond: 10 } },
 });
 
@@ -35,54 +29,6 @@ const ACCENT_COLORS = [
 const ADJECTIVES = ['soft','rosy','velvet','hazy','lunar','dewy','misty','coral','dusty','silky'];
 const NOUNS      = ['echo','bloom','drift','glow','mist','haze','petal','wisp','veil','lace'];
 
-// ── § SEED DATA (offline fallback) ───────────────────────────────
-const SEED_ROOMS = [
-  { id: null, slug: 'sakura', title: null, host: 'sakura', host_session_id: '',
-    hostAccent: '#f08ab5', member_count: 3, locked: false, audience_mode: false,
-    startedAt: Date.now() - 18 * 60000 },
-  { id: null, slug: 'dusk', title: 'late night vibes', host: 'dusk', host_session_id: '',
-    hostAccent: '#c4a0d4', member_count: 1, locked: true, audience_mode: false,
-    startedAt: Date.now() - 42 * 60000 },
-  { id: null, slug: 'mochi', title: null, host: 'mochi', host_session_id: '',
-    hostAccent: '#8ec4a0', member_count: 5, locked: false, audience_mode: false,
-    startedAt: Date.now() - 7 * 60000 },
-];
-
-const SEED_PARTICIPANTS = {
-  sakura: [
-    { nickname: 'sakura', role: 'host',     muted: false, serverMuted: false, sharing: null,     accent: '#f08ab5', sessionId: 's1' },
-    { nickname: 'luna',   role: 'speaker',  muted: true,  serverMuted: false, sharing: null,     accent: '#c4a0d4', sessionId: 's2' },
-    { nickname: 'pixel',  role: 'speaker',  muted: false, serverMuted: false, sharing: 'cam',    accent: '#8ec4a0', sessionId: 's3' },
-  ],
-  dusk: [
-    { nickname: 'dusk',   role: 'host',     muted: false, serverMuted: false, sharing: null,     accent: '#c4a0d4', sessionId: 'd1' },
-  ],
-  mochi: [
-    { nickname: 'mochi',  role: 'host',     muted: false, serverMuted: false, sharing: null,     accent: '#8ec4a0', sessionId: 'm1' },
-    { nickname: 'yuki',   role: 'speaker',  muted: false, serverMuted: false, sharing: null,     accent: '#7ab8d4', sessionId: 'm2' },
-    { nickname: 'mimi',   role: 'speaker',  muted: true,  serverMuted: false, sharing: null,     accent: '#f08ab5', sessionId: 'm3' },
-    { nickname: 'kira',   role: 'speaker',  muted: false, serverMuted: false, sharing: 'screen', accent: '#d4b07a', sessionId: 'm4' },
-    { nickname: 'remy',   role: 'audience', muted: true,  serverMuted: false, sharing: null,     accent: '#a07ad4', sessionId: 'm5' },
-  ],
-};
-
-const SEED_CHAT = {
-  sakura: [
-    { nick: 'sakura', body: 'hey everyone 🌸',           time: Date.now() - 900000 },
-    { nick: 'luna',   body: 'hi!! just got here',         time: Date.now() - 840000 },
-    { nick: 'pixel',  body: 'love the vibes tonight',     time: Date.now() - 720000 },
-    { nick: 'sakura', body: 'turning camera on for a sec',time: Date.now() - 600000 },
-    { nick: 'luna',   body: 'omg your setup is so cute',  time: Date.now() - 540000 },
-  ],
-  mochi: [
-    { nick: 'mochi',  body: 'study room open!',           time: Date.now() - 3000000 },
-    { nick: 'yuki',   body: 'thanks for hosting 🙏',      time: Date.now() - 2700000 },
-    { nick: 'kira',   body: 'sharing my screen now',      time: Date.now() - 1200000 },
-    { nick: 'mochi',  body: 'nice, what are you working on?', time: Date.now() - 900000 },
-    { nick: 'kira',   body: 'typescript stuff lol',       time: Date.now() - 600000 },
-  ],
-  dusk: [],
-};
 
 // ── § STATE ───────────────────────────────────────────────────────
 const state = {
@@ -193,7 +139,6 @@ function presenceToParticipant(p, existingParticipants) {
 // ── § SUPABASE ────────────────────────────────────────────────────
 
 async function sbLoadRooms() {
-  if (OFFLINE) return SEED_ROOMS.map(r => ({ ...r }));
   try {
     const { data, error } = await sb.from('rooms')
       .select('*')
@@ -208,7 +153,6 @@ async function sbLoadRooms() {
 }
 
 async function sbFetchRoom(slug) {
-  if (OFFLINE) return SEED_ROOMS.find(r => r.slug === slug) || null;
   try {
     const { data, error } = await sb.from('rooms')
       .select('*').eq('slug', slug).eq('status', 'active').single();
@@ -234,7 +178,6 @@ async function sbCreateRoom(slug, title, locked) {
 }
 
 async function sbUpdateRoom(slug, updates) {
-  if (OFFLINE) return;
   try {
     const { error } = await sb.from('rooms')
       .update(updates)
@@ -245,7 +188,6 @@ async function sbUpdateRoom(slug, updates) {
 }
 
 async function sbEndRoom(slug) {
-  if (OFFLINE) return;
   try {
     const { error } = await sb.from('rooms')
       .update({ status: 'ended', ended_at: new Date().toISOString() })
@@ -256,7 +198,6 @@ async function sbEndRoom(slug) {
 }
 
 async function sbLoadMessages(roomId, limit = 50) {
-  if (OFFLINE) return [];
   try {
     const { data, error } = await sb.from('room_messages')
       .select('*')
@@ -275,7 +216,6 @@ async function sbLoadMessages(roomId, limit = 50) {
 }
 
 async function sbSendMessage(roomId, body) {
-  if (OFFLINE) return;
   try {
     const { error } = await sb.from('room_messages').insert({
       room_id:    roomId,
@@ -288,9 +228,6 @@ async function sbSendMessage(roomId, body) {
 }
 
 async function sbCheckBan(roomId, sessionId, nickname) {
-  if (OFFLINE) return state.bans.some(b =>
-    b.nickname === nickname || b.sessionId === sessionId
-  );
   try {
     const { data } = await sb.from('room_bans')
       .select('id')
@@ -303,7 +240,6 @@ async function sbCheckBan(roomId, sessionId, nickname) {
 }
 
 async function sbAddBan(roomId, type, value) {
-  if (OFFLINE) return;
   try {
     const { error } = await sb.from('room_bans').insert({
       room_id:   roomId || null,
@@ -316,14 +252,12 @@ async function sbAddBan(roomId, type, value) {
 }
 
 function sbWatchRooms(onChange) {
-  if (OFFLINE) return null;
   return sb.channel('lobby:rooms')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'rooms' }, onChange)
     .subscribe();
 }
 
 function sbWatchMessages(roomId, onMsg) {
-  if (OFFLINE) return null;
   return sb.channel(`chat:${roomId}`)
     .on('postgres_changes', {
       event: 'INSERT', schema: 'public', table: 'room_messages',
@@ -338,7 +272,7 @@ function sbWatchMessages(roomId, onMsg) {
 }
 
 function sbWatchCurrentRoom(roomId, onEnded, onUpdated) {
-  if (OFFLINE || !roomId) return null;
+  if (!roomId) return null;
   return sb.channel(`room-status:${roomId}`)
     .on('postgres_changes', {
       event: 'UPDATE', schema: 'public', table: 'rooms',
@@ -352,8 +286,9 @@ function sbWatchCurrentRoom(roomId, onEnded, onUpdated) {
     .subscribe();
 }
 
+let _memberCountTimer = null;
+
 function sbJoinPresence(slug) {
-  if (OFFLINE) return null;
   const channel = sb.channel(`presence:${slug}`, {
     config: { presence: { key: state.user.sessionId } },
   });
@@ -385,10 +320,14 @@ function sbJoinPresence(slug) {
       updateTopbar();
     }
 
-    // Host keeps member_count in DB eventually-consistent
+    // Host keeps member_count in DB — debounced to avoid hammering on rapid syncs
     if (state.user.role === 'host' && state.room?.slug) {
-      sbUpdateRoom(state.room.slug, { member_count: state.participants.length })
-        .catch(() => {});
+      clearTimeout(_memberCountTimer);
+      _memberCountTimer = setTimeout(() => {
+        if (state.room?.slug) {
+          sbUpdateRoom(state.room.slug, { member_count: state.participants.length }).catch(() => {});
+        }
+      }, 2000);
     }
   });
 
@@ -460,7 +399,7 @@ async function sbTrackPresence(updates) {
 }
 
 async function sbCleanupChannels() {
-  if (!sb) return;
+  clearTimeout(_memberCountTimer);
   const toRemove = [];
   if (state._sbPresenceChan)    toRemove.push(state._sbPresenceChan);
   if (state._sbChatSub)         toRemove.push(state._sbChatSub);
@@ -494,7 +433,7 @@ async function fetchLkToken(slug) {
 }
 
 async function lkConnect(slug) {
-  if (OFFLINE || state._lkRoom) return;
+  if (state._lkRoom) return;
   lkSetStatusDot('lk-connecting');
   try {
     const { token, lkUrl } = await fetchLkToken(slug);
@@ -526,6 +465,7 @@ async function lkConnect(slug) {
     }
   } catch (err) {
     console.error('LK connect failed:', err);
+    lkSetStatusDot('lk-error');
     // speaking simulation remains as fallback
   }
 }
@@ -549,8 +489,8 @@ function lkCleanLocalTracks() {
 // ── LiveKit event handlers ────────────────────────────────────────
 
 function lkOnTrackSubscribed(track, publication, participant) {
-  const Track = _lk?.Track;
-  if (!Track || track.kind === Track.Kind.Audio) {
+  const Track = _lk.Track; // _lk guaranteed loaded — we're inside a Room event callback
+  if (track.kind === Track.Kind.Audio) {
     const el = track.attach();
     el.className = 'lk-audio';
     el.dataset.sid = participant.identity;
@@ -566,11 +506,11 @@ function lkOnTrackSubscribed(track, publication, participant) {
 }
 
 function lkOnTrackUnsubscribed(track, publication, participant) {
-  const Track = _lk?.Track;
+  const Track = _lk.Track;
   track.detach().forEach(el => el.remove());
-  if (Track && publication.source === Track.Source.ScreenShare) {
+  if (publication.source === Track.Source.ScreenShare) {
     hideScreenShareArea();
-  } else if (!Track || track.kind === Track.Kind.Video) {
+  } else if (track.kind === Track.Kind.Video) {
     hideParticipantVideo(participant.identity);
   }
 }
@@ -758,8 +698,7 @@ function renderLobby() {
 }
 
 function renderRoomCard(room) {
-  const isYours = room.host_session_id === state.user.sessionId ||
-    (OFFLINE && room.host === state.user.nickname);
+  const isYours = room.host_session_id === state.user.sessionId;
   const title = room.title ? escHtml(room.title) : `@${escHtml(room.host)}`;
 
   return `<div class="room-card${room.locked ? ' locked' : ''}${isYours ? ' yours' : ''}"
@@ -801,11 +740,13 @@ async function doShowLobby() {
   document.getElementById('settings-panel').hidden = true;
   document.getElementById('user-menu').hidden = true;
 
+  _msgBurst.length = 0; // reset chat cooldown between sessions
+
   state.rooms = await sbLoadRooms();
   renderLobby();
 
   // Subscribe to room list changes (once; stays alive)
-  if (!_sbRoomListSub && !OFFLINE) {
+  if (!_sbRoomListSub) {
     _sbRoomListSub = sbWatchRooms(async () => {
       if (state.view !== 'lobby') return;
       state.rooms = await sbLoadRooms();
@@ -826,21 +767,18 @@ async function joinRoom(slug) {
     return;
   }
 
-  // Re-fetch locked state
-  if (!OFFLINE && room.id) {
+  // Re-fetch to get the latest locked state
+  if (room.id) {
     const fresh = await sbFetchRoom(slug);
     if (fresh) room = fresh;
   }
 
-  if (room.locked && room.host_session_id !== state.user.sessionId &&
-      !(OFFLINE && room.host === state.user.nickname)) {
+  if (room.locked && room.host_session_id !== state.user.sessionId) {
     showLobbyBanner('This room is locked.');
     return;
   }
 
-  const isHost = room.host_session_id === state.user.sessionId ||
-    (OFFLINE && room.host === state.user.nickname);
-  state.user.role = isHost ? 'host' : 'guest';
+  state.user.role = room.host_session_id === state.user.sessionId ? 'host' : 'guest';
 
   await enterRoom(room, true);
 }
@@ -856,74 +794,57 @@ async function enterRoom(room, pushNav) {
 
   await sbCleanupChannels();
 
-  if (!OFFLINE && room.id) {
-    // Pre-populate self so first render has participant + correct badge immediately
-    state.participants = [{
-      nickname: state.user.nickname, role: state.user.role,
-      muted: true, serverMuted: false, sharing: null,
-      accent: accentForNick(state.user.nickname), sessionId: state.user.sessionId, speaking: false,
-    }];
+  // Pre-populate self so first render shows you immediately (before Supabase presence sync)
+  state.participants = [{
+    nickname: state.user.nickname, role: state.user.role,
+    muted: true, serverMuted: false, sharing: null,
+    accent: accentForNick(state.user.nickname), sessionId: state.user.sessionId, speaking: false,
+  }];
 
-    // Load message history
-    state.chat = await sbLoadMessages(room.id);
+  // Load message history
+  state.chat = await sbLoadMessages(room.id);
 
-    // Presence: join channel and broadcast self
-    state._sbPresenceChan = sbJoinPresence(room.slug);
+  // Presence: join channel and broadcast self
+  state._sbPresenceChan = sbJoinPresence(room.slug);
 
-    // Chat real-time subscription
-    state._sbChatSub = sbWatchMessages(room.id, (msg) => {
-      state.chat.push(msg);
-      appendMessage(msg.nick, msg.body, msg.time, false);
-    });
+  // Chat real-time subscription
+  state._sbChatSub = sbWatchMessages(room.id, (msg) => {
+    state.chat.push(msg);
+    appendMessage(msg.nick, msg.body, msg.time, false);
+  });
 
-    // Watch for room ended or updated (host toggled lock/audience/etc.)
-    state._sbRoomStatusSub = sbWatchCurrentRoom(room.id,
-      () => {
-        if (state.user.role !== 'host') {
-          showBanner('The host ended this room.', 'Back to lobby', () => leaveRoom());
-          setTimeout(() => {
-            if (state.view === 'room' && state.room?.slug === room.slug) leaveRoom();
-          }, 4000);
-        }
-      },
-      (updated) => {
-        if (!state.room) return;
-        if (typeof updated.locked !== 'undefined') state.room.locked = updated.locked;
-        if (typeof updated.audience_mode !== 'undefined') {
-          const wasAudience = state.room.audience;
-          state.room.audience = updated.audience_mode;
-          // Non-host: enforce audience mode on our mic track
-          if (state.user.role !== 'host' && updated.audience_mode !== wasAudience) {
-            if (updated.audience_mode && state.media.micOn) toggleMic();
-            const micBtn = document.getElementById('btn-mic');
-            if (micBtn) micBtn.classList.toggle('audience-locked', !!updated.audience_mode);
-            appendSystemMessage(
-              updated.audience_mode
-                ? 'Audience mode ON — only host can speak'
-                : 'Audience mode OFF — everyone can speak',
-              'action'
-            );
-          }
-        }
-        updateTopbar();
-        updateDock();
+  // Watch for room ended or updated (lock, audience mode, etc.)
+  state._sbRoomStatusSub = sbWatchCurrentRoom(room.id,
+    () => {
+      if (state.user.role !== 'host') {
+        showBanner('The host ended this room.', 'Back to lobby', () => leaveRoom());
+        setTimeout(() => {
+          if (state.view === 'room' && state.room?.slug === room.slug) leaveRoom();
+        }, 4000);
       }
-    );
-  } else {
-    // Offline mode: seed data
-    const seedParts = SEED_PARTICIPANTS[room.slug] || [];
-    state.participants = seedParts.map(p => ({ ...p }));
-    const alreadyIn = state.participants.some(p => p.nickname === state.user.nickname);
-    if (!alreadyIn) {
-      state.participants.unshift({
-        nickname: state.user.nickname, role: state.user.role,
-        muted: true, serverMuted: false, sharing: null,
-        accent: accentForNick(state.user.nickname), sessionId: state.user.sessionId,
-      });
-      room.member_count = state.participants.length;
+    },
+    (updated) => {
+      if (!state.room) return;
+      if (typeof updated.locked !== 'undefined') state.room.locked = updated.locked;
+      if (typeof updated.audience_mode !== 'undefined') {
+        const wasAudience = state.room.audience;
+        state.room.audience = updated.audience_mode;
+        if (state.user.role !== 'host' && updated.audience_mode !== wasAudience) {
+          if (updated.audience_mode && state.media.micOn) toggleMic();
+          const micBtn = document.getElementById('btn-mic');
+          if (micBtn) micBtn.classList.toggle('audience-locked', !!updated.audience_mode);
+          appendSystemMessage(
+            updated.audience_mode
+              ? 'Audience mode ON — only host can speak'
+              : 'Audience mode OFF — everyone can speak',
+            'action'
+          );
+        }
+      }
+      updateTopbar();
+      updateDock();
     }
-    state.chat = (SEED_CHAT[room.slug] || []).map(m => ({ ...m }));
-  }
+  );
 
   renderRoom();
   startSpeakingSimulation(); // LK will stop this once connected; sim is fallback
@@ -932,8 +853,8 @@ async function enterRoom(room, pushNav) {
   setTimeout(() => appendSystemMessage(`${state.user.nickname} joined`, 'join'), 200);
   if (state.settings.joinSound) playJoinSound();
 
-  // Connect to LiveKit (non-blocking; sim keeps running until LK confirms)
-  if (!OFFLINE && room.id) lkConnect(room.slug);
+  // Connect to LiveKit (non-blocking; speaking sim keeps running until LK confirms)
+  if (room.id) lkConnect(room.slug);
 }
 
 async function leaveRoom() {
@@ -942,17 +863,8 @@ async function leaveRoom() {
   appendSystemMessage(`${state.user.nickname} left`, 'leave');
   stopSpeakingSimulation();
 
-  if (!OFFLINE && state.room.id) {
-    if (state.user.role === 'host') await sbEndRoom(state.room.slug);
-  } else if (OFFLINE) {
-    const idx = state.rooms.findIndex(r => r.slug === state.room.slug);
-    if (idx !== -1) {
-      if (state.user.role === 'host') {
-        state.rooms.splice(idx, 1);
-      } else {
-        state.rooms[idx].member_count = Math.max(0, state.rooms[idx].member_count - 1);
-      }
-    }
+  if (state.room.id && state.user.role === 'host') {
+    await sbEndRoom(state.room.slug);
   }
 
   await doShowLobby();
@@ -962,17 +874,14 @@ async function leaveRoom() {
 async function createRoom(title, locked) {
   const slug   = generateSlug(title);
   const accent = accentForNick(state.user.nickname);
-  let roomId   = null;
-
-  if (!OFFLINE) {
-    try {
-      const data = await sbCreateRoom(slug, title, locked);
-      roomId = data?.id;
-    } catch (err) {
-      console.error('Failed to create room:', err);
-      showLobbyBanner('Could not create room. Try again.');
-      return;
-    }
+  let roomId = null;
+  try {
+    const data = await sbCreateRoom(slug, title, locked);
+    roomId = data?.id;
+  } catch (err) {
+    console.error('Failed to create room:', err);
+    showLobbyBanner('Could not create room. Try again.');
+    return;
   }
 
   const room = {
@@ -989,12 +898,6 @@ async function createRoom(title, locked) {
     mutedAll:        false,
     startedAt:       Date.now(),
   };
-
-  if (OFFLINE) {
-    state.rooms.unshift(room);
-    SEED_PARTICIPANTS[slug] = [];
-    SEED_CHAT[slug] = [];
-  }
 
   state.user.role = 'host';
   await enterRoom(room, true);
@@ -1120,9 +1023,9 @@ function updateDock() {
   const lockBtn  = document.getElementById('btn-lock');
   const muteBtn  = document.getElementById('btn-muteall');
   const audBtn   = document.getElementById('btn-audience');
-  if (lockBtn)  lockBtn.textContent  = state.room?.locked     ? 'unlock'    : 'lock';
-  if (muteBtn)  muteBtn.textContent  = state.room?.mutedAll   ? 'unmute all': 'mute all';
-  if (audBtn)   audBtn.textContent   = state.room?.audience   ? 'speakers'  : 'audience';
+  if (lockBtn)  lockBtn.textContent  = state.room?.locked   ? 'unlock'   : 'lock';
+  if (muteBtn)  muteBtn.textContent  = state.room?.mutedAll ? 'unmute all': 'mute all';
+  if (audBtn)   audBtn.textContent   = state.room?.audience ? 'end stage' : 'audience';
 
   updateMicBtn();
   // Deafen uses a separate class for distinct visual state
@@ -1199,7 +1102,7 @@ function _syncMicPresence() {
   const self = state.participants.find(p =>
     p.sessionId ? p.sessionId === state.user.sessionId : p.nickname === state.user.nickname
   );
-  if (self) { self.muted = !state.media.micOn; if (OFFLINE) renderParticipants(); }
+  if (self) { self.muted = !state.media.micOn; renderParticipants(); }
 }
 
 function _syncSharingPresence() {
@@ -1208,7 +1111,7 @@ function _syncSharingPresence() {
   const self = state.participants.find(p =>
     p.sessionId ? p.sessionId === state.user.sessionId : p.nickname === state.user.nickname
   );
-  if (self) { self.sharing = sharing; if (OFFLINE) renderParticipants(); }
+  if (self) { self.sharing = sharing; renderParticipants(); }
 }
 
 async function toggleMic() {
@@ -1397,14 +1300,14 @@ function hideBanner() {
 }
 
 // ── § SETTINGS ────────────────────────────────────────────────────
-let _micTestStream = null, _micTestRaf = null;
+let _micTestStream = null, _micTestRaf = null, _micTestCtx = null;
 
 async function startMicTest() {
   try {
     _micTestStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-    const ctx = new AudioContext();
-    const src = ctx.createMediaStreamSource(_micTestStream);
-    const analyser = ctx.createAnalyser();
+    _micTestCtx = new AudioContext();
+    const src = _micTestCtx.createMediaStreamSource(_micTestStream);
+    const analyser = _micTestCtx.createAnalyser();
     analyser.fftSize = 256;
     src.connect(analyser);
     const buf = new Uint8Array(analyser.frequencyBinCount);
@@ -1426,6 +1329,7 @@ function stopMicTest() {
   _micTestRaf = null;
   _micTestStream?.getTracks().forEach(t => t.stop());
   _micTestStream = null;
+  if (_micTestCtx) { _micTestCtx.close().catch(() => {}); _micTestCtx = null; }
   const fill = document.getElementById('mictest-fill');
   if (fill) fill.style.width = '0%';
 }
@@ -1514,10 +1418,13 @@ async function toggleMuteAll() {
     appendSystemMessage('Host unmuted everyone', 'action');
   }
 
-  // Persist mute state so it survives reconnects
-  sbUpdateRoom(state.room.slug, { /* member_count only; mute is presence-driven */ }).catch(() => {});
+  // Broadcast so other participants actually get notified to mute themselves
+  state._sbPresenceChan?.send({
+    type: 'broadcast', event: 'room:update',
+    payload: { mutedAll: state.room.mutedAll },
+  }).catch(() => {});
 
-  if (OFFLINE) renderParticipants();
+  renderParticipants();
 }
 
 async function toggleAudience() {
@@ -1538,10 +1445,8 @@ async function toggleAudience() {
     'action'
   );
 
-  // Persist to DB so postgres_changes notifies all participants
   await sbUpdateRoom(state.room.slug, { audience_mode: state.room.audience });
-
-  if (OFFLINE) renderParticipants();
+  renderParticipants();
 }
 
 function toggleGhost() {
@@ -1594,7 +1499,7 @@ async function sendMessage() {
   state.chat.push(msg);
   appendMessage(msg.nick, msg.body, msg.time, true); // optimistic
 
-  if (!OFFLINE && state.room?.id) {
+  if (state.room?.id) {
     await sbSendMessage(state.room.id, body);
   }
 }
@@ -1661,7 +1566,7 @@ async function handleUserAction(action) {
       appendSystemMessage(
         p.serverMuted ? `Host muted ${p.nickname}` : `Host unmuted ${p.nickname}`, 'action'
       );
-      if (OFFLINE) renderParticipants();
+      renderParticipants();
       break;
 
     case 'kick':
@@ -1679,7 +1584,7 @@ async function handleUserAction(action) {
       state.bans.push({ nickname: p.nickname, sessionId: p.sessionId || '', type: 'nickname' });
       state.room.member_count = state.participants.length;
       appendSystemMessage(`${p.nickname} was banned`, 'leave');
-      if (!OFFLINE && state.room?.id) {
+      if (state.room?.id) {
         sbAddBan(state.room.id, 'nickname', p.nickname).catch(console.error);
         if (p.sessionId) sbAddBan(state.room.id, 'session', p.sessionId).catch(console.error);
       }
@@ -1693,7 +1598,7 @@ async function handleUserAction(action) {
       if (state.room) state.room.host = p.nickname;
       appendSystemMessage(`${p.nickname} is now the host`, 'action');
       updateDock();
-      if (OFFLINE) renderParticipants();
+      renderParticipants();
       break;
   }
 }
