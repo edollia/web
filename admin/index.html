@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="robots" content="noindex, nofollow">
     <title>Lia Admin</title>
-    <link rel="stylesheet" href="../admin.css?v=3.7">
+    <link rel="stylesheet" href="../admin.css?v=3.9">
 </head>
 <body>
     <main class="admin-shell">
@@ -256,6 +256,70 @@
                             </div>
                         </details>
 
+                        <details class="admin-link-card admin-control-card" data-link-card="stream" open>
+                            <summary>
+                                <div class="admin-link-card-title">
+                                    <span class="admin-link-icon">O</span>
+                                    <div>
+                                        <strong>stream room</strong>
+                                        <small id="stream-state">coming soon</small>
+                                    </div>
+                                </div>
+                                <label class="admin-switch">
+                                    <input id="stream-enabled" type="checkbox">
+                                    <span></span>
+                                </label>
+                            </summary>
+                            <div class="admin-link-card-body admin-field-grid">
+                                <label class="admin-url-field">
+                                    <span>provider</span>
+                                    <select id="stream-provider">
+                                        <option value="auto">auto detect</option>
+                                        <option value="owncast">Owncast</option>
+                                        <option value="twitch">Twitch</option>
+                                        <option value="youtube">YouTube</option>
+                                        <option value="vimeo">Vimeo</option>
+                                        <option value="direct">direct video</option>
+                                    </select>
+                                </label>
+                                <label class="admin-url-field">
+                                    <span>shape</span>
+                                    <select id="stream-aspect">
+                                        <option value="landscape">landscape</option>
+                                        <option value="portrait">portrait</option>
+                                        <option value="square">square</option>
+                                        <option value="auto">auto</option>
+                                    </select>
+                                </label>
+                                <label class="admin-url-field">
+                                    <span>title</span>
+                                    <input id="stream-title" type="text" maxlength="60" placeholder="Live">
+                                </label>
+                                <label class="admin-url-field">
+                                    <span>player url</span>
+                                    <input id="stream-url" type="url" inputmode="url" placeholder="Owncast, Twitch, YouTube, Vimeo, or direct video URL">
+                                </label>
+                                <label class="admin-url-field">
+                                    <span>offline preview</span>
+                                    <input id="stream-video-url" type="url" inputmode="url" placeholder="YouTube, Vimeo, Twitch, or video URL">
+                                </label>
+                                <label class="admin-url-field">
+                                    <span>offline note</span>
+                                    <textarea id="stream-offline-message" maxlength="160" placeholder="stream is offline right now."></textarea>
+                                </label>
+                                <label class="admin-toggle-row">
+                                    <span>
+                                        <strong>chat</strong>
+                                        <small>show chat on /stream</small>
+                                    </span>
+                                    <span class="admin-switch">
+                                        <input id="stream-chat-enabled" type="checkbox">
+                                        <span></span>
+                                    </span>
+                                </label>
+                            </div>
+                        </details>
+
                         <details class="admin-link-card admin-control-card" data-link-card="latest-note" open>
                             <summary>
                                 <div class="admin-link-card-title">
@@ -351,6 +415,7 @@
                                     <div>
                                         <strong>Ko-fi</strong>
                                         <small id="kofi-state">visible</small>
+                                        <small id="kofi-url-preview" class="admin-link-url-preview">https://ko-fi.com/edoll</small>
                                     </div>
                                 </div>
                                 <div class="admin-link-card-actions">
@@ -465,6 +530,6 @@
     </main>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="../admin.js?v=3.7"></script>
+    <script src="../admin.js?v=3.9"></script>
 </body>
 </html>
