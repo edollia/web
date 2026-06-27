@@ -1520,7 +1520,7 @@ async function toggleMuteAll() {
   if (OFFLINE) renderParticipants();
 }
 
-function toggleAudience() {
+async function toggleAudience() {
   if (!state.room) return;
   state.room.audience = !state.room.audience;
 
