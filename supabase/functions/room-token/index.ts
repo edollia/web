@@ -1,4 +1,4 @@
-// doll.gg /voice — LiveKit room token minter
+// doll.gg /rooms — LiveKit room token minter
 // Deployed as Supabase Edge Function: supabase/functions/room-token
 // Secrets required: LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET
 

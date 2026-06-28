@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════
-//  voice.js — doll.gg /voice rooms — Phase 3 (LiveKit audio/video)
+//  rooms.js — doll.gg /rooms — voice / video / chat rooms (LiveKit)
 // ════════════════════════════════════════════════════════════════
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -29,23 +29,40 @@ const ACCENT_COLORS = [
 const ADJECTIVES = ['soft','rosy','velvet','hazy','lunar','dewy','misty','coral','dusty','silky'];
 const NOUNS      = ['echo','bloom','drift','glow','mist','haze','petal','wisp','veil','lace'];
 
+// ── § ICONS ───────────────────────────────────────────────────────
+// Inline SVGs — no emoji anywhere. Inherit color via fill="currentColor".
+const _svg = (d) => `<svg class="ic" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="${d}"/></svg>`;
+const ICON = {
+  people: _svg('M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5s-3 1.34-3 3 1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z'),
+  lock:   _svg('M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zM9 6c0-1.66 1.34-3 3-3s3 1.34 3 3v2H9V6zm3 11c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z'),
+  cam:    _svg('M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z'),
+  screen: _svg('M20 3H4c-1.1 0-2 .9-2 2v11c0 1.1.9 2 2 2h6l-2 3v1h8v-1l-2-3h6c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 13H4V5h16v11z'),
+  mic:    _svg('M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5-3c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z'),
+  micOff: _svg('M19 11h-1.7c0 .74-.16 1.43-.43 2.05l1.23 1.23c.56-.98.9-2.09.9-3.28zm-4.02.17c0-.06.02-.11.02-.17V5c0-1.66-1.34-3-3-3S9 3.34 9 5v.18l5.98 5.99zM4.27 3L3 4.27l6.01 6.01V11c0 1.66 1.34 3 3 3 .23 0 .44-.03.65-.08l1.66 1.66c-.71.33-1.5.52-2.31.52-2.76 0-5.3-2.1-5.3-5.1H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c.91-.13 1.77-.45 2.54-.9L19.73 21 21 19.73 4.27 3z'),
+  fullscreen: _svg('M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z'),
+  ghost:  _svg('M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75C21.27 7.11 17 4 12 4c-1.27 0-2.49.2-3.64.57l2.17 2.17C11.06 6.49 11.51 7 12 7zM2 4.27l2.28 2.28.46.46C3.08 8.3 1.78 10.02 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z'),
+  image:  _svg('M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z'),
+};
+
 
 // ── § STATE ───────────────────────────────────────────────────────
 const state = {
   view: 'lobby',
-  user: { nickname: '', sessionId: '', role: 'guest', ghost: false },
+  user: { nickname: '', sessionId: '', role: 'guest', ghost: false, avatar: '', color: '' },
   rooms: [],
   room: null,
   participants: [],
   chat: [],
-  media: { micOn: false, deafened: false, cameraOn: false, screenOn: false, _preDeafenMicOn: false },
+  // micOn   = currently transmitting (unmuted)
+  // micReady = device acquired & track published (stays true once enabled; mute keeps the
+  //            device live so unmute is instant and the OS keeps the mic indicator on)
+  media: { micOn: false, micReady: false, serverMuted: false, deafened: false, cameraOn: false, screenOn: false, _preDeafenMicOn: false },
   settings: {
     micDeviceId: 'default', speakerDeviceId: 'default', cameraDeviceId: 'default',
     noiseSuppression: true, joinSound: true,
   },
   ui: { settingsOpen: false, chatHidden: false, activeTab: 'participants' },
   bans: [],
-  _simTimer: null,
   _pendingAction: null,
   _sbPresenceChan: null,
   _sbChatSub:      null,
@@ -62,26 +79,86 @@ const state = {
 let _sbRoomListSub = null;
 
 // ── § IDENTITY ────────────────────────────────────────────────────
+// Profile photos & chosen colors live only in localStorage + ephemeral
+// presence — never in the database. They travel with you, but nothing is
+// stored server-side.
+const LS = {
+  nick:   'dg_rooms_nick',
+  sid:    'dg_rooms_sid',
+  avatar: 'dg_rooms_avatar',
+  color:  'dg_rooms_color',
+};
+
 function loadIdentity() {
-  const nick = localStorage.getItem('dg_voice_nick');
-  const sid  = localStorage.getItem('dg_voice_sid') || crypto.randomUUID();
-  localStorage.setItem('dg_voice_sid', sid);
+  // One-time migration from the old /voice/ keys so existing visitors keep their name.
+  for (const [oldK, newK] of [['dg_voice_nick', LS.nick], ['dg_voice_sid', LS.sid]]) {
+    const old = localStorage.getItem(oldK);
+    if (old && !localStorage.getItem(newK)) localStorage.setItem(newK, old);
+  }
+
+  const nick   = localStorage.getItem(LS.nick);
+  const sid    = localStorage.getItem(LS.sid) || crypto.randomUUID();
+  localStorage.setItem(LS.sid, sid);
   state.user.sessionId = sid;
   if (nick) state.user.nickname = nick;
+  state.user.avatar = localStorage.getItem(LS.avatar) || '';
+  state.user.color  = localStorage.getItem(LS.color)  || '';
   // admin flag: set via localStorage.setItem('dollgg_role', 'admin') in console
   if (localStorage.getItem('dollgg_role') === 'admin') state.user.isAdmin = true;
 }
 
-function saveNickname(nick) {
+// Persist name + optional photo (data URL) + optional chosen color.
+function saveIdentity({ nick, avatar, color }) {
   const clean = nick.trim().replace(/\s+/g, '_').slice(0, 24);
   state.user.nickname = clean;
-  localStorage.setItem('dg_voice_nick', clean);
+  localStorage.setItem(LS.nick, clean);
+
+  state.user.avatar = avatar || '';
+  if (avatar) localStorage.setItem(LS.avatar, avatar);
+  else        localStorage.removeItem(LS.avatar);
+
+  state.user.color = color || '';
+  if (color) localStorage.setItem(LS.color, color);
+  else       localStorage.removeItem(LS.color);
 }
 
 function accentForNick(nick) {
   let h = 0;
   for (let i = 0; i < nick.length; i++) h = (h * 31 + nick.charCodeAt(i)) >>> 0;
   return ACCENT_COLORS[h % ACCENT_COLORS.length];
+}
+
+// My display color: chosen color wins, else a stable hash of the name.
+function myAccent() {
+  return state.user.color || accentForNick(state.user.nickname || '?');
+}
+
+// Render an avatar: a photo if present, otherwise the first initial on a color chip.
+function avatarInner(nickname, accent, avatar) {
+  if (avatar) return `<img class="avatar-img" src="${escHtml(avatar)}" alt="">`;
+  return escHtml((nickname || '?')[0].toUpperCase());
+}
+
+// Downscale an image File to a small square-ish data URL so nothing heavy is
+// ever broadcast or stored. maxPx caps the longest edge.
+function fileToDataUrl(file, maxPx, quality = 0.72) {
+  return new Promise((resolve, reject) => {
+    if (!file || !file.type.startsWith('image/')) { reject(new Error('not an image')); return; }
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let { width: w, height: h } = img;
+      const scale = Math.min(1, maxPx / Math.max(w, h));
+      w = Math.round(w * scale); h = Math.round(h * scale);
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL('image/jpeg', quality));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('decode failed')); };
+    img.src = url;
+  });
 }
 
 function generateSlug(title) {
@@ -116,7 +193,6 @@ function roomFromDb(r) {
     member_count:    r.member_count || 1,
     locked:          r.locked,
     audience_mode:   r.audience_mode,
-    mutedAll:        false,
     audience:        r.audience_mode,
     startedAt:       new Date(r.created_at).getTime(),
   };
@@ -131,6 +207,7 @@ function presenceToParticipant(p, existingParticipants) {
     serverMuted: p.serverMuted || false,
     sharing:     p.sharing || null,
     accent:      p.accent || accentForNick(p.nickname),
+    avatar:      p.avatar || '',
     sessionId:   p.sessionId,
     speaking:    existing?.speaking || false,
   };
@@ -169,7 +246,7 @@ async function sbCreateRoom(slug, title, locked) {
     audience_mode:   false,
     host_nickname:   state.user.nickname,
     host_session_id: state.user.sessionId,
-    host_accent:     accentForNick(state.user.nickname),
+    host_accent:     myAccent(),
     status:          'active',
     member_count:    1,
   }).select().single();
@@ -187,7 +264,9 @@ async function sbUpdateRoom(slug, updates) {
   } catch (err) { console.error('sbUpdateRoom:', err); }
 }
 
-async function sbEndRoom(slug) {
+async function sbEndRoom(slug, roomId) {
+  // Mark ended (so everyone gets the "host ended" notice) then wipe the chat —
+  // nothing lingers in the DB once a room closes.
   try {
     const { error } = await sb.from('rooms')
       .update({ status: 'ended', ended_at: new Date().toISOString() })
@@ -195,6 +274,9 @@ async function sbEndRoom(slug) {
       .eq('host_session_id', state.user.sessionId);
     if (error) throw error;
   } catch (err) { console.error('sbEndRoom:', err); }
+  if (roomId) {
+    try { await sb.from('room_messages').delete().eq('room_id', roomId); } catch (err) { console.error('purge messages:', err); }
+  }
 }
 
 async function sbLoadMessages(roomId, limit = 50) {
@@ -310,7 +392,7 @@ function sbJoinPresence(slug) {
       const selfEntry = prev.find(p => p.sessionId === state.user.sessionId) || {
         nickname: state.user.nickname, role: state.user.role,
         muted: !state.media.micOn, serverMuted: false, sharing: null,
-        accent: accentForNick(state.user.nickname), sessionId: state.user.sessionId, speaking: false,
+        accent: myAccent(), avatar: state.user.avatar, sessionId: state.user.sessionId, speaking: false,
       };
       state.participants.unshift(selfEntry);
     }
@@ -333,6 +415,10 @@ function sbJoinPresence(slug) {
 
   channel.on('broadcast', { event: 'room:update' }, ({ payload }) => {
     if (!payload || state.view !== 'room') return;
+    if (typeof payload.title !== 'undefined') {
+      state.room.title = payload.title || null;
+      updateTopbar();
+    }
     if (typeof payload.locked !== 'undefined') {
       state.room.locked = payload.locked;
       updateTopbar();
@@ -346,28 +432,39 @@ function sbJoinPresence(slug) {
       const self = state.participants.find(isMe);
       if (self && self.role !== 'host') {
         if (payload.audience && state.media.micOn) {
-          // host put us in audience — disable mic
-          toggleMic();
+          setMicMuted(true); // host put us in audience — mute (device stays live)
         }
         const micBtn = document.getElementById('btn-mic');
         if (micBtn) micBtn.classList.toggle('audience-locked', payload.audience);
       }
       const msg = payload.audience
-        ? 'Audience mode ON — only host can speak'
-        : 'Audience mode OFF — everyone can speak';
+        ? 'Audience mode on — only the host can speak'
+        : 'Audience mode off — everyone can speak';
       appendSystemMessage(msg, 'action');
       renderParticipants();
     }
-    if (typeof payload.mutedAll !== 'undefined') {
-      state.room.mutedAll = payload.mutedAll;
-      if (payload.mutedAll) {
-        const self = state.participants.find(p => p.sessionId === state.user.sessionId);
-        if (self && self.role !== 'host' && state.media.micOn) toggleMic();
-        showBanner('Host muted everyone.', 'OK', hideBanner);
-      } else {
-        hideBanner();
-      }
-    }
+  });
+
+  // Ephemeral chat image — broadcast only, never written to the database.
+  channel.on('broadcast', { event: 'chat:image' }, ({ payload }) => {
+    if (!payload || state.view !== 'room') return;
+    if (payload.sessionId === state.user.sessionId) return; // already shown optimistically
+    appendImageMessage(payload.nick, payload.src, payload.time || Date.now());
+  });
+
+  // Targeted moderation — a host muting/kicking one person.
+  channel.on('broadcast', { event: 'user:mute' }, ({ payload }) => {
+    if (!payload || payload.sessionId !== state.user.sessionId) return;
+    if (state.user.role === 'host') return;
+    state.media.serverMuted = !!payload.muted;
+    setMicMuted(payload.muted, payload.muted ? 'A host muted you.' : null);
+    sbTrackPresence({ serverMuted: !!payload.muted });
+  });
+
+  channel.on('broadcast', { event: 'user:kick' }, ({ payload }) => {
+    if (!payload || payload.sessionId !== state.user.sessionId) return;
+    showBanner('You were removed from this room.', 'Back to lobby', () => leaveRoom(), 'error');
+    setTimeout(() => { if (state.view === 'room') leaveRoom(); }, 1800);
   });
 
   channel.subscribe(async (status) => {
@@ -384,9 +481,10 @@ function buildPresencePayload() {
     nickname:    state.user.nickname,
     role:        state.user.role,
     muted:       !state.media.micOn,
-    serverMuted: false,
+    serverMuted: !!state.media.serverMuted,
     sharing:     state.media.cameraOn ? 'cam' : (state.media.screenOn ? 'screen' : null),
-    accent:      accentForNick(state.user.nickname),
+    accent:      myAccent(),
+    avatar:      state.user.avatar || '',
     sessionId:   state.user.sessionId,
   };
 }
@@ -396,6 +494,11 @@ async function sbTrackPresence(updates) {
   try {
     await state._sbPresenceChan.track({ ...buildPresencePayload(), ...updates });
   } catch (err) { console.error('sbTrackPresence:', err); }
+}
+
+// Fire a realtime broadcast to everyone on the room's presence channel.
+function broadcastToRoom(event, payload) {
+  return state._sbPresenceChan?.send({ type: 'broadcast', event, payload }).catch(() => {});
 }
 
 async function sbCleanupChannels() {
@@ -450,23 +553,13 @@ async function lkConnect(slug) {
 
     await room.connect(lkUrl || LIVEKIT_WS_URL, token);
     state._lkRoom = room;
-    stopSpeakingSimulation(); // LiveKit drives speaking from here
 
-    // If user enabled mic before LK connected, publish it now
-    if (state.media.micOn) {
-      const { createLocalAudioTrack } = await ensureLk();
-      try {
-        const track = await createLocalAudioTrack({
-          echoCancellation: true, noiseSuppression: state.settings.noiseSuppression, autoGainControl: true,
-        });
-        await room.localParticipant.publishTrack(track);
-        state._localMicTrack = track;
-      } catch {}
-    }
+    // If the user had the mic on before LK connected (or before a reconnect),
+    // bring it back automatically.
+    if (state.media.micOn) await setMic(true, { silent: true });
   } catch (err) {
     console.error('LK connect failed:', err);
     lkSetStatusDot('lk-error');
-    // speaking simulation remains as fallback
   }
 }
 
@@ -547,19 +640,26 @@ function lkOnQualityChanged(quality, participant) {
 }
 
 function lkSetStatusDot(cls) {
-  const dot = document.getElementById('lk-status-dot');
-  if (dot) dot.className = `lk-status-dot ${cls}`;
+  const el = document.getElementById('lk-signal');
+  if (!el) return;
+  el.className = `lk-signal ${cls}`;
+  const titles = {
+    'lk-connecting':   'Connecting…',
+    'lk-connected':    'Connected',
+    'lk-reconnecting': 'Reconnecting…',
+    'lk-error':        'Connection lost',
+  };
+  el.title = titles[cls] || '';
 }
 
 function lkOnConnectionState(connState) {
   const CS = _lk?.ConnectionState;
   if (CS && connState === CS.Reconnecting) {
     lkSetStatusDot('lk-reconnecting');
-    showBanner('Reconnecting to voice…', '', () => {});
+    showBanner('Reconnecting to voice…', '', null, 'warning');
   } else if (CS && connState === CS.Connected) {
     lkSetStatusDot('lk-connected');
-    if (state.media.micOn) hideBanner();
-    else showBanner('Microphone is off.', 'Enable mic', toggleMic);
+    micBanner();
   } else if (CS && connState === CS.Disconnected) {
     lkSetStatusDot('lk-error');
   } else {
@@ -573,15 +673,15 @@ function lkOnDisconnected() {
   state._lkRoom = null;
   document.querySelectorAll('.lk-audio').forEach(el => el.remove());
   hideScreenShareArea();
-  state.media.micOn = false; state.media.cameraOn = false; state.media.screenOn = false;
+  // Device/tracks are gone; keep micOn as intent so reconnect restores it.
+  state.media.micReady = false; state.media.cameraOn = false; state.media.screenOn = false;
   updateMicBtn();
   updateDock();
   lkSetStatusDot('lk-reconnecting');
-  startSpeakingSimulation();
 
   // Auto-retry once after 2s
   clearTimeout(_lkReconnectTimer);
-  showBanner('Reconnecting…', '', () => {});
+  showBanner('Reconnecting…', '', null, 'warning');
   _lkReconnectTimer = setTimeout(async () => {
     if (state.room && !state._lkRoom && state.view === 'room') {
       await lkConnect(state.room.slug);
@@ -609,7 +709,28 @@ function showParticipantVideo(track, identity) {
   video.muted = (identity === state.user.sessionId);
   wrap.innerHTML = '';
   wrap.appendChild(video);
+  addFullscreenBtn(wrap, video);
   card.classList.add('has-video');
+}
+
+// Fullscreen toggle for any video tile (works on desktop + iOS Safari).
+function goFullscreen(video) {
+  if (!video) return;
+  if (document.fullscreenElement) { document.exitFullscreen(); return; }
+  if (video.requestFullscreen)            video.requestFullscreen();
+  else if (video.webkitEnterFullscreen)   video.webkitEnterFullscreen();   // iOS Safari
+  else if (video.webkitRequestFullscreen) video.webkitRequestFullscreen();
+}
+
+function addFullscreenBtn(container, video) {
+  if (container.querySelector('.fs-btn')) return;
+  const btn = document.createElement('button');
+  btn.className = 'fs-btn';
+  btn.title = 'Fullscreen';
+  btn.setAttribute('aria-label', 'Fullscreen');
+  btn.innerHTML = ICON.fullscreen;
+  btn.addEventListener('click', (e) => { e.stopPropagation(); goFullscreen(video); });
+  container.appendChild(btn);
 }
 
 function hideParticipantVideo(identity) {
@@ -628,6 +749,7 @@ function showScreenShareVideo(track, participant) {
   const video = track.attach();
   video.autoplay = true; video.playsInline = true; video.muted = true;
   area.appendChild(video);
+  addFullscreenBtn(area, video);
 }
 
 function hideScreenShareArea() {
@@ -675,10 +797,16 @@ function renderLobby() {
   const grid   = document.getElementById('rooms-grid');
   const empty  = document.getElementById('empty-state');
   const nickEl = document.getElementById('lobby-nick-display');
+  const createBtn = document.getElementById('btn-create');
 
   if (state.user.nickname && nickEl) nickEl.textContent = state.user.nickname;
 
-  if (state.rooms.length === 0) {
+  const hasRooms = state.rooms.length > 0;
+  // When the lobby is empty, only the empty-state CTA shows; the header button
+  // appears once there are rooms to sit beside.
+  if (createBtn) createBtn.hidden = !hasRooms;
+
+  if (!hasRooms) {
     grid.innerHTML = '';
     empty.hidden = false;
   } else {
@@ -705,13 +833,13 @@ function renderRoomCard(room) {
                data-slug="${escHtml(room.slug)}"
                role="button" tabindex="${room.locked && !isYours ? '-1' : '0'}"
                aria-label="${title}, ${room.member_count} participant${room.member_count !== 1 ? 's' : ''}${room.locked ? ', locked' : ''}">
-    <div class="card-avatar" style="background:${room.hostAccent}">${room.host[0].toUpperCase()}</div>
+    <div class="card-avatar" style="background:${room.hostAccent}">${avatarInner(room.host, room.hostAccent, '')}</div>
     <div class="card-name">
       ${title}${isYours ? ' <span class="yours-tag">(yours)</span>' : ''}
     </div>
     <div class="card-meta">
-      <span class="count">👥 ${room.member_count}</span>
-      ${room.locked ? `<span class="badge badge-locked">🔒 locked</span>` : ''}
+      <span class="count">${ICON.people} ${room.member_count}</span>
+      ${room.locked ? `<span class="badge badge-locked">${ICON.lock} locked</span>` : ''}
     </div>
     <div class="card-join">${room.locked && !isYours ? 'locked' : 'join'}</div>
   </div>`;
@@ -719,7 +847,6 @@ function renderRoomCard(room) {
 
 // ── § TRANSITIONS ─────────────────────────────────────────────────
 async function doShowLobby() {
-  stopSpeakingSimulation();
   await lkDisconnect();
   await sbCleanupChannels();
 
@@ -727,7 +854,7 @@ async function doShowLobby() {
   state.room = null;
   state.participants = [];
   state.chat = [];
-  state.media = { micOn: false, deafened: false, cameraOn: false, screenOn: false, _preDeafenMicOn: false };
+  state.media = { micOn: false, micReady: false, serverMuted: false, deafened: false, cameraOn: false, screenOn: false, _preDeafenMicOn: false };
   state.ui.settingsOpen = false;
   stopMicTest();
   state.user.role = 'guest';
@@ -798,7 +925,7 @@ async function enterRoom(room, pushNav) {
   state.participants = [{
     nickname: state.user.nickname, role: state.user.role,
     muted: true, serverMuted: false, sharing: null,
-    accent: accentForNick(state.user.nickname), sessionId: state.user.sessionId, speaking: false,
+    accent: myAccent(), avatar: state.user.avatar, sessionId: state.user.sessionId, speaking: false,
   }];
 
   // Load message history
@@ -830,13 +957,13 @@ async function enterRoom(room, pushNav) {
         const wasAudience = state.room.audience;
         state.room.audience = updated.audience_mode;
         if (state.user.role !== 'host' && updated.audience_mode !== wasAudience) {
-          if (updated.audience_mode && state.media.micOn) toggleMic();
+          if (updated.audience_mode && state.media.micOn) setMicMuted(true);
           const micBtn = document.getElementById('btn-mic');
           if (micBtn) micBtn.classList.toggle('audience-locked', !!updated.audience_mode);
           appendSystemMessage(
             updated.audience_mode
-              ? 'Audience mode ON — only host can speak'
-              : 'Audience mode OFF — everyone can speak',
+              ? 'Audience mode on — only the host can speak'
+              : 'Audience mode off — everyone can speak',
             'action'
           );
         }
@@ -847,13 +974,12 @@ async function enterRoom(room, pushNav) {
   );
 
   renderRoom();
-  startSpeakingSimulation(); // LK will stop this once connected; sim is fallback
-  showBanner('Microphone is off.', 'Enable mic', () => toggleMic());
+  micBanner();
 
   setTimeout(() => appendSystemMessage(`${state.user.nickname} joined`, 'join'), 200);
   if (state.settings.joinSound) playJoinSound();
 
-  // Connect to LiveKit (non-blocking; speaking sim keeps running until LK confirms)
+  // Connect to LiveKit (non-blocking)
   if (room.id) lkConnect(room.slug);
 }
 
@@ -861,22 +987,24 @@ async function leaveRoom() {
   if (!state.room) { doShowLobby(); return; }
 
   appendSystemMessage(`${state.user.nickname} left`, 'leave');
-  stopSpeakingSimulation();
 
   if (state.room.id && state.user.role === 'host') {
-    await sbEndRoom(state.room.slug);
+    await sbEndRoom(state.room.slug, state.room.id);
   }
 
   await doShowLobby();
   history.replaceState({ view: 'lobby' }, '', location.pathname);
 }
 
-async function createRoom(title, locked) {
-  const slug   = generateSlug(title);
-  const accent = accentForNick(state.user.nickname);
+// "Start a room" creates instantly — no modal. The title defaults to the host's
+// name and can be edited inline from the topbar afterwards.
+async function createRoom() {
+  const title  = state.user.nickname; // default title = your name
+  const slug   = generateSlug(`${title}-${Math.floor(Math.random() * 900) + 100}`);
+  const accent = myAccent();
   let roomId = null;
   try {
-    const data = await sbCreateRoom(slug, title, locked);
+    const data = await sbCreateRoom(slug, title, false);
     roomId = data?.id;
   } catch (err) {
     console.error('Failed to create room:', err);
@@ -892,15 +1020,29 @@ async function createRoom(title, locked) {
     host_session_id: state.user.sessionId,
     hostAccent:      accent,
     member_count:    1,
-    locked,
+    locked:          false,
     audience_mode:   false,
     audience:        false,
-    mutedAll:        false,
     startedAt:       Date.now(),
   };
 
   state.user.role = 'host';
   await enterRoom(room, true);
+}
+
+// Host edits the title inline. Debounced write to the DB + live broadcast.
+let _titleSaveTimer = null;
+function onTitleEdit(value) {
+  if (state.user.role !== 'host' || !state.room) return;
+  const title = value.trim().slice(0, 48);
+  state.room.title = title || null;
+  const r = state.rooms.find(x => x.slug === state.room.slug);
+  if (r) r.title = state.room.title;
+  broadcastToRoom('room:update', { title: state.room.title || '' });
+  clearTimeout(_titleSaveTimer);
+  _titleSaveTimer = setTimeout(() => {
+    if (state.room?.slug) sbUpdateRoom(state.room.slug, { title: state.room.title });
+  }, 600);
 }
 
 // ── § RENDER / ROOM ───────────────────────────────────────────────
@@ -915,11 +1057,30 @@ function renderRoom() {
 }
 
 function updateTopbar() {
-  const room  = state.room;
-  const label = room.title ? room.title : `@${room.slug}`;
-  document.getElementById('topbar-name').textContent = label;
+  const room   = state.room;
+  const isHost = state.user.role === 'host';
+
+  // Host @name sits beside the title field.
+  const hostEl = document.getElementById('topbar-host');
+  if (hostEl) hostEl.textContent = `@${room.host || ''}`;
+
+  // The title is editable for the host (an inline field), read-only for guests.
+  // Don't stomp the value while the host is actively typing.
+  const titleEl = document.getElementById('topbar-title');
+  if (titleEl) {
+    titleEl.readOnly = !isHost;
+    titleEl.classList.toggle('is-host', isHost);
+    if (document.activeElement !== titleEl) titleEl.value = room.title || '';
+    titleEl.placeholder = isHost ? 'add a title' : 'untitled room';
+  }
+
   document.getElementById('topbar-locked-badge').hidden = !room.locked;
-  document.getElementById('topbar-count').textContent = `👥 ${state.participants.length}`;
+  const audBadge = document.getElementById('topbar-audience-badge');
+  if (audBadge) audBadge.hidden = !room.audience;
+  const ghostBadge = document.getElementById('topbar-ghost-badge');
+  if (ghostBadge) ghostBadge.hidden = !state.user.ghost;
+
+  document.getElementById('topbar-count').innerHTML = `${ICON.people} ${state.participants.length}`;
   document.getElementById('participant-count').textContent = state.participants.length;
 }
 
@@ -965,7 +1126,7 @@ function renderParticipants() {
 
   hintEl.hidden = state.participants.length > 1;
   document.getElementById('participant-count').textContent = state.participants.length;
-  document.getElementById('topbar-count').textContent = `👥 ${state.participants.length}`;
+  document.getElementById('topbar-count').innerHTML = `${ICON.people} ${state.participants.length}`;
   reattachLocalVideo();
 }
 
@@ -976,10 +1137,10 @@ function renderParticipantCard(p, isHost) {
 
   const badgeHtml = [
     p.role === 'host'     ? `<span class="badge badge-host">host</span>`      : '',
-    p.role === 'audience' ? `<span class="badge badge-muted">audience</span>` : '',
+    p.role === 'audience' ? `<span class="badge badge-audience">audience</span>` : '',
     p.serverMuted         ? `<span class="badge badge-muted">muted</span>`    : '',
-    p.sharing === 'cam'   ? `<span class="p-sharing-label">📹 cam</span>`     : '',
-    p.sharing === 'screen'? `<span class="p-sharing-label">🖥 screen</span>`  : '',
+    p.sharing === 'cam'   ? `<span class="p-sharing-label">${ICON.cam} cam</span>`    : '',
+    p.sharing === 'screen'? `<span class="p-sharing-label">${ICON.screen} screen</span>` : '',
   ].filter(Boolean).join('');
 
   const speakLevelStyle = p.speaking ? ` style="--speak-level:0.5"` : '';
@@ -988,9 +1149,9 @@ function renderParticipantCard(p, isHost) {
                data-nick="${escHtml(p.nickname)}"
                data-sid="${escHtml(p.sessionId || '')}"${speakLevelStyle}
                ${canAct ? 'title="Right-click to moderate"' : ''}>
-    ${canAct ? `<button class="p-mute-btn${p.serverMuted ? ' is-muted' : ''}" data-nick="${escHtml(p.nickname)}" title="${p.serverMuted ? 'Unmute' : 'Mute'}">${p.serverMuted ? '🔈' : '🔇'}</button>` : ''}
-    <div class="p-avatar" style="background:${p.accent}">
-      ${p.nickname[0].toUpperCase()}
+    ${canAct ? `<button class="p-mute-btn${p.serverMuted ? ' is-muted' : ''}" data-nick="${escHtml(p.nickname)}" title="${p.serverMuted ? 'Unmute' : 'Mute'}" aria-label="${p.serverMuted ? 'Unmute' : 'Mute'} ${escHtml(p.nickname)}">${p.serverMuted ? ICON.mic : ICON.micOff}</button>` : ''}
+    <div class="p-avatar${p.avatar ? ' has-photo' : ''}" style="background:${p.accent}">
+      ${avatarInner(p.nickname, p.accent, p.avatar)}
       ${p.muted || p.serverMuted ? '<div class="p-mic-off" title="Muted"></div>' : ''}
     </div>
     <div class="p-name">
@@ -1014,18 +1175,32 @@ function updateDock() {
   const isHost  = state.user.role === 'host';
   const isAdmin = state.user.isAdmin;
   document.querySelectorAll('.host-ctrl').forEach(el => { el.hidden = !isHost; });
-  document.querySelectorAll('.admin-ctrl').forEach(el => { el.hidden = !(isHost && isAdmin); });
+  // Ghost is an admin-only tool — available to admins in any room.
+  document.querySelectorAll('.admin-ctrl').forEach(el => { el.hidden = !isAdmin; });
 
   const roleBadge = document.getElementById('dock-role-badge');
   roleBadge.hidden = state.user.role === 'guest';
   if (!roleBadge.hidden) roleBadge.textContent = state.user.role;
 
+  // Host controls are now icon toggles — reflect on/off via aria-pressed + label.
   const lockBtn  = document.getElementById('btn-lock');
-  const muteBtn  = document.getElementById('btn-muteall');
   const audBtn   = document.getElementById('btn-audience');
-  if (lockBtn)  lockBtn.textContent  = state.room?.locked   ? 'unlock'   : 'lock';
-  if (muteBtn)  muteBtn.textContent  = state.room?.mutedAll ? 'unmute all': 'mute all';
-  if (audBtn)   audBtn.textContent   = state.room?.audience ? 'end stage' : 'audience';
+  const ghostBtn = document.getElementById('btn-ghost');
+  if (lockBtn) {
+    lockBtn.setAttribute('aria-pressed', state.room?.locked ? 'true' : 'false');
+    const t = state.room?.locked ? 'Unlock room' : 'Lock room';
+    lockBtn.title = t; lockBtn.setAttribute('aria-label', t);
+  }
+  if (audBtn) {
+    audBtn.setAttribute('aria-pressed', state.room?.audience ? 'true' : 'false');
+    const t = state.room?.audience ? 'End audience mode' : 'Audience mode — only you can speak';
+    audBtn.title = t; audBtn.setAttribute('aria-label', t);
+  }
+  if (ghostBtn) {
+    ghostBtn.setAttribute('aria-pressed', state.user.ghost ? 'true' : 'false');
+    const t = state.user.ghost ? 'Unghost — become visible' : 'Go ghost — hide yourself';
+    ghostBtn.title = t; ghostBtn.setAttribute('aria-label', t);
+  }
 
   updateMicBtn();
   // Deafen uses a separate class for distinct visual state
@@ -1051,33 +1226,80 @@ function updateDockBtnState(id, active) {
   if (btn) btn.setAttribute('aria-pressed', active ? 'true' : 'false');
 }
 
-// ── § MODALS ──────────────────────────────────────────────────────
+// ── § SETUP MODAL ─────────────────────────────────────────────────
+// Name + optional photo + name color. Draft values live here until confirm.
+let _setupAvatar = '';
+let _setupColor  = '';
+
 function requireNickname(then) {
   if (state.user.nickname) { then(); return; }
-  showNicknameModal(then);
+  showSetupModal(then);
 }
 
-function showNicknameModal(onComplete) {
-  state._pendingAction = onComplete;
-  showOverlay();
-  document.getElementById('modal-nickname').hidden = false;
-  document.getElementById('input-nickname').value  = '';
+function showSetupModal(onComplete) {
+  state._pendingAction = onComplete || null;
+  _setupAvatar = state.user.avatar || '';
+  _setupColor  = state.user.color  || '';
+
+  const nameInput = document.getElementById('input-nickname');
+  nameInput.value = state.user.nickname || '';
   document.getElementById('nickname-error').hidden = true;
-  document.getElementById('input-nickname').focus();
+
+  buildColorSwatches();
+  renderSetupAvatar();
+
+  showOverlay();
+  document.getElementById('modal-setup').hidden = false;
+  nameInput.focus();
 }
 
-function showCreateModal() {
-  showOverlay();
-  document.getElementById('modal-create').hidden = false;
-  document.getElementById('input-room-title').value = '';
-  document.getElementById('chk-room-locked').checked = false;
-  document.getElementById('input-room-title').focus();
+function buildColorSwatches() {
+  const wrap = document.getElementById('setup-colors');
+  if (!wrap) return;
+  const swatch = (val, bg, label, selected) =>
+    `<button type="button" class="color-swatch${selected ? ' selected' : ''}" role="radio"
+       aria-checked="${selected ? 'true' : 'false'}" data-color="${escHtml(val)}"
+       style="--sw:${bg}" title="${label}" aria-label="${label} color"></button>`;
+  // First chip = auto (a stable hash of the name); then the palette.
+  const autoBg = accentForNick(state.user.nickname || 'a');
+  let html = swatch('', autoBg, 'auto', !_setupColor);
+  html += ACCENT_COLORS.map(c => swatch(c, c, c, _setupColor === c)).join('');
+  wrap.innerHTML = html;
+  wrap.querySelectorAll('.color-swatch').forEach(btn => {
+    btn.addEventListener('click', () => {
+      _setupColor = btn.dataset.color;
+      wrap.querySelectorAll('.color-swatch').forEach(b => {
+        const on = b === btn;
+        b.classList.toggle('selected', on);
+        b.setAttribute('aria-checked', on ? 'true' : 'false');
+      });
+      renderSetupAvatar();
+    });
+  });
+}
+
+function renderSetupAvatar() {
+  const el = document.getElementById('setup-avatar');
+  if (!el) return;
+  const name   = (document.getElementById('input-nickname').value || state.user.nickname || '?');
+  const accent = _setupColor || accentForNick(name);
+  el.style.background = accent;
+  el.classList.toggle('has-photo', !!_setupAvatar);
+
+  let img = el.querySelector('.setup-avatar-img');
+  if (_setupAvatar) {
+    if (!img) { img = document.createElement('img'); img.className = 'setup-avatar-img'; img.alt = ''; el.insertBefore(img, el.firstChild); }
+    img.src = _setupAvatar;
+  } else if (img) { img.remove(); }
+
+  const initialEl = el.querySelector('.setup-avatar-initial');
+  if (initialEl) initialEl.textContent = (name[0] || '?').toUpperCase();
+  document.getElementById('setup-avatar-remove').hidden = !_setupAvatar;
 }
 
 function closeModals() {
   document.getElementById('modal-overlay').hidden = true;
-  document.getElementById('modal-nickname').hidden = true;
-  document.getElementById('modal-create').hidden   = true;
+  document.getElementById('modal-setup').hidden = true;
   state._pendingAction = null;
 }
 
@@ -1114,57 +1336,93 @@ function _syncSharingPresence() {
   if (self) { self.sharing = sharing; renderParticipants(); }
 }
 
-async function toggleMic() {
+// Mic model: once you turn the mic on, the device stays acquired for the whole
+// session. Muting just mutes the published track (LiveKit keeps it live), so
+// unmute is instant, there's no permission re-prompt, and the OS mic indicator
+// stays on while muted — nobody can hear you, but you're never "disconnected".
+function micBlockedByAudience() {
+  return !!state.room?.audience && state.user.role !== 'host';
+}
+
+async function setMic(on, opts = {}) {
+  // No LiveKit yet (connecting / offline): record intent, sync UI + presence.
   if (!state._lkRoom) {
-    // LK not yet connected (or offline): toggle presence only
-    state.media.micOn = !state.media.micOn;
-    if (state.media.micOn) hideBanner();
-    else showBanner('Microphone is off.', 'Enable mic', toggleMic);
+    state.media.micOn = on;
     updateMicBtn();
     _syncMicPresence();
+    if (!opts.silent) micBanner();
     return;
   }
-
-  if (!state.media.micOn) {
-    const { createLocalAudioTrack } = await ensureLk();
-    try {
-      const track = await createLocalAudioTrack({
-        echoCancellation: true,
-        noiseSuppression: state.settings.noiseSuppression,
-        autoGainControl:  true,
-        deviceId: state.settings.micDeviceId !== 'default' ? state.settings.micDeviceId : undefined,
-      });
-      await state._lkRoom.localParticipant.publishTrack(track);
-      state._localMicTrack = track;
-      state.media.micOn = true;
-      hideBanner();
-    } catch (err) {
-      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        showBanner('Microphone access denied.', 'OK', hideBanner);
-      } else if (err.name === 'NotFoundError') {
-        showBanner('No microphone found.', 'Settings', openSettings);
-      } else {
-        showBanner('Could not start microphone.', 'Retry', toggleMic);
-      }
-    }
-  } else {
-    if (state._localMicTrack) {
-      await state._lkRoom.localParticipant.unpublishTrack(state._localMicTrack);
-      state._localMicTrack.stop();
-      state._localMicTrack = null;
-    }
-    state.media.micOn = false;
-    showBanner('Microphone is off.', 'Enable mic', toggleMic);
+  try {
+    await state._lkRoom.localParticipant.setMicrophoneEnabled(on, {
+      echoCancellation: true,
+      noiseSuppression: state.settings.noiseSuppression,
+      autoGainControl:  true,
+      deviceId: state.settings.micDeviceId !== 'default' ? state.settings.micDeviceId : undefined,
+    });
+    state.media.micOn = on;
+    if (on) state.media.micReady = true; // device now live for the rest of the session
+    state._localMicTrack = state._lkRoom.localParticipant.getTrackPublication?.(_lk?.Track?.Source?.Microphone)?.track || state._localMicTrack;
+    if (!opts.silent) { if (on) hideBanner(); else micBanner(); }
+  } catch (err) {
+    if (!opts.silent) handleMicError(err);
+    return;
   }
-
   updateMicBtn();
   _syncMicPresence();
 }
 
+// Re-acquire the mic so a changed noise-suppression setting takes effect live.
+async function applyNoiseSuppression() {
+  if (state._lkRoom && state.media.micReady && state.media.micOn) {
+    await setMic(false, { silent: true });
+    await setMic(true,  { silent: true });
+  }
+}
+
+function handleMicError(err) {
+  if (err?.name === 'NotAllowedError' || err?.name === 'PermissionDeniedError') {
+    showBanner('Microphone is blocked. Allow it in your browser settings, then try again.', 'Retry', () => toggleMic(), 'error');
+  } else if (err?.name === 'NotFoundError') {
+    showBanner('No microphone found. Connect one, then try again.', 'Settings', openSettings, 'error');
+  } else {
+    showBanner('Couldn’t turn on your microphone.', 'Retry', () => toggleMic(), 'error');
+  }
+}
+
+// Gentle nudge — only shown until the user enables their mic the first time.
+function micBanner() {
+  if (state.media.micOn) { hideBanner(); return; }
+  if (micBlockedByAudience()) { showBanner('Audience mode is on — only the host can speak.', '', null, 'info'); return; }
+  if (!state.media.micReady) showBanner('You’re muted — tap the mic to talk.', 'Unmute', () => toggleMic(), 'info');
+  else hideBanner();
+}
+
+function toggleMic() {
+  if (micBlockedByAudience() && !state.media.micOn) { micBanner(); return; }
+  setMic(!state.media.micOn);
+}
+
+// Forced mute/unmute from a host or audience mode — host is immune.
+async function setMicMuted(muted, reason) {
+  if (state.user.role === 'host') return;
+  await setMic(!muted, { silent: true });
+  if (muted && reason) showBanner(reason, 'OK', hideBanner, 'warning');
+  else if (!muted) hideBanner();
+}
+
 function toggleDeafen() {
-  // Deafen = mute all incoming audio for yourself only. Does NOT touch your mic.
+  // Deafen = mute all incoming audio for yourself. Discord-style, it also mutes
+  // your own mic while deafened, then restores it when you undeafen.
   state.media.deafened = !state.media.deafened;
   document.querySelectorAll('.lk-audio').forEach(el => { el.muted = state.media.deafened; });
+  if (state.media.deafened) {
+    state.media._preDeafenMicOn = state.media.micOn;
+    if (state.media.micOn) setMic(false, { silent: true });
+  } else if (state.media._preDeafenMicOn) {
+    state.media._preDeafenMicOn = false;
+    if (!micBlockedByAudience()) setMic(true, { silent: true });
+  }
   const btn = document.getElementById('btn-deafen');
   if (btn) {
     btn.classList.toggle('deafened', state.media.deafened);
@@ -1284,7 +1542,7 @@ async function toggleScreen() {
 }
 
 // ── § BANNER ──────────────────────────────────────────────────────
-function showBanner(text, actionText, actionFn) {
+function showBanner(text, actionText, actionFn, variant = 'error') {
   const banner   = document.getElementById('room-banner');
   const textEl   = document.getElementById('banner-text');
   const actionEl = document.getElementById('banner-action-btn');
@@ -1292,7 +1550,8 @@ function showBanner(text, actionText, actionFn) {
   actionEl.textContent = actionText || '';
   actionEl.style.display = actionText ? '' : 'none';
   actionEl.onclick = actionFn ? () => actionFn() : null;
-  banner.classList.add('banner-visible');
+  banner.classList.remove('banner-info', 'banner-warning', 'banner-error');
+  banner.classList.add(`banner-${variant}`, 'banner-visible');
 }
 
 function hideBanner() {
@@ -1386,13 +1645,14 @@ async function toggleLock() {
   if (!state.room) return;
   state.room.locked = !state.room.locked;
 
-  document.getElementById('btn-lock').textContent = state.room.locked ? 'unlock' : 'lock';
-  document.getElementById('topbar-locked-badge').hidden = !state.room.locked;
+  updateDock();
+  updateTopbar();
 
   appendSystemMessage(
     state.room.locked ? 'Room locked by host' : 'Room unlocked by host', 'action'
   );
 
+  broadcastToRoom('room:update', { locked: state.room.locked });
   await sbUpdateRoom(state.room.slug, { locked: state.room.locked });
 
   // postgres_changes subscription in sbWatchCurrentRoom notifies all participants
@@ -1401,66 +1661,39 @@ async function toggleLock() {
   if (r) r.locked = state.room.locked;
 }
 
-async function toggleMuteAll() {
-  if (!state.room) return;
-  state.room.mutedAll = !state.room.mutedAll;
-
-  document.getElementById('btn-muteall').textContent = state.room.mutedAll ? 'unmute all' : 'mute all';
-
-  if (state.room.mutedAll) {
-    state.participants.forEach(p => {
-      if (p.sessionId !== state.user.sessionId && p.nickname !== state.user.nickname)
-        p.serverMuted = true;
-    });
-    appendSystemMessage('Host muted everyone', 'action');
-  } else {
-    state.participants.forEach(p => { p.serverMuted = false; });
-    appendSystemMessage('Host unmuted everyone', 'action');
-  }
-
-  // Broadcast so other participants actually get notified to mute themselves
-  state._sbPresenceChan?.send({
-    type: 'broadcast', event: 'room:update',
-    payload: { mutedAll: state.room.mutedAll },
-  }).catch(() => {});
-
-  renderParticipants();
-}
-
 async function toggleAudience() {
   if (!state.room) return;
   state.room.audience = !state.room.audience;
 
-  document.getElementById('btn-audience').textContent = state.room.audience ? 'end stage' : 'audience';
-
-  state.participants.forEach(p => {
-    const isMe = p.sessionId ? p.sessionId === state.user.sessionId : p.nickname === state.user.nickname;
-    if (!isMe) p.role = state.room.audience ? 'audience' : 'speaker';
-  });
-
   appendSystemMessage(
     state.room.audience
-      ? 'Audience mode ON — only host can speak'
-      : 'Audience mode OFF — everyone can speak',
+      ? 'Audience mode on — only the host can speak'
+      : 'Audience mode off — everyone can speak',
     'action'
   );
 
+  broadcastToRoom('room:update', { audience: state.room.audience });
   await sbUpdateRoom(state.room.slug, { audience_mode: state.room.audience });
+  updateTopbar();
+  updateDock();
   renderParticipants();
 }
 
-function toggleGhost() {
+async function toggleGhost() {
   state.user.ghost = !state.user.ghost;
-  document.getElementById('btn-ghost').textContent = state.user.ghost ? 'unghost' : 'go ghost';
+  updateDock();
+  updateTopbar(); // ghost badge
 
-  const self = state.participants.find(p =>
-    p.sessionId ? p.sessionId === state.user.sessionId : p.nickname === state.user.nickname
-  );
-  if (self) self.isGhost = state.user.ghost;
+  // Truly hide from others by leaving presence; you stay connected to audio + chat.
+  // The presence sync handler re-adds you to your own list, so you still see yourself.
+  if (state.user.ghost) {
+    try { await state._sbPresenceChan?.untrack(); } catch {}
+  } else {
+    await sbTrackPresence({});
+  }
 
-  renderParticipants();
   appendSystemMessage(
-    state.user.ghost ? 'You are now a ghost (invisible to others)' : 'You are visible again', 'action'
+    state.user.ghost ? 'You went ghost — hidden from the list' : 'You are visible again', 'action'
   );
 }
 
@@ -1483,13 +1716,8 @@ async function sendMessage() {
   if (!body) return;
 
   const wait = chatCooldownMs();
-  if (wait > 0) {
-    const orig = input.placeholder;
-    input.placeholder = `slow down… ${Math.ceil(wait / 1000)}s`;
-    input.disabled = true;
-    setTimeout(() => { input.placeholder = orig; input.disabled = false; input.focus(); }, wait);
-    return;
-  }
+  if (wait > 0) { showChatCooldown(wait); return; }
+  hideChatCooldown();
 
   _msgBurst.push(Date.now());
   state._lastMsgTime = Date.now();
@@ -1504,20 +1732,103 @@ async function sendMessage() {
   }
 }
 
+// Visible anti-spam notice with a live countdown above the chat input.
+let _cooldownTimer = null;
+function showChatCooldown(ms) {
+  const el = document.getElementById('chat-cooldown');
+  if (!el) return;
+  clearInterval(_cooldownTimer);
+  const end = Date.now() + ms;
+  const tick = () => {
+    const left = Math.ceil((end - Date.now()) / 1000);
+    if (left <= 0) { hideChatCooldown(); return; }
+    el.textContent = `Easy there — you’re sending too fast. Try again in ${left}s.`;
+  };
+  el.hidden = false;
+  el.classList.add('show');
+  tick();
+  _cooldownTimer = setInterval(tick, 250);
+}
+function hideChatCooldown() {
+  clearInterval(_cooldownTimer);
+  const el = document.getElementById('chat-cooldown');
+  if (el) { el.hidden = true; el.classList.remove('show'); }
+}
+
+// The sender's chosen name color, when we know it (self always; others via presence).
+function nickColor(nick) {
+  if (nick === state.user.nickname) return myAccent();
+  return state.participants.find(x => x.nickname === nick)?.accent || '';
+}
+
 function appendMessage(nick, body, time, isNewMsg) {
   const el  = document.getElementById('chat-messages');
   const div = document.createElement('div');
   div.className = 'chat-msg';
   const isYou = nick === state.user.nickname;
+  const color = nickColor(nick);
+  const styleAttr = color ? ` style="color:${escHtml(color)}"` : '';
   div.innerHTML = `
     <div class="chat-msg-header">
-      <span class="chat-msg-nick${isYou ? ' is-you' : ''}">${escHtml(nick)}</span>
+      <span class="chat-msg-nick${isYou ? ' is-you' : ''}"${styleAttr}>${escHtml(nick)}</span>
       <span class="chat-msg-time">${formatTime(time)}</span>
     </div>
     <div class="chat-msg-body">${escHtml(body)}</div>
   `;
   el.appendChild(div);
   el.scrollTop = el.scrollHeight;
+}
+
+// Image message — rendered as a thumbnail that opens a fullscreen viewer.
+// Images are ephemeral: broadcast over realtime, never written to the DB.
+function appendImageMessage(nick, src, time) {
+  const el = document.getElementById('chat-messages');
+  if (!el) return;
+  const div = document.createElement('div');
+  div.className = 'chat-msg';
+  const isYou = nick === state.user.nickname;
+  const color = nickColor(nick);
+  const styleAttr = color ? ` style="color:${escHtml(color)}"` : '';
+  div.innerHTML = `
+    <div class="chat-msg-header">
+      <span class="chat-msg-nick${isYou ? ' is-you' : ''}"${styleAttr}>${escHtml(nick)}</span>
+      <span class="chat-msg-time">${formatTime(time)}</span>
+    </div>
+    <img class="chat-msg-img" src="${escHtml(src)}" alt="image from ${escHtml(nick)}">
+  `;
+  el.appendChild(div);
+  div.querySelector('.chat-msg-img')?.addEventListener('click', () => openImageViewer(src));
+  el.scrollTop = el.scrollHeight;
+}
+
+async function sendChatImage(file) {
+  if (!file) return;
+  if (!state.room) return;
+  const wait = chatCooldownMs();
+  if (wait > 0) { showChatCooldown(wait); return; }
+  let src;
+  try {
+    src = await fileToDataUrl(file, 720, 0.6); // cap longest edge; keep payload small
+  } catch {
+    return; // not a readable image — bail quietly
+  }
+  _msgBurst.push(Date.now());
+  appendImageMessage(state.user.nickname, src, Date.now()); // optimistic
+  broadcastToRoom('chat:image', {
+    nick: state.user.nickname, src, time: Date.now(), sessionId: state.user.sessionId,
+  });
+}
+
+function openImageViewer(src) {
+  const v = document.getElementById('img-viewer');
+  const img = document.getElementById('img-viewer-img');
+  if (!v || !img) return;
+  img.src = src;
+  v.hidden = false;
+}
+function closeImageViewer() {
+  const v = document.getElementById('img-viewer');
+  if (v) v.hidden = true;
 }
 
 function appendSystemMessage(text, kind = '') {
@@ -1549,6 +1860,7 @@ function closeUserMenu() {
 
 function handleDirectMute(p) {
   p.serverMuted = !p.serverMuted;
+  broadcastToRoom('user:mute', { sessionId: p.sessionId, muted: p.serverMuted });
   appendSystemMessage(
     p.serverMuted ? `Host muted ${p.nickname}` : `Host unmuted ${p.nickname}`, 'action'
   );
@@ -1563,6 +1875,7 @@ async function handleUserAction(action) {
   switch (action) {
     case 'mute':
       p.serverMuted = !p.serverMuted;
+      broadcastToRoom('user:mute', { sessionId: p.sessionId, muted: p.serverMuted });
       appendSystemMessage(
         p.serverMuted ? `Host muted ${p.nickname}` : `Host unmuted ${p.nickname}`, 'action'
       );
@@ -1570,7 +1883,10 @@ async function handleUserAction(action) {
       break;
 
     case 'kick':
-      if (p.sessionId) state.kickedSessionIds.add(p.sessionId);
+      if (p.sessionId) {
+        state.kickedSessionIds.add(p.sessionId);
+        broadcastToRoom('user:kick', { sessionId: p.sessionId });
+      }
       state.participants = state.participants.filter(x => x.nickname !== p.nickname);
       state.room.member_count = state.participants.length;
       appendSystemMessage(`${p.nickname} was kicked`, 'leave');
@@ -1579,7 +1895,10 @@ async function handleUserAction(action) {
       break;
 
     case 'ban':
-      if (p.sessionId) state.kickedSessionIds.add(p.sessionId);
+      if (p.sessionId) {
+        state.kickedSessionIds.add(p.sessionId);
+        broadcastToRoom('user:kick', { sessionId: p.sessionId });
+      }
       state.participants = state.participants.filter(x => x.nickname !== p.nickname);
       state.bans.push({ nickname: p.nickname, sessionId: p.sessionId || '', type: 'nickname' });
       state.room.member_count = state.participants.length;
@@ -1601,41 +1920,6 @@ async function handleUserAction(action) {
       renderParticipants();
       break;
   }
-}
-
-// ── § SPEAKING SIMULATION ─────────────────────────────────────────
-function startSpeakingSimulation() {
-  stopSpeakingSimulation();
-
-  function tick() {
-    if (state.view !== 'room' || !state.room) return;
-    const eligible = state.participants.filter(p => {
-      const isMe = p.sessionId ? p.sessionId === state.user.sessionId : p.nickname === state.user.nickname;
-      return !isMe && !p.muted && !p.serverMuted;
-    });
-    if (eligible.length === 0) return;
-
-    state.participants.forEach(p => { p.speaking = false; });
-    const count = Math.floor(Math.random() * 3);
-    for (let i = 0; i < count && i < eligible.length; i++) {
-      eligible[Math.floor(Math.random() * eligible.length)].speaking = true;
-    }
-
-    document.querySelectorAll('.participant-card').forEach(card => {
-      const nick = card.dataset.nick;
-      const p    = state.participants.find(x => x.nickname === nick);
-      if (p) {
-        card.classList.toggle('speaking', !!p.speaking);
-        card.querySelector('.p-avatar')?.classList.toggle('speaking-anim', !!p.speaking);
-      }
-    });
-  }
-
-  state._simTimer = setInterval(tick, 2000 + Math.random() * 1500);
-}
-
-function stopSpeakingSimulation() {
-  if (state._simTimer) { clearInterval(state._simTimer); state._simTimer = null; }
 }
 
 // ── § MOBILE TABS ─────────────────────────────────────────────────
@@ -1681,18 +1965,42 @@ function escHtml(str) {
 async function init() {
   loadIdentity();
 
-  // ── Lobby events ──
+  // ── Lobby events ── (start a room is instant — no create modal)
   document.getElementById('btn-create').addEventListener('click', () => {
-    requireNickname(() => showCreateModal());
+    requireNickname(() => createRoom());
   });
   document.getElementById('btn-create-empty')?.addEventListener('click', () => {
-    requireNickname(() => showCreateModal());
+    requireNickname(() => createRoom());
   });
   document.getElementById('btn-change-nick')?.addEventListener('click', () => {
-    showNicknameModal(() => renderLobby());
+    showSetupModal(null);
   });
 
-  // ── Nickname modal ──
+  // ── Setup modal (name + photo + color) ──
+  const avatarInput = document.getElementById('setup-avatar-input');
+  document.getElementById('setup-avatar').addEventListener('click', () => avatarInput.click());
+  avatarInput.addEventListener('change', async () => {
+    const file = avatarInput.files?.[0];
+    avatarInput.value = '';
+    if (!file) return;
+    try {
+      _setupAvatar = await fileToDataUrl(file, 128, 0.78); // small square-ish photo
+      renderSetupAvatar();
+    } catch {
+      const errEl = document.getElementById('nickname-error');
+      errEl.textContent = "couldn't read that image.";
+      errEl.hidden = false;
+    }
+  });
+  document.getElementById('setup-avatar-remove').addEventListener('click', () => {
+    _setupAvatar = '';
+    renderSetupAvatar();
+  });
+  document.getElementById('input-nickname').addEventListener('input', () => {
+    buildColorSwatches(); // auto chip tracks the typed name
+    renderSetupAvatar();
+  });
+
   document.getElementById('btn-nickname-confirm').addEventListener('click', () => {
     const val = document.getElementById('input-nickname').value.trim();
     if (!val || val.length < 2) {
@@ -1701,29 +2009,24 @@ async function init() {
       errEl.hidden = false;
       return;
     }
-    saveNickname(val);
+    saveIdentity({ nick: val, avatar: _setupAvatar, color: _setupColor });
     const pendingFn = state._pendingAction; // capture before closeModals clears it
     closeModals();
     renderLobby();
+    // If we changed identity from inside a room, push it to everyone live.
+    if (state.view === 'room') { sbTrackPresence({}); renderParticipants(); }
     if (pendingFn) pendingFn();
   });
   document.getElementById('input-nickname').addEventListener('keydown', e => {
     if (e.key === 'Enter') document.getElementById('btn-nickname-confirm').click();
   });
 
-  // ── Create modal ──
-  document.getElementById('btn-create-confirm').addEventListener('click', () => {
-    const title  = document.getElementById('input-room-title').value.trim();
-    const locked = document.getElementById('chk-room-locked').checked;
-    closeModals();
-    createRoom(title, locked);
-  });
-  document.getElementById('btn-create-cancel').addEventListener('click', closeModals);
-  document.getElementById('input-room-title').addEventListener('keydown', e => {
-    if (e.key === 'Enter')  document.getElementById('btn-create-confirm').click();
-    if (e.key === 'Escape') closeModals();
-  });
   document.getElementById('modal-overlay').addEventListener('click', closeModals);
+
+  // ── Inline room title (host) ──
+  const titleInput = document.getElementById('topbar-title');
+  titleInput.addEventListener('input', e => onTitleEdit(e.target.value));
+  titleInput.addEventListener('keydown', e => { if (e.key === 'Enter') titleInput.blur(); });
 
   // ── Room controls ──
   document.getElementById('btn-back').addEventListener('click', leaveRoom);
@@ -1755,7 +2058,6 @@ async function init() {
 
   // ── Host controls ──
   document.getElementById('btn-lock').addEventListener('click', toggleLock);
-  document.getElementById('btn-muteall').addEventListener('click', toggleMuteAll);
   document.getElementById('btn-audience').addEventListener('click', toggleAudience);
   document.getElementById('btn-ghost').addEventListener('click', toggleGhost);
 
@@ -1764,6 +2066,22 @@ async function init() {
   document.getElementById('chat-input').addEventListener('keydown', e => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
   });
+
+  // Chat images (ephemeral — broadcast only, never stored)
+  const chatFile = document.getElementById('chat-file');
+  document.getElementById('btn-chat-image').addEventListener('click', () => chatFile.click());
+  chatFile.addEventListener('change', () => {
+    const f = chatFile.files?.[0];
+    chatFile.value = '';
+    if (f) sendChatImage(f);
+  });
+  document.getElementById('chat-input').addEventListener('paste', e => {
+    const item = [...(e.clipboardData?.items || [])].find(i => i.type.startsWith('image/'));
+    if (item) { e.preventDefault(); sendChatImage(item.getAsFile()); }
+  });
+
+  // Image viewer
+  document.getElementById('img-viewer').addEventListener('click', closeImageViewer);
 
   // ── Settings ──
   document.getElementById('sel-mic').addEventListener('change', e => {
@@ -1777,6 +2095,7 @@ async function init() {
   });
   document.getElementById('chk-noise').addEventListener('change', e => {
     state.settings.noiseSuppression = e.target.checked;
+    applyNoiseSuppression(); // re-acquire so it takes effect mid-call
   });
   document.getElementById('chk-joinsound').addEventListener('change', e => {
     state.settings.joinSound = e.target.checked;
@@ -1797,7 +2116,7 @@ async function init() {
         !e.target.closest('#btn-settings'))  closeSettings();
   });
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') { closeUserMenu(); closeSettings(); closeModals(); }
+    if (e.key === 'Escape') { closeUserMenu(); closeSettings(); closeModals(); closeImageViewer(); }
     if (state.view === 'room' && !e.target.matches('input, textarea, select')) {
       if (e.key === 'm' || e.key === 'M') toggleMic();
       if (e.key === 'd' || e.key === 'D') toggleDeafen();

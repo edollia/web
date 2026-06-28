@@ -8,8 +8,8 @@
   <meta name="description" content="voice rooms on doll.gg — jump in or start your own.">
   <meta property="og:title" content="rooms · doll.gg">
   <meta property="og:description" content="join a room">
-  <meta property="og:url" content="https://doll.gg/voice/">
-  <link rel="stylesheet" href="voice.css">
+  <meta property="og:url" content="https://doll.gg/rooms/">
+  <link rel="stylesheet" href="rooms.css">
 </head>
 <body>
 
@@ -17,37 +17,36 @@
 
 <div id="modal-overlay" class="modal-overlay" hidden></div>
 
-<!-- Nickname modal: shown on first visit before any room action -->
-<div id="modal-nickname" class="modal" hidden aria-modal="true" role="dialog" aria-labelledby="modal-nick-title">
+<!-- Setup modal: name + optional photo + name color. Shown on first visit
+     and reused by "change name". -->
+<div id="modal-setup" class="modal" hidden aria-modal="true" role="dialog" aria-labelledby="modal-setup-title">
   <div class="modal-box">
-    <h2 class="modal-title" id="modal-nick-title">choose a name</h2>
-    <p class="modal-sub">this is how others see you in rooms.</p>
-    <input id="input-nickname" class="modal-input" type="text"
-           placeholder="your nickname" maxlength="24"
-           autocomplete="off" spellcheck="false" autocorrect="off" autocapitalize="off">
+    <h2 class="modal-title" id="modal-setup-title">you in rooms</h2>
+    <p class="modal-sub">pick a name. a photo and color are optional.</p>
+
+    <div class="setup-identity">
+      <button type="button" id="setup-avatar" class="setup-avatar" aria-label="Add a photo">
+        <span class="setup-avatar-initial">?</span>
+        <span class="setup-avatar-cam" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 2 7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9zm3 15c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5z"/></svg>
+        </span>
+      </button>
+      <input id="setup-avatar-input" type="file" accept="image/*" hidden>
+      <div class="setup-identity-right">
+        <input id="input-nickname" class="modal-input" type="text"
+               placeholder="your name" maxlength="24"
+               autocomplete="off" spellcheck="false" autocorrect="off" autocapitalize="off">
+        <button type="button" id="setup-avatar-remove" class="btn-text-sm" hidden>remove photo</button>
+      </div>
+    </div>
+
+    <div class="setup-field">
+      <span class="setup-field-label">name color</span>
+      <div id="setup-colors" class="color-row" role="radiogroup" aria-label="Name color"></div>
+    </div>
+
     <div id="nickname-error" class="modal-error" hidden></div>
     <button id="btn-nickname-confirm" class="btn-primary btn-full">continue →</button>
-  </div>
-</div>
-
-<!-- Create room modal -->
-<div id="modal-create" class="modal" hidden aria-modal="true" role="dialog" aria-labelledby="modal-create-title">
-  <div class="modal-box">
-    <h2 class="modal-title" id="modal-create-title">start a room</h2>
-    <input id="input-room-title" class="modal-input" type="text"
-           placeholder="room title (optional)" maxlength="48" autocomplete="off">
-    <label class="toggle-row">
-      <span class="toggle-label-text">lock room</span>
-      <div class="toggle-wrap">
-        <input type="checkbox" id="chk-room-locked" class="toggle-input">
-        <span class="toggle-thumb"></span>
-      </div>
-    </label>
-    <p class="modal-hint">locked rooms are visible but only you control who enters.</p>
-    <div class="modal-actions">
-      <button id="btn-create-cancel" class="btn-ghost">cancel</button>
-      <button id="btn-create-confirm" class="btn-primary">create room</button>
-    </div>
   </div>
 </div>
 
@@ -60,13 +59,13 @@
       <h1 class="lobby-title">rooms</h1>
       <p class="lobby-sub">jump into any room, or start your own. locked rooms show here but can't be entered.</p>
     </div>
-    <button id="btn-create" class="btn-primary">start a room</button>
+    <button id="btn-create" class="btn-primary" hidden>start a room</button>
   </header>
 
   <main class="lobby-main">
     <div id="rooms-grid" class="rooms-grid"></div>
     <div id="empty-state" class="empty-state" hidden>
-      <div class="empty-icon">🎙</div>
+      <svg class="empty-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5-3c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
       <p class="empty-text">no one's in a room right now.</p>
       <button id="btn-create-empty" class="btn-primary">be the first. start your room</button>
     </div>
@@ -88,9 +87,21 @@
   <div class="room-topbar">
     <div class="topbar-left">
       <button id="btn-back" class="btn-back" aria-label="Back to lobby" title="Back to lobby">←</button>
-      <span id="topbar-name" class="topbar-name"></span>
-      <span id="lk-status-dot" class="lk-status-dot lk-connecting" title="Connecting…"></span>
-      <span id="topbar-locked-badge" class="badge badge-locked" hidden>🔒 locked</span>
+      <span id="lk-signal" class="lk-signal lk-connecting" title="Connecting…" aria-label="Connection">
+        <i></i><i></i><i></i>
+      </span>
+      <span id="topbar-host" class="topbar-host"></span>
+      <input id="topbar-title" class="topbar-title-input" type="text" placeholder="add a title"
+             maxlength="48" autocomplete="off" readonly aria-label="Room title">
+      <span id="topbar-locked-badge" class="badge badge-locked" hidden>
+        <svg class="ic" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zM9 6c0-1.66 1.34-3 3-3s3 1.34 3 3v2H9V6zm3 11c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"/></svg>locked
+      </span>
+      <span id="topbar-audience-badge" class="badge badge-audience" hidden>
+        <svg class="ic" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5s-3 1.34-3 3 1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>audience
+      </span>
+      <span id="topbar-ghost-badge" class="badge badge-ghost" hidden>
+        <svg class="ic" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75C21.27 7.11 17 4 12 4c-1.27 0-2.49.2-3.64.57l2.17 2.17C11.06 6.49 11.51 7 12 7zM2 4.27l2.28 2.28.46.46C3.08 8.3 1.78 10.02 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z"/></svg>ghost
+      </span>
     </div>
     <div class="topbar-right">
       <span id="topbar-count" class="topbar-count"></span>
@@ -99,7 +110,7 @@
     </div>
   </div>
 
-  <!-- Warning banner: fixed height so layout never jumps -->
+  <!-- Warning banner: animates open/closed so layout never jumps -->
   <div id="room-banner" class="room-banner" role="alert" aria-live="polite">
     <span id="banner-text" class="banner-text"></span>
     <button id="banner-action-btn" class="banner-action"></button>
@@ -107,12 +118,6 @@
 
   <!-- Main content area -->
   <div class="room-main" id="room-main">
-
-    <!-- Mobile tab switcher (hidden on desktop via CSS) -->
-    <div class="room-tabs" id="room-tabs">
-      <button class="tab-btn active" data-tab="participants">participants</button>
-      <button class="tab-btn" data-tab="chat">chat</button>
-    </div>
 
     <!-- Participants panel -->
     <div id="panel-participants" class="panel panel-participants" data-panel="participants">
@@ -130,7 +135,12 @@
     <div id="panel-chat" class="panel panel-chat" data-panel="chat">
       <div class="chat-header-bar">room chat</div>
       <div id="chat-messages" class="chat-messages" aria-live="polite"></div>
+      <div id="chat-cooldown" class="chat-cooldown" role="status" hidden></div>
       <div class="chat-input-row">
+        <button id="btn-chat-image" class="chat-icon-btn" title="Send image" aria-label="Send image">
+          <span class="dock-icon dock-icon-image"></span>
+        </button>
+        <input id="chat-file" type="file" accept="image/*" hidden>
         <input id="chat-input" class="chat-input" type="text"
                placeholder="message the room" maxlength="500"
                autocomplete="off" autocorrect="off">
@@ -152,7 +162,7 @@
       <button id="btn-mic"      class="dock-btn" aria-pressed="false" aria-label="Mic off" title="Mic (M)">
         <span class="dock-icon dock-icon-mic"></span>
       </button>
-      <button id="btn-deafen"   class="dock-btn" aria-pressed="false" aria-label="Deafen" title="Deafen — mute all others for you only (D)">
+      <button id="btn-deafen"   class="dock-btn" aria-pressed="false" aria-label="Deafen" title="Deafen — mute everyone for you only (D)">
         <span class="dock-icon dock-icon-deafen"></span>
       </button>
       <button id="btn-camera"   class="dock-btn" aria-pressed="false" aria-label="Camera" title="Camera">
@@ -167,10 +177,15 @@
     </div>
 
     <div class="dock-right">
-      <button id="btn-ghost"    class="btn-text admin-ctrl" hidden>go ghost</button>
-      <button id="btn-muteall"  class="btn-text host-ctrl" hidden>mute all</button>
-      <button id="btn-lock"     class="btn-text host-ctrl" hidden>lock</button>
-      <button id="btn-audience" class="btn-text host-ctrl" hidden title="Audience mode — mute all non-hosts">audience</button>
+      <button id="btn-ghost"    class="dock-ctrl admin-ctrl" aria-pressed="false" hidden title="Go ghost — hide yourself" aria-label="Go ghost">
+        <span class="dock-icon dock-icon-ghost"></span>
+      </button>
+      <button id="btn-lock"     class="dock-ctrl host-ctrl" aria-pressed="false" hidden title="Lock room" aria-label="Lock room">
+        <span class="dock-icon dock-icon-lock"></span>
+      </button>
+      <button id="btn-audience" class="dock-ctrl host-ctrl" aria-pressed="false" hidden title="Audience mode — only you can speak" aria-label="Audience mode">
+        <span class="dock-icon dock-icon-audience"></span>
+      </button>
       <button id="btn-leave"    class="btn-danger dock-leave">leave</button>
     </div>
 
@@ -222,6 +237,11 @@
 
 </div><!-- #view-room -->
 
-<script type="module" src="voice.js"></script>
+<!-- Fullscreen image viewer (chat images) -->
+<div id="img-viewer" class="img-viewer" hidden>
+  <img id="img-viewer-img" alt="">
+</div>
+
+<script type="module" src="rooms.js"></script>
 </body>
 </html>
