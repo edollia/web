@@ -1768,8 +1768,11 @@ a { color: inherit; text-decoration: none; }
     white-space: normal;
   }
 
-  /* Topbar: wrap badges so they don't overlap status bar */
-  .topbar-left { flex-wrap: wrap; }
+  /* Topbar: hide audience/ghost badges on mobile to prevent wrap-overflow into content below.
+     The locked badge is kept — it's critical for guests. Dock buttons convey the other states. */
+  #topbar-audience-badge,
+  #topbar-ghost-badge { display: none; }
+  .topbar-left { flex-wrap: nowrap; }
 
   .participant-grid { grid-template-columns: repeat(2, 1fr); grid-auto-rows: clamp(160px, 40vw, 200px); }
 }

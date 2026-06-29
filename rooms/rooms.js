@@ -13,7 +13,7 @@ async function ensureLk() {
 }
 
 // ── § CONFIG ─────────────────────────────────────────────────────
-const VERSION        = '2026-06-29.11';
+const VERSION        = '2026-06-29.13';
 const SUPABASE_URL   = 'https://karogcjefsnnrvlxlgpf.supabase.co';
 const SUPABASE_ANON  = 'sb_publishable_z2jS9qvQUvkSXVspdi2U5w_dFGM_rG-';
 const LIVEKIT_WS_URL = 'wss://pawsweb-z0kamke4.livekit.cloud';
@@ -27,8 +27,14 @@ const sb = createClient(SUPABASE_URL, SUPABASE_ANON, {
 // 8 distinct pastel/muted colors + 5 vivid/shiny colors.
 // SHINY_COLORS are displayed with a glow effect in the picker.
 const NORMAL_COLORS = [
-  '#f08ab5', '#c4a0d4', '#7ab8d4', '#8ec4a0',
-  '#d4b07a', '#d47aaa', '#7da0c8', '#a0b88c',
+  '#f08ab5', // pink
+  '#c4a0d4', // lavender
+  '#7ab8d4', // sky blue
+  '#8ec4a0', // mint
+  '#d4b07a', // tan
+  '#d47aaa', // deep pink
+  '#e8875a', // terracotta
+  '#c8b054', // gold-olive
 ];
 const SHINY_COLORS = [
   '#ff5fa0', '#9b55ff', '#00b8f5', '#00d47a', '#ffb300',
@@ -1154,14 +1160,20 @@ function hideScreenShareArea() {
 // re-attach each subscribed remote track (LK only fires TrackSubscribed once).
 function reattachAllVideos() {
   if (state.media.cameraOn && state._localCamTrack) {
-    showParticipantVideo(state._localCamTrack, state.user.sessionId);
+    const myCard = document.querySelector(`.participant-card[data-sid="${CSS.escape(state.user.sessionId)}"]`);
+    if (myCard && !myCard.querySelector('.p-video-wrap')) {
+      showParticipantVideo(state._localCamTrack, state.user.sessionId);
+    }
   }
   if (!state._lkRoom || !_lk) return;
   const { Track } = _lk;
   for (const [, p] of state._lkRoom.remoteParticipants) {
     for (const pub of p.trackPublications.values()) {
       if (pub.track && pub.kind === Track.Kind.Video && pub.source !== Track.Source.ScreenShare) {
-        showParticipantVideo(pub.track, p.identity);
+        const card = document.querySelector(`.participant-card[data-sid="${CSS.escape(p.identity)}"]`);
+        if (card && !card.querySelector('.p-video-wrap')) {
+          showParticipantVideo(pub.track, p.identity);
+        }
       }
     }
   }
@@ -1287,6 +1299,7 @@ async function doShowLobby() {
   };
   _cameraToggling = false;
   _screenToggling = false;
+  _lastJoinTime   = 0;
   state.ui.settingsOpen = false;
   stopMicTest();
   state.user.role = 'guest';
@@ -1424,8 +1437,6 @@ async function enterRoom(room, pushNav, tokenData) {
         state.room.audience = updated.audience_mode;
         if (state.user.role !== 'host' && updated.audience_mode !== wasAudience) {
           if (updated.audience_mode && state.media.micOn) setMicMuted(true, null, { serverMute: false });
-          const micBtn = document.getElementById('btn-mic');
-          if (micBtn) micBtn.classList.toggle('audience-locked', !!updated.audience_mode);
           appendSystemMessage(
             updated.audience_mode
               ? 'Audience mode on — only the host can speak'
@@ -1585,8 +1596,28 @@ function renderParticipants() {
   const hintEl = document.getElementById('room-hint');
   const isHost = state.user.role === 'host';
 
+  // Snapshot live video wraps before destroying the grid so videos don't flicker
+  // on every mute/badge update — only new/removed participants lose their wrap.
+  const wrapMap = {};
+  grid.querySelectorAll('.participant-card[data-sid]').forEach(card => {
+    const wrap = card.querySelector('.p-video-wrap');
+    if (wrap) wrapMap[card.dataset.sid] = wrap;
+  });
+
   const visible = state.participants.filter(p => !(p.sessionId === state.user.sessionId && state.user.ghost));
   grid.innerHTML = visible.map(p => renderParticipantCard(p, isHost)).join('');
+
+  // Re-insert preserved video wraps into matching new cards.
+  grid.querySelectorAll('.participant-card[data-sid]').forEach(card => {
+    const wrap = wrapMap[card.dataset.sid];
+    if (wrap) {
+      (card.querySelector('.p-avatar') || card).after(wrap);
+      card.classList.add('has-video');
+    }
+    if (_cameraToggling && card.dataset.sid === state.user.sessionId) {
+      card.classList.add('cam-loading');
+    }
+  });
 
   if (isHost || state.user.isAdmin) {
     grid.querySelectorAll('.participant-card.host-can-act').forEach(card => {
@@ -1660,7 +1691,7 @@ function renderParticipantCard(p, isHost) {
   return `<div class="participant-card${isYou ? ' is-you' : ''}${p.speaking ? ' speaking' : ''}${canAct ? ' host-can-act' : ''}"
                data-nick="${escHtml(p.nickname)}"
                data-sid="${escHtml(p.sessionId || '')}"${speakLevelStyle}>
-    ${canAct ? `<button class="p-mute-btn${p.serverMuted ? ' is-muted' : ''}" data-nick="${escHtml(p.nickname)}" title="${p.serverMuted ? 'Unmute' : 'Mute'}" aria-label="${p.serverMuted ? 'Unmute' : 'Mute'} ${escHtml(p.nickname)}">${p.serverMuted ? ICON.mic : ICON.micOff}</button>` : ''}
+    ${canAct ? `<button class="p-mute-btn${p.serverMuted ? ' is-muted' : ''}" data-nick="${escHtml(p.nickname)}" title="${p.serverMuted ? 'Unmute' : 'Mute'}" aria-label="${p.serverMuted ? 'Unmute' : 'Mute'} ${escHtml(p.nickname)}">${p.serverMuted ? ICON.micOff : ICON.mic}</button>` : ''}
     ${canAct ? `<button class="p-dots-btn" title="Options" aria-label="Options for ${escHtml(p.nickname)}">${ICON.dots}</button>` : ''}
     <div class="p-avatar${p.avatar ? ' has-photo' : ''}" style="background:${p.accent}">
       ${avatarInner(p.nickname, p.accent, p.avatar)}
@@ -1740,17 +1771,20 @@ function updateDock() {
 function updateMicBtn() {
   const btn = document.getElementById('btn-mic');
   if (!btn) return;
-  const disconnected = state.view === 'room' && !state._lkRoom;
-  const serverBlocked = state.view === 'room' && state.media.serverMuted && !state.media.micOn;
-  btn.disabled = disconnected || serverBlocked;
-  btn.classList.toggle('mic-muted', !state.media.micOn && !disconnected);
+  const disconnected   = state.view === 'room' && !state._lkRoom;
+  const audienceLocked = !!state.room?.audience && state.user.role !== 'host' && !disconnected;
+  const serverBlocked  = state.view === 'room' && state.media.serverMuted && !state.media.micOn && !disconnected;
+  btn.disabled = disconnected || audienceLocked || serverBlocked;
+  btn.classList.toggle('mic-muted',        !state.media.micOn && !disconnected && !audienceLocked);
   btn.classList.toggle('mic-disconnected', disconnected);
   btn.classList.toggle('mic-server-muted', serverBlocked);
-  btn.setAttribute('aria-pressed', state.media.micOn && !disconnected ? 'true' : 'false');
+  btn.classList.toggle('audience-locked',  audienceLocked);
+  btn.setAttribute('aria-pressed', state.media.micOn && !disconnected && !audienceLocked ? 'true' : 'false');
   btn.setAttribute('aria-label',
-    disconnected ? 'Mic unavailable while reconnecting'
-      : serverBlocked ? 'Mic muted by host'
-        : state.media.micOn ? 'Mic on' : 'Mic off'
+    disconnected    ? 'Mic unavailable while reconnecting'
+    : audienceLocked  ? 'Mic off — audience mode'
+    : serverBlocked   ? 'Mic muted by host'
+    : state.media.micOn ? 'Mic on' : 'Mic off'
   );
 }
 
@@ -1770,6 +1804,8 @@ function requireNickname(then) {
 }
 
 function showSetupModal(onComplete) {
+  closeUserMenu();
+  closeSettings();
   state._pendingAction = onComplete || null;
   _setupAvatar = state.user.avatar || '';
   _setupColor  = state.user.color  || '';
@@ -1841,14 +1877,15 @@ function showOverlay() {
   document.getElementById('modal-overlay').hidden = false;
 }
 
+let _lobbyToast = null;
 function showLobbyBanner(msg) {
-  // Temporary: use browser alert for now (lobby has no banner element)
-  // Phase 4 admin UI will add a proper toast system
+  _lobbyToast?.remove();
   const div = document.createElement('div');
   div.className = 'lobby-toast';
   div.textContent = msg;
   document.body.appendChild(div);
-  setTimeout(() => div.remove(), 3500);
+  _lobbyToast = div;
+  setTimeout(() => { if (_lobbyToast === div) { div.remove(); _lobbyToast = null; } }, 3500);
 }
 
 // ── § MEDIA STATE ─────────────────────────────────────────────────
@@ -2938,6 +2975,10 @@ async function init() {
       if (e.key === 'm' || e.key === 'M') toggleMic();
       if (e.key === 'd' || e.key === 'D') toggleDeafen();
     }
+  });
+
+  window.addEventListener('resize', () => {
+    if (!document.getElementById('user-menu').hidden) closeUserMenu();
   });
 
   // ── Route ──
