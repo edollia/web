@@ -13,7 +13,7 @@ async function ensureLk() {
 }
 
 // ── § CONFIG ─────────────────────────────────────────────────────
-const VERSION        = '2026-06-29.13';
+const VERSION        = '2026-06-29.14';
 const SUPABASE_URL   = 'https://karogcjefsnnrvlxlgpf.supabase.co';
 const SUPABASE_ANON  = 'sb_publishable_z2jS9qvQUvkSXVspdi2U5w_dFGM_rG-';
 const LIVEKIT_WS_URL = 'wss://pawsweb-z0kamke4.livekit.cloud';
@@ -1126,7 +1126,8 @@ async function flipCamera() {
     _syncSharingPresence();
     showBanner('Could not switch camera. Tap camera to restart.', 'OK', hideBanner);
   } finally {
-    myCard?.classList.remove('cam-loading');
+    document.querySelector(`.participant-card[data-sid="${CSS.escape(state.user.sessionId)}"]`)
+      ?.classList.remove('cam-loading');
   }
 }
 
@@ -1443,6 +1444,7 @@ async function enterRoom(room, pushNav, tokenData) {
               : 'Audience mode off — everyone can speak',
             'action'
           );
+          micBanner();
         }
       }
       updateTopbar();
@@ -2117,7 +2119,8 @@ async function toggleCamera() {
           showBanner('Could not start camera.', 'Retry', toggleCamera);
         }
       } finally {
-        myCard?.classList.remove('cam-loading');
+        document.querySelector(`.participant-card[data-sid="${CSS.escape(state.user.sessionId)}"]`)
+          ?.classList.remove('cam-loading');
       }
     } else {
       if (state._localCamTrack) {
