@@ -4,7 +4,7 @@
 //       Verified server-side via auth.getUser() with the service role key.
 //
 // Secrets required (all auto-provided by Supabase):
-//   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+//   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET
 //
 // Actions: list-recent, list-stale, inspect, force-close, cleanup
 
@@ -195,7 +195,7 @@ serve(async (req) => {
         }
       }
 
-      // Purge messages from rooms ended more than 24h ago that slipped through cleanup
+      // Purge messages older than 24h — SQL cron cleans at 12h but may miss if pg_cron is down
       const msgCutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
       const { error: msgErr, count: msgsPurged } = await sb.from('room_messages')
         .delete({ count: 'exact' })

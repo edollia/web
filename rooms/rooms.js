@@ -13,7 +13,7 @@ async function ensureLk() {
 }
 
 // ── § CONFIG ─────────────────────────────────────────────────────
-const VERSION        = '2026-06-29.7';
+const VERSION        = '2026-06-29.11';
 const SUPABASE_URL   = 'https://karogcjefsnnrvlxlgpf.supabase.co';
 const SUPABASE_ANON  = 'sb_publishable_z2jS9qvQUvkSXVspdi2U5w_dFGM_rG-';
 const LIVEKIT_WS_URL = 'wss://pawsweb-z0kamke4.livekit.cloud';
@@ -78,7 +78,7 @@ const state = {
   // wantsMic = user's preferred mic state, used to restore after reconnects/forced mutes
   // micReady = device acquired & track published (stays true once enabled; mute keeps the
   //            device live so unmute is instant and the OS keeps the mic indicator on)
-  media: { micOn: false, wantsMic: false, micReady: false, serverMuted: false, deafened: false, cameraOn: false, screenOn: false, _preDeafenMicOn: false, _preServerMuteWantsMic: false, hasMultipleCameras: false, flipCamFacing: 'user', _localScreenAudioTrack: null },
+  media: { micOn: false, wantsMic: false, wantsCamera: false, micReady: false, serverMuted: false, deafened: false, cameraOn: false, screenOn: false, _preDeafenMicOn: false, _preServerMuteWantsMic: false, hasMultipleCameras: false, flipCamFacing: 'user', _localScreenAudioTrack: null },
   settings: {
     micDeviceId: 'default', speakerDeviceId: 'default', cameraDeviceId: 'default',
     cameraResolution: '720p',
@@ -808,6 +808,11 @@ async function lkConnect(slug, tokenData) {
     if (state.media.wantsMic && !micBlockedByAudience()) {
       await setMic(true, { silent: true, userIntent: false });
     }
+    // Same for camera — restore it silently after a reconnect.
+    if (state.media.wantsCamera) {
+      state.media.wantsCamera = false;
+      toggleCamera().catch(() => {});
+    }
     // Refresh banner — dismisses the "tap to talk" hint that micBanner() may have
     // shown during the connection handshake before the mic was silently restored.
     micBanner();
@@ -961,8 +966,9 @@ function lkOnDisconnected() {
   document.querySelectorAll('.lk-audio').forEach(el => el.remove());
   hideScreenShareArea();
   if (state.media.cameraOn) hideParticipantVideo(state.user.sessionId);
-  // Keep a separate intent so reconnect can restore mic automatically.
-  state.media.wantsMic = state.media.wantsMic || state.media.micOn;
+  // Keep separate intents so reconnect can restore mic and camera automatically.
+  state.media.wantsMic    = state.media.wantsMic    || state.media.micOn;
+  state.media.wantsCamera = state.media.wantsCamera || state.media.cameraOn;
   state.media.micOn = false;
   state.media.micReady = false; state.media.cameraOn = false; state.media.screenOn = false;
   _syncMicPresence();
@@ -1275,10 +1281,12 @@ async function doShowLobby() {
   state.participants = [];
   state.chat = [];
   state.media = {
-    micOn: false, wantsMic: false, micReady: false, serverMuted: false, deafened: false,
+    micOn: false, wantsMic: false, wantsCamera: false, micReady: false, serverMuted: false, deafened: false,
     cameraOn: false, screenOn: false, _preDeafenMicOn: false, _preServerMuteWantsMic: false,
     hasMultipleCameras: false, flipCamFacing: 'user', _localScreenAudioTrack: null,
   };
+  _cameraToggling = false;
+  _screenToggling = false;
   state.ui.settingsOpen = false;
   stopMicTest();
   state.user.role = 'guest';
@@ -1324,7 +1332,7 @@ async function joinRoom(slug) {
 
   let room = state.rooms.find(r => r.slug === slug);
   if (!room) room = await sbFetchRoom(slug);
-  if (!room) return;
+  if (!room) { _lastJoinTime = 0; return; }
 
   // Re-fetch to get the latest locked state
   if (room.id) {
@@ -1334,6 +1342,7 @@ async function joinRoom(slug) {
 
   if (room.locked && !isHostForRoom(room)) {
     showLobbyBanner('This room is locked.');
+    _lastJoinTime = 0;
     return;
   }
 
@@ -2342,6 +2351,18 @@ async function sendMessage() {
   const body  = input.value.trim();
   if (!body) return;
 
+  if (state.room?.locked) {
+    const el = document.getElementById('chat-cooldown');
+    if (el) {
+      clearInterval(_cooldownTimer);
+      el.textContent = 'Room is locked — chat is paused.';
+      el.hidden = false;
+      el.classList.add('show');
+      setTimeout(hideChatCooldown, 3000);
+    }
+    return;
+  }
+
   const wait = chatCooldownMs();
   if (wait > 0) { showChatCooldown(wait); return; }
   hideChatCooldown();
@@ -2912,7 +2933,7 @@ async function init() {
         !e.target.closest('#btn-settings'))  closeSettings();
   });
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') { closeUserMenu(); closeSettings(); closeModals(); closeImageViewer(); }
+    if (e.key === 'Escape') { closeUserMenu(); closeSettings(); if (!state._pendingAction) closeModals(); closeImageViewer(); }
     if (state.view === 'room' && !e.target.matches('input, textarea, select')) {
       if (e.key === 'm' || e.key === 'M') toggleMic();
       if (e.key === 'd' || e.key === 'D') toggleDeafen();

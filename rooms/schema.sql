@@ -172,11 +172,12 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 BEGIN
-  -- Room must be active. For locked rooms, only the host session may insert.
+  -- Room must be active and not locked.
+  -- Locked rooms block all direct message inserts; host authorization uses
+  -- room_host_keys (verified by Edge Functions), not the public host_session_id field.
   RETURN EXISTS (
     SELECT 1 FROM rooms
-    WHERE id = p_room_id AND status = 'active'
-      AND (NOT locked OR host_session_id = p_session_id)
+    WHERE id = p_room_id AND status = 'active' AND NOT locked
   )
   -- Whitespace-normalize the nickname to prevent ban bypass via extra spaces.
   AND NOT EXISTS (
