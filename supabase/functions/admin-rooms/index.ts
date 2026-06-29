@@ -16,7 +16,56 @@ const ALLOWED_ORIGINS = new Set([
   'http://localhost:8421', 'http://127.0.0.1:8421',
 ])
 const ADMIN_UID       = '9ea1a89e-5a00-4b91-b98c-d69a5e383df4'
-const STALE_HOURS     = 3
+const STALE_HOURS     = 3  // SQL purge_stale_rooms() auto-closes at 2h; admin panel shows 3h+ as stale for manual review
+
+function b64url(bytes: Uint8Array): string {
+  let s = ''
+  for (const b of bytes) s += String.fromCharCode(b)
+  return btoa(s).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_')
+}
+
+function liveKitHttpUrl(): string {
+  return (Deno.env.get('LIVEKIT_URL') ?? '')
+    .replace(/^wss:/, 'https:')
+    .replace(/^ws:/, 'http:')
+    .replace(/\/+$/, '')
+}
+
+async function mintLiveKitRoomToken(roomName: string): Promise<string | null> {
+  const apiKey = Deno.env.get('LIVEKIT_API_KEY')
+  const apiSecret = Deno.env.get('LIVEKIT_API_SECRET')
+  if (!apiKey || !apiSecret) return null
+  const enc = new TextEncoder()
+  const now = Math.floor(Date.now() / 1000)
+  const payload = {
+    iss: apiKey, sub: `admin-rooms-${crypto.randomUUID()}`,
+    jti: crypto.randomUUID(), nbf: now, exp: now + 60,
+    video: { roomCreate: true, roomAdmin: true, room: roomName },
+  }
+  const head = b64url(enc.encode(JSON.stringify({ alg: 'HS256', typ: 'JWT' })))
+  const body = b64url(enc.encode(JSON.stringify(payload)))
+  const msg  = `${head}.${body}`
+  const key  = await crypto.subtle.importKey(
+    'raw', enc.encode(apiSecret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
+  )
+  const sig = b64url(new Uint8Array(await crypto.subtle.sign('HMAC', key, enc.encode(msg))))
+  return `${msg}.${sig}`
+}
+
+async function deleteLiveKitRoom(roomName: string): Promise<void> {
+  const base  = liveKitHttpUrl()
+  const token = await mintLiveKitRoomToken(roomName)
+  if (!base || !token) return
+  const res = await fetch(`${base}/twirp/livekit.RoomService/DeleteRoom`, {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ room: roomName }),
+  })
+  if (!res.ok && res.status !== 404) {
+    const text = await res.text().catch(() => '')
+    throw new Error(`LiveKit DeleteRoom ${res.status}: ${text.slice(0, 120)}`)
+  }
+}
 
 function buildCors(req: Request) {
   const origin = req.headers.get('Origin') ?? ''
@@ -109,12 +158,20 @@ serve(async (req) => {
         .eq('slug', roomSlug)
         .single()
       if (error || !room) return json({ error: 'room not found' }, 404)
-      if (room.status === 'ended') return json({ ok: true, note: 'already ended' })
+      if (room.status === 'ended') {
+        // Still attempt LK cleanup for rooms that may have been ended without it.
+        await deleteLiveKitRoom(roomSlug).catch(err => console.error('LK delete (already-ended):', err))
+        return json({ ok: true, note: 'already ended' })
+      }
 
       const { error: updateErr } = await sb.from('rooms')
         .update({ status: 'ended', ended_at: new Date().toISOString() })
         .eq('id', room.id)
       if (updateErr) throw updateErr
+
+      // Disconnect all LiveKit participants immediately — don't wait for Realtime.
+      await deleteLiveKitRoom(roomSlug).catch(err => console.error('LK delete failed:', err))
+
       return json({ ok: true, slug: roomSlug })
     }
 
@@ -132,7 +189,10 @@ serve(async (req) => {
         const { error } = await sb.from('rooms')
           .update({ status: 'ended', ended_at: new Date().toISOString() })
           .eq('id', r.id)
-        if (!error) closed.push(r.slug)
+        if (!error) {
+          closed.push(r.slug)
+          await deleteLiveKitRoom(r.slug).catch(err => console.error(`LK delete ${r.slug}:`, err))
+        }
       }
 
       // Purge messages from rooms ended more than 24h ago that slipped through cleanup

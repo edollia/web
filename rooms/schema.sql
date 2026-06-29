@@ -172,17 +172,20 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 BEGIN
+  -- Room must be active. For locked rooms, only the host session may insert.
   RETURN EXISTS (
     SELECT 1 FROM rooms
     WHERE id = p_room_id AND status = 'active'
+      AND (NOT locked OR host_session_id = p_session_id)
   )
+  -- Whitespace-normalize the nickname to prevent ban bypass via extra spaces.
   AND NOT EXISTS (
     SELECT 1 FROM room_bans
     WHERE is_active
       AND (room_id = p_room_id OR room_id IS NULL)
       AND (
         (type = 'session'  AND value = p_session_id) OR
-        (type = 'nickname' AND value = lower(p_nickname))
+        (type = 'nickname' AND value = lower(trim(regexp_replace(p_nickname, '\s+', ' ', 'g'))))
       )
   );
 END;
@@ -268,7 +271,9 @@ DROP POLICY IF EXISTS "msgs_delete"  ON room_messages;
 
 CREATE POLICY "msgs_select" ON room_messages
   FOR SELECT
-  USING (true);
+  USING (
+    EXISTS (SELECT 1 FROM rooms WHERE id = room_id AND status = 'active')
+  );
 
 -- INSERT: only allowed while the room is active and the supplied session/name
 -- are not banned. Prevents clients from writing messages into closed rooms or
@@ -332,11 +337,14 @@ DROP POLICY IF EXISTS "moderation_insert" ON room_moderation_events;
 DROP POLICY IF EXISTS "moderation_update" ON room_moderation_events;
 DROP POLICY IF EXISTS "moderation_delete" ON room_moderation_events;
 
--- SELECT: clients may receive trusted moderation events for their current room.
--- Events are inserted only by the room-control Edge Function.
+-- SELECT: clients may read moderation events for rooms that are still active.
+-- Restricting to active rooms prevents dumping historical mute/kick/ban logs.
+-- Events are inserted only by the room-control Edge Function (INSERT blocked for anon).
 CREATE POLICY "moderation_select" ON room_moderation_events
   FOR SELECT
-  USING (true);
+  USING (
+    EXISTS (SELECT 1 FROM rooms WHERE id = room_id AND status = 'active')
+  );
 
 CREATE POLICY "moderation_insert" ON room_moderation_events
   FOR INSERT
@@ -407,7 +415,8 @@ CREATE TRIGGER trg_prevent_host_field_change
 --     policy.  This is the primary cleanup path; the host's explicit
 --     DELETE call in sbEndRoom is belt-and-suspenders.
 CREATE OR REPLACE FUNCTION on_room_ended()
-RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER AS $$
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public AS $$
 BEGIN
   IF OLD.status = 'active' AND NEW.status = 'ended' THEN
     -- Immediately purge chat history.
@@ -431,7 +440,8 @@ CREATE TRIGGER trg_on_room_ended
 -- rooms even though the "rooms_delete" policy blocks anon clients.
 
 CREATE OR REPLACE FUNCTION purge_stale_rooms()
-RETURNS void LANGUAGE sql SECURITY DEFINER AS $$
+RETURNS void LANGUAGE sql SECURITY DEFINER
+SET search_path = public AS $$
   -- Mark abandoned active rooms as ended.  trg_on_room_ended fires for
   -- each row and deletes its messages within the same transaction.
   UPDATE rooms

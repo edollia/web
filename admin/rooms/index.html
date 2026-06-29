@@ -266,7 +266,7 @@
         <td>${esc(r.host_nickname || '—')}</td>
         <td title="${esc(r.created_at)}">${ageMin}m ago</td>
         <td>${r.status === 'active'
-          ? `<button class="danger" style="padding:3px 10px;font-size:11px" data-slug="${esc(r.slug)}" onclick="forceCloseRow(this)">force-close</button>`
+          ? `<button class="danger" style="padding:3px 10px;font-size:11px" data-slug="${esc(r.slug)}" data-action="force-close-row">force-close</button>`
           : ''}</td>
       `;
       tr.querySelector('.slug-link').addEventListener('click', () => inspectRoom(r.slug));
@@ -330,12 +330,23 @@
     document.getElementById('table-wrap').classList.remove('hidden');
   });
 
-  window.forceCloseRow = async (btn) => {
+  document.addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-action="force-close-row"]');
+    if (!btn) return;
     const slug = btn.dataset.slug;
     if (!confirm(`Force-close "${slug}"?`)) return;
     const data = await callAdmin({ action: 'force-close', roomSlug: slug }).catch(() => null);
-    if (data) { appendLog('ok', `${slug} closed`); btn.disabled = true; btn.textContent = 'closed'; }
-  };
+    if (data) {
+      appendLog('ok', `${slug} closed`);
+      btn.disabled = true;
+      btn.textContent = 'closed';
+      const row = btn.closest('tr');
+      if (row) {
+        const statusCell = row.querySelector('td:nth-child(2)');
+        if (statusCell) statusCell.innerHTML = '<span class="badge badge-ended">ended</span>';
+      }
+    }
+  });
 
   // ── Util ─────────────────────────────────────────────────────────
   function esc(s) {

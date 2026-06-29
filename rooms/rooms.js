@@ -13,7 +13,7 @@ async function ensureLk() {
 }
 
 // ── § CONFIG ─────────────────────────────────────────────────────
-const VERSION        = '2026-06-29.1';
+const VERSION        = '2026-06-29.7';
 const SUPABASE_URL   = 'https://karogcjefsnnrvlxlgpf.supabase.co';
 const SUPABASE_ANON  = 'sb_publishable_z2jS9qvQUvkSXVspdi2U5w_dFGM_rG-';
 const LIVEKIT_WS_URL = 'wss://pawsweb-z0kamke4.livekit.cloud';
@@ -78,21 +78,19 @@ const state = {
   // wantsMic = user's preferred mic state, used to restore after reconnects/forced mutes
   // micReady = device acquired & track published (stays true once enabled; mute keeps the
   //            device live so unmute is instant and the OS keeps the mic indicator on)
-  media: { micOn: false, wantsMic: false, micReady: false, serverMuted: false, deafened: false, cameraOn: false, screenOn: false, _preDeafenMicOn: false, _preServerMuteWantsMic: false, hasMultipleCameras: false, flipCamFacing: 'user' },
+  media: { micOn: false, wantsMic: false, micReady: false, serverMuted: false, deafened: false, cameraOn: false, screenOn: false, _preDeafenMicOn: false, _preServerMuteWantsMic: false, hasMultipleCameras: false, flipCamFacing: 'user', _localScreenAudioTrack: null },
   settings: {
     micDeviceId: 'default', speakerDeviceId: 'default', cameraDeviceId: 'default',
     cameraResolution: '720p',
     noiseSuppression: true, joinSound: true, mirrorSelf: true,
   },
-  ui: { settingsOpen: false, chatHidden: false, activeTab: 'participants' },
-  bans: [],
+  ui: { settingsOpen: false, chatHidden: false },
   _pendingAction: null,
   _sbPresenceChan: null,
   _sbChatSub:      null,
   _sbRoomStatusSub: null,
   _sbModerationSub: null,
   kickedSessionIds: new Set(),
-  _lastMsgTime: 0,
   _lkRoom:           null,
   _localMicTrack:    null,
   _localCamTrack:    null,
@@ -131,11 +129,12 @@ window.__roomsLog = _evtLog;
 // presence — never in the database. They travel with you, but nothing is
 // stored server-side.
 const LS = {
-  nick:   'dg_rooms_nick',
-  sid:    'dg_rooms_sid',
-  avatar: 'dg_rooms_avatar',
-  color:  'dg_rooms_color',
+  nick:     'dg_rooms_nick',
+  sid:      'dg_rooms_sid',
+  avatar:   'dg_rooms_avatar',
+  color:    'dg_rooms_color',
   hostKeys: 'dg_rooms_host_keys',
+  settings: 'dg_rooms_settings',
 };
 
 function loadHostKeys() {
@@ -198,6 +197,33 @@ async function getAdminJwt() {
     const { data: { session } } = await sb.auth.getSession();
     return session?.access_token || null;
   } catch { return null; }
+}
+
+function _loadSettings() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(LS.settings) || '{}');
+    if (typeof saved.noiseSuppression === 'boolean') state.settings.noiseSuppression = saved.noiseSuppression;
+    if (typeof saved.joinSound        === 'boolean') state.settings.joinSound        = saved.joinSound;
+    if (typeof saved.mirrorSelf       === 'boolean') state.settings.mirrorSelf       = saved.mirrorSelf;
+    if (['720p', '1080p'].includes(saved.cameraResolution)) state.settings.cameraResolution = saved.cameraResolution;
+    if (typeof saved.micDeviceId     === 'string' && saved.micDeviceId)     state.settings.micDeviceId     = saved.micDeviceId;
+    if (typeof saved.speakerDeviceId === 'string' && saved.speakerDeviceId) state.settings.speakerDeviceId = saved.speakerDeviceId;
+    if (typeof saved.cameraDeviceId  === 'string' && saved.cameraDeviceId)  state.settings.cameraDeviceId  = saved.cameraDeviceId;
+  } catch {}
+}
+
+function _saveSettings() {
+  try {
+    localStorage.setItem(LS.settings, JSON.stringify({
+      noiseSuppression: state.settings.noiseSuppression,
+      joinSound:        state.settings.joinSound,
+      mirrorSelf:       state.settings.mirrorSelf,
+      cameraResolution: state.settings.cameraResolution,
+      micDeviceId:      state.settings.micDeviceId,
+      speakerDeviceId:  state.settings.speakerDeviceId,
+      cameraDeviceId:   state.settings.cameraDeviceId,
+    }));
+  } catch {}
 }
 
 // Persist name + optional photo (data URL) + optional chosen color.
@@ -324,7 +350,7 @@ function roomFromDb(r) {
     title:           r.title || null,
     host:            r.host_nickname,
     hostAccent:      safeAccent(r.host_accent, accentForNick(r.host_nickname)),
-    member_count:    r.member_count || 1,
+    member_count:    r.member_count ?? 1,
     locked:          r.locked,
     audience_mode:   r.audience_mode,
     audience:        r.audience_mode,
@@ -396,21 +422,23 @@ async function sbCreateRoom(slug, title, locked) {
 }
 
 async function sbUpdateRoom(slug, updates) {
-  try {
-    const hostKey = getHostKey(slug);
-    const adminJwt = !hostKey && state.user.isAdmin ? await getAdminJwt() : null;
-    if (!hostKey && !adminJwt) throw new Error('missing host key');
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/room-control`, {
-      method: 'POST',
-      headers: {
-        'Content-Type':  'application/json',
-        'Authorization': `Bearer ${SUPABASE_ANON}`,
-      },
-      body: JSON.stringify({ action: 'update', roomSlug: slug, hostKey: hostKey || undefined, adminJwt: adminJwt || undefined, updates }),
-    });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body.error || `room-control ${res.status}`);
-  } catch (err) { logEvent('error', 'db_update_room', { msg: String(err.message || '').slice(0, 80) }); console.error('sbUpdateRoom:', err); }
+  const hostKey = getHostKey(slug);
+  const adminJwt = !hostKey && state.user.isAdmin ? await getAdminJwt() : null;
+  if (!hostKey && !adminJwt) throw new Error('missing host key');
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/room-control`, {
+    method: 'POST',
+    headers: {
+      'Content-Type':  'application/json',
+      'Authorization': `Bearer ${SUPABASE_ANON}`,
+    },
+    body: JSON.stringify({ action: 'update', roomSlug: slug, hostKey: hostKey || undefined, adminJwt: adminJwt || undefined, updates }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = new Error(body.error || `room-control ${res.status}`);
+    logEvent('error', 'db_update_room', { msg: String(err.message || '').slice(0, 80) });
+    throw err;
+  }
 }
 
 async function sbEndRoom(slug, roomId) {
@@ -468,29 +496,27 @@ async function sbSendMessage(roomId, body) {
 }
 
 async function sbAddBan(roomId, type, value) {
-  try {
-    if (!state.room?.slug) return;
-    const hostKey = getHostKey(state.room.slug);
-    const adminJwt = !hostKey && state.user.isAdmin ? await getAdminJwt() : null;
-    if (!hostKey && !adminJwt) throw new Error('missing host key');
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/room-control`, {
-      method: 'POST',
-      headers: {
-        'Content-Type':  'application/json',
-        'Authorization': `Bearer ${SUPABASE_ANON}`,
-      },
-      body: JSON.stringify({
-        action: 'ban',
-        roomSlug: state.room.slug,
-        hostKey: hostKey || undefined,
-        adminJwt: adminJwt || undefined,
-        type,
-        value,
-      }),
-    });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body.error || `ban ${res.status}`);
-  } catch (err) { console.error('sbAddBan:', err); }
+  if (!state.room?.slug) return;
+  const hostKey = getHostKey(state.room.slug);
+  const adminJwt = !hostKey && state.user.isAdmin ? await getAdminJwt() : null;
+  if (!hostKey && !adminJwt) throw new Error('missing host key');
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/room-control`, {
+    method: 'POST',
+    headers: {
+      'Content-Type':  'application/json',
+      'Authorization': `Bearer ${SUPABASE_ANON}`,
+    },
+    body: JSON.stringify({
+      action: 'ban',
+      roomSlug: state.room.slug,
+      hostKey: hostKey || undefined,
+      adminJwt: adminJwt || undefined,
+      type,
+      value,
+    }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || `ban ${res.status}`);
 }
 
 async function sbModerate(action, targetSessionId, extra = {}) {
@@ -632,6 +658,8 @@ function sbJoinPresence(slug) {
   channel.on('broadcast', { event: 'chat:image' }, ({ payload }) => {
     if (!payload || state.view !== 'room') return;
     if (payload.sessionId === state.user.sessionId) return; // already shown optimistically
+    const size = (payload.thumb?.length || 0) + (payload.full?.length || 0);
+    if (size > 900_000) return; // drop oversized payloads to prevent OOM/stall
     const thumb = payload.thumb || payload.src;
     const full  = payload.full  || payload.thumb || payload.src;
     appendImageMessage(payload.nick, thumb, full, payload.time || Date.now(), payload.sessionId);
@@ -676,7 +704,8 @@ async function sbTrackPresence(updates) {
 
 // Fire a realtime broadcast to everyone on the room's presence channel.
 function broadcastToRoom(event, payload) {
-  return state._sbPresenceChan?.send({ type: 'broadcast', event, payload }).catch(() => {});
+  if (!state._sbPresenceChan) return Promise.reject(new Error('no channel'));
+  return state._sbPresenceChan.send({ type: 'broadcast', event, payload });
 }
 
 function handleModerationEvent(evt) {
@@ -740,12 +769,12 @@ async function fetchLkToken(slug) {
   return res.json(); // { token, lkUrl, role }
 }
 
-async function lkConnect(slug) {
+async function lkConnect(slug, tokenData) {
   if (state._lkRoom) return;
   dbg('lk', 'connecting to room', slug);
   lkSetStatusDot('lk-connecting');
   try {
-    const { token, lkUrl, role } = await fetchLkToken(slug);
+    const { token, lkUrl, role } = tokenData ?? await fetchLkToken(slug);
     const { Room, RoomEvent } = await ensureLk();
 
     const room = new Room({ adaptiveStream: true, dynacast: true });
@@ -759,6 +788,10 @@ async function lkConnect(slug) {
 
     await room.connect(lkUrl || LIVEKIT_WS_URL, token);
     state._lkRoom = room;
+    // Always re-announce presence after a successful connect. Without this, a manual
+    // "Rejoin" after retries exhausted (which called untrack()) leaves the user invisible
+    // to others when their role didn't change and the mic wasn't restored.
+    sbTrackPresence({}).catch(() => {});
     if (role && state.user.role !== role) {
       if (role !== 'host') forgetHostKey(slug);
       state.user.role = role;
@@ -775,6 +808,9 @@ async function lkConnect(slug) {
     if (state.media.wantsMic && !micBlockedByAudience()) {
       await setMic(true, { silent: true, userIntent: false });
     }
+    // Refresh banner — dismisses the "tap to talk" hint that micBanner() may have
+    // shown during the connection handshake before the mic was silently restored.
+    micBanner();
   } catch (err) {
     const s = err.httpStatus;
     logEvent('error', 'lk_connect_failed', { httpStatus: s || 0, msg: String(err.message || '').slice(0, 80) });
@@ -813,9 +849,10 @@ async function lkDisconnect() {
 }
 
 function lkCleanLocalTracks() {
-  if (state._localMicTrack)    { state._localMicTrack.stop();    state._localMicTrack    = null; }
-  if (state._localCamTrack)    { state._localCamTrack.stop();    state._localCamTrack    = null; }
-  if (state._localScreenTrack) { state._localScreenTrack.stop(); state._localScreenTrack = null; }
+  if (state._localMicTrack)              { state._localMicTrack.stop();              state._localMicTrack              = null; }
+  if (state._localCamTrack)              { state._localCamTrack.stop();              state._localCamTrack              = null; }
+  if (state._localScreenTrack)           { state._localScreenTrack.stop();           state._localScreenTrack           = null; }
+  if (state.media._localScreenAudioTrack) { state.media._localScreenAudioTrack.stop(); state.media._localScreenAudioTrack = null; }
 }
 
 // ── LiveKit event handlers ────────────────────────────────────────
@@ -920,10 +957,11 @@ function lkOnDisconnected() {
   if (state.view !== 'room') return; // intentional or stale
   logEvent('warn', 'lk_disconnected', { attempt: _lkReconnectAttempt });
   state._lkRoom = null;
+  lkCleanLocalTracks(); // stop physical devices so OS mic/camera indicators go dark during reconnect
   document.querySelectorAll('.lk-audio').forEach(el => el.remove());
   hideScreenShareArea();
-  // Device/tracks are gone; keep a separate intent so reconnect can restore
-  // without telling presence that audio is still publishing.
+  if (state.media.cameraOn) hideParticipantVideo(state.user.sessionId);
+  // Keep a separate intent so reconnect can restore mic automatically.
   state.media.wantsMic = state.media.wantsMic || state.media.micOn;
   state.media.micOn = false;
   state.media.micReady = false; state.media.cameraOn = false; state.media.screenOn = false;
@@ -981,6 +1019,7 @@ function showParticipantVideo(track, identity) {
   const video = track.attach();
   video.autoplay = true; video.playsInline = true;
   video.muted = (identity === state.user.sessionId);
+  video._lkTrack = track;
   const isLocal = identity === state.user.sessionId;
   if (isLocal && state.settings.mirrorSelf && state.media.flipCamFacing !== 'environment') video.style.transform = 'scaleX(-1)';
   wrap.innerHTML = '';
@@ -991,31 +1030,37 @@ function showParticipantVideo(track, identity) {
 }
 
 // Fullscreen toggle for any video tile (works on desktop + iOS Safari).
-// Attaches a one-time listener to resume playback after exit, which is needed
-// because some browsers/iOS pause the video element when leaving fullscreen.
+// iOS Safari clears srcObject on fullscreen exit, so we re-attach the LK track
+// (stored as video._lkTrack) before resuming playback.
 function goFullscreen(video) {
   if (!video) return;
   if (document.fullscreenElement || document.webkitFullscreenElement) {
     (document.exitFullscreen || document.webkitExitFullscreen)?.call(document);
     return;
   }
+
+  const recoverVideo = () => {
+    if (video._lkTrack) video._lkTrack.attach(video);
+    video.play().catch(() => {});
+  };
+
   if (video.requestFullscreen) {
     video.requestFullscreen();
     document.addEventListener('fullscreenchange', function onFsExit() {
       if (!document.fullscreenElement) {
-        video.play().catch(() => {});
+        recoverVideo();
         document.removeEventListener('fullscreenchange', onFsExit);
       }
     });
   } else if (video.webkitEnterFullscreen) {
     // iOS Safari native fullscreen — fires webkitendfullscreen on the element
-    video.addEventListener('webkitendfullscreen', () => video.play().catch(() => {}), { once: true });
+    video.addEventListener('webkitendfullscreen', recoverVideo, { once: true });
     video.webkitEnterFullscreen();
   } else if (video.webkitRequestFullscreen) {
     video.webkitRequestFullscreen();
     document.addEventListener('webkitfullscreenchange', function onFsExit() {
       if (!document.webkitFullscreenElement) {
-        video.play().catch(() => {});
+        recoverVideo();
         document.removeEventListener('webkitfullscreenchange', onFsExit);
       }
     });
@@ -1088,6 +1133,7 @@ function showScreenShareVideo(track, participant) {
   area.innerHTML = `<div class="ss-label">${escHtml(name)} is sharing their screen</div>`;
   const video = track.attach();
   video.autoplay = true; video.playsInline = true; video.muted = true;
+  video._lkTrack = track;
   area.appendChild(video);
   addFullscreenBtn(area, video);
 }
@@ -1164,12 +1210,18 @@ function renderLobby() {
     empty.hidden = true;
     grid.innerHTML = state.rooms.map(renderRoomCard).join('');
     grid.querySelectorAll('.room-card').forEach(card => {
-      card.addEventListener('click', () => {
+      const tryJoin = () => {
         const slug = card.dataset.slug;
         const room = state.rooms.find(r => r.slug === slug);
         if (!room) return;
-        if (room.locked && !isHostForRoom(room)) return;
+        if (room.locked && !isHostForRoom(room)) { showLobbyBanner('This room is locked.'); return; }
         requireNickname(() => joinRoom(slug));
+      };
+      card.addEventListener('click', tryJoin);
+      card.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        e.preventDefault();
+        tryJoin();
       });
     });
   }
@@ -1225,20 +1277,27 @@ async function doShowLobby() {
   state.media = {
     micOn: false, wantsMic: false, micReady: false, serverMuted: false, deafened: false,
     cameraOn: false, screenOn: false, _preDeafenMicOn: false, _preServerMuteWantsMic: false,
-    hasMultipleCameras: false, flipCamFacing: 'user',
+    hasMultipleCameras: false, flipCamFacing: 'user', _localScreenAudioTrack: null,
   };
   state.ui.settingsOpen = false;
   stopMicTest();
   state.user.role = 'guest';
   state.user.ghost = false;
   state.kickedSessionIds = new Set();
-  state._lastMsgTime = 0;
   _qualityMap = {};
 
   document.getElementById('view-room').hidden = true;
   document.getElementById('view-lobby').hidden = false;
   document.getElementById('settings-panel').hidden = true;
   document.getElementById('user-menu').hidden = true;
+
+  if (state.ui.chatHidden) {
+    state.ui.chatHidden = false;
+    document.getElementById('panel-chat')?.classList.remove('chat-hidden');
+    document.getElementById('panel-participants')?.classList.remove('chat-hidden-partner');
+    const tb = document.getElementById('btn-toggle-chat');
+    if (tb) tb.textContent = 'hide chat';
+  }
 
   _msgBurst.length = 0; // reset chat cooldown between sessions
 
@@ -1278,12 +1337,33 @@ async function joinRoom(slug) {
     return;
   }
 
-  state.user.role = isHostForRoom(room) ? 'host' : 'guest';
+  // Verify server access before joining presence — prevents banned users or
+  // JS-bypass attempts from briefly appearing in the participant list and
+  // reading chat history before the 403 triggers leaveRoom().
+  let tokenData;
+  try {
+    tokenData = await fetchLkToken(slug);
+  } catch (err) {
+    const s = err.httpStatus;
+    if (s === 403 && String(err.message).includes('banned')) {
+      showLobbyBanner('You are banned from this room.');
+    } else if (s === 403) {
+      showLobbyBanner('This room is locked.');
+    } else if (s === 404 || s === 410) {
+      showLobbyBanner('This room is no longer available.');
+    } else {
+      showLobbyBanner('Could not join room. Try again.');
+    }
+    _lastJoinTime = 0;
+    return;
+  }
 
-  await enterRoom(room, true);
+  state.user.role = tokenData.role === 'host' ? 'host' : 'guest';
+
+  await enterRoom(room, true, tokenData);
 }
 
-async function enterRoom(room, pushNav) {
+async function enterRoom(room, pushNav, tokenData) {
   dbg('lifecycle', 'enter room', room.slug, 'role:', state.user.role);
   state.view = 'room';
   state.room = room;
@@ -1352,12 +1432,11 @@ async function enterRoom(room, pushNav) {
 
   renderRoom();
   micBanner();
-
   setTimeout(() => appendSystemMessage(`${state.user.nickname} joined`, 'join'), 200);
   if (state.settings.joinSound) playJoinSound();
 
-  // Connect to LiveKit (non-blocking)
-  if (room.id) lkConnect(room.slug);
+  // Connect to LiveKit (non-blocking). Pass pre-fetched tokenData when available to skip the extra round-trip.
+  if (room.id) lkConnect(room.slug, tokenData);
 }
 
 async function leaveRoom() {
@@ -1366,7 +1445,7 @@ async function leaveRoom() {
 
   appendSystemMessage(`${state.user.nickname} left`, 'leave');
 
-  if (state.room.id && state.user.role === 'host') {
+  if (state.room.id && state.user.role === 'host' && isHostForRoom(state.room)) {
     await sbEndRoom(state.room.slug, state.room.id);
   }
 
@@ -1415,9 +1494,24 @@ async function createRoom() {
     const data = await sbCreateRoom(slug, title, false);
     room = roomFromDb(data);
   } catch (err) {
-    console.error('Failed to create room:', err);
-    showLobbyBanner('Could not create room. Try again.');
-    return;
+    // On slug collision, retry once with a freshly generated slug.
+    if (String(err.message).includes('slug already exists')) {
+      const retrySlug = generateSlug(`${title}-${Math.floor(Math.random() * 900) + 100}`);
+      try {
+        const data2 = await sbCreateRoom(retrySlug, title, false);
+        room = roomFromDb(data2);
+      } catch (err2) {
+        console.error('Failed to create room (retry):', err2);
+        _lastRoomCreate = 0; // release cooldown so the user can try again immediately
+        showLobbyBanner('Could not create room. Try again.');
+        return;
+      }
+    } else {
+      console.error('Failed to create room:', err);
+      _lastRoomCreate = 0; // release cooldown on any other failure too
+      showLobbyBanner('Could not create room. Try again.');
+      return;
+    }
   }
 
   state.user.role = 'host';
@@ -1434,7 +1528,8 @@ function onTitleEdit(value) {
   if (r) r.title = state.room.title;
   clearTimeout(_titleSaveTimer);
   _titleSaveTimer = setTimeout(() => {
-    if (state.room?.slug) sbUpdateRoom(state.room.slug, { title: state.room.title });
+    if (state.room?.slug) sbUpdateRoom(state.room.slug, { title: state.room.title })
+      .catch(() => showBanner('Title save failed. Try again.', null, null, 'error'));
   }, 600);
 }
 
@@ -1446,7 +1541,6 @@ function renderRoom() {
   renderParticipants();
   renderChat(state.chat);
   updateDock();
-  setActivePanel(state.ui.activeTab);
 }
 
 function updateTopbar() {
@@ -1690,7 +1784,8 @@ function buildColorSwatches() {
     `<button type="button" class="color-swatch${selected ? ' selected' : ''}${extra}" role="radio"
        aria-checked="${selected ? 'true' : 'false'}" data-color="${escHtml(val)}"
        style="--sw:${bg}" title="${label}" aria-label="${label} color"></button>`;
-  const autoBg = accentForNick(state.user.nickname || 'a');
+  const _typedName = document.getElementById('input-nickname')?.value || state.user.nickname || 'a';
+  const autoBg = accentForNick(_typedName);
   let html = swatch('', autoBg, 'auto', !_setupColor);
   html += NORMAL_COLORS.map(c => swatch(c, c, c, _setupColor === c)).join('');
   html += SHINY_COLORS.map(c => swatch(c, c, c, _setupColor === c, ' shiny')).join('');
@@ -1917,122 +2012,145 @@ function toggleDeafen() {
   }
 }
 
+let _cameraToggling = false;
 async function toggleCamera() {
-  if (!state._lkRoom) {
-    showBanner('Camera is available after voice connects.', '', null, 'warning');
-    updateDockBtnState('btn-camera', false);
-    return;
-  }
+  if (_cameraToggling) return;
+  _cameraToggling = true;
+  try {
+    if (!state._lkRoom) {
+      showBanner('Camera is available after voice connects.', '', null, 'warning');
+      updateDockBtnState('btn-camera', false);
+      return;
+    }
 
-  if (!state.media.cameraOn) {
-    // Show a loading indicator on the local card while the device warms up (can take 1-3s).
-    const myCard = document.querySelector(`.participant-card[data-sid="${CSS.escape(state.user.sessionId)}"]`);
-    myCard?.classList.add('cam-loading');
-    const { createLocalVideoTrack } = await ensureLk();
-    try {
-      // Build constraints — if no explicit device selected, let browser pick any camera.
-      const camConstraints = {};
-      if (state.settings.cameraDeviceId && state.settings.cameraDeviceId !== 'default') {
-        camConstraints.deviceId = { exact: state.settings.cameraDeviceId };
-      }
-      const resMap = { '360p': [640, 360], '480p': [854, 480], '720p': [1280, 720], '1080p': [1920, 1080] };
-      const [rW, rH] = resMap[state.settings.cameraResolution] || resMap['720p'];
-      camConstraints.width  = { ideal: rW };
-      camConstraints.height = { ideal: rH };
-      let track;
+    if (!state.media.cameraOn) {
+      // Show a loading indicator on the local card while the device warms up (can take 1-3s).
+      const myCard = document.querySelector(`.participant-card[data-sid="${CSS.escape(state.user.sessionId)}"]`);
+      myCard?.classList.add('cam-loading');
+      const { createLocalVideoTrack } = await ensureLk();
       try {
-        track = await createLocalVideoTrack(camConstraints);
-      } catch (firstErr) {
-        // If the exact deviceId failed or no camera found, fall back to browser default.
-        if (Object.keys(camConstraints).length > 0 || firstErr.name === 'NotFoundError') {
-          track = await createLocalVideoTrack({});
-        } else {
-          throw firstErr;
+        // Build constraints — if no explicit device selected, let browser pick any camera.
+        const camConstraints = {};
+        if (state.settings.cameraDeviceId && state.settings.cameraDeviceId !== 'default') {
+          camConstraints.deviceId = { exact: state.settings.cameraDeviceId };
         }
+        const resMap = { '720p': [1280, 720], '1080p': [1920, 1080] };
+        const [rW, rH] = resMap[state.settings.cameraResolution] || resMap['720p'];
+        camConstraints.width  = { min: Math.round(rW * 0.75), ideal: rW };
+        camConstraints.height = { min: Math.round(rH * 0.75), ideal: rH };
+        let track;
+        try {
+          track = await createLocalVideoTrack(camConstraints);
+        } catch (firstErr) {
+          // Only fall back to browser-default constraints when the chosen device failed
+          // specifically (NotFoundError or exact deviceId mismatch). For other errors
+          // (NotAllowedError, NotReadableError) the fallback would also fail — rethrow
+          // immediately so the outer catch shows the right banner without a second delay.
+          if (camConstraints.deviceId || firstErr.name === 'NotFoundError') {
+            track = await createLocalVideoTrack({});
+          } else {
+            throw firstErr;
+          }
+        }
+        await state._lkRoom.localParticipant.publishTrack(track);
+        state._localCamTrack = track;
+        state.media.cameraOn = true;
+        // Detect multiple cameras NOW (before showParticipantVideo) so the flip button
+        // appears immediately — populateDevices() is internally async and would miss this call.
+        const camDevices = await navigator.mediaDevices?.enumerateDevices().catch(() => []) ?? [];
+        state.media.hasMultipleCameras = camDevices.filter(d => d.kind === 'videoinput').length > 1;
+        populateDevices();
+        showParticipantVideo(track, state.user.sessionId);
+      } catch (err) {
+        logEvent('error', 'cam_failed', { errName: err?.name || 'unknown' });
+        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+          showBanner('Camera access denied. Allow it in browser settings, then retry.', 'Retry', () => toggleCamera());
+        } else if (err.name === 'NotFoundError') {
+          showBanner('No camera found. Connect a camera or enable Continuity Camera on your iPhone.', 'OK', hideBanner);
+        } else {
+          showBanner('Could not start camera.', 'Retry', toggleCamera);
+        }
+      } finally {
+        myCard?.classList.remove('cam-loading');
       }
-      await state._lkRoom.localParticipant.publishTrack(track);
-      state._localCamTrack = track;
-      state.media.cameraOn = true;
-      // Detect multiple cameras NOW (before showParticipantVideo) so the flip button
-      // appears immediately — populateDevices() is internally async and would miss this call.
-      const camDevices = await navigator.mediaDevices?.enumerateDevices().catch(() => []) ?? [];
-      state.media.hasMultipleCameras = camDevices.filter(d => d.kind === 'videoinput').length > 1;
-      populateDevices();
-      showParticipantVideo(track, state.user.sessionId);
-    } catch (err) {
-      logEvent('error', 'cam_failed', { errName: err?.name || 'unknown' });
-      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        showBanner('Camera access denied. Allow it in browser settings, then retry.', 'Retry', () => toggleCamera());
-      } else if (err.name === 'NotFoundError') {
-        showBanner('No camera found. Connect a camera or enable Continuity Camera on your iPhone.', 'OK', hideBanner);
-      } else {
-        showBanner('Could not start camera.', 'Retry', toggleCamera);
+    } else {
+      if (state._localCamTrack) {
+        try { await state._lkRoom.localParticipant.unpublishTrack(state._localCamTrack); } catch {}
+        state._localCamTrack.stop();
+        state._localCamTrack = null;
       }
-    } finally {
-      myCard?.classList.remove('cam-loading');
+      state.media.cameraOn = false;
+      hideParticipantVideo(state.user.sessionId);
     }
-  } else {
-    if (state._localCamTrack) {
-      await state._lkRoom.localParticipant.unpublishTrack(state._localCamTrack);
-      state._localCamTrack.stop();
-      state._localCamTrack = null;
-    }
-    state.media.cameraOn = false;
-    hideParticipantVideo(state.user.sessionId);
-  }
 
-  updateDockBtnState('btn-camera', state.media.cameraOn);
-  _syncSharingPresence();
+    updateDockBtnState('btn-camera', state.media.cameraOn);
+    _syncSharingPresence();
+  } finally {
+    _cameraToggling = false;
+  }
 }
 
+let _screenToggling = false;
 async function toggleScreen() {
-  if (!state._lkRoom) {
-    showBanner('Screen share is available after voice connects.', '', null, 'warning');
-    updateDockBtnState('btn-screen', false);
-    return;
-  }
-
-  if (!state.media.screenOn) {
-    const { createLocalScreenTracks } = await ensureLk();
-    try {
-      const tracks = await createLocalScreenTracks({ audio: true });
-      const videoTrack = tracks[0];
-      const audioTrack = tracks[1] || null;
-      if (!videoTrack) throw new Error('no screen video track');
-
-      await state._lkRoom.localParticipant.publishTrack(videoTrack);
-      if (audioTrack) {
-        state._lkRoom.localParticipant.publishTrack(audioTrack).catch(() => {});
-      }
-      state._localScreenTrack = videoTrack;
-      state.media.screenOn = true;
-
-      showScreenShareVideo(videoTrack, { name: state.user.nickname, identity: state.user.sessionId });
-      appendSystemMessage(`${state.user.nickname} started sharing their screen`, 'action');
-
-      // Browser stop-sharing button (native UI)
-      videoTrack.mediaStreamTrack.addEventListener('ended', () => {
-        if (state.media.screenOn) toggleScreen();
-      }, { once: true });
-    } catch (err) {
-      if (err.name !== 'AbortError' && err.name !== 'NotAllowedError') {
-        logEvent('error', 'screen_share_failed', { errName: err?.name || 'unknown' });
-        showBanner('Could not share screen.', 'OK', hideBanner);
-      }
+  if (_screenToggling) return;
+  _screenToggling = true;
+  try {
+    if (!state._lkRoom) {
+      showBanner('Screen share is available after voice connects.', '', null, 'warning');
+      updateDockBtnState('btn-screen', false);
+      return;
     }
-  } else {
-    if (state._localScreenTrack) {
-      await state._lkRoom.localParticipant.unpublishTrack(state._localScreenTrack);
-      state._localScreenTrack.stop();
-      state._localScreenTrack = null;
-    }
-    state.media.screenOn = false;
-    hideScreenShareArea();
-    appendSystemMessage(`${state.user.nickname} stopped sharing their screen`, 'action');
-  }
 
-  updateDockBtnState('btn-screen', state.media.screenOn);
-  _syncSharingPresence();
+    if (!state.media.screenOn) {
+      const { createLocalScreenTracks } = await ensureLk();
+      try {
+        const tracks = await createLocalScreenTracks({ audio: true });
+        const videoTrack = tracks[0];
+        const audioTrack = tracks[1] || null;
+        if (!videoTrack) throw new Error('no screen video track');
+
+        await state._lkRoom.localParticipant.publishTrack(videoTrack);
+        if (audioTrack) {
+          state._lkRoom.localParticipant.publishTrack(audioTrack).catch(() => {});
+        }
+        state._localScreenTrack = videoTrack;
+        state.media._localScreenAudioTrack = audioTrack || null;
+        state.media.screenOn = true;
+
+        showScreenShareVideo(videoTrack, { name: state.user.nickname, identity: state.user.sessionId });
+        appendSystemMessage(`${state.user.nickname} started sharing their screen`, 'action');
+
+        // Browser stop-sharing button (native UI)
+        videoTrack.mediaStreamTrack.addEventListener('ended', () => {
+          if (state.media.screenOn) toggleScreen();
+        }, { once: true });
+      } catch (err) {
+        if (err.name !== 'AbortError' && err.name !== 'NotAllowedError') {
+          logEvent('error', 'screen_share_failed', { errName: err?.name || 'unknown' });
+          showBanner('Could not share screen.', 'OK', hideBanner);
+        }
+      }
+    } else {
+      if (state._localScreenTrack) {
+        try { await state._lkRoom.localParticipant.unpublishTrack(state._localScreenTrack); } catch {}
+        state._localScreenTrack.stop();
+        state._localScreenTrack = null;
+      }
+      if (state.media._localScreenAudioTrack) {
+        try { await state._lkRoom.localParticipant.unpublishTrack(state.media._localScreenAudioTrack); } catch {}
+        state.media._localScreenAudioTrack.stop();
+        state.media._localScreenAudioTrack = null;
+      }
+      state.media.screenOn = false;
+      hideScreenShareArea();
+      appendSystemMessage(`${state.user.nickname} stopped sharing their screen`, 'action');
+    }
+
+    updateDockBtnState('btn-screen', state.media.screenOn);
+    _syncSharingPresence();
+  } finally {
+    _screenToggling = false;
+  }
 }
 
 // ── § BANNER ──────────────────────────────────────────────────────
@@ -2145,38 +2263,46 @@ function populateDevices() {
 // ── § HOST CONTROLS ───────────────────────────────────────────────
 async function toggleLock() {
   if (!state.room) return;
-  state.room.locked = !state.room.locked;
-
+  const prev = state.room.locked;
+  state.room.locked = !prev;
   updateDock();
   updateTopbar();
-
-  appendSystemMessage(
-    state.room.locked ? 'Room locked by host' : 'Room unlocked by host', 'action'
-  );
-
-  await sbUpdateRoom(state.room.slug, { locked: state.room.locked });
-
-  // postgres_changes subscription in sbWatchCurrentRoom notifies all participants
-
-  const r = state.rooms.find(x => x.slug === state.room.slug);
-  if (r) r.locked = state.room.locked;
+  try {
+    await sbUpdateRoom(state.room.slug, { locked: state.room.locked });
+    appendSystemMessage(state.room.locked ? 'Room locked by host' : 'Room unlocked by host', 'action');
+    // postgres_changes subscription in sbWatchCurrentRoom notifies all participants
+    const r = state.rooms.find(x => x.slug === state.room?.slug);
+    if (r) r.locked = state.room.locked;
+  } catch {
+    state.room.locked = prev;
+    updateDock();
+    updateTopbar();
+    showBanner('Failed to update room. Try again.', null, null, 'error');
+  }
 }
 
 async function toggleAudience() {
   if (!state.room) return;
-  state.room.audience = !state.room.audience;
-
-  appendSystemMessage(
-    state.room.audience
-      ? 'Audience mode on — only the host can speak'
-      : 'Audience mode off — everyone can speak',
-    'action'
-  );
-
-  await sbUpdateRoom(state.room.slug, { audience_mode: state.room.audience });
+  const prev = state.room.audience;
+  state.room.audience = !prev;
   updateTopbar();
   updateDock();
   renderParticipants();
+  try {
+    await sbUpdateRoom(state.room.slug, { audience_mode: state.room.audience });
+    appendSystemMessage(
+      state.room.audience
+        ? 'Audience mode on — only the host can speak'
+        : 'Audience mode off — everyone can speak',
+      'action'
+    );
+  } catch {
+    state.room.audience = prev;
+    updateTopbar();
+    updateDock();
+    renderParticipants();
+    showBanner('Failed to update room. Try again.', null, null, 'error');
+  }
 }
 
 async function toggleGhost() {
@@ -2221,7 +2347,6 @@ async function sendMessage() {
   hideChatCooldown();
 
   _msgBurst.push(Date.now());
-  state._lastMsgTime = Date.now();
 
   const msgId = ++_msgIdSeq;
   input.value = '';
@@ -2348,6 +2473,7 @@ function appendImageMessage(nick, thumb, full, time, sessionId) {
   imgEl?.addEventListener('error', () => imgEl.classList.add('chat-msg-img--broken'));
   if (isNearBottom(el)) el.scrollTop = el.scrollHeight;
   updateScrollBtn();
+  return div;
 }
 
 async function sendChatImage(file) {
@@ -2363,13 +2489,22 @@ async function sendChatImage(file) {
     showChatImgError(imgUploadError(err));
     return;
   }
+  if (thumb.length + full.length > 800_000) {
+    showChatImgError('Image is too large to send. Try a smaller photo.');
+    return;
+  }
   _msgBurst.push(Date.now());
-  appendImageMessage(state.user.nickname, thumb, full, Date.now(), state.user.sessionId); // optimistic
-  broadcastToRoom('chat:image', {
-    nick: state.user.nickname, thumb, full,
-    src: thumb, // backward compat for old clients
-    time: Date.now(), sessionId: state.user.sessionId,
-  });
+  const optimisticEl = appendImageMessage(state.user.nickname, thumb, full, Date.now(), state.user.sessionId); // optimistic
+  try {
+    await broadcastToRoom('chat:image', {
+      nick: state.user.nickname, thumb, full,
+      src: thumb, // backward compat for old clients
+      time: Date.now(), sessionId: state.user.sessionId,
+    });
+  } catch {
+    optimisticEl?.remove();
+    showChatImgError("Couldn't send image. Check your connection.");
+  }
 }
 
 function openImageViewer(src) {
@@ -2402,8 +2537,8 @@ function openUserMenu(participant, x, y) {
   _menuTarget = participant;
   const menu = document.getElementById('user-menu');
   menu.hidden = false;
-  menu.style.left = `${Math.min(x, window.innerWidth  - 160)}px`;
-  menu.style.top  = `${Math.min(y, window.innerHeight - 160)}px`;
+  menu.style.left = `${Math.max(4, Math.min(x, window.innerWidth  - 160))}px`;
+  menu.style.top  = `${Math.max(4, Math.min(y, window.innerHeight - 160))}px`;
   menu.querySelector('[data-action="mute"]').textContent = participant.serverMuted ? 'unmute' : 'mute';
 }
 
@@ -2412,15 +2547,18 @@ function closeUserMenu() {
   _menuTarget = null;
 }
 
-function handleDirectMute(p) {
-  p.serverMuted = !p.serverMuted;
-  sbModerate('mute', p.sessionId, { muted: p.serverMuted }).catch(err => {
-    console.error('moderate mute:', err);
-  });
-  appendSystemMessage(
-    p.serverMuted ? `Host muted ${p.nickname}` : `Host unmuted ${p.nickname}`, 'action'
-  );
+async function handleDirectMute(p) {
+  const prev = p.serverMuted;
+  p.serverMuted = !prev;
   renderParticipants();
+  try {
+    await sbModerate('mute', p.sessionId, { muted: p.serverMuted });
+    appendSystemMessage(p.serverMuted ? `Host muted ${p.nickname}` : `Host unmuted ${p.nickname}`, 'action');
+  } catch (err) {
+    console.error('moderate mute:', err);
+    p.serverMuted = prev;
+    renderParticipants();
+  }
 }
 
 async function handleUserAction(action) {
@@ -2429,67 +2567,77 @@ async function handleUserAction(action) {
   if (!p) return;
 
   switch (action) {
-    case 'mute':
-      p.serverMuted = !p.serverMuted;
-      sbModerate('mute', p.sessionId, { muted: p.serverMuted }).catch(err => {
-        console.error('moderate mute:', err);
-      });
-      appendSystemMessage(
-        p.serverMuted ? `Host muted ${p.nickname}` : `Host unmuted ${p.nickname}`, 'action'
-      );
+    case 'mute': {
+      const prev = p.serverMuted;
+      p.serverMuted = !prev;
       renderParticipants();
-      break;
-
-    case 'kick':
-      if (p.sessionId) {
-        state.kickedSessionIds.add(p.sessionId);
-        sbModerate('kick', p.sessionId).catch(err => {
-          console.error('moderate kick:', err);
-        });
+      try {
+        await sbModerate('mute', p.sessionId, { muted: p.serverMuted });
+        appendSystemMessage(p.serverMuted ? `Host muted ${p.nickname}` : `Host unmuted ${p.nickname}`, 'action');
+      } catch (err) {
+        console.error('moderate mute:', err);
+        p.serverMuted = prev;
+        renderParticipants();
       }
+      break;
+    }
+
+    case 'kick': {
+      if (!p.sessionId) break;
+      const prevParticipants = [...state.participants];
+      state.kickedSessionIds.add(p.sessionId);
       state.participants = state.participants.filter(x => x.sessionId !== p.sessionId);
       state.room.member_count = state.participants.length;
       appendSystemMessage(`${p.nickname} was kicked`, 'leave');
       renderParticipants();
       updateTopbar();
-      break;
-
-    case 'ban':
-      if (p.sessionId) {
-        state.kickedSessionIds.add(p.sessionId);
+      try {
+        await sbModerate('kick', p.sessionId);
+      } catch (err) {
+        console.error('moderate kick:', err);
+        state.kickedSessionIds.delete(p.sessionId);
+        state.participants = prevParticipants;
+        state.room.member_count = prevParticipants.length;
+        appendSystemMessage(`Could not kick ${p.nickname}`, 'action');
+        renderParticipants();
+        updateTopbar();
       }
+      break;
+    }
+
+    case 'ban': {
+      if (p.sessionId) state.kickedSessionIds.add(p.sessionId);
+      const prevParticipants = [...state.participants];
       state.participants = state.participants.filter(x => x.sessionId !== p.sessionId);
-      state.bans.push({ nickname: p.nickname, sessionId: p.sessionId || '', type: 'nickname' });
       state.room.member_count = state.participants.length;
       appendSystemMessage(`${p.nickname} was banned`, 'leave');
-      if (state.room?.id) {
-        (async () => {
+      renderParticipants();
+      updateTopbar();
+      try {
+        if (state.room?.id) {
           await sbAddBan(state.room.id, 'nickname', p.nickname);
           if (p.sessionId) {
             await sbAddBan(state.room.id, 'session', p.sessionId);
             await sbModerate('ban', p.sessionId);
           }
-        })().catch(console.error);
-      } else if (p.sessionId) {
-        sbModerate('ban', p.sessionId).catch(console.error);
+        } else if (p.sessionId) {
+          await sbModerate('ban', p.sessionId);
+        }
+      } catch (err) {
+        console.error('moderate ban:', err);
+        if (p.sessionId) state.kickedSessionIds.delete(p.sessionId);
+        state.participants = prevParticipants;
+        state.room.member_count = prevParticipants.length;
+        appendSystemMessage(`Could not ban ${p.nickname}`, 'action');
+        renderParticipants();
+        updateTopbar();
       }
-      renderParticipants();
-      updateTopbar();
       break;
+    }
 
   }
 }
 
-// ── § MOBILE TABS ─────────────────────────────────────────────────
-function setActivePanel(tab) {
-  state.ui.activeTab = tab;
-  document.querySelectorAll('[data-panel]').forEach(panel => {
-    panel.dataset.active = panel.dataset.panel === tab ? 'true' : 'false';
-  });
-  document.querySelectorAll('.tab-btn').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.tab === tab);
-  });
-}
 
 // ── § SOUND ───────────────────────────────────────────────────────
 function playJoinSound() {
@@ -2504,6 +2652,7 @@ function playJoinSound() {
     osc.frequency.setValueAtTime(1100, ctx.currentTime + 0.07);
     gain.gain.setValueAtTime(0.08, ctx.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+    osc.onended = () => ctx.close().catch(() => {});
     osc.start(ctx.currentTime);
     osc.stop(ctx.currentTime + 0.3);
   } catch (_) {}
@@ -2548,13 +2697,21 @@ function escHtml(str) {
 // ── § INIT ────────────────────────────────────────────────────────
 async function init() {
   await loadIdentity();
+  _loadSettings();
+  // Clamp must come AFTER _loadSettings restores the saved resolution from localStorage.
+  if (!state.user.isAdmin && state.settings.cameraResolution === '1080p') {
+    state.settings.cameraResolution = '720p';
+  }
+
+  // Sync checkboxes to persisted values (HTML defaults may differ from saved state).
+  document.getElementById('chk-noise').checked     = state.settings.noiseSuppression;
+  document.getElementById('chk-joinsound').checked = state.settings.joinSound;
+  document.getElementById('chk-mirror').checked    = state.settings.mirrorSelf;
 
   // Populate camera resolution options (1080p restricted to admin).
   const selRes = document.getElementById('sel-resolution');
   if (selRes) {
     const resOpts = [
-      { val: '360p', label: '360p' },
-      { val: '480p', label: '480p' },
       { val: '720p', label: '720p' },
     ];
     if (state.user.isAdmin) resOpts.push({ val: '1080p', label: '1080p (admin)' });
@@ -2625,7 +2782,9 @@ async function init() {
     if (e.key === 'Enter') document.getElementById('btn-nickname-confirm').click();
   });
 
-  document.getElementById('modal-overlay').addEventListener('click', closeModals);
+  document.getElementById('modal-overlay').addEventListener('click', () => {
+    if (!state._pendingAction) closeModals();
+  });
 
   // ── Inline room title (host) ──
   const titleInput = document.getElementById('topbar-title');
@@ -2656,10 +2815,6 @@ async function init() {
     document.getElementById('panel-chat').classList.toggle('chat-hidden', state.ui.chatHidden);
     document.getElementById('panel-participants').classList.toggle('chat-hidden-partner', state.ui.chatHidden);
     document.getElementById('btn-toggle-chat').textContent = state.ui.chatHidden ? 'show chat' : 'hide chat';
-  });
-
-  document.querySelectorAll('.tab-btn').forEach(btn => {
-    btn.addEventListener('click', () => setActivePanel(btn.dataset.tab));
   });
 
   // ── Host controls ──
@@ -2705,29 +2860,36 @@ async function init() {
   // ── Settings ──
   document.getElementById('sel-mic').addEventListener('change', e => {
     state.settings.micDeviceId = e.target.value;
+    _saveSettings();
     applyNoiseSuppression(); // re-acquire mic track with the new device immediately
   });
   document.getElementById('sel-speaker').addEventListener('change', e => {
     state.settings.speakerDeviceId = e.target.value;
+    _saveSettings();
     applySpeakerDevice(e.target.value);
   });
   document.getElementById('sel-camera')?.addEventListener('change', e => {
     state.settings.cameraDeviceId = e.target.value;
+    _saveSettings();
   });
   document.getElementById('sel-resolution')?.addEventListener('change', e => {
     state.settings.cameraResolution = e.target.value;
+    _saveSettings();
   });
   // Refresh device lists when a camera or mic is plugged in or removed.
   navigator.mediaDevices?.addEventListener('devicechange', () => populateDevices());
   document.getElementById('chk-noise').addEventListener('change', e => {
     state.settings.noiseSuppression = e.target.checked;
+    _saveSettings();
     applyNoiseSuppression(); // re-acquire so it takes effect mid-call
   });
   document.getElementById('chk-joinsound').addEventListener('change', e => {
     state.settings.joinSound = e.target.checked;
+    _saveSettings();
   });
   document.getElementById('chk-mirror').addEventListener('change', e => {
     state.settings.mirrorSelf = e.target.checked;
+    _saveSettings();
     const myCard = document.querySelector(`.participant-card[data-sid="${CSS.escape(state.user.sessionId)}"]`);
     if (myCard) {
       const vid = myCard.querySelector('video');
@@ -2798,7 +2960,7 @@ async function init() {
 
     // Host: end the room so it doesn't linger for hours as an abandoned ghost room.
     // keepalive: true lets this fetch complete even after the page is unloading.
-    if (state.room?.id && state.user.role === 'host') {
+    if (state.room?.id && state.user.role === 'host' && isHostForRoom(state.room)) {
       dbg('lifecycle', 'host pagehide — ending room via keepalive fetch');
       const hostKey = getHostKey(state.room.slug);
       fetch(`${SUPABASE_URL}/functions/v1/end-room`, {
