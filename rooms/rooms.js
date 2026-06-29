@@ -13,6 +13,7 @@ async function ensureLk() {
 }
 
 // ── § CONFIG ─────────────────────────────────────────────────────
+const VERSION        = '2026-06-28.5';
 const SUPABASE_URL   = 'https://karogcjefsnnrvlxlgpf.supabase.co';
 const SUPABASE_ANON  = 'sb_publishable_z2jS9qvQUvkSXVspdi2U5w_dFGM_rG-';
 const LIVEKIT_WS_URL = 'wss://pawsweb-z0kamke4.livekit.cloud';
@@ -25,6 +26,9 @@ const ACCENT_COLORS = [
   '#f08ab5', '#c4a0d4', '#7ab8d4', '#8ec4a0', '#d4b07a',
   '#a07ad4', '#7ab4d4', '#d47aaa', '#70b8a0', '#c4a070',
 ];
+
+const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
+const MAX_IMG_BYTES = 15 * 1024 * 1024; // 15 MB
 
 const ADJECTIVES = ['soft','rosy','velvet','hazy','lunar','dewy','misty','coral','dusty','silky'];
 const NOUNS      = ['echo','bloom','drift','glow','mist','haze','petal','wisp','veil','lace'];
@@ -40,6 +44,7 @@ const ICON = {
   mic:    _svg('M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5-3c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z'),
   micOff: _svg('M19 11h-1.7c0 .74-.16 1.43-.43 2.05l1.23 1.23c.56-.98.9-2.09.9-3.28zm-4.02.17c0-.06.02-.11.02-.17V5c0-1.66-1.34-3-3-3S9 3.34 9 5v.18l5.98 5.99zM4.27 3L3 4.27l6.01 6.01V11c0 1.66 1.34 3 3 3 .23 0 .44-.03.65-.08l1.66 1.66c-.71.33-1.5.52-2.31.52-2.76 0-5.3-2.1-5.3-5.1H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c.91-.13 1.77-.45 2.54-.9L19.73 21 21 19.73 4.27 3z'),
   fullscreen: _svg('M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z'),
+  flipCam:    _svg('M20 5h-3.17L15 3H9L7.17 5H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm-8 12.2c-2.87 0-5.2-2.33-5.2-5.2S9.13 6.8 12 6.8c1.43 0 2.73.58 3.67 1.53L14 10h5V5l-1.73 1.73C16.16 5.66 14.18 5 12 5c-3.87 0-7 3.13-7 7s3.13 7 7 7c3.47 0 6.35-2.52 6.89-5.83l-2.02-.34C17.46 15.03 14.97 17.2 12 17.2z'),
   ghost:  _svg('M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75C21.27 7.11 17 4 12 4c-1.27 0-2.49.2-3.64.57l2.17 2.17C11.06 6.49 11.51 7 12 7zM2 4.27l2.28 2.28.46.46C3.08 8.3 1.78 10.02 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z'),
   image:  _svg('M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z'),
 };
@@ -56,10 +61,10 @@ const state = {
   // micOn   = currently transmitting (unmuted)
   // micReady = device acquired & track published (stays true once enabled; mute keeps the
   //            device live so unmute is instant and the OS keeps the mic indicator on)
-  media: { micOn: false, micReady: false, serverMuted: false, deafened: false, cameraOn: false, screenOn: false, _preDeafenMicOn: false },
+  media: { micOn: false, micReady: false, serverMuted: false, deafened: false, cameraOn: false, screenOn: false, _preDeafenMicOn: false, hasMultipleCameras: false, flipCamFacing: 'user' },
   settings: {
     micDeviceId: 'default', speakerDeviceId: 'default', cameraDeviceId: 'default',
-    noiseSuppression: true, joinSound: true,
+    noiseSuppression: true, joinSound: true, mirrorSelf: true,
   },
   ui: { settingsOpen: false, chatHidden: false, activeTab: 'participants' },
   bans: [],
@@ -77,6 +82,15 @@ const state = {
 
 // Module-level room-list subscription (stays alive across lobby visits)
 let _sbRoomListSub = null;
+let _qualityMap = {}; // sessionId → LiveKit ConnectionQuality string
+
+// ── § DEBUG LOGGER ────────────────────────────────────────────────
+// Silent in production. Enable with: localStorage.setItem('dg_debug', '1')
+// Never logs tokens, session IDs, or message content.
+function dbg(tag, ...args) {
+  if (!localStorage.getItem('dg_debug')) return;
+  console.log(`[rooms:${tag}]`, new Date().toISOString().slice(11, 23), ...args);
+}
 
 // ── § IDENTITY ────────────────────────────────────────────────────
 // Profile photos & chosen colors live only in localStorage + ephemeral
@@ -139,11 +153,13 @@ function avatarInner(nickname, accent, avatar) {
   return escHtml((nickname || '?')[0].toUpperCase());
 }
 
-// Downscale an image File to a small square-ish data URL so nothing heavy is
-// ever broadcast or stored. maxPx caps the longest edge.
-function fileToDataUrl(file, maxPx, quality = 0.72) {
+// Downscale an image File to a data URL. maxPx caps the longest edge.
+// Canvas re-encode strips EXIF and validates actual image content.
+function fileToDataUrl(file, maxPx, quality = 0.82) {
   return new Promise((resolve, reject) => {
-    if (!file || !file.type.startsWith('image/')) { reject(new Error('not an image')); return; }
+    if (!file) { reject(Object.assign(new Error('no file'), { code: 'NO_FILE' })); return; }
+    if (file.size > MAX_IMG_BYTES) { reject(Object.assign(new Error('too large'), { code: 'TOO_LARGE' })); return; }
+    if (!ALLOWED_IMAGE_TYPES.has(file.type)) { reject(Object.assign(new Error('unsupported type'), { code: 'BAD_TYPE' })); return; }
     const img = new Image();
     const url = URL.createObjectURL(file);
     img.onload = () => {
@@ -156,9 +172,43 @@ function fileToDataUrl(file, maxPx, quality = 0.72) {
       canvas.getContext('2d').drawImage(img, 0, 0, w, h);
       resolve(canvas.toDataURL('image/jpeg', quality));
     };
-    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('decode failed')); };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(Object.assign(new Error('decode failed'), { code: 'DECODE_FAILED' })); };
     img.src = url;
   });
+}
+
+// Encode a single image file at two quality levels in one pass.
+// Returns { thumb, full } as JPEG data URLs.
+function fileToThumbAndFull(file) {
+  return new Promise((resolve, reject) => {
+    if (!file) { reject(Object.assign(new Error('no file'), { code: 'NO_FILE' })); return; }
+    if (file.size > MAX_IMG_BYTES) { reject(Object.assign(new Error('too large'), { code: 'TOO_LARGE' })); return; }
+    if (!ALLOWED_IMAGE_TYPES.has(file.type)) { reject(Object.assign(new Error('unsupported type'), { code: 'BAD_TYPE' })); return; }
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const maxLong = Math.max(img.width, img.height);
+      function encode(maxPx, quality) {
+        const scale = Math.min(1, maxPx / maxLong);
+        const w = Math.round(img.width * scale);
+        const h = Math.round(img.height * scale);
+        const c = document.createElement('canvas');
+        c.width = w; c.height = h;
+        c.getContext('2d').drawImage(img, 0, 0, w, h);
+        return c.toDataURL('image/jpeg', quality);
+      }
+      resolve({ thumb: encode(380, 0.78), full: encode(1280, 0.87) });
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(Object.assign(new Error('decode failed'), { code: 'DECODE_FAILED' })); };
+    img.src = url;
+  });
+}
+
+function imgUploadError(err) {
+  if (err?.code === 'TOO_LARGE') return 'Image is too large — max 15 MB.';
+  if (err?.code === 'BAD_TYPE') return 'Unsupported file type — use JPEG, PNG, WebP, or GIF.';
+  return "Couldn't read that image.";
 }
 
 function generateSlug(title) {
@@ -194,7 +244,8 @@ function roomFromDb(r) {
     locked:          r.locked,
     audience_mode:   r.audience_mode,
     audience:        r.audience_mode,
-    startedAt:       new Date(r.created_at).getTime(),
+    startedAt:            new Date(r.created_at).getTime(),
+    participant_previews: Array.isArray(r.participant_previews) ? r.participant_previews : [],
   };
 }
 
@@ -265,15 +316,23 @@ async function sbUpdateRoom(slug, updates) {
 }
 
 async function sbEndRoom(slug, roomId) {
-  // Mark ended (so everyone gets the "host ended" notice) then wipe the chat —
-  // nothing lingers in the DB once a room closes.
+  // Host identity is verified server-side by the end-room Edge Function.
+  // The trg_on_room_ended DB trigger deletes messages atomically on status change.
   try {
-    const { error } = await sb.from('rooms')
-      .update({ status: 'ended', ended_at: new Date().toISOString() })
-      .eq('slug', slug)
-      .eq('host_session_id', state.user.sessionId);
-    if (error) throw error;
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/end-room`, {
+      method: 'POST',
+      headers: {
+        'Content-Type':  'application/json',
+        'Authorization': `Bearer ${SUPABASE_ANON}`,
+      },
+      body: JSON.stringify({ roomSlug: slug, sessionId: state.user.sessionId }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.error || `end-room ${res.status}`);
+    }
   } catch (err) { console.error('sbEndRoom:', err); }
+  // Trigger handles message cleanup, but purge explicitly as a safety net.
   if (roomId) {
     try { await sb.from('room_messages').delete().eq('room_id', roomId); } catch (err) { console.error('purge messages:', err); }
   }
@@ -298,15 +357,13 @@ async function sbLoadMessages(roomId, limit = 50) {
 }
 
 async function sbSendMessage(roomId, body) {
-  try {
-    const { error } = await sb.from('room_messages').insert({
-      room_id:    roomId,
-      nickname:   state.user.nickname,
-      session_id: state.user.sessionId,
-      body,
-    });
-    if (error) throw error;
-  } catch (err) { console.error('sbSendMessage:', err); }
+  const { error } = await sb.from('room_messages').insert({
+    room_id:    roomId,
+    nickname:   state.user.nickname,
+    session_id: state.user.sessionId,
+    body,
+  });
+  if (error) throw error;
 }
 
 async function sbCheckBan(roomId, sessionId, nickname) {
@@ -348,7 +405,15 @@ function sbWatchMessages(roomId, onMsg) {
       const m = payload.new;
       if (m.hidden) return;
       if (m.session_id === state.user.sessionId) return; // already shown optimistically
-      onMsg({ nick: m.nickname, body: m.body, time: new Date(m.created_at).getTime() });
+      onMsg({ nick: m.nickname, body: m.body, time: new Date(m.created_at).getTime(), dbId: m.id });
+    })
+    .on('postgres_changes', {
+      event: 'UPDATE', schema: 'public', table: 'room_messages',
+      filter: `room_id=eq.${roomId}`,
+    }, (payload) => {
+      if (payload.new?.hidden) {
+        document.querySelector(`[data-msg-db-id="${payload.new.id}"]`)?.remove();
+      }
     })
     .subscribe();
 }
@@ -407,7 +472,13 @@ function sbJoinPresence(slug) {
       clearTimeout(_memberCountTimer);
       _memberCountTimer = setTimeout(() => {
         if (state.room?.slug) {
-          sbUpdateRoom(state.room.slug, { member_count: state.participants.length }).catch(() => {});
+          const visible = state.participants
+            .filter(p => !(p.sessionId === state.user.sessionId && state.user.ghost));
+          const previews = visible.slice(0, 5).map(p => ({ n: p.nickname, a: p.accent }));
+          sbUpdateRoom(state.room.slug, {
+            member_count: visible.length,
+            participant_previews: previews,
+          }).catch(() => {});
         }
       }, 2000);
     }
@@ -449,7 +520,9 @@ function sbJoinPresence(slug) {
   channel.on('broadcast', { event: 'chat:image' }, ({ payload }) => {
     if (!payload || state.view !== 'room') return;
     if (payload.sessionId === state.user.sessionId) return; // already shown optimistically
-    appendImageMessage(payload.nick, payload.src, payload.time || Date.now());
+    const thumb = payload.thumb || payload.src;
+    const full  = payload.full  || payload.thumb || payload.src;
+    appendImageMessage(payload.nick, thumb, full, payload.time || Date.now());
   });
 
   // Targeted moderation — a host muting/kicking one person.
@@ -502,6 +575,7 @@ function broadcastToRoom(event, payload) {
 }
 
 async function sbCleanupChannels() {
+  dbg('sb', 'cleanup channels — removing presence/chat/status subs');
   clearTimeout(_memberCountTimer);
   const toRemove = [];
   if (state._sbPresenceChan)    toRemove.push(state._sbPresenceChan);
@@ -531,12 +605,18 @@ async function fetchLkToken(slug) {
       role:      state.user.role,
     }),
   });
-  if (!res.ok) throw new Error(`token fetch ${res.status}`);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    const err = new Error(body.error || `token fetch ${res.status}`);
+    err.httpStatus = res.status;
+    throw err;
+  }
   return res.json(); // { token, lkUrl }
 }
 
 async function lkConnect(slug) {
   if (state._lkRoom) return;
+  dbg('lk', 'connecting to room', slug);
   lkSetStatusDot('lk-connecting');
   try {
     const { token, lkUrl } = await fetchLkToken(slug);
@@ -553,18 +633,39 @@ async function lkConnect(slug) {
 
     await room.connect(lkUrl || LIVEKIT_WS_URL, token);
     state._lkRoom = room;
+    dbg('lk', 'connected');
 
     // If the user had the mic on before LK connected (or before a reconnect),
     // bring it back automatically.
     if (state.media.micOn) await setMic(true, { silent: true });
   } catch (err) {
-    console.error('LK connect failed:', err);
-    lkSetStatusDot('lk-error');
+    const s = err.httpStatus;
+    dbg('lk', 'connect failed — status', s, err.message);
+    if (s === 403) {
+      const msg = err.message === 'banned'
+        ? 'You are banned from this room.'
+        : err.message === 'room is locked'
+          ? 'This room is locked.'
+          : 'Access denied.';
+      showBanner(msg, 'Back to lobby', () => leaveRoom(), 'error');
+      setTimeout(() => { if (state.view === 'room') leaveRoom(); }, 2500);
+    } else if (s === 404 || s === 410) {
+      if (state.user.role !== 'host') {
+        showBanner('This room is no longer available.', 'Back to lobby', () => leaveRoom(), 'warning');
+        setTimeout(() => { if (state.view === 'room') leaveRoom(); }, 2500);
+      }
+    } else {
+      console.error('LK connect failed:', err);
+      lkSetStatusDot('lk-error');
+    }
   }
 }
 
 async function lkDisconnect() {
   if (!state._lkRoom) return;
+  dbg('lk', 'disconnect');
+  _lkReconnectAttempt = 0; // reset so next join starts fresh
+  clearTimeout(_lkReconnectTimer);
   const room = state._lkRoom;
   state._lkRoom = null; // clear first so handlers bail early
   lkCleanLocalTracks();
@@ -621,7 +722,12 @@ function lkOnActiveSpeakers(speakers) {
   });
 }
 
+function qualityTitle(q) {
+  return { excellent: 'Excellent connection', good: 'Good connection', poor: 'Poor connection', lost: 'Connection lost' }[q] || '';
+}
+
 function lkOnQualityChanged(quality, participant) {
+  _qualityMap[participant.identity] = quality;
   const card = document.querySelector(`.participant-card[data-sid="${CSS.escape(participant.identity)}"]`);
   if (!card) return;
   let badge = card.querySelector('.p-quality');
@@ -629,13 +735,13 @@ function lkOnQualityChanged(quality, participant) {
     const avatar = card.querySelector('.p-avatar');
     if (avatar) {
       badge = document.createElement('div');
-      badge.className = 'p-quality';
       badge.innerHTML = '<div class="p-quality-bar"></div><div class="p-quality-bar"></div><div class="p-quality-bar"></div>';
       avatar.appendChild(badge);
     }
   }
   if (badge) {
     badge.className = `p-quality ${quality}`;
+    badge.title = qualityTitle(quality);
   }
 }
 
@@ -668,6 +774,9 @@ function lkOnConnectionState(connState) {
 }
 
 let _lkReconnectTimer = null;
+let _lkReconnectAttempt = 0;
+const _LK_RECONNECT_DELAYS = [2000, 5000, 10000]; // ~17s total before giving up
+
 function lkOnDisconnected() {
   if (state.view !== 'room') return; // intentional or stale
   state._lkRoom = null;
@@ -678,19 +787,39 @@ function lkOnDisconnected() {
   updateMicBtn();
   updateDock();
   lkSetStatusDot('lk-reconnecting');
-
-  // Auto-retry once after 2s
   clearTimeout(_lkReconnectTimer);
-  showBanner('Reconnecting…', '', null, 'warning');
+
+  // All retries exhausted — remove presence so others stop seeing a ghost, then show manual rejoin.
+  if (_lkReconnectAttempt >= _LK_RECONNECT_DELAYS.length) {
+    dbg('lk', 'reconnect exhausted after', _lkReconnectAttempt, 'attempts — removing presence');
+    _lkReconnectAttempt = 0;
+    // Untrack from Supabase presence so our tile disappears from others' lists immediately.
+    state._sbPresenceChan?.untrack().catch(() => {});
+    lkSetStatusDot('lk-error');
+    showBanner('Voice connection lost.', 'Rejoin', () => {
+      if (state.room) lkConnect(state.room.slug);
+    });
+    return;
+  }
+
+  const delay = _LK_RECONNECT_DELAYS[_lkReconnectAttempt];
+  dbg('lk', `reconnect attempt ${_lkReconnectAttempt + 1}/${_LK_RECONNECT_DELAYS.length} in ${delay}ms`);
+  showBanner(`Reconnecting… (${_lkReconnectAttempt + 1}/${_LK_RECONNECT_DELAYS.length})`, '', null, 'warning');
+  _lkReconnectAttempt++;
+
   _lkReconnectTimer = setTimeout(async () => {
-    if (state.room && !state._lkRoom && state.view === 'room') {
-      await lkConnect(state.room.slug);
-      if (!state._lkRoom) {
-        lkSetStatusDot('lk-error');
-        showBanner('Voice connection lost.', 'Rejoin', () => { if (state.room) lkConnect(state.room.slug); });
-      }
+    if (!state.room || state.view !== 'room') return;
+    if (state._lkRoom) { _lkReconnectAttempt = 0; return; } // already reconnected somehow
+    await lkConnect(state.room.slug);
+    if (state._lkRoom) {
+      dbg('lk', 'reconnect succeeded on attempt', _lkReconnectAttempt);
+      _lkReconnectAttempt = 0;
+      // Restore presence so our tile reappears for others.
+      sbTrackPresence({}).catch(() => {});
+    } else {
+      lkOnDisconnected(); // recurse for next backoff attempt
     }
-  }, 2000);
+  }, delay);
 }
 
 // ── Video helpers ─────────────────────────────────────────────────
@@ -707,9 +836,12 @@ function showParticipantVideo(track, identity) {
   const video = track.attach();
   video.autoplay = true; video.playsInline = true;
   video.muted = (identity === state.user.sessionId);
+  const isLocal = identity === state.user.sessionId;
+  if (isLocal && state.settings.mirrorSelf && state.media.flipCamFacing !== 'environment') video.style.transform = 'scaleX(-1)';
   wrap.innerHTML = '';
   wrap.appendChild(video);
   addFullscreenBtn(wrap, video);
+  if (isLocal && state.media.hasMultipleCameras) addFlipCamBtn(wrap);
   card.classList.add('has-video');
 }
 
@@ -731,6 +863,46 @@ function addFullscreenBtn(container, video) {
   btn.innerHTML = ICON.fullscreen;
   btn.addEventListener('click', (e) => { e.stopPropagation(); goFullscreen(video); });
   container.appendChild(btn);
+}
+
+function addFlipCamBtn(wrap) {
+  const btn = document.createElement('button');
+  btn.className = 'flip-cam-btn';
+  btn.title = 'Flip camera';
+  btn.setAttribute('aria-label', 'Flip camera');
+  btn.innerHTML = ICON.flipCam;
+  btn.addEventListener('click', (e) => { e.stopPropagation(); flipCamera(); });
+  wrap.appendChild(btn);
+}
+
+async function flipCamera() {
+  if (!state._lkRoom || !state.media.cameraOn || !state._localCamTrack) return;
+  const { createLocalVideoTrack } = await ensureLk();
+  state.media.flipCamFacing = state.media.flipCamFacing === 'environment' ? 'user' : 'environment';
+  const myCard = document.querySelector(`.participant-card[data-sid="${CSS.escape(state.user.sessionId)}"]`);
+  myCard?.classList.add('cam-loading');
+  const oldTrack = state._localCamTrack;
+  try {
+    await state._lkRoom.localParticipant.unpublishTrack(oldTrack);
+    oldTrack.stop();
+    state._localCamTrack = null;
+    const track = await createLocalVideoTrack({ facingMode: state.media.flipCamFacing });
+    await state._lkRoom.localParticipant.publishTrack(track);
+    state._localCamTrack = track;
+    showParticipantVideo(track, state.user.sessionId);
+  } catch {
+    // Old track is already stopped — camera is now effectively off. Reset state so the
+    // user isn't stuck with a "camera on" dock button and no video.
+    state.media.flipCamFacing = state.media.flipCamFacing === 'environment' ? 'user' : 'environment';
+    state.media.cameraOn = false;
+    state._localCamTrack = null;
+    hideParticipantVideo(state.user.sessionId);
+    updateDockBtnState('btn-camera', false);
+    _syncSharingPresence();
+    showBanner('Could not switch camera. Tap camera to restart.', 'OK', hideBanner);
+  } finally {
+    myCard?.classList.remove('cam-loading');
+  }
 }
 
 function hideParticipantVideo(identity) {
@@ -757,10 +929,21 @@ function hideScreenShareArea() {
   if (area) { area.hidden = true; area.innerHTML = ''; }
 }
 
-// Re-attach local video preview after participant grid is re-rendered by presence sync
-function reattachLocalVideo() {
+// Re-attach all video tracks after the participant grid is re-rendered by presence sync.
+// renderParticipants() wipes innerHTML so every <video> element is destroyed; we must
+// re-attach each subscribed remote track (LK only fires TrackSubscribed once).
+function reattachAllVideos() {
   if (state.media.cameraOn && state._localCamTrack) {
     showParticipantVideo(state._localCamTrack, state.user.sessionId);
+  }
+  if (!state._lkRoom || !_lk) return;
+  const { Track } = _lk;
+  for (const [, p] of state._lkRoom.remoteParticipants) {
+    for (const pub of p.trackPublications.values()) {
+      if (pub.track && pub.kind === Track.Kind.Video && pub.source !== Track.Source.ScreenShare) {
+        showParticipantVideo(pub.track, p.identity);
+      }
+    }
   }
 }
 
@@ -829,11 +1012,28 @@ function renderRoomCard(room) {
   const isYours = room.host_session_id === state.user.sessionId;
   const title = room.title ? escHtml(room.title) : `@${escHtml(room.host)}`;
 
+  const previews = room.participant_previews || [];
+  const shown    = previews.slice(0, 3);
+  const overflow = room.member_count - shown.length;
+
+  let thumbnailHtml;
+  if (shown.length > 0) {
+    const bubbles = shown.map((p, i) =>
+      `<div class="card-bubble" style="background:${escHtml(p.a)};z-index:${shown.length - i}">${avatarInner(p.n, p.a, '')}</div>`
+    ).join('');
+    const moreHtml = overflow > 0
+      ? `<div class="card-bubble card-bubble-more">+${overflow}</div>`
+      : '';
+    thumbnailHtml = `<div class="card-bubbles">${bubbles}${moreHtml}</div>`;
+  } else {
+    thumbnailHtml = `<div class="card-avatar" style="background:${room.hostAccent}">${avatarInner(room.host, room.hostAccent, '')}</div>`;
+  }
+
   return `<div class="room-card${room.locked ? ' locked' : ''}${isYours ? ' yours' : ''}"
                data-slug="${escHtml(room.slug)}"
                role="button" tabindex="${room.locked && !isYours ? '-1' : '0'}"
                aria-label="${title}, ${room.member_count} participant${room.member_count !== 1 ? 's' : ''}${room.locked ? ', locked' : ''}">
-    <div class="card-avatar" style="background:${room.hostAccent}">${avatarInner(room.host, room.hostAccent, '')}</div>
+    ${thumbnailHtml}
     <div class="card-name">
       ${title}${isYours ? ' <span class="yours-tag">(yours)</span>' : ''}
     </div>
@@ -861,6 +1061,7 @@ async function doShowLobby() {
   state.user.ghost = false;
   state.kickedSessionIds = new Set();
   state._lastMsgTime = 0;
+  _qualityMap = {};
 
   document.getElementById('view-room').hidden = true;
   document.getElementById('view-lobby').hidden = false;
@@ -882,7 +1083,13 @@ async function doShowLobby() {
   }
 }
 
+let _lastJoinTime = 0;
+
 async function joinRoom(slug) {
+  const now = Date.now();
+  if (now - _lastJoinTime < 2000) return;
+  _lastJoinTime = now;
+
   let room = state.rooms.find(r => r.slug === slug);
   if (!room) room = await sbFetchRoom(slug);
   if (!room) return;
@@ -911,6 +1118,7 @@ async function joinRoom(slug) {
 }
 
 async function enterRoom(room, pushNav) {
+  dbg('lifecycle', 'enter room', room.slug, 'role:', state.user.role);
   state.view = 'room';
   state.room = room;
 
@@ -937,7 +1145,7 @@ async function enterRoom(room, pushNav) {
   // Chat real-time subscription
   state._sbChatSub = sbWatchMessages(room.id, (msg) => {
     state.chat.push(msg);
-    appendMessage(msg.nick, msg.body, msg.time, false);
+    appendMessage(msg.nick, msg.body, msg.time, false, { dbId: msg.dbId });
   });
 
   // Watch for room ended or updated (lock, audience mode, etc.)
@@ -985,6 +1193,7 @@ async function enterRoom(room, pushNav) {
 
 async function leaveRoom() {
   if (!state.room) { doShowLobby(); return; }
+  dbg('lifecycle', 'leave room', state.room?.slug, 'role:', state.user.role);
 
   appendSystemMessage(`${state.user.nickname} left`, 'leave');
 
@@ -996,9 +1205,17 @@ async function leaveRoom() {
   history.replaceState({ view: 'lobby' }, '', location.pathname);
 }
 
+let _lastRoomCreate = 0;
+
 // "Start a room" creates instantly — no modal. The title defaults to the host's
 // name and can be edited inline from the topbar afterwards.
 async function createRoom() {
+  const now = Date.now();
+  if (now - _lastRoomCreate < 10_000) {
+    showLobbyBanner('Wait a moment before creating another room.');
+    return;
+  }
+  _lastRoomCreate = now;
   const title  = state.user.nickname; // default title = your name
   const slug   = generateSlug(`${title}-${Math.floor(Math.random() * 900) + 100}`);
   const accent = myAccent();
@@ -1089,7 +1306,7 @@ function renderParticipants() {
   const hintEl = document.getElementById('room-hint');
   const isHost = state.user.role === 'host';
 
-  const visible = state.participants.filter(p => !p.isGhost);
+  const visible = state.participants.filter(p => !(p.sessionId === state.user.sessionId && state.user.ghost));
   grid.innerHTML = visible.map(p => renderParticipantCard(p, isHost)).join('');
 
   if (isHost) {
@@ -1127,7 +1344,7 @@ function renderParticipants() {
   hintEl.hidden = state.participants.length > 1;
   document.getElementById('participant-count').textContent = state.participants.length;
   document.getElementById('topbar-count').innerHTML = `${ICON.people} ${state.participants.length}`;
-  reattachLocalVideo();
+  reattachAllVideos();
 }
 
 function renderParticipantCard(p, isHost) {
@@ -1145,6 +1362,11 @@ function renderParticipantCard(p, isHost) {
 
   const speakLevelStyle = p.speaking ? ` style="--speak-level:0.5"` : '';
 
+  const _q = p.sessionId ? _qualityMap[p.sessionId] : null;
+  const qualityHtml = (_q && _q !== 'unknown')
+    ? `<div class="p-quality ${_q}" title="${qualityTitle(_q)}"><div class="p-quality-bar"></div><div class="p-quality-bar"></div><div class="p-quality-bar"></div></div>`
+    : '';
+
   return `<div class="participant-card${isYou ? ' is-you' : ''}${p.speaking ? ' speaking' : ''}${canAct ? ' host-can-act' : ''}"
                data-nick="${escHtml(p.nickname)}"
                data-sid="${escHtml(p.sessionId || '')}"${speakLevelStyle}
@@ -1153,12 +1375,23 @@ function renderParticipantCard(p, isHost) {
     <div class="p-avatar${p.avatar ? ' has-photo' : ''}" style="background:${p.accent}">
       ${avatarInner(p.nickname, p.accent, p.avatar)}
       ${p.muted || p.serverMuted ? '<div class="p-mic-off" title="Muted"></div>' : ''}
+      ${qualityHtml}
     </div>
     <div class="p-name">
       ${escHtml(p.nickname)}${isYou ? ' <span class="you-tag">(you)</span>' : ''}
     </div>
     ${badgeHtml ? `<div class="p-badges">${badgeHtml}</div>` : ''}
   </div>`;
+}
+
+function isNearBottom(el, threshold = 80) {
+  return el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
+}
+
+function updateScrollBtn() {
+  const chatEl = document.getElementById('chat-messages');
+  const btn    = document.getElementById('btn-scroll-bottom');
+  if (btn && chatEl) btn.hidden = isNearBottom(chatEl, 120);
 }
 
 function renderChat(messages) {
@@ -1169,6 +1402,7 @@ function renderChat(messages) {
     else appendMessage(m.nick, m.body, m.time, false);
   });
   el.scrollTop = el.scrollHeight;
+  updateScrollBtn();
 }
 
 function updateDock() {
@@ -1361,7 +1595,10 @@ async function setMic(on, opts = {}) {
       deviceId: state.settings.micDeviceId !== 'default' ? state.settings.micDeviceId : undefined,
     });
     state.media.micOn = on;
-    if (on) state.media.micReady = true; // device now live for the rest of the session
+    if (on) {
+      if (!state.media.micReady) populateDevices(); // device labels become readable after first permission grant
+      state.media.micReady = true;
+    }
     state._localMicTrack = state._lkRoom.localParticipant.getTrackPublication?.(_lk?.Track?.Source?.Microphone)?.track || state._localMicTrack;
     if (!opts.silent) { if (on) hideBanner(); else micBanner(); }
   } catch (err) {
@@ -1377,6 +1614,14 @@ async function applyNoiseSuppression() {
   if (state._lkRoom && state.media.micReady && state.media.micOn) {
     await setMic(false, { silent: true });
     await setMic(true,  { silent: true });
+  }
+}
+
+async function applySpeakerDevice(deviceId) {
+  if (!('setSinkId' in HTMLAudioElement.prototype)) return; // iOS Safari — OS handles routing
+  const audios = document.querySelectorAll('audio');
+  for (const el of audios) {
+    await el.setSinkId(deviceId).catch(() => {});
   }
 }
 
@@ -1440,9 +1685,12 @@ async function toggleCamera() {
   }
 
   if (!state.media.cameraOn) {
+    // Show a loading indicator on the local card while the device warms up (can take 1-3s).
+    const myCard = document.querySelector(`.participant-card[data-sid="${CSS.escape(state.user.sessionId)}"]`);
+    myCard?.classList.add('cam-loading');
     const { createLocalVideoTrack } = await ensureLk();
     try {
-      // Build constraints — if no explicit device selected, let browser pick any camera
+      // Build constraints — if no explicit device selected, let browser pick any camera.
       const camConstraints = {};
       if (state.settings.cameraDeviceId && state.settings.cameraDeviceId !== 'default') {
         camConstraints.deviceId = { exact: state.settings.cameraDeviceId };
@@ -1451,7 +1699,7 @@ async function toggleCamera() {
       try {
         track = await createLocalVideoTrack(camConstraints);
       } catch (firstErr) {
-        // If exact deviceId failed or no camera found, try without any constraints (picks first available)
+        // If the exact deviceId failed or no camera found, fall back to browser default.
         if (Object.keys(camConstraints).length > 0 || firstErr.name === 'NotFoundError') {
           track = await createLocalVideoTrack({});
         } else {
@@ -1461,15 +1709,22 @@ async function toggleCamera() {
       await state._lkRoom.localParticipant.publishTrack(track);
       state._localCamTrack = track;
       state.media.cameraOn = true;
+      // Detect multiple cameras NOW (before showParticipantVideo) so the flip button
+      // appears immediately — populateDevices() is internally async and would miss this call.
+      const camDevices = await navigator.mediaDevices?.enumerateDevices().catch(() => []) ?? [];
+      state.media.hasMultipleCameras = camDevices.filter(d => d.kind === 'videoinput').length > 1;
+      populateDevices();
       showParticipantVideo(track, state.user.sessionId);
     } catch (err) {
       if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        showBanner('Camera access denied.', 'OK', hideBanner);
+        showBanner('Camera access denied. Allow it in browser settings, then retry.', 'Retry', () => toggleCamera());
       } else if (err.name === 'NotFoundError') {
         showBanner('No camera found. Connect a camera or enable Continuity Camera on your iPhone.', 'OK', hideBanner);
       } else {
         showBanner('Could not start camera.', 'Retry', toggleCamera);
       }
+    } finally {
+      myCard?.classList.remove('cam-loading');
     }
   } else {
     if (state._localCamTrack) {
@@ -1596,6 +1851,7 @@ function stopMicTest() {
 function openSettings() {
   state.ui.settingsOpen = true;
   document.getElementById('settings-panel').hidden = false;
+  document.getElementById('settings-version').textContent = `v${VERSION}`;
   populateDevices();
   startMicTest();
 }
@@ -1619,13 +1875,20 @@ function populateDevices() {
     const mics       = devices.filter(d => d.kind === 'audioinput');
     const speakers   = devices.filter(d => d.kind === 'audiooutput');
     const cameras    = devices.filter(d => d.kind === 'videoinput');
+    state.media.hasMultipleCameras = cameras.length > 1;
     if (mics.length >= 1) {
       micSel.innerHTML = mics.map(d =>
         `<option value="${escHtml(d.deviceId)}">${escHtml(d.label || `Microphone ${d.deviceId.slice(0,4)}`)}</option>`
       ).join('');
       micSel.value = state.settings.micDeviceId;
     }
-    if (speakers.length >= 1) {
+    // iOS Safari returns 0 audiooutput devices — OS routes audio automatically there.
+    // Hide the speaker row entirely rather than showing a useless "Default" option.
+    const speakerLbl = document.getElementById('lbl-speaker');
+    const hasSpeakers = speakers.length >= 1 && 'setSinkId' in HTMLAudioElement.prototype;
+    if (speakerLbl)  speakerLbl.hidden  = !hasSpeakers;
+    speakerSel.hidden = !hasSpeakers;
+    if (hasSpeakers) {
       speakerSel.innerHTML = speakers.map(d =>
         `<option value="${escHtml(d.deviceId)}">${escHtml(d.label || `Speaker ${d.deviceId.slice(0,4)}`)}</option>`
       ).join('');
@@ -1699,6 +1962,7 @@ async function toggleGhost() {
 
 // ── § CHAT ────────────────────────────────────────────────────────
 const _msgBurst = []; // rolling timestamps of recent sends
+let _msgIdSeq = 0;   // local counter for optimistic message identity
 
 function chatCooldownMs() {
   const now = Date.now();
@@ -1722,13 +1986,19 @@ async function sendMessage() {
   _msgBurst.push(Date.now());
   state._lastMsgTime = Date.now();
 
+  const msgId = ++_msgIdSeq;
   input.value = '';
   const msg = { nick: state.user.nickname, body, time: Date.now() };
   state.chat.push(msg);
-  appendMessage(msg.nick, msg.body, msg.time, true); // optimistic
+  appendMessage(msg.nick, msg.body, msg.time, true, { msgId }); // optimistic
 
   if (state.room?.id) {
-    await sbSendMessage(state.room.id, body);
+    try {
+      await sbSendMessage(state.room.id, body);
+    } catch (err) {
+      console.error('sendMessage failed:', err);
+      markMsgFailed(msgId, body);
+    }
   }
 }
 
@@ -1755,16 +2025,29 @@ function hideChatCooldown() {
   if (el) { el.hidden = true; el.classList.remove('show'); }
 }
 
+let _imgErrTimer;
+function showChatImgError(msg) {
+  const el = document.getElementById('chat-img-error');
+  if (!el) return;
+  clearTimeout(_imgErrTimer);
+  el.textContent = msg;
+  el.hidden = false;
+  el.classList.add('show');
+  _imgErrTimer = setTimeout(() => { el.hidden = true; el.classList.remove('show'); }, 4000);
+}
+
 // The sender's chosen name color, when we know it (self always; others via presence).
 function nickColor(nick) {
   if (nick === state.user.nickname) return myAccent();
   return state.participants.find(x => x.nickname === nick)?.accent || '';
 }
 
-function appendMessage(nick, body, time, isNewMsg) {
+function appendMessage(nick, body, time, isNewMsg, { msgId, dbId } = {}) {
   const el  = document.getElementById('chat-messages');
   const div = document.createElement('div');
   div.className = 'chat-msg';
+  if (msgId) div.dataset.msgId  = msgId;
+  if (dbId)  div.dataset.msgDbId = dbId;
   const isYou = nick === state.user.nickname;
   const color = nickColor(nick);
   const styleAttr = color ? ` style="color:${escHtml(color)}"` : '';
@@ -1776,12 +2059,36 @@ function appendMessage(nick, body, time, isNewMsg) {
     <div class="chat-msg-body">${escHtml(body)}</div>
   `;
   el.appendChild(div);
-  el.scrollTop = el.scrollHeight;
+  if (isNearBottom(el)) el.scrollTop = el.scrollHeight;
+  updateScrollBtn();
+  return div;
+}
+
+function markMsgFailed(msgId, body) {
+  const div = document.querySelector(`[data-msg-id="${msgId}"]`);
+  if (!div) return;
+  div.classList.add('msg-failed');
+  const label = document.createElement('div');
+  label.className = 'msg-failed-label';
+  label.textContent = 'Failed to send. ';
+  const retry = document.createElement('button');
+  retry.className = 'msg-retry-btn';
+  retry.textContent = 'Retry';
+  retry.addEventListener('click', async () => {
+    div.classList.remove('msg-failed');
+    label.remove();
+    try {
+      if (state.room?.id) await sbSendMessage(state.room.id, body);
+    } catch { markMsgFailed(msgId, body); }
+  });
+  label.appendChild(retry);
+  div.appendChild(label);
 }
 
 // Image message — rendered as a thumbnail that opens a fullscreen viewer.
 // Images are ephemeral: broadcast over realtime, never written to the DB.
-function appendImageMessage(nick, src, time) {
+// thumb: small inline preview; full: higher-quality for the viewer.
+function appendImageMessage(nick, thumb, full, time) {
   const el = document.getElementById('chat-messages');
   if (!el) return;
   const div = document.createElement('div');
@@ -1794,11 +2101,14 @@ function appendImageMessage(nick, src, time) {
       <span class="chat-msg-nick${isYou ? ' is-you' : ''}"${styleAttr}>${escHtml(nick)}</span>
       <span class="chat-msg-time">${formatTime(time)}</span>
     </div>
-    <img class="chat-msg-img" src="${escHtml(src)}" alt="image from ${escHtml(nick)}">
+    <img class="chat-msg-img" src="${escHtml(thumb)}" alt="image from ${escHtml(nick)}">
   `;
   el.appendChild(div);
-  div.querySelector('.chat-msg-img')?.addEventListener('click', () => openImageViewer(src));
-  el.scrollTop = el.scrollHeight;
+  const imgEl = div.querySelector('.chat-msg-img');
+  imgEl?.addEventListener('click', () => openImageViewer(full));
+  imgEl?.addEventListener('error', () => imgEl.classList.add('chat-msg-img--broken'));
+  if (isNearBottom(el)) el.scrollTop = el.scrollHeight;
+  updateScrollBtn();
 }
 
 async function sendChatImage(file) {
@@ -1806,16 +2116,19 @@ async function sendChatImage(file) {
   if (!state.room) return;
   const wait = chatCooldownMs();
   if (wait > 0) { showChatCooldown(wait); return; }
-  let src;
+  let thumb, full;
   try {
-    src = await fileToDataUrl(file, 720, 0.6); // cap longest edge; keep payload small
-  } catch {
-    return; // not a readable image — bail quietly
+    ({ thumb, full } = await fileToThumbAndFull(file));
+  } catch (err) {
+    showChatImgError(imgUploadError(err));
+    return;
   }
   _msgBurst.push(Date.now());
-  appendImageMessage(state.user.nickname, src, Date.now()); // optimistic
+  appendImageMessage(state.user.nickname, thumb, full, Date.now()); // optimistic
   broadcastToRoom('chat:image', {
-    nick: state.user.nickname, src, time: Date.now(), sessionId: state.user.sessionId,
+    nick: state.user.nickname, thumb, full,
+    src: thumb, // backward compat for old clients
+    time: Date.now(), sessionId: state.user.sessionId,
   });
 }
 
@@ -1838,7 +2151,8 @@ function appendSystemMessage(text, kind = '') {
   div.className = `chat-msg-sys ${kind}`;
   div.textContent = text;
   el.appendChild(div);
-  el.scrollTop = el.scrollHeight;
+  if (isNearBottom(el)) el.scrollTop = el.scrollHeight;
+  updateScrollBtn();
 }
 
 // ── § USER MENU ───────────────────────────────────────────────────
@@ -1911,14 +2225,6 @@ async function handleUserAction(action) {
       updateTopbar();
       break;
 
-    case 'promote':
-      p.role = 'host';
-      state.user.role = 'guest';
-      if (state.room) state.room.host = p.nickname;
-      appendSystemMessage(`${p.nickname} is now the host`, 'action');
-      updateDock();
-      renderParticipants();
-      break;
   }
 }
 
@@ -1984,11 +2290,11 @@ async function init() {
     avatarInput.value = '';
     if (!file) return;
     try {
-      _setupAvatar = await fileToDataUrl(file, 128, 0.78); // small square-ish photo
+      _setupAvatar = await fileToDataUrl(file, 240, 0.88);
       renderSetupAvatar();
-    } catch {
+    } catch (err) {
       const errEl = document.getElementById('nickname-error');
-      errEl.textContent = "couldn't read that image.";
+      errEl.textContent = imgUploadError(err);
       errEl.hidden = false;
     }
   });
@@ -2036,6 +2342,7 @@ async function init() {
   document.getElementById('btn-camera').addEventListener('click', toggleCamera);
   document.getElementById('btn-screen').addEventListener('click', toggleScreen);
   document.getElementById('btn-settings').addEventListener('click', toggleSettings);
+  document.getElementById('btn-close-settings')?.addEventListener('click', closeSettings);
 
   document.getElementById('btn-copy-link').addEventListener('click', () => {
     navigator.clipboard?.writeText(location.href).then(() => {
@@ -2064,7 +2371,7 @@ async function init() {
   // ── Chat ──
   document.getElementById('btn-send').addEventListener('click', sendMessage);
   document.getElementById('chat-input').addEventListener('keydown', e => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); sendMessage(); }
   });
 
   // Chat images (ephemeral — broadcast only, never stored)
@@ -2080,25 +2387,44 @@ async function init() {
     if (item) { e.preventDefault(); sendChatImage(item.getAsFile()); }
   });
 
+  // Scroll-to-bottom button
+  document.getElementById('chat-messages')?.addEventListener('scroll', updateScrollBtn);
+  document.getElementById('btn-scroll-bottom')?.addEventListener('click', () => {
+    const el = document.getElementById('chat-messages');
+    el?.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+  });
+
   // Image viewer
   document.getElementById('img-viewer').addEventListener('click', closeImageViewer);
 
   // ── Settings ──
   document.getElementById('sel-mic').addEventListener('change', e => {
     state.settings.micDeviceId = e.target.value;
+    applyNoiseSuppression(); // re-acquire mic track with the new device immediately
   });
   document.getElementById('sel-speaker').addEventListener('change', e => {
     state.settings.speakerDeviceId = e.target.value;
+    applySpeakerDevice(e.target.value);
   });
   document.getElementById('sel-camera')?.addEventListener('change', e => {
     state.settings.cameraDeviceId = e.target.value;
   });
+  // Refresh device lists when a camera or mic is plugged in or removed.
+  navigator.mediaDevices?.addEventListener('devicechange', () => populateDevices());
   document.getElementById('chk-noise').addEventListener('change', e => {
     state.settings.noiseSuppression = e.target.checked;
     applyNoiseSuppression(); // re-acquire so it takes effect mid-call
   });
   document.getElementById('chk-joinsound').addEventListener('change', e => {
     state.settings.joinSound = e.target.checked;
+  });
+  document.getElementById('chk-mirror').addEventListener('change', e => {
+    state.settings.mirrorSelf = e.target.checked;
+    const myCard = document.querySelector(`.participant-card[data-sid="${CSS.escape(state.user.sessionId)}"]`);
+    if (myCard) {
+      const vid = myCard.querySelector('video');
+      if (vid) vid.style.transform = (state.settings.mirrorSelf && state.media.flipCamFacing !== 'environment') ? 'scaleX(-1)' : '';
+    }
   });
 
   // ── User menu ──
@@ -2138,6 +2464,55 @@ async function init() {
   } else {
     await doShowLobby();
   }
+
+  // ── Ungraceful exit cleanup ─────────────────────────────────────
+  // pagehide fires on tab close, navigation away, and bfcache entry.
+  // We do best-effort synchronous cleanup here — no await, no promises.
+  window.addEventListener('pagehide', () => {
+    if (state.view !== 'room') return;
+    dbg('lifecycle', 'pagehide — cleaning up');
+
+    // Stop local media immediately so the OS mic/camera indicator goes dark.
+    lkCleanLocalTracks();
+
+    // Disconnect LiveKit — fire-and-forget (browser may not complete async ops on unload).
+    if (state._lkRoom) {
+      const r = state._lkRoom;
+      state._lkRoom = null;
+      try { r.disconnect(); } catch {}
+    }
+
+    // Remove our Supabase presence entry so others stop seeing us immediately
+    // instead of waiting for Supabase's ~30s WebSocket timeout.
+    if (state._sbPresenceChan) {
+      try { state._sbPresenceChan.untrack(); } catch {}
+    }
+
+    // Host: end the room so it doesn't linger for hours as an abandoned ghost room.
+    // keepalive: true lets this fetch complete even after the page is unloading.
+    if (state.room?.id && state.user.role === 'host') {
+      dbg('lifecycle', 'host pagehide — ending room via keepalive fetch');
+      fetch(`${SUPABASE_URL}/functions/v1/end-room`, {
+        method: 'POST',
+        keepalive: true,
+        headers: {
+          'Content-Type':  'application/json',
+          'Authorization': `Bearer ${SUPABASE_ANON}`,
+        },
+        body: JSON.stringify({ roomSlug: state.room.slug, sessionId: state.user.sessionId }),
+      }).catch(() => {});
+    }
+  });
+}
+
+// Scroll the chat input above the on-screen keyboard on iOS/Android.
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', () => {
+    const input = document.getElementById('chat-input');
+    if (document.activeElement === input) {
+      input.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+  });
 }
 
 init();

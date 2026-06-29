@@ -4,6 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="theme-color" content="#fff7fb">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' https://esm.sh https://cdn.esm.sh; connect-src https://karogcjefsnnrvlxlgpf.supabase.co wss://karogcjefsnnrvlxlgpf.supabase.co wss://pawsweb-z0kamke4.livekit.cloud; img-src 'self' data: blob:; media-src blob: mediastream:; frame-src 'none'; form-action 'self'; base-uri 'self';">
   <title>rooms · doll.gg</title>
   <meta name="description" content="voice rooms on doll.gg — jump in or start your own.">
   <meta property="og:title" content="rooms · doll.gg">
@@ -135,7 +137,11 @@
     <div id="panel-chat" class="panel panel-chat" data-panel="chat">
       <div class="chat-header-bar">room chat</div>
       <div id="chat-messages" class="chat-messages" aria-live="polite"></div>
+      <button id="btn-scroll-bottom" class="chat-scroll-btn" hidden aria-label="Scroll to latest messages">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20 12l-1.41-1.41L13 16.17V4h-2v12.17l-5.58-5.59L4 12l8 8 8-8z"/></svg>
+      </button>
       <div id="chat-cooldown" class="chat-cooldown" role="status" hidden></div>
+      <div id="chat-img-error" class="chat-img-error" role="alert" hidden></div>
       <div class="chat-input-row">
         <button id="btn-chat-image" class="chat-icon-btn" title="Send image" aria-label="Send image">
           <span class="dock-icon dock-icon-image"></span>
@@ -194,12 +200,18 @@
   <!-- Settings panel: popover on desktop, sheet on mobile -->
   <div id="settings-panel" class="settings-panel" hidden>
     <div class="settings-inner">
+      <div class="settings-header">
+        <span class="settings-title">settings</span>
+        <button id="btn-close-settings" class="settings-close-btn" aria-label="Close settings">
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </div>
       <label class="settings-label" for="sel-mic">microphone</label>
       <select id="sel-mic" class="settings-select">
         <option value="default">Default</option>
       </select>
 
-      <label class="settings-label" for="sel-speaker">speaker</label>
+      <label class="settings-label" for="sel-speaker" id="lbl-speaker">speaker</label>
       <select id="sel-speaker" class="settings-select">
         <option value="default">Default</option>
       </select>
@@ -217,6 +229,10 @@
         <input type="checkbox" id="chk-joinsound" checked>
         <span>join sound</span>
       </label>
+      <label class="settings-check-row">
+        <input type="checkbox" id="chk-mirror" checked>
+        <span>mirror my camera</span>
+      </label>
 
       <div class="settings-mictest">
         <span class="mictest-label">mic test (speak)</span>
@@ -224,6 +240,7 @@
           <div id="mictest-fill" class="mictest-fill"></div>
         </div>
       </div>
+      <div id="settings-version" class="settings-version"></div>
     </div>
   </div>
 
@@ -232,7 +249,6 @@
     <button class="user-menu-item" data-action="mute">mute</button>
     <button class="user-menu-item" data-action="kick">kick</button>
     <button class="user-menu-item" data-action="ban">ban</button>
-    <button class="user-menu-item danger" data-action="promote">make host</button>
   </div>
 
 </div><!-- #view-room -->

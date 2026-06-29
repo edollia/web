@@ -1,7 +1,12 @@
 const SUPABASE_URL = 'https://zvqdodzkhmcptwkjlfeu.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp2cWRvZHpraG1jcHR3a2psZmV1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg3NjM1NjAsImV4cCI6MjA2NDMzOTU2MH0.i1xbRIhPHVkDIrnDlQFP0ebNklrx8WVQcQo8Iuo9zG8';
 const ADMIN_UID = '1b12f04e-c1a9-42c5-bd3a-04b6186245c3';
-const ADMIN_PASSCODE = '7769';
+const ADMIN_PASSCODE_HASH = 'ce157a63c5af6bc69d076f5cc7acd1c18a8b44933f907e682f24914a63e9939e';
+
+async function hashPin(pin) {
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(pin));
+    return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
 const DEFAULT_LINK_SETTINGS = {
     snapchat_url: 'https://www.snapchat.com/add/dumidoll',
     snapchat_enabled: true,
@@ -1313,9 +1318,10 @@ function initTabs() {
 }
 
 async function init() {
-    els.passcodeForm.addEventListener('submit', e => {
+    els.passcodeForm.addEventListener('submit', async e => {
         e.preventDefault();
-        if (els.passcode.value.trim() !== ADMIN_PASSCODE) {
+        const entered = await hashPin(els.passcode.value.trim());
+        if (entered !== ADMIN_PASSCODE_HASH) {
             setStatus(els.gateStatus, 'nope');
             els.passcode.select();
             return;
