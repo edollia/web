@@ -31,6 +31,12 @@ CREATE TABLE IF NOT EXISTS rooms (
     CHECK (ended_at IS NULL OR ended_at >= created_at)
 );
 
+CREATE TABLE IF NOT EXISTS room_host_keys (
+  room_id       uuid        PRIMARY KEY REFERENCES rooms(id) ON DELETE CASCADE,
+  host_key_hash text        NOT NULL,
+  created_at    timestamptz NOT NULL DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS room_messages (
   id          uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
   room_id     uuid        NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
@@ -48,6 +54,15 @@ CREATE TABLE IF NOT EXISTS room_bans (
   value      text        NOT NULL,
   is_active  boolean     NOT NULL DEFAULT true,
   created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS room_moderation_events (
+  id                uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  room_id           uuid        NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+  target_session_id text        NOT NULL,
+  action            text        NOT NULL CHECK (action IN ('mute','kick','ban')),
+  muted             boolean,
+  created_at        timestamptz NOT NULL DEFAULT now()
 );
 
 -- ── §2  ADD CONSTRAINTS TO EXISTING TABLES ─────────────────────────
@@ -126,12 +141,55 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_bans_unique_global
   ON room_bans (type, value)
   WHERE room_id IS NULL;
 
+CREATE INDEX IF NOT EXISTS idx_moderation_events_room
+  ON room_moderation_events (room_id, created_at);
+
+CREATE INDEX IF NOT EXISTS idx_moderation_events_target
+  ON room_moderation_events (target_session_id, created_at);
+
 -- ── §4  ROW LEVEL SECURITY — ENABLE ────────────────────────────────
 -- ENABLE ROW LEVEL SECURITY is idempotent (no-op if already enabled).
 
 ALTER TABLE rooms         ENABLE ROW LEVEL SECURITY;
+ALTER TABLE room_host_keys ENABLE ROW LEVEL SECURITY;
 ALTER TABLE room_messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE room_bans     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE room_moderation_events ENABLE ROW LEVEL SECURITY;
+
+-- ── §4b  SECURITY-DEFINER POLICY HELPERS ──────────────────────────
+-- RLS policies run for anon clients, but ban rows themselves are private.
+-- This helper lets the message INSERT policy check bans without granting
+-- browsers SELECT on room_bans.
+
+CREATE OR REPLACE FUNCTION can_insert_room_message(
+  p_room_id    uuid,
+  p_session_id text,
+  p_nickname   text
+)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1 FROM rooms
+    WHERE id = p_room_id AND status = 'active'
+  )
+  AND NOT EXISTS (
+    SELECT 1 FROM room_bans
+    WHERE is_active
+      AND (room_id = p_room_id OR room_id IS NULL)
+      AND (
+        (type = 'session'  AND value = p_session_id) OR
+        (type = 'nickname' AND value = lower(p_nickname))
+      )
+  );
+END;
+$$;
+
+REVOKE ALL ON FUNCTION can_insert_room_message(uuid, text, text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION can_insert_room_message(uuid, text, text) TO anon, authenticated;
 
 -- ── §5  RLS POLICIES ───────────────────────────────────────────────
 -- Always DROP IF EXISTS before CREATE so re-runs never fail with
@@ -154,29 +212,49 @@ CREATE POLICY "rooms_select" ON rooms
   FOR SELECT
   USING (true);
 
--- INSERT: only valid, active rooms.  Prevents clients from inserting
--- pre-ended rooms or rooms with empty host identity fields.
+-- INSERT: blocked for anon clients. Rooms are created by the create-room
+-- Edge Function, which writes the private host-key hash with the service role.
 CREATE POLICY "rooms_insert" ON rooms
   FOR INSERT
-  WITH CHECK (
-    status          = 'active'
-    AND member_count >= 1
-    AND length(trim(coalesce(host_session_id, ''))) > 0
-    AND length(trim(coalesce(host_nickname,   ''))) > 0
-  );
+  WITH CHECK (false);
 
--- UPDATE: anon clients may update metadata of active rooms (title, locked,
--- audience_mode, member_count) but CANNOT change status.  Ending a room
--- goes through the end-room Edge Function (service role, verified host).
+-- UPDATE: blocked for anon clients. Host mutations go through the
+-- room-control Edge Function (service role, verified host key). Ending a
+-- room goes through end-room.
 CREATE POLICY "rooms_update" ON rooms
   FOR UPDATE
-  USING    (status = 'active')   -- can only target active rows
-  WITH CHECK (status = 'active'); -- status must stay 'active'; only service role can set 'ended'
+  USING    (false)
+  WITH CHECK (false);
 
 -- DELETE: blocked for anon clients.  Cleanup is server-side only:
 -- purge_stale_rooms() runs under the postgres role (pg_cron) which
 -- bypasses RLS, and ON DELETE CASCADE handles child rows.
 CREATE POLICY "rooms_delete" ON rooms
+  FOR DELETE
+  USING (false);
+
+-- ── room_host_keys ──
+
+DROP POLICY IF EXISTS "host_keys_select" ON room_host_keys;
+DROP POLICY IF EXISTS "host_keys_insert" ON room_host_keys;
+DROP POLICY IF EXISTS "host_keys_update" ON room_host_keys;
+DROP POLICY IF EXISTS "host_keys_delete" ON room_host_keys;
+
+-- No browser access. The service-role Edge Functions create and verify
+-- host-key hashes.
+CREATE POLICY "host_keys_select" ON room_host_keys
+  FOR SELECT
+  USING (false);
+
+CREATE POLICY "host_keys_insert" ON room_host_keys
+  FOR INSERT
+  WITH CHECK (false);
+
+CREATE POLICY "host_keys_update" ON room_host_keys
+  FOR UPDATE
+  USING (false);
+
+CREATE POLICY "host_keys_delete" ON room_host_keys
   FOR DELETE
   USING (false);
 
@@ -192,16 +270,12 @@ CREATE POLICY "msgs_select" ON room_messages
   FOR SELECT
   USING (true);
 
--- INSERT: only allowed while the room is active.  Prevents clients from
--- writing messages into already-closed rooms.
+-- INSERT: only allowed while the room is active and the supplied session/name
+-- are not banned. Prevents clients from writing messages into closed rooms or
+-- bypassing room-token bans with direct Supabase inserts.
 CREATE POLICY "msgs_insert" ON room_messages
   FOR INSERT
-  WITH CHECK (
-    EXISTS (
-      SELECT 1 FROM rooms
-      WHERE  id = room_id AND status = 'active'
-    )
-  );
+  WITH CHECK (can_insert_room_message(room_id, session_id, nickname));
 
 -- UPDATE: no client-side message editing.
 CREATE POLICY "msgs_update" ON room_messages
@@ -233,13 +307,13 @@ DROP POLICY IF EXISTS "bans_delete"  ON room_bans;
 
 CREATE POLICY "bans_select" ON room_bans
   FOR SELECT
-  USING (true);
+  USING (false);
 
--- INSERT: hosts can add bans (the app limits this to host role client-side;
--- no auth means we can't enforce it at the DB level without Supabase Auth).
+-- INSERT: blocked for anon clients. Host bans go through room-control
+-- after server-side host-key verification. Admin/service-role paths bypass RLS.
 CREATE POLICY "bans_insert" ON room_bans
   FOR INSERT
-  WITH CHECK (true);
+  WITH CHECK (false);
 
 -- UPDATE: no client-side ban editing.
 CREATE POLICY "bans_update" ON room_bans
@@ -251,13 +325,44 @@ CREATE POLICY "bans_delete" ON room_bans
   FOR DELETE
   USING (false);
 
+-- ── room_moderation_events ──
+
+DROP POLICY IF EXISTS "moderation_select" ON room_moderation_events;
+DROP POLICY IF EXISTS "moderation_insert" ON room_moderation_events;
+DROP POLICY IF EXISTS "moderation_update" ON room_moderation_events;
+DROP POLICY IF EXISTS "moderation_delete" ON room_moderation_events;
+
+-- SELECT: clients may receive trusted moderation events for their current room.
+-- Events are inserted only by the room-control Edge Function.
+CREATE POLICY "moderation_select" ON room_moderation_events
+  FOR SELECT
+  USING (true);
+
+CREATE POLICY "moderation_insert" ON room_moderation_events
+  FOR INSERT
+  WITH CHECK (false);
+
+CREATE POLICY "moderation_update" ON room_moderation_events
+  FOR UPDATE
+  USING (false);
+
+CREATE POLICY "moderation_delete" ON room_moderation_events
+  FOR DELETE
+  USING (false);
+
+-- ── §5b  PRIVILEGES ───────────────────────────────────────────────
+
+REVOKE SELECT, INSERT, UPDATE, DELETE ON room_host_keys FROM anon, authenticated;
+REVOKE SELECT, INSERT, UPDATE, DELETE ON room_bans FROM anon, authenticated;
+
+GRANT SELECT ON room_moderation_events TO anon, authenticated;
+REVOKE INSERT, UPDATE, DELETE ON room_moderation_events FROM anon, authenticated;
+
 -- ── §6  FUNCTIONS & TRIGGERS ───────────────────────────────────────
 
 -- 6a. Prevent reopening an ended room.
 --     Runs BEFORE every UPDATE so no host-identity bypass is possible.
---     The "rooms_update" RLS policy (USING status='active') already
---     blocks anon clients from targeting ended rows, but this trigger
---     is a server-side guard for service-role or future server paths.
+--     This is a server-side guard for service-role or future server paths.
 CREATE OR REPLACE FUNCTION prevent_room_reopen()
 RETURNS TRIGGER LANGUAGE plpgsql AS $$
 BEGIN
@@ -274,10 +379,9 @@ CREATE TRIGGER trg_prevent_room_reopen
   BEFORE UPDATE ON rooms
   FOR EACH ROW EXECUTE FUNCTION prevent_room_reopen();
 
--- 6b. Prevent host identity from being changed after room creation.
---     host_session_id and host_nickname are set once on INSERT and must
---     never change (they are the only identity anchor we have without
---     Supabase Auth).
+-- 6b. Prevent host display identity from being changed after room creation.
+--     host_session_id is retained for diagnostics/back-compat display logic;
+--     host authorization uses room_host_keys, not this public field.
 CREATE OR REPLACE FUNCTION prevent_host_field_change()
 RETURNS TRIGGER LANGUAGE plpgsql AS $$
 BEGIN
@@ -347,6 +451,10 @@ RETURNS void LANGUAGE sql SECURITY DEFINER AS $$
   DELETE FROM room_messages
   WHERE  created_at < now() - interval '12 hours';
 
+  -- Trim old moderation events.
+  DELETE FROM room_moderation_events
+  WHERE  created_at < now() - interval '12 hours';
+
   -- Expire old ban records.
   DELETE FROM room_bans
   WHERE  created_at < now() - interval '7 days';
@@ -371,6 +479,14 @@ BEGIN
       AND  tablename = 'room_messages'
   ) THEN
     ALTER PUBLICATION supabase_realtime ADD TABLE room_messages;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables
+    WHERE  pubname   = 'supabase_realtime'
+      AND  tablename = 'room_moderation_events'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE room_moderation_events;
   END IF;
 END $$;
 

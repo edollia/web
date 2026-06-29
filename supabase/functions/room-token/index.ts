@@ -8,7 +8,10 @@
 import { serve }        from 'https://deno.land/std@0.208.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-const ALLOWED_ORIGINS = new Set(['https://doll.gg', 'https://www.doll.gg'])
+const ALLOWED_ORIGINS = new Set([
+  'https://doll.gg', 'https://www.doll.gg',
+  'http://localhost:8421', 'http://127.0.0.1:8421',
+])
 
 function buildCors(req: Request) {
   const origin = req.headers.get('Origin') ?? ''
@@ -23,6 +26,27 @@ function b64url(bytes: Uint8Array): string {
   let s = ''
   for (const b of bytes) s += String.fromCharCode(b)
   return btoa(s).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_')
+}
+
+async function sha256Hex(value: string): Promise<string> {
+  const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))
+  return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('')
+}
+
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false
+  let diff = 0
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i)
+  return diff === 0
+}
+
+async function verifyHostKey(rawKey: unknown, storedHash: string | null): Promise<boolean> {
+  if (!storedHash || typeof rawKey !== 'string' || rawKey.length < 20) return false
+  return timingSafeEqual(await sha256Hex(rawKey), storedHash)
+}
+
+function cleanText(value: unknown, max: number): string {
+  return String(value ?? '').trim().replace(/\s+/g, ' ').slice(0, max)
 }
 
 async function mintToken(opts: {
@@ -62,7 +86,7 @@ serve(async (req) => {
     })
 
   try {
-    const { roomSlug, nickname, sessionId, role } = await req.json()
+    const { roomSlug, nickname, sessionId, hostKey } = await req.json()
 
     if (!roomSlug || !nickname || !sessionId) {
       return json({ error: 'missing fields' }, 400)
@@ -78,7 +102,7 @@ serve(async (req) => {
     // Verify room exists and is still active.
     const { data: room, error: roomErr } = await sb
       .from('rooms')
-      .select('id, status, locked, host_session_id')
+      .select('id, status, locked, audience_mode')
       .eq('slug', roomSlug)
       .single()
 
@@ -86,33 +110,47 @@ serve(async (req) => {
 
     if (room.status !== 'active') return json({ error: 'room has ended' }, 410)
 
-    // Locked rooms: only the original host can join.
-    if (room.locked && room.host_session_id !== sessionId) {
+    const { data: hostKeyRow } = await sb
+      .from('room_host_keys')
+      .select('host_key_hash')
+      .eq('room_id', room.id)
+      .single()
+    const isHost = await verifyHostKey(hostKey, hostKeyRow?.host_key_hash ?? null)
+
+    // Locked rooms: only the holder of the private host key can join.
+    if (room.locked && !isHost) {
       return json({ error: 'room is locked' }, 403)
     }
 
     // Ban check (room-specific or global).
+    const cleanSessionId = cleanText(sessionId, 128)
+    const cleanNickname = cleanText(nickname, 24).toLowerCase()
     const { data: ban } = await sb
       .from('room_bans')
-      .select('id')
+      .select('id, type, value')
       .or(`room_id.eq.${room.id},room_id.is.null`)
-      .or(`value.eq.${sessionId},value.eq.${nickname.toLowerCase()}`)
+      .in('type', ['session', 'nickname'])
+      .in('value', [cleanSessionId, cleanNickname])
       .eq('is_active', true)
-      .limit(1)
+      .limit(10)
 
-    if (ban && ban.length > 0) return json({ error: 'banned' }, 403)
+    const isBanned = (ban ?? []).some((row) =>
+      (row.type === 'session' && row.value === cleanSessionId) ||
+      (row.type === 'nickname' && row.value === cleanNickname)
+    )
+    if (isBanned) return json({ error: 'banned' }, 403)
 
     const token = await mintToken({
       apiKey:     Deno.env.get('LIVEKIT_API_KEY')!,
       apiSecret:  Deno.env.get('LIVEKIT_API_SECRET')!,
-      identity:   sessionId,
-      name:       nickname,
+      identity:   cleanSessionId,
+      name:       cleanText(nickname, 24),
       room:       roomSlug,
-      canPublish: role !== 'audience',
+      canPublish: isHost || !room.audience_mode,
       ttlSeconds: 30 * 60,
     })
 
-    return json({ token, lkUrl: Deno.env.get('LIVEKIT_URL')! })
+    return json({ token, lkUrl: Deno.env.get('LIVEKIT_URL')!, role: isHost ? 'host' : 'guest' })
 
   } catch (err) {
     return json({ error: String(err) }, 500)

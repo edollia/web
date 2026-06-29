@@ -1351,6 +1351,34 @@ a { color: inherit; text-decoration: none; }
   background: rgba(217, 95, 122, 0.2);
 }
 
+.dock-btn.mic-disconnected {
+  opacity: 0.42;
+  cursor: not-allowed;
+  color: var(--v-text-muted);
+  background: var(--v-surface-2);
+  border-color: var(--v-border-soft);
+}
+
+.dock-btn.mic-disconnected:hover {
+  transform: none;
+  box-shadow: none;
+  background: var(--v-surface-2);
+}
+
+.dock-btn.mic-server-muted {
+  opacity: 0.5;
+  cursor: not-allowed;
+  color: var(--v-danger);
+  background: var(--v-danger-bg);
+  border-color: rgba(217, 95, 122, 0.35);
+}
+
+.dock-btn.mic-server-muted:hover {
+  transform: none;
+  box-shadow: none;
+  background: var(--v-danger-bg);
+}
+
 /* ── Dock icons (CSS-drawn using unicode/SVG mask) ──────────────── */
 .dock-icon {
   width: 17px;

@@ -17,6 +17,7 @@ const VERSION        = '2026-06-28.5';
 const SUPABASE_URL   = 'https://karogcjefsnnrvlxlgpf.supabase.co';
 const SUPABASE_ANON  = 'sb_publishable_z2jS9qvQUvkSXVspdi2U5w_dFGM_rG-';
 const LIVEKIT_WS_URL = 'wss://pawsweb-z0kamke4.livekit.cloud';
+const ROOM_SELECT    = 'id, slug, title, status, locked, audience_mode, host_nickname, host_accent, member_count, created_at, ended_at, participant_previews';
 
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON, {
   realtime: { params: { eventsPerSecond: 10 } },
@@ -26,6 +27,11 @@ const ACCENT_COLORS = [
   '#f08ab5', '#c4a0d4', '#7ab8d4', '#8ec4a0', '#d4b07a',
   '#a07ad4', '#7ab4d4', '#d47aaa', '#70b8a0', '#c4a070',
 ];
+
+function safeAccent(value, fallback = ACCENT_COLORS[0]) {
+  const s = String(value || '').trim().toLowerCase();
+  return /^#[0-9a-f]{6}$/.test(s) ? s : fallback;
+}
 
 const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
 const MAX_IMG_BYTES = 15 * 1024 * 1024; // 15 MB
@@ -59,9 +65,10 @@ const state = {
   participants: [],
   chat: [],
   // micOn   = currently transmitting (unmuted)
+  // wantsMic = user's preferred mic state, used to restore after reconnects/forced mutes
   // micReady = device acquired & track published (stays true once enabled; mute keeps the
   //            device live so unmute is instant and the OS keeps the mic indicator on)
-  media: { micOn: false, micReady: false, serverMuted: false, deafened: false, cameraOn: false, screenOn: false, _preDeafenMicOn: false, hasMultipleCameras: false, flipCamFacing: 'user' },
+  media: { micOn: false, wantsMic: false, micReady: false, serverMuted: false, deafened: false, cameraOn: false, screenOn: false, _preDeafenMicOn: false, _preServerMuteWantsMic: false, hasMultipleCameras: false, flipCamFacing: 'user' },
   settings: {
     micDeviceId: 'default', speakerDeviceId: 'default', cameraDeviceId: 'default',
     noiseSuppression: true, joinSound: true, mirrorSelf: true,
@@ -72,6 +79,7 @@ const state = {
   _sbPresenceChan: null,
   _sbChatSub:      null,
   _sbRoomStatusSub: null,
+  _sbModerationSub: null,
   kickedSessionIds: new Set(),
   _lastMsgTime: 0,
   _lkRoom:           null,
@@ -116,7 +124,39 @@ const LS = {
   sid:    'dg_rooms_sid',
   avatar: 'dg_rooms_avatar',
   color:  'dg_rooms_color',
+  hostKeys: 'dg_rooms_host_keys',
 };
+
+function loadHostKeys() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(LS.hostKeys) || '{}');
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch { return {}; }
+}
+
+function getHostKey(slug) {
+  const key = loadHostKeys()[slug];
+  return typeof key === 'string' ? key : '';
+}
+
+function saveHostKey(slug, key) {
+  if (!slug || !key) return;
+  const keys = loadHostKeys();
+  keys[slug] = key;
+  localStorage.setItem(LS.hostKeys, JSON.stringify(keys));
+}
+
+function forgetHostKey(slug) {
+  if (!slug) return;
+  const keys = loadHostKeys();
+  delete keys[slug];
+  localStorage.setItem(LS.hostKeys, JSON.stringify(keys));
+}
+
+function isHostForRoom(roomOrSlug) {
+  const slug = typeof roomOrSlug === 'string' ? roomOrSlug : roomOrSlug?.slug;
+  return !!getHostKey(slug);
+}
 
 function loadIdentity() {
   // One-time migration from the old /voice/ keys so existing visitors keep their name.
@@ -131,7 +171,7 @@ function loadIdentity() {
   state.user.sessionId = sid;
   if (nick) state.user.nickname = nick;
   state.user.avatar = localStorage.getItem(LS.avatar) || '';
-  state.user.color  = localStorage.getItem(LS.color)  || '';
+  state.user.color  = safeAccent(localStorage.getItem(LS.color), '');
   // admin flag: set via localStorage.setItem('dollgg_role', 'admin') in console
   if (localStorage.getItem('dollgg_role') === 'admin') state.user.isAdmin = true;
 }
@@ -146,9 +186,9 @@ function saveIdentity({ nick, avatar, color }) {
   if (avatar) localStorage.setItem(LS.avatar, avatar);
   else        localStorage.removeItem(LS.avatar);
 
-  state.user.color = color || '';
-  if (color) localStorage.setItem(LS.color, color);
-  else       localStorage.removeItem(LS.color);
+  state.user.color = safeAccent(color, '');
+  if (state.user.color) localStorage.setItem(LS.color, state.user.color);
+  else                  localStorage.removeItem(LS.color);
 }
 
 function accentForNick(nick) {
@@ -159,7 +199,7 @@ function accentForNick(nick) {
 
 // My display color: chosen color wins, else a stable hash of the name.
 function myAccent() {
-  return state.user.color || accentForNick(state.user.nickname || '?');
+  return safeAccent(state.user.color, accentForNick(state.user.nickname || '?'));
 }
 
 // Render an avatar: a photo if present, otherwise the first initial on a color chip.
@@ -248,19 +288,24 @@ function fmtDuration(ms) {
 
 // ── § DB HELPERS ──────────────────────────────────────────────────
 function roomFromDb(r) {
+  const previews = Array.isArray(r.participant_previews)
+    ? r.participant_previews.slice(0, 5).map(p => ({
+      n: String(p?.n || '?').slice(0, 24),
+      a: safeAccent(p?.a, accentForNick(String(p?.n || '?'))),
+    }))
+    : [];
   return {
     id:              r.id,
     slug:            r.slug,
     title:           r.title || null,
     host:            r.host_nickname,
-    host_session_id: r.host_session_id,
-    hostAccent:      r.host_accent || accentForNick(r.host_nickname),
+    hostAccent:      safeAccent(r.host_accent, accentForNick(r.host_nickname)),
     member_count:    r.member_count || 1,
     locked:          r.locked,
     audience_mode:   r.audience_mode,
     audience:        r.audience_mode,
     startedAt:            new Date(r.created_at).getTime(),
-    participant_previews: Array.isArray(r.participant_previews) ? r.participant_previews : [],
+    participant_previews: previews,
   };
 }
 
@@ -272,7 +317,7 @@ function presenceToParticipant(p, existingParticipants) {
     muted:       p.muted,
     serverMuted: p.serverMuted || false,
     sharing:     p.sharing || null,
-    accent:      p.accent || accentForNick(p.nickname),
+    accent:      safeAccent(p.accent, accentForNick(p.nickname)),
     avatar:      p.avatar || '',
     sessionId:   p.sessionId,
     speaking:    existing?.speaking || false,
@@ -284,7 +329,7 @@ function presenceToParticipant(p, existingParticipants) {
 async function sbLoadRooms() {
   try {
     const { data, error } = await sb.from('rooms')
-      .select('*')
+      .select(ROOM_SELECT)
       .eq('status', 'active')
       .order('created_at', { ascending: false });
     if (error) throw error;
@@ -298,49 +343,64 @@ async function sbLoadRooms() {
 async function sbFetchRoom(slug) {
   try {
     const { data, error } = await sb.from('rooms')
-      .select('*').eq('slug', slug).eq('status', 'active').single();
+      .select(ROOM_SELECT).eq('slug', slug).eq('status', 'active').single();
     if (error || !data) return null;
     return roomFromDb(data);
   } catch { return null; }
 }
 
 async function sbCreateRoom(slug, title, locked) {
-  const { data, error } = await sb.from('rooms').insert({
-    slug,
-    title:           title || null,
-    locked,
-    audience_mode:   false,
-    host_nickname:   state.user.nickname,
-    host_session_id: state.user.sessionId,
-    host_accent:     myAccent(),
-    status:          'active',
-    member_count:    1,
-  }).select().single();
-  if (error) throw error;
-  return data;
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/create-room`, {
+    method: 'POST',
+    headers: {
+      'Content-Type':  'application/json',
+      'Authorization': `Bearer ${SUPABASE_ANON}`,
+    },
+    body: JSON.stringify({
+      roomSlug: slug,
+      title: title || null,
+      locked,
+      nickname: state.user.nickname,
+      sessionId: state.user.sessionId,
+      hostAccent: myAccent(),
+    }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || `create-room ${res.status}`);
+  if (body.hostKey) saveHostKey(slug, body.hostKey);
+  return body.room;
 }
 
 async function sbUpdateRoom(slug, updates) {
   try {
-    const { error } = await sb.from('rooms')
-      .update(updates)
-      .eq('slug', slug)
-      .eq('host_session_id', state.user.sessionId);
-    if (error) throw error;
-  } catch (err) { logEvent('error', 'db_update_room', { code: err.code }); console.error('sbUpdateRoom:', err); }
+    const hostKey = getHostKey(slug);
+    if (!hostKey) throw new Error('missing host key');
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/room-control`, {
+      method: 'POST',
+      headers: {
+        'Content-Type':  'application/json',
+        'Authorization': `Bearer ${SUPABASE_ANON}`,
+      },
+      body: JSON.stringify({ action: 'update', roomSlug: slug, hostKey, updates }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error || `room-control ${res.status}`);
+  } catch (err) { logEvent('error', 'db_update_room', { msg: String(err.message || '').slice(0, 80) }); console.error('sbUpdateRoom:', err); }
 }
 
 async function sbEndRoom(slug, roomId) {
-  // Host identity is verified server-side by the end-room Edge Function.
+  // Host key is verified server-side by the end-room Edge Function.
   // The trg_on_room_ended DB trigger deletes messages atomically on status change.
   try {
+    const hostKey = getHostKey(slug);
+    if (!hostKey) throw new Error('missing host key');
     const res = await fetch(`${SUPABASE_URL}/functions/v1/end-room`, {
       method: 'POST',
       headers: {
         'Content-Type':  'application/json',
         'Authorization': `Bearer ${SUPABASE_ANON}`,
       },
-      body: JSON.stringify({ roomSlug: slug, sessionId: state.user.sessionId }),
+      body: JSON.stringify({ roomSlug: slug, hostKey }),
     });
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
@@ -359,10 +419,10 @@ async function sbLoadMessages(roomId, limit = 50) {
       .select('*')
       .eq('room_id', roomId)
       .eq('hidden', false)
-      .order('created_at', { ascending: true })
+      .order('created_at', { ascending: false })
       .limit(limit);
     if (error) throw error;
-    return (data || []).map(m => ({
+    return (data || []).reverse().map(m => ({
       nick: m.nickname,
       body: m.body,
       time: new Date(m.created_at).getTime(),
@@ -381,28 +441,49 @@ async function sbSendMessage(roomId, body) {
   if (error) throw error;
 }
 
-async function sbCheckBan(roomId, sessionId, nickname) {
-  try {
-    const { data } = await sb.from('room_bans')
-      .select('id')
-      .or(roomId ? `room_id.eq.${roomId},room_id.is.null` : 'room_id.is.null')
-      .or(`value.eq.${sessionId},value.eq.${nickname.toLowerCase()}`)
-      .eq('is_active', true)
-      .limit(1);
-    return data && data.length > 0;
-  } catch { return false; }
-}
-
 async function sbAddBan(roomId, type, value) {
   try {
-    const { error } = await sb.from('room_bans').insert({
-      room_id:   roomId || null,
-      type,
-      value:     value.toLowerCase(),
-      is_active: true,
+    if (!state.room?.slug) return;
+    const hostKey = getHostKey(state.room.slug);
+    if (!hostKey) throw new Error('missing host key');
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/room-control`, {
+      method: 'POST',
+      headers: {
+        'Content-Type':  'application/json',
+        'Authorization': `Bearer ${SUPABASE_ANON}`,
+      },
+      body: JSON.stringify({
+        action: 'ban',
+        roomSlug: state.room.slug,
+        hostKey,
+        type,
+        value,
+      }),
     });
-    if (error) throw error;
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error || `ban ${res.status}`);
   } catch (err) { console.error('sbAddBan:', err); }
+}
+
+async function sbModerate(action, targetSessionId, extra = {}) {
+  if (!state.room?.slug || !targetSessionId) return;
+  const hostKey = getHostKey(state.room.slug);
+  if (!hostKey) throw new Error('missing host key');
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/room-control`, {
+    method: 'POST',
+    headers: {
+      'Content-Type':  'application/json',
+      'Authorization': `Bearer ${SUPABASE_ANON}`,
+    },
+    body: JSON.stringify({
+      action: 'moderate',
+      roomSlug: state.room.slug,
+      hostKey,
+      moderation: { action, targetSessionId, ...extra },
+    }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || `moderate ${res.status}`);
 }
 
 function sbWatchRooms(onChange) {
@@ -420,7 +501,7 @@ function sbWatchMessages(roomId, onMsg) {
       const m = payload.new;
       if (m.hidden) return;
       if (m.session_id === state.user.sessionId) return; // already shown optimistically
-      onMsg({ nick: m.nickname, body: m.body, time: new Date(m.created_at).getTime(), dbId: m.id });
+      onMsg({ nick: m.nickname, body: m.body, time: new Date(m.created_at).getTime(), sessionId: m.session_id, dbId: m.id });
     })
     .on('postgres_changes', {
       event: 'UPDATE', schema: 'public', table: 'room_messages',
@@ -435,6 +516,20 @@ function sbWatchMessages(roomId, onMsg) {
     else if (status === 'TIMED_OUT') logEvent('warn', 'sb_chat_channel_timeout', { roomId });
   });
   return chan;
+}
+
+function sbWatchModeration(roomId, onEvent) {
+  return sb.channel(`moderation:${roomId}`)
+    .on('postgres_changes', {
+      event: 'INSERT', schema: 'public', table: 'room_moderation_events',
+      filter: `room_id=eq.${roomId}`,
+    }, (payload) => {
+      if (payload.new) onEvent(payload.new);
+    })
+    .subscribe((status) => {
+      if (status === 'CHANNEL_ERROR') logEvent('error', 'sb_moderation_channel_error', { roomId });
+      else if (status === 'TIMED_OUT') logEvent('warn', 'sb_moderation_channel_timeout', { roomId });
+    });
 }
 
 function sbWatchCurrentRoom(roomId, onEnded, onUpdated) {
@@ -503,60 +598,13 @@ function sbJoinPresence(slug) {
     }
   });
 
-  channel.on('broadcast', { event: 'room:update' }, ({ payload }) => {
-    if (!payload || state.view !== 'room') return;
-    if (typeof payload.title !== 'undefined') {
-      state.room.title = payload.title || null;
-      updateTopbar();
-    }
-    if (typeof payload.locked !== 'undefined') {
-      state.room.locked = payload.locked;
-      updateTopbar();
-      updateDock();
-    }
-    if (typeof payload.audience !== 'undefined') {
-      state.room.audience = payload.audience;
-      updateDock();
-      // Enforce audience mode via LK — mute/unmute our own mic track
-      const isMe = (p) => p.sessionId === state.user.sessionId;
-      const self = state.participants.find(isMe);
-      if (self && self.role !== 'host') {
-        if (payload.audience && state.media.micOn) {
-          setMicMuted(true); // host put us in audience — mute (device stays live)
-        }
-        const micBtn = document.getElementById('btn-mic');
-        if (micBtn) micBtn.classList.toggle('audience-locked', payload.audience);
-      }
-      const msg = payload.audience
-        ? 'Audience mode on — only the host can speak'
-        : 'Audience mode off — everyone can speak';
-      appendSystemMessage(msg, 'action');
-      renderParticipants();
-    }
-  });
-
   // Ephemeral chat image — broadcast only, never written to the database.
   channel.on('broadcast', { event: 'chat:image' }, ({ payload }) => {
     if (!payload || state.view !== 'room') return;
     if (payload.sessionId === state.user.sessionId) return; // already shown optimistically
     const thumb = payload.thumb || payload.src;
     const full  = payload.full  || payload.thumb || payload.src;
-    appendImageMessage(payload.nick, thumb, full, payload.time || Date.now());
-  });
-
-  // Targeted moderation — a host muting/kicking one person.
-  channel.on('broadcast', { event: 'user:mute' }, ({ payload }) => {
-    if (!payload || payload.sessionId !== state.user.sessionId) return;
-    if (state.user.role === 'host') return;
-    state.media.serverMuted = !!payload.muted;
-    setMicMuted(payload.muted, payload.muted ? 'A host muted you.' : null);
-    sbTrackPresence({ serverMuted: !!payload.muted });
-  });
-
-  channel.on('broadcast', { event: 'user:kick' }, ({ payload }) => {
-    if (!payload || payload.sessionId !== state.user.sessionId) return;
-    showBanner('You were removed from this room.', 'Back to lobby', () => leaveRoom(), 'error');
-    setTimeout(() => { if (state.view === 'room') leaveRoom(); }, 1800);
+    appendImageMessage(payload.nick, thumb, full, payload.time || Date.now(), payload.sessionId);
   });
 
   channel.subscribe(async (status) => {
@@ -601,6 +649,23 @@ function broadcastToRoom(event, payload) {
   return state._sbPresenceChan?.send({ type: 'broadcast', event, payload }).catch(() => {});
 }
 
+function handleModerationEvent(evt) {
+  if (!evt || evt.target_session_id !== state.user.sessionId) return;
+  if (state.user.role === 'host') return;
+
+  if (evt.action === 'mute') {
+    setMicMuted(!!evt.muted, evt.muted ? 'A host muted you.' : null, { serverMute: true });
+    sbTrackPresence({ serverMuted: !!evt.muted });
+    return;
+  }
+
+  const text = evt.action === 'ban'
+    ? 'You were banned from this room.'
+    : 'You were removed from this room.';
+  showBanner(text, 'Back to lobby', () => leaveRoom(), 'error');
+  setTimeout(() => { if (state.view === 'room') leaveRoom(); }, 1800);
+}
+
 async function sbCleanupChannels() {
   dbg('sb', 'cleanup channels — removing presence/chat/status subs');
   clearTimeout(_memberCountTimer);
@@ -608,9 +673,11 @@ async function sbCleanupChannels() {
   if (state._sbPresenceChan)    toRemove.push(state._sbPresenceChan);
   if (state._sbChatSub)         toRemove.push(state._sbChatSub);
   if (state._sbRoomStatusSub)   toRemove.push(state._sbRoomStatusSub);
+  if (state._sbModerationSub)   toRemove.push(state._sbModerationSub);
   state._sbPresenceChan = null;
   state._sbChatSub      = null;
   state._sbRoomStatusSub = null;
+  state._sbModerationSub = null;
   for (const ch of toRemove) {
     try { await sb.removeChannel(ch); } catch {}
   }
@@ -629,7 +696,7 @@ async function fetchLkToken(slug) {
       roomSlug:  slug,
       nickname:  state.user.nickname,
       sessionId: state.user.sessionId,
-      role:      state.user.role,
+      hostKey:   getHostKey(slug) || null,
     }),
   });
   if (!res.ok) {
@@ -638,7 +705,7 @@ async function fetchLkToken(slug) {
     err.httpStatus = res.status;
     throw err;
   }
-  return res.json(); // { token, lkUrl }
+  return res.json(); // { token, lkUrl, role }
 }
 
 async function lkConnect(slug) {
@@ -646,7 +713,7 @@ async function lkConnect(slug) {
   dbg('lk', 'connecting to room', slug);
   lkSetStatusDot('lk-connecting');
   try {
-    const { token, lkUrl } = await fetchLkToken(slug);
+    const { token, lkUrl, role } = await fetchLkToken(slug);
     const { Room, RoomEvent } = await ensureLk();
 
     const room = new Room({ adaptiveStream: true, dynacast: true });
@@ -660,11 +727,22 @@ async function lkConnect(slug) {
 
     await room.connect(lkUrl || LIVEKIT_WS_URL, token);
     state._lkRoom = room;
+    if (role && state.user.role !== role) {
+      if (role !== 'host') forgetHostKey(slug);
+      state.user.role = role;
+      updateTopbar();
+      updateDock();
+      renderParticipants();
+      sbTrackPresence({ role }).catch(() => {});
+    }
     dbg('lk', 'connected');
+    updateDock();
 
     // If the user had the mic on before LK connected (or before a reconnect),
     // bring it back automatically.
-    if (state.media.micOn) await setMic(true, { silent: true });
+    if (state.media.wantsMic && !micBlockedByAudience()) {
+      await setMic(true, { silent: true, userIntent: false });
+    }
   } catch (err) {
     const s = err.httpStatus;
     logEvent('error', 'lk_connect_failed', { httpStatus: s || 0, msg: String(err.message || '').slice(0, 80) });
@@ -793,6 +871,7 @@ function lkOnConnectionState(connState) {
     showBanner('Reconnecting to voice…', '', null, 'warning');
   } else if (CS && connState === CS.Connected) {
     lkSetStatusDot('lk-connected');
+    updateMicBtn();
     micBanner();
   } else if (CS && connState === CS.Disconnected) {
     lkSetStatusDot('lk-error');
@@ -811,8 +890,12 @@ function lkOnDisconnected() {
   state._lkRoom = null;
   document.querySelectorAll('.lk-audio').forEach(el => el.remove());
   hideScreenShareArea();
-  // Device/tracks are gone; keep micOn as intent so reconnect restores it.
+  // Device/tracks are gone; keep a separate intent so reconnect can restore
+  // without telling presence that audio is still publishing.
+  state.media.wantsMic = state.media.wantsMic || state.media.micOn;
+  state.media.micOn = false;
   state.media.micReady = false; state.media.cameraOn = false; state.media.screenOn = false;
+  _syncMicPresence();
   updateMicBtn();
   updateDock();
   lkSetStatusDot('lk-reconnecting');
@@ -1030,8 +1113,7 @@ function renderLobby() {
         const slug = card.dataset.slug;
         const room = state.rooms.find(r => r.slug === slug);
         if (!room) return;
-        if (room.locked && room.host !== state.user.nickname &&
-            room.host_session_id !== state.user.sessionId) return;
+        if (room.locked && !isHostForRoom(room)) return;
         requireNickname(() => joinRoom(slug));
       });
     });
@@ -1039,7 +1121,7 @@ function renderLobby() {
 }
 
 function renderRoomCard(room) {
-  const isYours = room.host_session_id === state.user.sessionId;
+  const isYours = isHostForRoom(room);
   const title = room.title ? escHtml(room.title) : `@${escHtml(room.host)}`;
 
   const previews = room.participant_previews || [];
@@ -1079,12 +1161,17 @@ function renderRoomCard(room) {
 async function doShowLobby() {
   await lkDisconnect();
   await sbCleanupChannels();
+  resetLeaveConfirm();
 
   state.view = 'lobby';
   state.room = null;
   state.participants = [];
   state.chat = [];
-  state.media = { micOn: false, micReady: false, serverMuted: false, deafened: false, cameraOn: false, screenOn: false, _preDeafenMicOn: false };
+  state.media = {
+    micOn: false, wantsMic: false, micReady: false, serverMuted: false, deafened: false,
+    cameraOn: false, screenOn: false, _preDeafenMicOn: false, _preServerMuteWantsMic: false,
+    hasMultipleCameras: false, flipCamFacing: 'user',
+  };
   state.ui.settingsOpen = false;
   stopMicTest();
   state.user.role = 'guest';
@@ -1114,6 +1201,7 @@ async function doShowLobby() {
 }
 
 let _lastJoinTime = 0;
+let _leaveConfirmTimer = null;
 
 async function joinRoom(slug) {
   const now = Date.now();
@@ -1124,25 +1212,18 @@ async function joinRoom(slug) {
   if (!room) room = await sbFetchRoom(slug);
   if (!room) return;
 
-  // Ban check
-  const banned = await sbCheckBan(room.id, state.user.sessionId, state.user.nickname);
-  if (banned) {
-    showLobbyBanner('You are banned from this room.');
-    return;
-  }
-
   // Re-fetch to get the latest locked state
   if (room.id) {
     const fresh = await sbFetchRoom(slug);
     if (fresh) room = fresh;
   }
 
-  if (room.locked && room.host_session_id !== state.user.sessionId) {
+  if (room.locked && !isHostForRoom(room)) {
     showLobbyBanner('This room is locked.');
     return;
   }
 
-  state.user.role = room.host_session_id === state.user.sessionId ? 'host' : 'guest';
+  state.user.role = isHostForRoom(room) ? 'host' : 'guest';
 
   await enterRoom(room, true);
 }
@@ -1175,8 +1256,11 @@ async function enterRoom(room, pushNav) {
   // Chat real-time subscription
   state._sbChatSub = sbWatchMessages(room.id, (msg) => {
     state.chat.push(msg);
-    appendMessage(msg.nick, msg.body, msg.time, false, { dbId: msg.dbId });
+    appendMessage(msg.nick, msg.body, msg.time, false, { dbId: msg.dbId, sessionId: msg.sessionId });
   });
+
+  // Trusted host moderation events (service-role inserted by room-control)
+  state._sbModerationSub = sbWatchModeration(room.id, handleModerationEvent);
 
   // Watch for room ended or updated (lock, audience mode, etc.)
   state._sbRoomStatusSub = sbWatchCurrentRoom(room.id,
@@ -1195,7 +1279,7 @@ async function enterRoom(room, pushNav) {
         const wasAudience = state.room.audience;
         state.room.audience = updated.audience_mode;
         if (state.user.role !== 'host' && updated.audience_mode !== wasAudience) {
-          if (updated.audience_mode && state.media.micOn) setMicMuted(true);
+          if (updated.audience_mode && state.media.micOn) setMicMuted(true, null, { serverMute: false });
           const micBtn = document.getElementById('btn-mic');
           if (micBtn) micBtn.classList.toggle('audience-locked', !!updated.audience_mode);
           appendSystemMessage(
@@ -1235,6 +1319,29 @@ async function leaveRoom() {
   history.replaceState({ view: 'lobby' }, '', location.pathname);
 }
 
+function resetLeaveConfirm() {
+  clearTimeout(_leaveConfirmTimer);
+  _leaveConfirmTimer = null;
+  const btn = document.getElementById('btn-leave');
+  if (btn) btn.textContent = 'leave';
+}
+
+function requestLeaveRoom() {
+  const liveMedia = state.media.cameraOn || state.media.screenOn;
+  if (liveMedia && !_leaveConfirmTimer) {
+    const btn = document.getElementById('btn-leave');
+    if (btn) btn.textContent = 'end?';
+    showBanner('Camera or screen share is still on.', 'End now', () => {
+      resetLeaveConfirm();
+      leaveRoom();
+    }, 'warning');
+    _leaveConfirmTimer = setTimeout(resetLeaveConfirm, 3000);
+    return;
+  }
+  resetLeaveConfirm();
+  leaveRoom();
+}
+
 let _lastRoomCreate = 0;
 
 // "Start a room" creates instantly — no modal. The title defaults to the host's
@@ -1248,30 +1355,15 @@ async function createRoom() {
   _lastRoomCreate = now;
   const title  = state.user.nickname; // default title = your name
   const slug   = generateSlug(`${title}-${Math.floor(Math.random() * 900) + 100}`);
-  const accent = myAccent();
-  let roomId = null;
+  let room = null;
   try {
     const data = await sbCreateRoom(slug, title, false);
-    roomId = data?.id;
+    room = roomFromDb(data);
   } catch (err) {
     console.error('Failed to create room:', err);
     showLobbyBanner('Could not create room. Try again.');
     return;
   }
-
-  const room = {
-    id:              roomId,
-    slug,
-    title:           title || null,
-    host:            state.user.nickname,
-    host_session_id: state.user.sessionId,
-    hostAccent:      accent,
-    member_count:    1,
-    locked:          false,
-    audience_mode:   false,
-    audience:        false,
-    startedAt:       Date.now(),
-  };
 
   state.user.role = 'host';
   await enterRoom(room, true);
@@ -1285,7 +1377,6 @@ function onTitleEdit(value) {
   state.room.title = title || null;
   const r = state.rooms.find(x => x.slug === state.room.slug);
   if (r) r.title = state.room.title;
-  broadcastToRoom('room:update', { title: state.room.title || '' });
   clearTimeout(_titleSaveTimer);
   _titleSaveTimer = setTimeout(() => {
     if (state.room?.slug) sbUpdateRoom(state.room.slug, { title: state.room.title });
@@ -1341,25 +1432,26 @@ function renderParticipants() {
 
   if (isHost) {
     grid.querySelectorAll('.participant-card.host-can-act').forEach(card => {
-      const nick = card.dataset.nick;
+      const sid = card.dataset.sid;
+      const findParticipant = () => state.participants.find(x => x.sessionId === sid);
 
       // Quick-mute button
       card.querySelector('.p-mute-btn')?.addEventListener('click', e => {
         e.stopPropagation();
-        const p = state.participants.find(x => x.nickname === nick);
+        const p = findParticipant();
         if (p) handleDirectMute(p);
       });
 
       card.addEventListener('contextmenu', e => {
         e.preventDefault();
-        const p = state.participants.find(x => x.nickname === nick);
+        const p = findParticipant();
         if (p) openUserMenu(p, e.clientX, e.clientY);
       });
       let pressTimer;
       card.addEventListener('pointerdown', e => {
         if (e.target.closest('.p-mute-btn')) return;
         pressTimer = setTimeout(() => {
-          const p = state.participants.find(x => x.nickname === nick);
+          const p = findParticipant();
           if (p) {
             const rect = card.getBoundingClientRect();
             openUserMenu(p, rect.right - 20, rect.bottom - 20);
@@ -1429,7 +1521,7 @@ function renderChat(messages) {
   el.innerHTML = '';
   messages.forEach(m => {
     if (m.sys) appendSystemMessage(m.body, m.kind);
-    else appendMessage(m.nick, m.body, m.time, false);
+    else appendMessage(m.nick, m.body, m.time, false, { sessionId: m.sessionId });
   });
   el.scrollTop = el.scrollHeight;
   updateScrollBtn();
@@ -1480,9 +1572,18 @@ function updateDock() {
 function updateMicBtn() {
   const btn = document.getElementById('btn-mic');
   if (!btn) return;
-  btn.classList.toggle('mic-muted', !state.media.micOn);
-  btn.setAttribute('aria-pressed', state.media.micOn ? 'true' : 'false');
-  btn.setAttribute('aria-label', state.media.micOn ? 'Mic on' : 'Mic off');
+  const disconnected = state.view === 'room' && !state._lkRoom;
+  const serverBlocked = state.view === 'room' && state.media.serverMuted && !state.media.micOn;
+  btn.disabled = disconnected || serverBlocked;
+  btn.classList.toggle('mic-muted', !state.media.micOn && !disconnected);
+  btn.classList.toggle('mic-disconnected', disconnected);
+  btn.classList.toggle('mic-server-muted', serverBlocked);
+  btn.setAttribute('aria-pressed', state.media.micOn && !disconnected ? 'true' : 'false');
+  btn.setAttribute('aria-label',
+    disconnected ? 'Mic unavailable while reconnecting'
+      : serverBlocked ? 'Mic muted by host'
+        : state.media.micOn ? 'Mic on' : 'Mic off'
+  );
 }
 
 function updateDockBtnState(id, active) {
@@ -1609,9 +1710,27 @@ function micBlockedByAudience() {
 }
 
 async function setMic(on, opts = {}) {
-  // No LiveKit yet (connecting / offline): record intent, sync UI + presence.
+  const userIntent = opts.userIntent !== false;
+  if (on && state.media.serverMuted && !opts.allowServerMuted) {
+    if (userIntent) state.media.wantsMic = true;
+    updateMicBtn();
+    if (!opts.silent) showBanner('A host muted you.', 'OK', hideBanner, 'warning');
+    return;
+  }
+  if (on && micBlockedByAudience() && !opts.allowAudience) {
+    if (userIntent) state.media.wantsMic = true;
+    state.media.micOn = false;
+    updateMicBtn();
+    _syncMicPresence();
+    if (!opts.silent) micBanner();
+    return;
+  }
+
+  if (userIntent) state.media.wantsMic = !!on;
+
+  // No LiveKit yet (connecting / offline): do not advertise a live mic.
   if (!state._lkRoom) {
-    state.media.micOn = on;
+    state.media.micOn = false;
     updateMicBtn();
     _syncMicPresence();
     if (!opts.silent) micBanner();
@@ -1632,6 +1751,7 @@ async function setMic(on, opts = {}) {
     state._localMicTrack = state._lkRoom.localParticipant.getTrackPublication?.(_lk?.Track?.Source?.Microphone)?.track || state._localMicTrack;
     if (!opts.silent) { if (on) hideBanner(); else micBanner(); }
   } catch (err) {
+    if (on && userIntent) state.media.wantsMic = false;
     if (!opts.silent) handleMicError(err);
     return;
   }
@@ -1669,22 +1789,47 @@ function handleMicError(err) {
 // Gentle nudge — only shown until the user enables their mic the first time.
 function micBanner() {
   if (state.media.micOn) { hideBanner(); return; }
+  if (state.media.serverMuted) { showBanner('A host muted you.', '', null, 'warning'); return; }
   if (micBlockedByAudience()) { showBanner('Audience mode is on — only the host can speak.', '', null, 'info'); return; }
   if (!state.media.micReady) showBanner('You’re muted — tap the mic to talk.', 'Unmute', () => toggleMic(), 'info');
   else hideBanner();
 }
 
 function toggleMic() {
+  if (!state._lkRoom && state.view === 'room') {
+    showBanner('Voice is still connecting.', '', null, 'warning');
+    return;
+  }
+  if (state.media.serverMuted && !state.media.micOn) { micBanner(); return; }
   if (micBlockedByAudience() && !state.media.micOn) { micBanner(); return; }
   setMic(!state.media.micOn);
 }
 
 // Forced mute/unmute from a host or audience mode — host is immune.
-async function setMicMuted(muted, reason) {
+async function setMicMuted(muted, reason, opts = {}) {
   if (state.user.role === 'host') return;
-  await setMic(!muted, { silent: true });
-  if (muted && reason) showBanner(reason, 'OK', hideBanner, 'warning');
-  else if (!muted) hideBanner();
+  const serverMute = opts.serverMute !== false;
+
+  if (muted) {
+    if (serverMute) {
+      state.media._preServerMuteWantsMic = state.media.wantsMic || state.media.micOn;
+      state.media.serverMuted = true;
+    }
+    await setMic(false, { silent: true, userIntent: false });
+    updateMicBtn();
+    if (reason) showBanner(reason, 'OK', hideBanner, 'warning');
+    return;
+  }
+
+  if (serverMute) state.media.serverMuted = false;
+  const shouldRestore = serverMute && state.media._preServerMuteWantsMic;
+  state.media._preServerMuteWantsMic = false;
+  if (shouldRestore && !micBlockedByAudience()) {
+    await setMic(true, { silent: true, userIntent: false });
+  }
+  updateMicBtn();
+  if (micBlockedByAudience()) micBanner();
+  else hideBanner();
 }
 
 function toggleDeafen() {
@@ -1709,9 +1854,8 @@ function toggleDeafen() {
 
 async function toggleCamera() {
   if (!state._lkRoom) {
-    state.media.cameraOn = !state.media.cameraOn;
-    updateDockBtnState('btn-camera', state.media.cameraOn);
-    _syncSharingPresence();
+    showBanner('Camera is available after voice connects.', '', null, 'warning');
+    updateDockBtnState('btn-camera', false);
     return;
   }
 
@@ -1774,15 +1918,8 @@ async function toggleCamera() {
 
 async function toggleScreen() {
   if (!state._lkRoom) {
-    state.media.screenOn = !state.media.screenOn;
-    updateDockBtnState('btn-screen', state.media.screenOn);
-    _syncSharingPresence();
-    appendSystemMessage(
-      state.media.screenOn
-        ? `${state.user.nickname} started sharing their screen`
-        : `${state.user.nickname} stopped sharing their screen`,
-      'action'
-    );
+    showBanner('Screen share is available after voice connects.', '', null, 'warning');
+    updateDockBtnState('btn-screen', false);
     return;
   }
 
@@ -1948,7 +2085,6 @@ async function toggleLock() {
     state.room.locked ? 'Room locked by host' : 'Room unlocked by host', 'action'
   );
 
-  broadcastToRoom('room:update', { locked: state.room.locked });
   await sbUpdateRoom(state.room.slug, { locked: state.room.locked });
 
   // postgres_changes subscription in sbWatchCurrentRoom notifies all participants
@@ -1968,7 +2104,6 @@ async function toggleAudience() {
     'action'
   );
 
-  broadcastToRoom('room:update', { audience: state.room.audience });
   await sbUpdateRoom(state.room.slug, { audience_mode: state.room.audience });
   updateTopbar();
   updateDock();
@@ -2023,7 +2158,7 @@ async function sendMessage() {
   input.value = '';
   const msg = { nick: state.user.nickname, body, time: Date.now() };
   state.chat.push(msg);
-  appendMessage(msg.nick, msg.body, msg.time, true, { msgId }); // optimistic
+  appendMessage(msg.nick, msg.body, msg.time, true, { msgId, sessionId: state.user.sessionId }); // optimistic
 
   if (state.room?.id) {
     try {
@@ -2071,19 +2206,20 @@ function showChatImgError(msg) {
 }
 
 // The sender's chosen name color, when we know it (self always; others via presence).
-function nickColor(nick) {
-  if (nick === state.user.nickname) return myAccent();
-  return state.participants.find(x => x.nickname === nick)?.accent || '';
+function nickColor(nick, sessionId) {
+  if (sessionId && sessionId === state.user.sessionId) return myAccent();
+  if (!sessionId && nick === state.user.nickname) return myAccent();
+  return state.participants.find(x => sessionId ? x.sessionId === sessionId : x.nickname === nick)?.accent || '';
 }
 
-function appendMessage(nick, body, time, isNewMsg, { msgId, dbId } = {}) {
+function appendMessage(nick, body, time, isNewMsg, { msgId, dbId, sessionId } = {}) {
   const el  = document.getElementById('chat-messages');
   const div = document.createElement('div');
   div.className = 'chat-msg';
   if (msgId) div.dataset.msgId  = msgId;
   if (dbId)  div.dataset.msgDbId = dbId;
-  const isYou = nick === state.user.nickname;
-  const color = nickColor(nick);
+  const isYou = sessionId ? sessionId === state.user.sessionId : nick === state.user.nickname;
+  const color = nickColor(nick, sessionId);
   const styleAttr = color ? ` style="color:${escHtml(color)}"` : '';
   div.innerHTML = `
     <div class="chat-msg-header">
@@ -2122,13 +2258,13 @@ function markMsgFailed(msgId, body) {
 // Image message — rendered as a thumbnail that opens a fullscreen viewer.
 // Images are ephemeral: broadcast over realtime, never written to the DB.
 // thumb: small inline preview; full: higher-quality for the viewer.
-function appendImageMessage(nick, thumb, full, time) {
+function appendImageMessage(nick, thumb, full, time, sessionId) {
   const el = document.getElementById('chat-messages');
   if (!el) return;
   const div = document.createElement('div');
   div.className = 'chat-msg';
-  const isYou = nick === state.user.nickname;
-  const color = nickColor(nick);
+  const isYou = sessionId ? sessionId === state.user.sessionId : nick === state.user.nickname;
+  const color = nickColor(nick, sessionId);
   const styleAttr = color ? ` style="color:${escHtml(color)}"` : '';
   div.innerHTML = `
     <div class="chat-msg-header">
@@ -2159,7 +2295,7 @@ async function sendChatImage(file) {
     return;
   }
   _msgBurst.push(Date.now());
-  appendImageMessage(state.user.nickname, thumb, full, Date.now()); // optimistic
+  appendImageMessage(state.user.nickname, thumb, full, Date.now(), state.user.sessionId); // optimistic
   broadcastToRoom('chat:image', {
     nick: state.user.nickname, thumb, full,
     src: thumb, // backward compat for old clients
@@ -2209,7 +2345,9 @@ function closeUserMenu() {
 
 function handleDirectMute(p) {
   p.serverMuted = !p.serverMuted;
-  broadcastToRoom('user:mute', { sessionId: p.sessionId, muted: p.serverMuted });
+  sbModerate('mute', p.sessionId, { muted: p.serverMuted }).catch(err => {
+    console.error('moderate mute:', err);
+  });
   appendSystemMessage(
     p.serverMuted ? `Host muted ${p.nickname}` : `Host unmuted ${p.nickname}`, 'action'
   );
@@ -2224,7 +2362,9 @@ async function handleUserAction(action) {
   switch (action) {
     case 'mute':
       p.serverMuted = !p.serverMuted;
-      broadcastToRoom('user:mute', { sessionId: p.sessionId, muted: p.serverMuted });
+      sbModerate('mute', p.sessionId, { muted: p.serverMuted }).catch(err => {
+        console.error('moderate mute:', err);
+      });
       appendSystemMessage(
         p.serverMuted ? `Host muted ${p.nickname}` : `Host unmuted ${p.nickname}`, 'action'
       );
@@ -2234,9 +2374,11 @@ async function handleUserAction(action) {
     case 'kick':
       if (p.sessionId) {
         state.kickedSessionIds.add(p.sessionId);
-        broadcastToRoom('user:kick', { sessionId: p.sessionId });
+        sbModerate('kick', p.sessionId).catch(err => {
+          console.error('moderate kick:', err);
+        });
       }
-      state.participants = state.participants.filter(x => x.nickname !== p.nickname);
+      state.participants = state.participants.filter(x => x.sessionId !== p.sessionId);
       state.room.member_count = state.participants.length;
       appendSystemMessage(`${p.nickname} was kicked`, 'leave');
       renderParticipants();
@@ -2246,15 +2388,21 @@ async function handleUserAction(action) {
     case 'ban':
       if (p.sessionId) {
         state.kickedSessionIds.add(p.sessionId);
-        broadcastToRoom('user:kick', { sessionId: p.sessionId });
       }
-      state.participants = state.participants.filter(x => x.nickname !== p.nickname);
+      state.participants = state.participants.filter(x => x.sessionId !== p.sessionId);
       state.bans.push({ nickname: p.nickname, sessionId: p.sessionId || '', type: 'nickname' });
       state.room.member_count = state.participants.length;
       appendSystemMessage(`${p.nickname} was banned`, 'leave');
       if (state.room?.id) {
-        sbAddBan(state.room.id, 'nickname', p.nickname).catch(console.error);
-        if (p.sessionId) sbAddBan(state.room.id, 'session', p.sessionId).catch(console.error);
+        (async () => {
+          await sbAddBan(state.room.id, 'nickname', p.nickname);
+          if (p.sessionId) {
+            await sbAddBan(state.room.id, 'session', p.sessionId);
+            await sbModerate('ban', p.sessionId);
+          }
+        })().catch(console.error);
+      } else if (p.sessionId) {
+        sbModerate('ban', p.sessionId).catch(console.error);
       }
       renderParticipants();
       updateTopbar();
@@ -2402,8 +2550,8 @@ async function init() {
   titleInput.addEventListener('keydown', e => { if (e.key === 'Enter') titleInput.blur(); });
 
   // ── Room controls ──
-  document.getElementById('btn-back').addEventListener('click', leaveRoom);
-  document.getElementById('btn-leave').addEventListener('click', leaveRoom);
+  document.getElementById('btn-back').addEventListener('click', requestLeaveRoom);
+  document.getElementById('btn-leave').addEventListener('click', requestLeaveRoom);
   document.getElementById('btn-mic').addEventListener('click', toggleMic);
   document.getElementById('btn-deafen').addEventListener('click', toggleDeafen);
   document.getElementById('btn-camera').addEventListener('click', toggleCamera);
@@ -2559,6 +2707,7 @@ async function init() {
     // keepalive: true lets this fetch complete even after the page is unloading.
     if (state.room?.id && state.user.role === 'host') {
       dbg('lifecycle', 'host pagehide — ending room via keepalive fetch');
+      const hostKey = getHostKey(state.room.slug);
       fetch(`${SUPABASE_URL}/functions/v1/end-room`, {
         method: 'POST',
         keepalive: true,
@@ -2566,7 +2715,7 @@ async function init() {
           'Content-Type':  'application/json',
           'Authorization': `Bearer ${SUPABASE_ANON}`,
         },
-        body: JSON.stringify({ roomSlug: state.room.slug, sessionId: state.user.sessionId }),
+        body: JSON.stringify({ roomSlug: state.room.slug, hostKey }),
       }).catch(() => {});
     }
   });
