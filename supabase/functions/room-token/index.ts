@@ -86,11 +86,13 @@ serve(async (req) => {
     })
 
   try {
-    const { roomSlug, nickname, sessionId, hostKey } = await req.json()
+    const { roomSlug, nickname, sessionId, hostKey, adminJwt } = await req.json()
 
     if (!roomSlug || !nickname || !sessionId) {
       return json({ error: 'missing fields' }, 400)
     }
+
+    const ADMIN_UID = '9ea1a89e-5a00-4b91-b98c-d69a5e383df4'
 
     // Service role lets us check room state and bans without RLS interference.
     const sb = createClient(
@@ -98,6 +100,13 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
       { auth: { persistSession: false } },
     )
+
+    // Verify admin JWT if provided — admin bypasses locked/ban checks and gets host role.
+    let isAdmin = false
+    if (adminJwt && typeof adminJwt === 'string') {
+      const { data: { user } } = await sb.auth.getUser(adminJwt)
+      isAdmin = user?.id === ADMIN_UID
+    }
 
     // Verify room exists and is still active.
     const { data: room, error: roomErr } = await sb
@@ -117,40 +126,43 @@ serve(async (req) => {
       .single()
     const isHost = await verifyHostKey(hostKey, hostKeyRow?.host_key_hash ?? null)
 
-    // Locked rooms: only the holder of the private host key can join.
-    if (room.locked && !isHost) {
+    // Locked rooms: only the holder of the private host key (or admin) can join.
+    if (room.locked && !isHost && !isAdmin) {
       return json({ error: 'room is locked' }, 403)
     }
 
-    // Ban check (room-specific or global).
     const cleanSessionId = cleanText(sessionId, 128)
-    const cleanNickname = cleanText(nickname, 24).toLowerCase()
-    const { data: ban } = await sb
-      .from('room_bans')
-      .select('id, type, value')
-      .or(`room_id.eq.${room.id},room_id.is.null`)
-      .in('type', ['session', 'nickname'])
-      .in('value', [cleanSessionId, cleanNickname])
-      .eq('is_active', true)
-      .limit(10)
+    const effectiveRole = (isHost || isAdmin) ? 'host' : 'guest'
 
-    const isBanned = (ban ?? []).some((row) =>
-      (row.type === 'session' && row.value === cleanSessionId) ||
-      (row.type === 'nickname' && row.value === cleanNickname)
-    )
-    if (isBanned) return json({ error: 'banned' }, 403)
+    // Ban check skipped for admin.
+    if (!isAdmin) {
+      const cleanNickname = cleanText(nickname, 24).toLowerCase()
+      const { data: ban } = await sb
+        .from('room_bans')
+        .select('id, type, value')
+        .or(`room_id.eq.${room.id},room_id.is.null`)
+        .in('type', ['session', 'nickname'])
+        .in('value', [cleanSessionId, cleanNickname])
+        .eq('is_active', true)
+        .limit(10)
 
+      const isBanned = (ban ?? []).some((row) =>
+        (row.type === 'session' && row.value === cleanSessionId) ||
+        (row.type === 'nickname' && row.value === cleanNickname)
+      )
+      if (isBanned) return json({ error: 'banned' }, 403)
+    }
     const token = await mintToken({
       apiKey:     Deno.env.get('LIVEKIT_API_KEY')!,
       apiSecret:  Deno.env.get('LIVEKIT_API_SECRET')!,
       identity:   cleanSessionId,
       name:       cleanText(nickname, 24),
       room:       roomSlug,
-      canPublish: isHost || !room.audience_mode,
+      canPublish: effectiveRole === 'host' || !room.audience_mode,
       ttlSeconds: 30 * 60,
     })
 
-    return json({ token, lkUrl: Deno.env.get('LIVEKIT_URL')!, role: isHost ? 'host' : 'guest' })
+    return json({ token, lkUrl: Deno.env.get('LIVEKIT_URL')!, role: effectiveRole })
 
   } catch (err) {
     return json({ error: String(err) }, 500)

@@ -203,11 +203,20 @@ serve(async (req) => {
     const roomSlug = cleanText(body.roomSlug, 64).toLowerCase()
     if (!roomSlug) return json({ error: 'roomSlug required' }, 400)
 
+    const ADMIN_UID = '9ea1a89e-5a00-4b91-b98c-d69a5e383df4'
+
     const sb = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
       { auth: { persistSession: false } },
     )
+
+    // Verify admin JWT if provided (alternative to host key).
+    let isAdmin = false
+    if (body.adminJwt && typeof body.adminJwt === 'string') {
+      const { data: { user } } = await sb.auth.getUser(body.adminJwt)
+      isAdmin = user?.id === ADMIN_UID
+    }
 
     const { data: room, error: roomErr } = await sb.from('rooms')
       .select('id, status, host_session_id, audience_mode')
@@ -217,12 +226,14 @@ serve(async (req) => {
     if (roomErr || !room) return json({ error: 'room not found' }, 404)
     if (room.status !== 'active') return json({ error: 'room has ended' }, 410)
 
-    const { data: hostKeyRow, error: keyErr } = await sb.from('room_host_keys')
-      .select('host_key_hash')
-      .eq('room_id', room.id)
-      .single()
-    if (keyErr || !(await verifyHostKey(body.hostKey, hostKeyRow?.host_key_hash ?? null))) {
-      return json({ error: 'not the host' }, 403)
+    if (!isAdmin) {
+      const { data: hostKeyRow, error: keyErr } = await sb.from('room_host_keys')
+        .select('host_key_hash')
+        .eq('room_id', room.id)
+        .single()
+      if (keyErr || !(await verifyHostKey(body.hostKey, hostKeyRow?.host_key_hash ?? null))) {
+        return json({ error: 'not the host' }, 403)
+      }
     }
 
     if (action === 'update') {

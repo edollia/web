@@ -183,6 +183,9 @@
     </div>
 
     <div class="dock-right">
+      <button id="btn-admin-end" class="dock-ctrl admin-ctrl dock-ctrl-danger" hidden title="End room (admin)" aria-label="End room">
+        <span class="dock-icon dock-icon-end"></span>
+      </button>
       <button id="btn-ghost"    class="dock-ctrl admin-ctrl" aria-pressed="false" hidden title="Go ghost — hide yourself" aria-label="Go ghost">
         <span class="dock-icon dock-icon-ghost"></span>
       </button>
@@ -219,6 +222,11 @@
       <label class="settings-label" for="sel-camera">camera</label>
       <select id="sel-camera" class="settings-select">
         <option value="default">Default</option>
+      </select>
+
+      <label class="settings-label" for="sel-resolution">resolution</label>
+      <select id="sel-resolution" class="settings-select">
+        <option value="720p" selected>720p</option>
       </select>
 
       <label class="settings-check-row">

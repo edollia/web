@@ -112,11 +112,12 @@ serve(async (req) => {
     })
 
   try {
-    const { roomSlug, hostKey } = await req.json()
+    const { roomSlug, hostKey, adminJwt } = await req.json()
 
-    if (!roomSlug || !hostKey) {
-      return json({ error: 'missing fields' }, 400)
-    }
+    if (!roomSlug) return json({ error: 'roomSlug required' }, 400)
+    if (!hostKey && !adminJwt) return json({ error: 'missing fields' }, 400)
+
+    const ADMIN_UID = '9ea1a89e-5a00-4b91-b98c-d69a5e383df4'
 
     // Service role bypasses RLS; host verification is our auth layer here.
     const sb = createClient(
@@ -124,6 +125,18 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
       { auth: { persistSession: false } },
     )
+
+    // Verify admin JWT if provided (alternative to host key).
+    let isAdmin = false
+    if (adminJwt && typeof adminJwt === 'string') {
+      const sbAuth = createClient(
+        Deno.env.get('SUPABASE_URL')!,
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+        { auth: { persistSession: false } },
+      )
+      const { data: { user } } = await sbAuth.auth.getUser(adminJwt)
+      isAdmin = user?.id === ADMIN_UID
+    }
 
     const { data: room, error: fetchErr } = await sb
       .from('rooms')
@@ -133,15 +146,17 @@ serve(async (req) => {
 
     if (fetchErr || !room) return json({ error: 'room not found' }, 404)
 
-    const { data: hostKeyRow, error: keyErr } = await sb
-      .from('room_host_keys')
-      .select('host_key_hash')
-      .eq('room_id', room.id)
-      .single()
+    if (!isAdmin) {
+      const { data: hostKeyRow, error: keyErr } = await sb
+        .from('room_host_keys')
+        .select('host_key_hash')
+        .eq('room_id', room.id)
+        .single()
 
-    // Reject if caller does not hold the private host key.
-    if (keyErr || !(await verifyHostKey(hostKey, hostKeyRow?.host_key_hash ?? null))) {
-      return json({ error: 'not the host' }, 403)
+      // Reject if caller does not hold the private host key.
+      if (keyErr || !(await verifyHostKey(hostKey, hostKeyRow?.host_key_hash ?? null))) {
+        return json({ error: 'not the host' }, 403)
+      }
     }
 
     // Already ended — idempotent success, but still retry LiveKit cleanup.

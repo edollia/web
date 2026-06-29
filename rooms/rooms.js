@@ -13,20 +13,27 @@ async function ensureLk() {
 }
 
 // ── § CONFIG ─────────────────────────────────────────────────────
-const VERSION        = '2026-06-28.5';
+const VERSION        = '2026-06-29.1';
 const SUPABASE_URL   = 'https://karogcjefsnnrvlxlgpf.supabase.co';
 const SUPABASE_ANON  = 'sb_publishable_z2jS9qvQUvkSXVspdi2U5w_dFGM_rG-';
 const LIVEKIT_WS_URL = 'wss://pawsweb-z0kamke4.livekit.cloud';
 const ROOM_SELECT    = 'id, slug, title, status, locked, audience_mode, host_nickname, host_accent, member_count, created_at, ended_at, participant_previews';
+const ADMIN_UID      = '9ea1a89e-5a00-4b91-b98c-d69a5e383df4';
 
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON, {
   realtime: { params: { eventsPerSecond: 10 } },
 });
 
-const ACCENT_COLORS = [
-  '#f08ab5', '#c4a0d4', '#7ab8d4', '#8ec4a0', '#d4b07a',
-  '#a07ad4', '#7ab4d4', '#d47aaa', '#70b8a0', '#c4a070',
+// 8 distinct pastel/muted colors + 5 vivid/shiny colors.
+// SHINY_COLORS are displayed with a glow effect in the picker.
+const NORMAL_COLORS = [
+  '#f08ab5', '#c4a0d4', '#7ab8d4', '#8ec4a0',
+  '#d4b07a', '#d47aaa', '#7da0c8', '#a0b88c',
 ];
+const SHINY_COLORS = [
+  '#ff5fa0', '#9b55ff', '#00b8f5', '#00d47a', '#ffb300',
+];
+const ACCENT_COLORS = [...NORMAL_COLORS, ...SHINY_COLORS];
 
 function safeAccent(value, fallback = ACCENT_COLORS[0]) {
   const s = String(value || '').trim().toLowerCase();
@@ -50,9 +57,12 @@ const ICON = {
   mic:    _svg('M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5-3c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z'),
   micOff: _svg('M19 11h-1.7c0 .74-.16 1.43-.43 2.05l1.23 1.23c.56-.98.9-2.09.9-3.28zm-4.02.17c0-.06.02-.11.02-.17V5c0-1.66-1.34-3-3-3S9 3.34 9 5v.18l5.98 5.99zM4.27 3L3 4.27l6.01 6.01V11c0 1.66 1.34 3 3 3 .23 0 .44-.03.65-.08l1.66 1.66c-.71.33-1.5.52-2.31.52-2.76 0-5.3-2.1-5.3-5.1H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c.91-.13 1.77-.45 2.54-.9L19.73 21 21 19.73 4.27 3z'),
   fullscreen: _svg('M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z'),
-  flipCam:    _svg('M20 5h-3.17L15 3H9L7.17 5H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm-8 12.2c-2.87 0-5.2-2.33-5.2-5.2S9.13 6.8 12 6.8c1.43 0 2.73.58 3.67 1.53L14 10h5V5l-1.73 1.73C16.16 5.66 14.18 5 12 5c-3.87 0-7 3.13-7 7s3.13 7 7 7c3.47 0 6.35-2.52 6.89-5.83l-2.02-.34C17.46 15.03 14.97 17.2 12 17.2z'),
+  // Two-arrow rotate icon — clearly means "switch/flip"
+  flipCam:    _svg('M19 8l-4 4h3c0 3.31-2.69 6-6 6-1.01 0-1.97-.25-2.8-.7l-1.46 1.46C8.97 19.54 10.43 20 12 20c4.42 0 8-3.58 8-8h3l-4-4zM6 12c0-3.31 2.69-6 6-6 1.01 0 1.97.25 2.8.7l1.46-1.46C15.03 4.46 13.57 4 12 4c-4.42 0-8 3.58-8 8H1l4 4 4-4H6z'),
   ghost:  _svg('M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75C21.27 7.11 17 4 12 4c-1.27 0-2.49.2-3.64.57l2.17 2.17C11.06 6.49 11.51 7 12 7zM2 4.27l2.28 2.28.46.46C3.08 8.3 1.78 10.02 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z'),
   image:  _svg('M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z'),
+  dots:   _svg('M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z'),
+  end:    _svg('M6 6h12v12H6z'),
 };
 
 
@@ -71,6 +81,7 @@ const state = {
   media: { micOn: false, wantsMic: false, micReady: false, serverMuted: false, deafened: false, cameraOn: false, screenOn: false, _preDeafenMicOn: false, _preServerMuteWantsMic: false, hasMultipleCameras: false, flipCamFacing: 'user' },
   settings: {
     micDeviceId: 'default', speakerDeviceId: 'default', cameraDeviceId: 'default',
+    cameraResolution: '720p',
     noiseSuppression: true, joinSound: true, mirrorSelf: true,
   },
   ui: { settingsOpen: false, chatHidden: false, activeTab: 'participants' },
@@ -158,7 +169,7 @@ function isHostForRoom(roomOrSlug) {
   return !!getHostKey(slug);
 }
 
-function loadIdentity() {
+async function loadIdentity() {
   // One-time migration from the old /voice/ keys so existing visitors keep their name.
   for (const [oldK, newK] of [['dg_voice_nick', LS.nick], ['dg_voice_sid', LS.sid]]) {
     const old = localStorage.getItem(oldK);
@@ -172,8 +183,21 @@ function loadIdentity() {
   if (nick) state.user.nickname = nick;
   state.user.avatar = localStorage.getItem(LS.avatar) || '';
   state.user.color  = safeAccent(localStorage.getItem(LS.color), '');
-  // admin flag: set via localStorage.setItem('dollgg_role', 'admin') in console
-  if (localStorage.getItem('dollgg_role') === 'admin') state.user.isAdmin = true;
+
+  // Admin detection: verify via Supabase Auth session (set when logged in at /admin/rooms/).
+  // The localStorage flag only grants ghost mode; full admin powers require a real auth session.
+  try {
+    const { data: { user } } = await sb.auth.getUser();
+    if (user?.id === ADMIN_UID) state.user.isAdmin = true;
+  } catch { /* not logged in — not an error */ }
+}
+
+async function getAdminJwt() {
+  if (!state.user.isAdmin) return null;
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    return session?.access_token || null;
+  } catch { return null; }
 }
 
 // Persist name + optional photo (data URL) + optional chosen color.
@@ -374,14 +398,15 @@ async function sbCreateRoom(slug, title, locked) {
 async function sbUpdateRoom(slug, updates) {
   try {
     const hostKey = getHostKey(slug);
-    if (!hostKey) throw new Error('missing host key');
+    const adminJwt = !hostKey && state.user.isAdmin ? await getAdminJwt() : null;
+    if (!hostKey && !adminJwt) throw new Error('missing host key');
     const res = await fetch(`${SUPABASE_URL}/functions/v1/room-control`, {
       method: 'POST',
       headers: {
         'Content-Type':  'application/json',
         'Authorization': `Bearer ${SUPABASE_ANON}`,
       },
-      body: JSON.stringify({ action: 'update', roomSlug: slug, hostKey, updates }),
+      body: JSON.stringify({ action: 'update', roomSlug: slug, hostKey: hostKey || undefined, adminJwt: adminJwt || undefined, updates }),
     });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(body.error || `room-control ${res.status}`);
@@ -389,18 +414,19 @@ async function sbUpdateRoom(slug, updates) {
 }
 
 async function sbEndRoom(slug, roomId) {
-  // Host key is verified server-side by the end-room Edge Function.
+  // Host key verified server-side. Admin JWT accepted as alternative authority.
   // The trg_on_room_ended DB trigger deletes messages atomically on status change.
   try {
     const hostKey = getHostKey(slug);
-    if (!hostKey) throw new Error('missing host key');
+    const adminJwt = !hostKey && state.user.isAdmin ? await getAdminJwt() : null;
+    if (!hostKey && !adminJwt) throw new Error('missing host key');
     const res = await fetch(`${SUPABASE_URL}/functions/v1/end-room`, {
       method: 'POST',
       headers: {
         'Content-Type':  'application/json',
         'Authorization': `Bearer ${SUPABASE_ANON}`,
       },
-      body: JSON.stringify({ roomSlug: slug, hostKey }),
+      body: JSON.stringify({ roomSlug: slug, hostKey: hostKey || undefined, adminJwt: adminJwt || undefined }),
     });
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
@@ -445,7 +471,8 @@ async function sbAddBan(roomId, type, value) {
   try {
     if (!state.room?.slug) return;
     const hostKey = getHostKey(state.room.slug);
-    if (!hostKey) throw new Error('missing host key');
+    const adminJwt = !hostKey && state.user.isAdmin ? await getAdminJwt() : null;
+    if (!hostKey && !adminJwt) throw new Error('missing host key');
     const res = await fetch(`${SUPABASE_URL}/functions/v1/room-control`, {
       method: 'POST',
       headers: {
@@ -455,7 +482,8 @@ async function sbAddBan(roomId, type, value) {
       body: JSON.stringify({
         action: 'ban',
         roomSlug: state.room.slug,
-        hostKey,
+        hostKey: hostKey || undefined,
+        adminJwt: adminJwt || undefined,
         type,
         value,
       }),
@@ -468,7 +496,8 @@ async function sbAddBan(roomId, type, value) {
 async function sbModerate(action, targetSessionId, extra = {}) {
   if (!state.room?.slug || !targetSessionId) return;
   const hostKey = getHostKey(state.room.slug);
-  if (!hostKey) throw new Error('missing host key');
+  const adminJwt = !hostKey && state.user.isAdmin ? await getAdminJwt() : null;
+  if (!hostKey && !adminJwt) throw new Error('missing host key');
   const res = await fetch(`${SUPABASE_URL}/functions/v1/room-control`, {
     method: 'POST',
     headers: {
@@ -478,7 +507,8 @@ async function sbModerate(action, targetSessionId, extra = {}) {
     body: JSON.stringify({
       action: 'moderate',
       roomSlug: state.room.slug,
-      hostKey,
+      hostKey: hostKey || undefined,
+      adminJwt: adminJwt || undefined,
       moderation: { action, targetSessionId, ...extra },
     }),
   });
@@ -651,7 +681,7 @@ function broadcastToRoom(event, payload) {
 
 function handleModerationEvent(evt) {
   if (!evt || evt.target_session_id !== state.user.sessionId) return;
-  if (state.user.role === 'host') return;
+  if (state.user.role === 'host' || state.user.isAdmin) return; // host and admin are immune
 
   if (evt.action === 'mute') {
     setMicMuted(!!evt.muted, evt.muted ? 'A host muted you.' : null, { serverMute: true });
@@ -686,6 +716,7 @@ async function sbCleanupChannels() {
 // ── § LIVEKIT ─────────────────────────────────────────────────────
 
 async function fetchLkToken(slug) {
+  const adminJwt = state.user.isAdmin ? await getAdminJwt() : null;
   const res = await fetch(`${SUPABASE_URL}/functions/v1/room-token`, {
     method: 'POST',
     headers: {
@@ -697,6 +728,7 @@ async function fetchLkToken(slug) {
       nickname:  state.user.nickname,
       sessionId: state.user.sessionId,
       hostKey:   getHostKey(slug) || null,
+      adminJwt:  adminJwt || null,
     }),
   });
   if (!res.ok) {
@@ -959,12 +991,35 @@ function showParticipantVideo(track, identity) {
 }
 
 // Fullscreen toggle for any video tile (works on desktop + iOS Safari).
+// Attaches a one-time listener to resume playback after exit, which is needed
+// because some browsers/iOS pause the video element when leaving fullscreen.
 function goFullscreen(video) {
   if (!video) return;
-  if (document.fullscreenElement) { document.exitFullscreen(); return; }
-  if (video.requestFullscreen)            video.requestFullscreen();
-  else if (video.webkitEnterFullscreen)   video.webkitEnterFullscreen();   // iOS Safari
-  else if (video.webkitRequestFullscreen) video.webkitRequestFullscreen();
+  if (document.fullscreenElement || document.webkitFullscreenElement) {
+    (document.exitFullscreen || document.webkitExitFullscreen)?.call(document);
+    return;
+  }
+  if (video.requestFullscreen) {
+    video.requestFullscreen();
+    document.addEventListener('fullscreenchange', function onFsExit() {
+      if (!document.fullscreenElement) {
+        video.play().catch(() => {});
+        document.removeEventListener('fullscreenchange', onFsExit);
+      }
+    });
+  } else if (video.webkitEnterFullscreen) {
+    // iOS Safari native fullscreen — fires webkitendfullscreen on the element
+    video.addEventListener('webkitendfullscreen', () => video.play().catch(() => {}), { once: true });
+    video.webkitEnterFullscreen();
+  } else if (video.webkitRequestFullscreen) {
+    video.webkitRequestFullscreen();
+    document.addEventListener('webkitfullscreenchange', function onFsExit() {
+      if (!document.webkitFullscreenElement) {
+        video.play().catch(() => {});
+        document.removeEventListener('webkitfullscreenchange', onFsExit);
+      }
+    });
+  }
 }
 
 function addFullscreenBtn(container, video) {
@@ -1153,7 +1208,7 @@ function renderRoomCard(room) {
       <span class="count">${ICON.people} ${room.member_count}</span>
       ${room.locked ? `<span class="badge badge-locked">${ICON.lock} locked</span>` : ''}
     </div>
-    <div class="card-join">${room.locked && !isYours ? 'locked' : 'join'}</div>
+    ${!room.locked || isYours ? '<div class="card-join">join</div>' : ''}
   </div>`;
 }
 
@@ -1430,7 +1485,7 @@ function renderParticipants() {
   const visible = state.participants.filter(p => !(p.sessionId === state.user.sessionId && state.user.ghost));
   grid.innerHTML = visible.map(p => renderParticipantCard(p, isHost)).join('');
 
-  if (isHost) {
+  if (isHost || state.user.isAdmin) {
     grid.querySelectorAll('.participant-card.host-can-act').forEach(card => {
       const sid = card.dataset.sid;
       const findParticipant = () => state.participants.find(x => x.sessionId === sid);
@@ -1442,6 +1497,16 @@ function renderParticipants() {
         if (p) handleDirectMute(p);
       });
 
+      // Three-dot menu button — primary affordance on mobile
+      card.querySelector('.p-dots-btn')?.addEventListener('click', e => {
+        e.stopPropagation();
+        const p = findParticipant();
+        if (p) {
+          const rect = e.currentTarget.getBoundingClientRect();
+          openUserMenu(p, rect.right - 10, rect.bottom + 4);
+        }
+      });
+
       card.addEventListener('contextmenu', e => {
         e.preventDefault();
         const p = findParticipant();
@@ -1449,7 +1514,7 @@ function renderParticipants() {
       });
       let pressTimer;
       card.addEventListener('pointerdown', e => {
-        if (e.target.closest('.p-mute-btn')) return;
+        if (e.target.closest('.p-mute-btn') || e.target.closest('.p-dots-btn')) return;
         pressTimer = setTimeout(() => {
           const p = findParticipant();
           if (p) {
@@ -1472,7 +1537,7 @@ function renderParticipants() {
 function renderParticipantCard(p, isHost) {
   const isYou  = p.sessionId ? p.sessionId === state.user.sessionId
     : p.nickname === state.user.nickname;
-  const canAct = isHost && !isYou;
+  const canAct = (isHost || state.user.isAdmin) && !isYou;
 
   const badgeHtml = [
     p.role === 'host'     ? `<span class="badge badge-host">host</span>`      : '',
@@ -1491,9 +1556,9 @@ function renderParticipantCard(p, isHost) {
 
   return `<div class="participant-card${isYou ? ' is-you' : ''}${p.speaking ? ' speaking' : ''}${canAct ? ' host-can-act' : ''}"
                data-nick="${escHtml(p.nickname)}"
-               data-sid="${escHtml(p.sessionId || '')}"${speakLevelStyle}
-               ${canAct ? 'title="Right-click to moderate"' : ''}>
+               data-sid="${escHtml(p.sessionId || '')}"${speakLevelStyle}>
     ${canAct ? `<button class="p-mute-btn${p.serverMuted ? ' is-muted' : ''}" data-nick="${escHtml(p.nickname)}" title="${p.serverMuted ? 'Unmute' : 'Mute'}" aria-label="${p.serverMuted ? 'Unmute' : 'Mute'} ${escHtml(p.nickname)}">${p.serverMuted ? ICON.mic : ICON.micOff}</button>` : ''}
+    ${canAct ? `<button class="p-dots-btn" title="Options" aria-label="Options for ${escHtml(p.nickname)}">${ICON.dots}</button>` : ''}
     <div class="p-avatar${p.avatar ? ' has-photo' : ''}" style="background:${p.accent}">
       ${avatarInner(p.nickname, p.accent, p.avatar)}
       ${p.muted || p.serverMuted ? '<div class="p-mic-off" title="Muted"></div>' : ''}
@@ -1621,14 +1686,14 @@ function showSetupModal(onComplete) {
 function buildColorSwatches() {
   const wrap = document.getElementById('setup-colors');
   if (!wrap) return;
-  const swatch = (val, bg, label, selected) =>
-    `<button type="button" class="color-swatch${selected ? ' selected' : ''}" role="radio"
+  const swatch = (val, bg, label, selected, extra = '') =>
+    `<button type="button" class="color-swatch${selected ? ' selected' : ''}${extra}" role="radio"
        aria-checked="${selected ? 'true' : 'false'}" data-color="${escHtml(val)}"
        style="--sw:${bg}" title="${label}" aria-label="${label} color"></button>`;
-  // First chip = auto (a stable hash of the name); then the palette.
   const autoBg = accentForNick(state.user.nickname || 'a');
   let html = swatch('', autoBg, 'auto', !_setupColor);
-  html += ACCENT_COLORS.map(c => swatch(c, c, c, _setupColor === c)).join('');
+  html += NORMAL_COLORS.map(c => swatch(c, c, c, _setupColor === c)).join('');
+  html += SHINY_COLORS.map(c => swatch(c, c, c, _setupColor === c, ' shiny')).join('');
   wrap.innerHTML = html;
   wrap.querySelectorAll('.color-swatch').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -1870,6 +1935,10 @@ async function toggleCamera() {
       if (state.settings.cameraDeviceId && state.settings.cameraDeviceId !== 'default') {
         camConstraints.deviceId = { exact: state.settings.cameraDeviceId };
       }
+      const resMap = { '360p': [640, 360], '480p': [854, 480], '720p': [1280, 720], '1080p': [1920, 1080] };
+      const [rW, rH] = resMap[state.settings.cameraResolution] || resMap['720p'];
+      camConstraints.width  = { ideal: rW };
+      camConstraints.height = { ideal: rH };
       let track;
       try {
         track = await createLocalVideoTrack(camConstraints);
@@ -2478,7 +2547,21 @@ function escHtml(str) {
 
 // ── § INIT ────────────────────────────────────────────────────────
 async function init() {
-  loadIdentity();
+  await loadIdentity();
+
+  // Populate camera resolution options (1080p restricted to admin).
+  const selRes = document.getElementById('sel-resolution');
+  if (selRes) {
+    const resOpts = [
+      { val: '360p', label: '360p' },
+      { val: '480p', label: '480p' },
+      { val: '720p', label: '720p' },
+    ];
+    if (state.user.isAdmin) resOpts.push({ val: '1080p', label: '1080p (admin)' });
+    selRes.innerHTML = resOpts.map(o =>
+      `<option value="${o.val}"${o.val === (state.settings.cameraResolution || '720p') ? ' selected' : ''}>${o.label}</option>`
+    ).join('');
+  }
 
   // Crash recovery: dismiss overlay and return to lobby
   document.getElementById('crash-rejoin-btn')?.addEventListener('click', () => {
@@ -2570,7 +2653,8 @@ async function init() {
 
   document.getElementById('btn-toggle-chat').addEventListener('click', () => {
     state.ui.chatHidden = !state.ui.chatHidden;
-    document.getElementById('panel-chat').style.display = state.ui.chatHidden ? 'none' : '';
+    document.getElementById('panel-chat').classList.toggle('chat-hidden', state.ui.chatHidden);
+    document.getElementById('panel-participants').classList.toggle('chat-hidden-partner', state.ui.chatHidden);
     document.getElementById('btn-toggle-chat').textContent = state.ui.chatHidden ? 'show chat' : 'hide chat';
   });
 
@@ -2582,6 +2666,12 @@ async function init() {
   document.getElementById('btn-lock').addEventListener('click', toggleLock);
   document.getElementById('btn-audience').addEventListener('click', toggleAudience);
   document.getElementById('btn-ghost').addEventListener('click', toggleGhost);
+  document.getElementById('btn-admin-end')?.addEventListener('click', async () => {
+    if (!state.room?.slug || !state.user.isAdmin) return;
+    if (!confirm('End this room for everyone?')) return;
+    await sbEndRoom(state.room.slug, state.room.id);
+    await doShowLobby();
+  });
 
   // ── Chat ──
   document.getElementById('btn-send').addEventListener('click', sendMessage);
@@ -2623,6 +2713,9 @@ async function init() {
   });
   document.getElementById('sel-camera')?.addEventListener('change', e => {
     state.settings.cameraDeviceId = e.target.value;
+  });
+  document.getElementById('sel-resolution')?.addEventListener('change', e => {
+    state.settings.cameraResolution = e.target.value;
   });
   // Refresh device lists when a camera or mic is plugged in or removed.
   navigator.mediaDevices?.addEventListener('devicechange', () => populateDevices());
@@ -2721,12 +2814,14 @@ async function init() {
   });
 }
 
-// Scroll the chat input above the on-screen keyboard on iOS/Android.
+// Keep the room at the visible viewport height so the dock stays above the keyboard.
 if (window.visualViewport) {
   window.visualViewport.addEventListener('resize', () => {
-    const input = document.getElementById('chat-input');
-    if (document.activeElement === input) {
-      input.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    const vvh = window.visualViewport.height;
+    const keyboardOpen = window.innerHeight - vvh > 80;
+    document.documentElement.style.setProperty('--vvh', `${keyboardOpen ? vvh : window.innerHeight}px`);
+    if (keyboardOpen && document.activeElement === document.getElementById('chat-input')) {
+      document.getElementById('chat-input')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     }
   });
 }
