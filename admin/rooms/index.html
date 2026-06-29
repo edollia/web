@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <title>rooms admin · doll.gg</title>
+  <link rel="stylesheet" href="../../admin.css?v=3.9">
+  <style>
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    thead th { text-align: left; padding: 0 12px 8px 0; opacity: .55; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+    tbody tr { border-top: 1px solid rgba(255,255,255,.06); }
+    tbody tr:hover { background: rgba(255,255,255,.03); }
+    td { padding: 9px 12px 9px 0; }
+    .slug-link { cursor: pointer; text-decoration: underline; opacity: .85; }
+    .slug-link:hover { opacity: 1; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+    .badge-active { background: rgba(90,158,122,.2); color: #5a9e7a; }
+    .badge-ended  { background: rgba(150,150,160,.15); color: #888; }
+    .badge-stale  { background: rgba(199,141,74,.2); color: #c78d4a; }
+    .detail-kv { display: flex; gap: 12px; margin: 6px 0; font-size: 13px; }
+    .detail-key { opacity: .5; min-width: 140px; }
+    .rooms-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
+    .log-output {
+      background: rgba(0,0,0,.3); border: 1px solid rgba(255,255,255,.08);
+      border-radius: 8px; padding: 12px; font-family: monospace; font-size: 12px;
+      max-height: 180px; overflow-y: auto; white-space: pre-wrap; margin-top: 14px;
+    }
+    .log-ok   { color: #5a9e7a; }
+    .log-err  { color: #d95f7a; }
+    .log-warn { color: #c78d4a; }
+    .back-link { cursor: pointer; opacity: .6; font-size: 13px; }
+    .back-link:hover { opacity: 1; }
+  </style>
+</head>
+<body>
+<main class="admin-shell">
+
+  <!-- Step 1: passcode gate -->
+  <section class="admin-auth-panel" id="gate-panel">
+    <div class="admin-auth-card">
+      <p class="admin-kicker">locked</p>
+      <h1>secret door</h1>
+      <form id="admin-passcode-form" class="admin-form">
+        <input id="admin-passcode" type="password" inputmode="numeric" autocomplete="off" maxlength="8" placeholder="passcode">
+        <button type="submit">enter</button>
+      </form>
+      <p class="admin-status" id="gate-status"></p>
+    </div>
+  </section>
+
+  <!-- Step 2: Supabase login (rooms project) -->
+  <section class="admin-auth-panel hidden" id="login-panel">
+    <div class="admin-auth-card">
+      <p class="admin-kicker">rooms admin</p>
+      <h1>login</h1>
+      <form id="admin-login-form" class="admin-form">
+        <input id="admin-email" type="email" autocomplete="email" placeholder="email">
+        <input id="admin-password" type="password" autocomplete="current-password" placeholder="password">
+        <button type="submit">open</button>
+      </form>
+      <p class="admin-status" id="login-status"></p>
+    </div>
+  </section>
+
+  <!-- Dashboard -->
+  <section class="admin-dashboard hidden" id="dashboard-panel">
+    <header class="admin-header">
+      <div class="admin-title-block">
+        <h1>rooms</h1>
+      </div>
+      <div class="admin-header-actions">
+        <a class="admin-back-home" href="../../admin/">admin home</a>
+        <button id="btn-logout">logout</button>
+      </div>
+    </header>
+
+    <div class="rooms-actions">
+      <button id="btn-list-recent">list recent</button>
+      <button id="btn-list-stale">list stale</button>
+      <button class="danger" id="btn-cleanup">cleanup stale</button>
+    </div>
+
+    <p class="admin-status" id="rooms-status"></p>
+
+    <div id="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>slug</th><th>status</th><th>members</th><th>host</th><th>age</th><th></th>
+          </tr>
+        </thead>
+        <tbody id="rooms-tbody"></tbody>
+      </table>
+    </div>
+
+    <div id="inspect-wrap" class="hidden">
+      <span class="back-link" id="btn-back">← back to list</span>
+      <div id="inspect-detail" style="margin-top:14px"></div>
+      <div style="margin-top:14px">
+        <button class="danger hidden" id="btn-force-close">force-close this room</button>
+      </div>
+    </div>
+
+    <div id="log-wrap" class="hidden">
+      <div class="log-output" id="log-output"></div>
+    </div>
+  </section>
+
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+  // ── Config ───────────────────────────────────────────────────────
+  const ROOMS_URL      = 'https://karogcjefsnnrvlxlgpf.supabase.co';
+  const ROOMS_ANON     = 'sb_publishable_z2jS9qvQUvkSXVspdi2U5w_dFGM_rG-';
+  const ADMIN_UID      = '9ea1a89e-5a00-4b91-b98c-d69a5e383df4';
+  const PASSCODE_HASH  = 'ce157a63c5af6bc69d076f5cc7acd1c18a8b44933f907e682f24914a63e9939e';
+  const FN_URL         = `${ROOMS_URL}/functions/v1/admin-rooms`;
+
+  const roomsClient = window.supabase.createClient(ROOMS_URL, ROOMS_ANON, {
+    auth: { persistSession: true, autoRefreshToken: true },
+  });
+
+  async function hashPin(pin) {
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(pin));
+    return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  function showPanel(...panels) {
+    ['gate-panel','login-panel','dashboard-panel'].forEach(id => {
+      document.getElementById(id).classList.toggle('hidden', !panels.includes(id));
+    });
+    // admin-auth-panel sections need the class removed/added differently
+    ['gate-panel','login-panel'].forEach(id => {
+      const el = document.getElementById(id);
+      el.classList.toggle('admin-auth-panel', true);
+    });
+  }
+
+  // ── Step 1: passcode ─────────────────────────────────────────────
+  document.getElementById('admin-passcode-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const statusEl = document.getElementById('gate-status');
+    const input    = document.getElementById('admin-passcode');
+    const hash     = await hashPin(input.value.trim());
+    if (hash !== PASSCODE_HASH) {
+      statusEl.textContent = 'wrong passcode';
+      input.value = '';
+      input.focus();
+      return;
+    }
+    input.value = '';
+    document.getElementById('gate-panel').classList.add('hidden');
+    document.getElementById('login-panel').classList.remove('hidden');
+    document.getElementById('admin-email').focus();
+  });
+
+  // ── Step 2: Supabase login ───────────────────────────────────────
+  document.getElementById('admin-login-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const statusEl = document.getElementById('login-status');
+    statusEl.textContent = 'checking…';
+
+    const { error } = await roomsClient.auth.signInWithPassword({
+      email:    document.getElementById('admin-email').value.trim(),
+      password: document.getElementById('admin-password').value,
+    });
+
+    if (error) {
+      statusEl.textContent = error.message || 'login failed.';
+      return;
+    }
+
+    if (!(await ensureAdminSession())) {
+      statusEl.textContent = 'this login is not allowed here.';
+      await roomsClient.auth.signOut();
+      return;
+    }
+
+    document.getElementById('admin-password').value = '';
+    statusEl.textContent = '';
+    document.getElementById('login-panel').classList.add('hidden');
+    document.getElementById('dashboard-panel').classList.remove('hidden');
+    loadRecent();
+  });
+
+  async function ensureAdminSession() {
+    const { data, error } = await roomsClient.auth.getUser();
+    if (error || !data.user) return false;
+    if (data.user.id !== ADMIN_UID) {
+      await roomsClient.auth.signOut();
+      return false;
+    }
+    return true;
+  }
+
+  document.getElementById('btn-logout').addEventListener('click', async () => {
+    await roomsClient.auth.signOut();
+    document.getElementById('dashboard-panel').classList.add('hidden');
+    document.getElementById('gate-panel').classList.remove('hidden');
+    document.getElementById('admin-passcode').focus();
+  });
+
+  // ── Edge Function calls ──────────────────────────────────────────
+  // Auth: pass the Supabase session JWT — verified server-side by the Edge Function.
+  async function callAdmin(body) {
+    const statusEl = document.getElementById('rooms-status');
+    statusEl.textContent = 'loading…';
+    try {
+      const { data: { session } } = await roomsClient.auth.getSession();
+      if (!session) throw new Error('not logged in');
+      const res = await fetch(FN_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type':  'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      statusEl.textContent = '';
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      return data;
+    } catch (err) {
+      statusEl.textContent = '';
+      appendLog('err', String(err));
+      throw err;
+    }
+  }
+
+  // ── Log ──────────────────────────────────────────────────────────
+  function appendLog(kind, text) {
+    document.getElementById('log-wrap').classList.remove('hidden');
+    const out  = document.getElementById('log-output');
+    const line = document.createElement('span');
+    line.className = `log-${kind}`;
+    line.textContent = `[${new Date().toLocaleTimeString()}] ${text}\n`;
+    out.appendChild(line);
+    out.scrollTop = out.scrollHeight;
+  }
+
+  // ── Room table ───────────────────────────────────────────────────
+  function renderTable(rooms) {
+    const tbody = document.getElementById('rooms-tbody');
+    tbody.innerHTML = '';
+    document.getElementById('table-wrap').classList.remove('hidden');
+    document.getElementById('inspect-wrap').classList.add('hidden');
+
+    if (!rooms.length) {
+      tbody.innerHTML = '<tr><td colspan="6" style="opacity:.5;padding:16px 0">no rooms found</td></tr>';
+      return;
+    }
+    for (const r of rooms) {
+      const ageMin  = Math.round((Date.now() - new Date(r.created_at)) / 60000);
+      const isStale = r.status === 'active' && ageMin > 180;
+      const badge = r.status === 'active'
+        ? `<span class="badge ${isStale ? 'badge-stale' : 'badge-active'}">${isStale ? 'stale' : 'active'}</span>`
+        : `<span class="badge badge-ended">ended</span>`;
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td><span class="slug-link">${esc(r.slug)}</span></td>
+        <td>${badge}</td>
+        <td>${r.member_count}</td>
+        <td>${esc(r.host_nickname || '—')}</td>
+        <td title="${esc(r.created_at)}">${ageMin}m ago</td>
+        <td>${r.status === 'active'
+          ? `<button class="danger" style="padding:3px 10px;font-size:11px" data-slug="${esc(r.slug)}" onclick="forceCloseRow(this)">force-close</button>`
+          : ''}</td>
+      `;
+      tr.querySelector('.slug-link').addEventListener('click', () => inspectRoom(r.slug));
+      tbody.appendChild(tr);
+    }
+  }
+
+  async function loadRecent() {
+    const data = await callAdmin({ action: 'list-recent' }).catch(() => null);
+    if (data) { renderTable(data.rooms || []); appendLog('ok', `${data.rooms?.length ?? 0} rooms loaded`); }
+  }
+
+  document.getElementById('btn-list-recent').addEventListener('click', loadRecent);
+
+  document.getElementById('btn-list-stale').addEventListener('click', async () => {
+    const data = await callAdmin({ action: 'list-stale' }).catch(() => null);
+    if (data) { renderTable(data.stale || []); appendLog('ok', `${data.stale?.length ?? 0} stale (>${data.staleHours}h)`); }
+  });
+
+  document.getElementById('btn-cleanup').addEventListener('click', async () => {
+    if (!confirm('Force-close all stale rooms and purge orphaned messages?')) return;
+    const data = await callAdmin({ action: 'cleanup' }).catch(() => null);
+    if (!data) return;
+    appendLog('ok', `closed ${data.closedCount} rooms: ${data.closed.join(', ') || 'none'}`);
+    appendLog('ok', `purged ${data.msgsPurged} orphaned messages`);
+    if (data.msgPurgeError) appendLog('warn', `msg purge: ${data.msgPurgeError}`);
+  });
+
+  // ── Inspect ──────────────────────────────────────────────────────
+  async function inspectRoom(slug) {
+    const data = await callAdmin({ action: 'inspect', roomSlug: slug }).catch(() => null);
+    if (!data) return;
+    const r = data.room;
+    document.getElementById('table-wrap').classList.add('hidden');
+    document.getElementById('inspect-wrap').classList.remove('hidden');
+    const closeBtn = document.getElementById('btn-force-close');
+    closeBtn.dataset.slug = r.slug;
+    closeBtn.classList.toggle('hidden', r.status === 'ended');
+    document.getElementById('inspect-detail').innerHTML = `
+      <h2>${esc(r.slug)}</h2>
+      ${kv('status', r.status)}${kv('title', r.title || '—')}${kv('host', r.host_nickname)}
+      ${kv('members', r.member_count)}${kv('locked', r.locked)}${kv('audience_mode', r.audience_mode)}
+      ${kv('created', r.created_at)}${kv('ended', r.ended_at || '—')}
+      ${kv('messages', data.msgCount)}${kv('active bans', data.banCount)}
+    `;
+    appendLog('ok', `inspected ${slug}`);
+  }
+
+  document.getElementById('btn-force-close').addEventListener('click', async (e) => {
+    const slug = e.currentTarget.dataset.slug;
+    if (!confirm(`Force-close "${slug}"? This ends the room for everyone inside.`)) return;
+    const data = await callAdmin({ action: 'force-close', roomSlug: slug }).catch(() => null);
+    if (data) {
+      appendLog('ok', data.note ? `${slug}: ${data.note}` : `${slug} force-closed`);
+      e.currentTarget.classList.add('hidden');
+    }
+  });
+
+  document.getElementById('btn-back').addEventListener('click', () => {
+    document.getElementById('inspect-wrap').classList.add('hidden');
+    document.getElementById('table-wrap').classList.remove('hidden');
+  });
+
+  window.forceCloseRow = async (btn) => {
+    const slug = btn.dataset.slug;
+    if (!confirm(`Force-close "${slug}"?`)) return;
+    const data = await callAdmin({ action: 'force-close', roomSlug: slug }).catch(() => null);
+    if (data) { appendLog('ok', `${slug} closed`); btn.disabled = true; btn.textContent = 'closed'; }
+  };
+
+  // ── Util ─────────────────────────────────────────────────────────
+  function esc(s) {
+    return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+  function kv(k, v) {
+    return `<div class="detail-kv"><span class="detail-key">${k}</span><span>${esc(v)}</span></div>`;
+  }
+
+  // ── Restore session on page load ─────────────────────────────────
+  (async () => {
+    if (await ensureAdminSession()) {
+      document.getElementById('gate-panel').classList.add('hidden');
+      document.getElementById('dashboard-panel').classList.remove('hidden');
+      loadRecent();
+    }
+  })();
+</script>
+</body>
+</html>

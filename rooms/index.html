@@ -258,6 +258,15 @@
   <img id="img-viewer-img" alt="">
 </div>
 
+<!-- Crash recovery overlay — shown by window.onerror -->
+<div id="crash-recovery" class="crash-recovery" hidden role="alertdialog" aria-modal="true" aria-labelledby="crash-title">
+  <div class="crash-box">
+    <h2 id="crash-title" class="crash-title">something crashed</h2>
+    <p class="crash-body">An unexpected error stopped the room. Your mic and camera have been turned off.</p>
+    <button id="crash-rejoin-btn" class="btn-primary">back to lobby</button>
+  </div>
+</div>
+
 <script type="module" src="rooms.js"></script>
 </body>
 </html>

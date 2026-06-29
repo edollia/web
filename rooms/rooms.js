@@ -92,6 +92,21 @@ function dbg(tag, ...args) {
   console.log(`[rooms:${tag}]`, new Date().toISOString().slice(11, 23), ...args);
 }
 
+// ── § EVENT LOG ───────────────────────────────────────────────────
+// Privacy-safe structured event log. Never records nicknames, session IDs,
+// message bodies, tokens, auth keys, or data URLs.
+// Circular buffer (last 200 entries); accessible in DevTools via:
+//   copy(JSON.stringify(window.__roomsLog, null, 2))
+const _evtLog = [];
+const _EVT_MAX = 200;
+function logEvent(cat, evt, data = {}) {
+  const entry = { t: Date.now(), cat, evt, ...data };
+  _evtLog.push(entry);
+  if (_evtLog.length > _EVT_MAX) _evtLog.shift();
+  if (cat === 'error') console.error(`[rooms:${evt}]`, data);
+}
+window.__roomsLog = _evtLog;
+
 // ── § IDENTITY ────────────────────────────────────────────────────
 // Profile photos & chosen colors live only in localStorage + ephemeral
 // presence — never in the database. They travel with you, but nothing is
@@ -312,7 +327,7 @@ async function sbUpdateRoom(slug, updates) {
       .eq('slug', slug)
       .eq('host_session_id', state.user.sessionId);
     if (error) throw error;
-  } catch (err) { console.error('sbUpdateRoom:', err); }
+  } catch (err) { logEvent('error', 'db_update_room', { code: err.code }); console.error('sbUpdateRoom:', err); }
 }
 
 async function sbEndRoom(slug, roomId) {
@@ -331,7 +346,7 @@ async function sbEndRoom(slug, roomId) {
       const body = await res.json().catch(() => ({}));
       throw new Error(body.error || `end-room ${res.status}`);
     }
-  } catch (err) { console.error('sbEndRoom:', err); }
+  } catch (err) { logEvent('error', 'room_end_failed', { msg: String(err.message || '').slice(0, 80) }); console.error('sbEndRoom:', err); }
   // Trigger handles message cleanup, but purge explicitly as a safety net.
   if (roomId) {
     try { await sb.from('room_messages').delete().eq('room_id', roomId); } catch (err) { console.error('purge messages:', err); }
@@ -397,7 +412,7 @@ function sbWatchRooms(onChange) {
 }
 
 function sbWatchMessages(roomId, onMsg) {
-  return sb.channel(`chat:${roomId}`)
+  const chan = sb.channel(`chat:${roomId}`)
     .on('postgres_changes', {
       event: 'INSERT', schema: 'public', table: 'room_messages',
       filter: `room_id=eq.${roomId}`,
@@ -414,8 +429,12 @@ function sbWatchMessages(roomId, onMsg) {
       if (payload.new?.hidden) {
         document.querySelector(`[data-msg-db-id="${payload.new.id}"]`)?.remove();
       }
-    })
-    .subscribe();
+    });
+  chan.subscribe((status) => {
+    if (status === 'CHANNEL_ERROR') logEvent('error', 'sb_chat_channel_error', { roomId });
+    else if (status === 'TIMED_OUT') logEvent('warn', 'sb_chat_channel_timeout', { roomId });
+  });
+  return chan;
 }
 
 function sbWatchCurrentRoom(roomId, onEnded, onUpdated) {
@@ -541,6 +560,14 @@ function sbJoinPresence(slug) {
   });
 
   channel.subscribe(async (status) => {
+    if (status === 'CHANNEL_ERROR') {
+      logEvent('error', 'sb_presence_error', { slug });
+      if (state.view === 'room') showBanner('Realtime connection issue — presence may be stale.', '', null, 'warning');
+    } else if (status === 'TIMED_OUT') {
+      logEvent('warn', 'sb_presence_timeout', { slug });
+    } else if (status === 'CLOSED') {
+      logEvent('warn', 'sb_presence_closed', { slug });
+    }
     if (status === 'SUBSCRIBED') {
       await channel.track(buildPresencePayload());
     }
@@ -640,6 +667,7 @@ async function lkConnect(slug) {
     if (state.media.micOn) await setMic(true, { silent: true });
   } catch (err) {
     const s = err.httpStatus;
+    logEvent('error', 'lk_connect_failed', { httpStatus: s || 0, msg: String(err.message || '').slice(0, 80) });
     dbg('lk', 'connect failed — status', s, err.message);
     if (s === 403) {
       const msg = err.message === 'banned'
@@ -779,6 +807,7 @@ const _LK_RECONNECT_DELAYS = [2000, 5000, 10000]; // ~17s total before giving up
 
 function lkOnDisconnected() {
   if (state.view !== 'room') return; // intentional or stale
+  logEvent('warn', 'lk_disconnected', { attempt: _lkReconnectAttempt });
   state._lkRoom = null;
   document.querySelectorAll('.lk-audio').forEach(el => el.remove());
   hideScreenShareArea();
@@ -791,6 +820,7 @@ function lkOnDisconnected() {
 
   // All retries exhausted — remove presence so others stop seeing a ghost, then show manual rejoin.
   if (_lkReconnectAttempt >= _LK_RECONNECT_DELAYS.length) {
+    logEvent('error', 'lk_reconnect_exhausted', { attempts: _LK_RECONNECT_DELAYS.length });
     dbg('lk', 'reconnect exhausted after', _lkReconnectAttempt, 'attempts — removing presence');
     _lkReconnectAttempt = 0;
     // Untrack from Supabase presence so our tile disappears from others' lists immediately.
@@ -1626,6 +1656,7 @@ async function applySpeakerDevice(deviceId) {
 }
 
 function handleMicError(err) {
+  logEvent('error', 'mic_failed', { errName: err?.name || 'unknown' });
   if (err?.name === 'NotAllowedError' || err?.name === 'PermissionDeniedError') {
     showBanner('Microphone is blocked. Allow it in your browser settings, then try again.', 'Retry', () => toggleMic(), 'error');
   } else if (err?.name === 'NotFoundError') {
@@ -1716,6 +1747,7 @@ async function toggleCamera() {
       populateDevices();
       showParticipantVideo(track, state.user.sessionId);
     } catch (err) {
+      logEvent('error', 'cam_failed', { errName: err?.name || 'unknown' });
       if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
         showBanner('Camera access denied. Allow it in browser settings, then retry.', 'Retry', () => toggleCamera());
       } else if (err.name === 'NotFoundError') {
@@ -1778,6 +1810,7 @@ async function toggleScreen() {
       }, { once: true });
     } catch (err) {
       if (err.name !== 'AbortError' && err.name !== 'NotAllowedError') {
+        logEvent('error', 'screen_share_failed', { errName: err?.name || 'unknown' });
         showBanner('Could not share screen.', 'OK', hideBanner);
       }
     }
@@ -1996,6 +2029,7 @@ async function sendMessage() {
     try {
       await sbSendMessage(state.room.id, body);
     } catch (err) {
+      logEvent('error', 'msg_send_failed', { code: err?.code });
       console.error('sendMessage failed:', err);
       markMsgFailed(msgId, body);
     }
@@ -2120,6 +2154,7 @@ async function sendChatImage(file) {
   try {
     ({ thumb, full } = await fileToThumbAndFull(file));
   } catch (err) {
+    logEvent('error', 'upload_failed', { code: err?.code || 'unknown' });
     showChatImgError(imgUploadError(err));
     return;
   }
@@ -2257,6 +2292,32 @@ function playJoinSound() {
   } catch (_) {}
 }
 
+// ── § CRASH SAFETY ────────────────────────────────────────────────
+// window.onerror catches unhandled JS exceptions; stops media on crash so
+// the OS mic/camera indicator goes dark even if the app is hung.
+window.onerror = function (msg, src, line, col) {
+  logEvent('error', 'js_crash', { msg: String(msg).slice(0, 120), line, col });
+  _doEmergencyMediaStop();
+  _showCrashScreen();
+  return false;
+};
+
+window.onunhandledrejection = function (e) {
+  logEvent('error', 'unhandled_rejection', { reason: String(e.reason).slice(0, 120) });
+};
+
+function _doEmergencyMediaStop() {
+  try { lkCleanLocalTracks(); } catch {}
+  try {
+    if (state._lkRoom) { const r = state._lkRoom; state._lkRoom = null; r.disconnect(); }
+  } catch {}
+}
+
+function _showCrashScreen() {
+  const el = document.getElementById('crash-recovery');
+  if (el) el.hidden = false;
+}
+
 // ── § UTIL ────────────────────────────────────────────────────────
 function escHtml(str) {
   return String(str)
@@ -2270,6 +2331,12 @@ function escHtml(str) {
 // ── § INIT ────────────────────────────────────────────────────────
 async function init() {
   loadIdentity();
+
+  // Crash recovery: dismiss overlay and return to lobby
+  document.getElementById('crash-rejoin-btn')?.addEventListener('click', () => {
+    document.getElementById('crash-recovery').hidden = true;
+    doShowLobby();
+  });
 
   // ── Lobby events ── (start a room is instant — no create modal)
   document.getElementById('btn-create').addEventListener('click', () => {
