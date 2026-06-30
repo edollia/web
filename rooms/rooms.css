@@ -1942,31 +1942,58 @@ a { color: inherit; text-decoration: none; }
   flex: none;
   border-radius: var(--v-radius-sm);
   overflow: hidden;
-  background: #000;
+  background: transparent;
   position: relative;
-  margin-bottom: 2px;
-  min-height: 80px;
-  /* Video takes visual priority — appears above avatar in flex order */
+  margin-bottom: 6px;
+  min-height: 0;
+  max-height: 200px;
   order: -1;
 }
 .p-video-wrap video {
   width: 100%;
   height: auto;
-  max-height: 200px;
-  object-fit: contain;
   display: block;
 }
+
+/* ── has-video card: grid layout with avatar + name side-by-side ─── */
 .participant-card.has-video {
-  padding-top: 0;
-  padding-bottom: 8px;
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  column-gap: 8px;
+  row-gap: 3px;
+  align-items: center;
+  padding: 8px 10px 10px;
+  text-align: left;
+}
+.participant-card.has-video .p-video-wrap {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  order: 0;
+  /* full-bleed: negate the 10px side padding */
+  width: calc(100% + 20px);
+  margin: 0 -10px 8px;
+  border-radius: var(--v-radius-sm);
 }
 .participant-card.has-video .p-avatar {
-  width: 26px;
-  height: 26px;
+  grid-column: 1;
+  grid-row: 2 / 4;
+  align-self: center;
+  width: 28px;
+  height: 28px;
   font-size: 11px;
 }
 .participant-card.has-video .p-name {
+  grid-column: 2;
+  grid-row: 2;
+  text-align: left;
   font-size: 11px;
+  align-self: end;
+}
+.participant-card.has-video .p-badges {
+  grid-column: 2;
+  grid-row: 3;
+  justify-content: flex-start;
+  align-self: start;
 }
 
 /* Camera acquiring: pulse the avatar while getUserMedia is pending */
