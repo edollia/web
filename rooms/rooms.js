@@ -13,7 +13,7 @@ async function ensureLk() {
 }
 
 // ── § CONFIG ─────────────────────────────────────────────────────
-const VERSION        = '2026-06-30.27';
+const VERSION        = '2026-06-30.28';
 const SUPABASE_URL   = 'https://karogcjefsnnrvlxlgpf.supabase.co';
 const SUPABASE_ANON  = 'sb_publishable_z2jS9qvQUvkSXVspdi2U5w_dFGM_rG-';
 const LIVEKIT_WS_URL = 'wss://pawsweb-z0kamke4.livekit.cloud';
@@ -107,6 +107,8 @@ const state = {
 let _sbRoomListSub = null;
 let _qualityMap = {}; // sessionId → LiveKit ConnectionQuality string
 let _pendingParticipantRender = false; // deferred re-render while video is fullscreen
+let _sharingOrder   = new Map(); // sessionId → monotonic rank (lower = started sharing earlier)
+let _sharingCounter = 0;
 
 // ── § DEBUG LOGGER ────────────────────────────────────────────────
 // Silent in production. Enable with: localStorage.setItem('dg_debug', '1')
@@ -1341,7 +1343,9 @@ async function doShowLobby() {
   state.user.role = 'guest';
   state.user.ghost = false;
   state.kickedSessionIds = new Set();
-  _qualityMap = {};
+  _qualityMap      = {};
+  _sharingOrder    = new Map();
+  _sharingCounter  = 0;
 
   document.getElementById('view-room').hidden = true;
   document.getElementById('view-lobby').hidden = false;
@@ -1605,6 +1609,28 @@ function updateTopbar() {
   document.getElementById('participant-count').textContent = state.participants.length;
 }
 
+// Sort order: streamers first (earliest start first), then host, then stable.
+function sortParticipants(list) {
+  list.forEach(p => {
+    if (p.sharing && p.sessionId && !_sharingOrder.has(p.sessionId)) {
+      _sharingOrder.set(p.sessionId, _sharingCounter++);
+    } else if (!p.sharing && p.sessionId) {
+      _sharingOrder.delete(p.sessionId);
+    }
+  });
+  return [...list].sort((a, b) => {
+    const aRank    = a.sessionId !== undefined ? _sharingOrder.get(a.sessionId) : undefined;
+    const bRank    = b.sessionId !== undefined ? _sharingOrder.get(b.sessionId) : undefined;
+    const aSharing = aRank !== undefined;
+    const bSharing = bRank !== undefined;
+    if (aSharing !== bSharing) return aSharing ? -1 : 1;
+    if (aSharing)              return aRank - bRank;
+    if (a.role === 'host' && b.role !== 'host') return -1;
+    if (b.role === 'host' && a.role !== 'host') return 1;
+    return 0;
+  });
+}
+
 function renderParticipants() {
   const grid   = document.getElementById('participant-grid');
   const hintEl = document.getElementById('room-hint');
@@ -1643,7 +1669,9 @@ function renderParticipants() {
     }
   });
 
-  const visible = state.participants.filter(p => !(p.sessionId === state.user.sessionId && state.user.ghost));
+  const visible = sortParticipants(
+    state.participants.filter(p => !(p.sessionId === state.user.sessionId && state.user.ghost))
+  );
   grid.innerHTML = visible.map(p => renderParticipantCard(p, isHost)).join('');
 
   // Re-insert preserved wraps from stash into their new cards.
