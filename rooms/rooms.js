@@ -13,7 +13,7 @@ async function ensureLk() {
 }
 
 // ── § CONFIG ─────────────────────────────────────────────────────
-const VERSION        = '2026-06-29.15';
+const VERSION        = '2026-06-29.16';
 const SUPABASE_URL   = 'https://karogcjefsnnrvlxlgpf.supabase.co';
 const SUPABASE_ANON  = 'sb_publishable_z2jS9qvQUvkSXVspdi2U5w_dFGM_rG-';
 const LIVEKIT_WS_URL = 'wss://pawsweb-z0kamke4.livekit.cloud';
@@ -106,6 +106,7 @@ const state = {
 // Module-level room-list subscription (stays alive across lobby visits)
 let _sbRoomListSub = null;
 let _qualityMap = {}; // sessionId → LiveKit ConnectionQuality string
+let _pendingParticipantRender = false; // deferred re-render while video is fullscreen
 
 // ── § DEBUG LOGGER ────────────────────────────────────────────────
 // Silent in production. Enable with: localStorage.setItem('dg_debug', '1')
@@ -783,7 +784,11 @@ async function lkConnect(slug, tokenData) {
     const { token, lkUrl, role } = tokenData ?? await fetchLkToken(slug);
     const { Room, RoomEvent } = await ensureLk();
 
-    const room = new Room({ adaptiveStream: true, dynacast: true });
+    const room = new Room({
+      adaptiveStream: { pixelDensity: 'screen' },
+      dynacast: true,
+      videoPublishDefaults: { simulcast: true },
+    });
     room
       .on(RoomEvent.TrackSubscribed,          lkOnTrackSubscribed)
       .on(RoomEvent.TrackUnsubscribed,        lkOnTrackUnsubscribed)
@@ -1054,7 +1059,12 @@ function goFullscreen(video) {
 
   const recoverVideo = () => {
     if (video._lkTrack) video._lkTrack.attach(video);
+    video.load?.();        // unfreeze iOS Safari after fullscreen exit
     video.play().catch(() => {});
+    if (_pendingParticipantRender) {
+      _pendingParticipantRender = false;
+      renderParticipants();
+    }
   };
 
   if (video.requestFullscreen) {
@@ -1541,20 +1551,7 @@ async function createRoom() {
   await enterRoom(room, true);
 }
 
-// Host edits the title inline. Debounced write to the DB + live broadcast.
-let _titleSaveTimer = null;
-function onTitleEdit(value) {
-  if (state.user.role !== 'host' || !state.room) return;
-  const title = value.trim().slice(0, 48);
-  state.room.title = title || null;
-  const r = state.rooms.find(x => x.slug === state.room.slug);
-  if (r) r.title = state.room.title;
-  clearTimeout(_titleSaveTimer);
-  _titleSaveTimer = setTimeout(() => {
-    if (state.room?.slug) sbUpdateRoom(state.room.slug, { title: state.room.title })
-      .catch(() => showBanner('Title save failed. Try again.', null, null, 'error'));
-  }, 600);
-}
+// Title editing removed — room name is always the host's @username.
 
 // ── § RENDER / ROOM ───────────────────────────────────────────────
 function renderRoom() {
@@ -1570,19 +1567,9 @@ function updateTopbar() {
   const room   = state.room;
   const isHost = state.user.role === 'host';
 
-  // Host @name sits beside the title field.
+  // Room name always shows host @name — not editable.
   const hostEl = document.getElementById('topbar-host');
   if (hostEl) hostEl.textContent = `@${room.host || ''}`;
-
-  // The title is editable for the host (an inline field), read-only for guests.
-  // Don't stomp the value while the host is actively typing.
-  const titleEl = document.getElementById('topbar-title');
-  if (titleEl) {
-    titleEl.readOnly = !isHost;
-    titleEl.classList.toggle('is-host', isHost);
-    if (document.activeElement !== titleEl) titleEl.value = room.title || '';
-    titleEl.placeholder = isHost ? 'add a title' : 'untitled room';
-  }
 
   document.getElementById('topbar-locked-badge').hidden = !room.locked;
   const audBadge = document.getElementById('topbar-audience-badge');
@@ -1598,6 +1585,18 @@ function renderParticipants() {
   const grid   = document.getElementById('participant-grid');
   const hintEl = document.getElementById('room-hint');
   const isHost = state.user.role === 'host';
+
+  // Guard: never wipe innerHTML while a video tile is in fullscreen — doing so
+  // briefly removes the video element from the DOM, which makes browsers exit FS.
+  const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
+  if (fsEl && grid.contains(fsEl)) {
+    _pendingParticipantRender = true;
+    hintEl.hidden = state.participants.length > 1;
+    document.getElementById('participant-count').textContent = state.participants.length;
+    document.getElementById('topbar-count').innerHTML = `${ICON.people} ${state.participants.length}`;
+    return;
+  }
+  _pendingParticipantRender = false;
 
   // Snapshot live video wraps before destroying the grid so videos don't flicker
   // on every mute/badge update — only new/removed participants lose their wrap.
@@ -1635,14 +1634,28 @@ function renderParticipants() {
       });
 
       // Three-dot menu button — primary affordance on mobile
-      card.querySelector('.p-dots-btn')?.addEventListener('click', e => {
-        e.stopPropagation();
-        const p = findParticipant();
-        if (p) {
-          const rect = e.currentTarget.getBoundingClientRect();
-          openUserMenu(p, rect.right - 10, rect.bottom + 4);
-        }
-      });
+      const dotsBtn = card.querySelector('.p-dots-btn');
+      if (dotsBtn) {
+        dotsBtn.addEventListener('click', e => {
+          e.stopPropagation();
+          const p = findParticipant();
+          if (p) {
+            const rect = e.currentTarget.getBoundingClientRect();
+            openUserMenu(p, rect.right - 10, rect.bottom + 4);
+          }
+        });
+        // touchstart fires before iOS captures first-tap focus on the card,
+        // so the menu opens immediately without requiring a second tap.
+        dotsBtn.addEventListener('touchstart', e => {
+          e.preventDefault();
+          e.stopPropagation();
+          const p = findParticipant();
+          if (p) {
+            const rect = dotsBtn.getBoundingClientRect();
+            openUserMenu(p, rect.right - 10, rect.bottom + 4);
+          }
+        }, { passive: false });
+      }
 
       card.addEventListener('contextmenu', e => {
         e.preventDefault();
@@ -2848,11 +2861,6 @@ async function init() {
   document.getElementById('modal-overlay').addEventListener('click', () => {
     if (!state._pendingAction) closeModals();
   });
-
-  // ── Inline room title (host) ──
-  const titleInput = document.getElementById('topbar-title');
-  titleInput.addEventListener('input', e => onTitleEdit(e.target.value));
-  titleInput.addEventListener('keydown', e => { if (e.key === 'Enter') titleInput.blur(); });
 
   // ── Room controls ──
   document.getElementById('btn-back').addEventListener('click', requestLeaveRoom);

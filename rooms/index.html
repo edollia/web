@@ -11,7 +11,7 @@
   <meta property="og:title" content="rooms · doll.gg">
   <meta property="og:description" content="join a room">
   <meta property="og:url" content="https://doll.gg/rooms/">
-  <link rel="stylesheet" href="rooms.css">
+  <link rel="stylesheet" href="rooms.css?v=16">
 </head>
 <body>
 
@@ -93,8 +93,7 @@
         <i></i><i></i><i></i>
       </span>
       <span id="topbar-host" class="topbar-host"></span>
-      <input id="topbar-title" class="topbar-title-input" type="text" placeholder="add a title"
-             maxlength="48" autocomplete="off" readonly aria-label="Room title">
+      <span id="topbar-room-name" class="topbar-room-name" aria-label="Room name"></span>
       <span id="topbar-locked-badge" class="badge badge-locked" hidden>
         <svg class="ic" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zM9 6c0-1.66 1.34-3 3-3s3 1.34 3 3v2H9V6zm3 11c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"/></svg>locked
       </span>
@@ -275,6 +274,6 @@
   </div>
 </div>
 
-<script type="module" src="rooms.js"></script>
+<script type="module" src="rooms.js?v=16"></script>
 </body>
 </html>
