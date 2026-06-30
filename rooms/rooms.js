@@ -13,7 +13,7 @@ async function ensureLk() {
 }
 
 // ── § CONFIG ─────────────────────────────────────────────────────
-const VERSION        = '2026-06-29.14';
+const VERSION        = '2026-06-29.15';
 const SUPABASE_URL   = 'https://karogcjefsnnrvlxlgpf.supabase.co';
 const SUPABASE_ANON  = 'sb_publishable_z2jS9qvQUvkSXVspdi2U5w_dFGM_rG-';
 const LIVEKIT_WS_URL = 'wss://pawsweb-z0kamke4.livekit.cloud';
@@ -797,14 +797,15 @@ async function lkConnect(slug, tokenData) {
     // Always re-announce presence after a successful connect. Without this, a manual
     // "Rejoin" after retries exhausted (which called untrack()) leaves the user invisible
     // to others when their role didn't change and the mic wasn't restored.
-    sbTrackPresence({}).catch(() => {});
+    // Skip when ghosted — re-tracking would un-ghost the admin.
+    if (!state.user.ghost) sbTrackPresence({}).catch(() => {});
     if (role && state.user.role !== role) {
       if (role !== 'host') forgetHostKey(slug);
       state.user.role = role;
       updateTopbar();
       updateDock();
       renderParticipants();
-      sbTrackPresence({ role }).catch(() => {});
+      if (!state.user.ghost) sbTrackPresence({ role }).catch(() => {});
     }
     dbg('lk', 'connected');
     updateDock();
@@ -1009,8 +1010,8 @@ function lkOnDisconnected() {
     if (state._lkRoom) {
       dbg('lk', 'reconnect succeeded on attempt', _lkReconnectAttempt);
       _lkReconnectAttempt = 0;
-      // Restore presence so our tile reappears for others.
-      sbTrackPresence({}).catch(() => {});
+      // Restore presence so our tile reappears for others (not when ghosted).
+      if (!state.user.ghost) sbTrackPresence({}).catch(() => {});
     } else {
       lkOnDisconnected(); // recurse for next backoff attempt
     }
@@ -2358,6 +2359,7 @@ async function toggleGhost() {
   state.user.ghost = !state.user.ghost;
   updateDock();
   updateTopbar(); // ghost badge
+  renderParticipants(); // immediately reflect in local grid without waiting for presence echo
 
   // Truly hide from others by leaving presence; you stay connected to audio + chat.
   // The presence sync handler re-adds you to your own list, so you still see yourself.
