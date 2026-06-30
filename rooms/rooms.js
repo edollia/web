@@ -13,7 +13,7 @@ async function ensureLk() {
 }
 
 // ── § CONFIG ─────────────────────────────────────────────────────
-const VERSION        = '2026-06-30.28';
+const VERSION        = '2026-06-30.29';
 const SUPABASE_URL   = 'https://karogcjefsnnrvlxlgpf.supabase.co';
 const SUPABASE_ANON  = 'sb_publishable_z2jS9qvQUvkSXVspdi2U5w_dFGM_rG-';
 const LIVEKIT_WS_URL = 'wss://pawsweb-z0kamke4.livekit.cloud';
@@ -138,12 +138,13 @@ window.__roomsLog = _evtLog;
 // presence — never in the database. They travel with you, but nothing is
 // stored server-side.
 const LS = {
-  nick:     'dg_rooms_nick',
-  sid:      'dg_rooms_sid',
-  avatar:   'dg_rooms_avatar',
-  color:    'dg_rooms_color',
-  hostKeys: 'dg_rooms_host_keys',
-  settings: 'dg_rooms_settings',
+  nick:        'dg_rooms_nick',
+  sid:         'dg_rooms_sid',
+  avatar:      'dg_rooms_avatar',
+  color:       'dg_rooms_color',
+  hostKeys:    'dg_rooms_host_keys',
+  settings:    'dg_rooms_settings',
+  camPrompted: 'dg_rooms_cam_prompted', // set after camera permission is settled (grant or deny)
 };
 
 function loadHostKeys() {
@@ -807,6 +808,20 @@ async function lkConnect(slug, tokenData) {
 
     await room.connect(lkUrl || LIVEKIT_WS_URL, token);
     state._lkRoom = room;
+
+    // iOS Safari queues a camera permission request when a WebRTC session
+    // includes a video SDP (even for receiving-only). The dialog is deferred
+    // until the next page-focus event — which means it appears on the lobby
+    // AFTER the user has left the room and locked+unlocked their phone.
+    // Settle it here (once ever) while the user is still in-room, so the
+    // dialog appears in the right context. Tracks are stopped immediately.
+    if (!localStorage.getItem(LS.camPrompted)) {
+      navigator.mediaDevices?.getUserMedia({ video: true, audio: false })
+        .then(s => s.getTracks().forEach(t => t.stop()))
+        .catch(() => {})
+        .finally(() => { try { localStorage.setItem(LS.camPrompted, '1'); } catch {} });
+    }
+
     // Always re-announce presence after a successful connect. Without this, a manual
     // "Rejoin" after retries exhausted (which called untrack()) leaves the user invisible
     // to others when their role didn't change and the mic wasn't restored.
@@ -3032,7 +3047,11 @@ async function init() {
     _saveSettings();
   });
   // Refresh device lists when a camera or mic is plugged in or removed.
-  navigator.mediaDevices?.addEventListener('devicechange', () => populateDevices());
+  // Only re-enumerate on devicechange when we already hold some media permission.
+  // Calling enumerateDevices() cold can queue a system permission prompt on iOS.
+  navigator.mediaDevices?.addEventListener('devicechange', () => {
+    if (state.ui.settingsOpen || state.media.micReady || state.media.cameraOn) populateDevices();
+  });
   document.getElementById('chk-noise').addEventListener('change', e => {
     state.settings.noiseSuppression = e.target.checked;
     _saveSettings();
