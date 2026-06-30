@@ -13,7 +13,7 @@ async function ensureLk() {
 }
 
 // ── § CONFIG ─────────────────────────────────────────────────────
-const VERSION        = '2026-06-29.18';
+const VERSION        = '2026-06-29.19';
 const SUPABASE_URL   = 'https://karogcjefsnnrvlxlgpf.supabase.co';
 const SUPABASE_ANON  = 'sb_publishable_z2jS9qvQUvkSXVspdi2U5w_dFGM_rG-';
 const LIVEKIT_WS_URL = 'wss://pawsweb-z0kamke4.livekit.cloud';
@@ -1045,6 +1045,11 @@ function showParticipantVideo(track, identity) {
   addFullscreenBtn(wrap, video);
   if (isLocal && state.media.hasMultipleCameras) addFlipCamBtn(wrap);
   card.classList.add('has-video');
+  // Force a layout tick when the stream's real dimensions become known so the
+  // card height snaps to the correct aspect ratio without waiting for a repaint.
+  video.addEventListener('loadedmetadata', () => {
+    wrap.style.minHeight = '';  // drop the placeholder min-height once we have real dimensions
+  }, { once: true });
 }
 
 // Fullscreen toggle for any video tile (works on desktop + iOS Safari).
