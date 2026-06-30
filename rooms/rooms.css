@@ -104,7 +104,6 @@ a { color: inherit; text-decoration: none; }
   transform: translateY(-1px);
 }
 .btn-primary:active { transform: translateY(0); }
-.btn-primary.btn-full { width: 100%; }
 .btn-primary.btn-sm { padding: 7px 14px; font-size: 12px; }
 
 .btn-ghost {
@@ -426,6 +425,8 @@ a { color: inherit; text-decoration: none; }
   z-index: 2;
 }
 .setup-avatar-cam svg { width: 12px; height: 12px; fill: #fff; }
+
+#btn-nickname-confirm { align-self: center; }
 
 .setup-field { display: flex; flex-direction: column; gap: 7px; }
 .setup-field-label {
@@ -850,7 +851,7 @@ a { color: inherit; text-decoration: none; }
 /* ── Participant grid ───────────────────────────────────────────── */
 .participant-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(130px, 160px));
+  grid-template-columns: repeat(auto-fill, 148px);
   grid-auto-rows: auto;
   align-items: start;
   justify-content: start;
@@ -1680,8 +1681,6 @@ a { color: inherit; text-decoration: none; }
     padding: 20px 16px 14px;
     gap: 10px;
   }
-  #btn-create { width: 100%; }
-
   .lobby-main { padding: 0 16px 16px; }
   .lobby-footer { padding: 10px 16px 14px; }
 
@@ -1750,7 +1749,6 @@ a { color: inherit; text-decoration: none; }
     padding-top: calc(20px + env(safe-area-inset-top, 0px));
   }
   #btn-create-empty {
-    width: 100%;
     white-space: normal;
   }
 
@@ -1759,7 +1757,7 @@ a { color: inherit; text-decoration: none; }
   #topbar-audience-badge,
   #topbar-ghost-badge { display: none; }
 
-  .participant-grid { grid-template-columns: repeat(2, 1fr); }
+  .participant-grid { grid-template-columns: repeat(2, 148px); justify-content: center; }
 }
 
 /* ── Mobile landscape: side-by-side panels + compact dock ────────── */
@@ -1788,7 +1786,7 @@ a { color: inherit; text-decoration: none; }
   /* Hide the redundant chat label in landscape — saves precious vertical space */
   .chat-header-bar { display: none; }
   /* Participant grid compact in landscape */
-  .participant-grid { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); }
+  .participant-grid { grid-template-columns: repeat(auto-fill, 148px); justify-content: start; }
 }
 
 /* ── Chat hide/show toggle ──────────────────────────────────────── */
@@ -1954,6 +1952,8 @@ a { color: inherit; text-decoration: none; }
 .p-video-wrap video {
   width: 100%;
   height: auto;
+  max-height: 200px;
+  object-fit: contain;
   display: block;
 }
 .participant-card.has-video {

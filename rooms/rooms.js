@@ -13,7 +13,7 @@ async function ensureLk() {
 }
 
 // ── § CONFIG ─────────────────────────────────────────────────────
-const VERSION        = '2026-06-29.19';
+const VERSION        = '2026-06-29.21';
 const SUPABASE_URL   = 'https://karogcjefsnnrvlxlgpf.supabase.co';
 const SUPABASE_ANON  = 'sb_publishable_z2jS9qvQUvkSXVspdi2U5w_dFGM_rG-';
 const LIVEKIT_WS_URL = 'wss://pawsweb-z0kamke4.livekit.cloud';
@@ -782,12 +782,18 @@ async function lkConnect(slug, tokenData) {
   lkSetStatusDot('lk-connecting');
   try {
     const { token, lkUrl, role } = tokenData ?? await fetchLkToken(slug);
-    const { Room, RoomEvent } = await ensureLk();
+    const { Room, RoomEvent, VideoPreset } = await ensureLk();
 
     const room = new Room({
       adaptiveStream: { pixelDensity: 'screen' },
       dynacast: true,
-      videoPublishDefaults: { simulcast: true },
+      videoPublishDefaults: {
+        simulcast: true,
+        videoSimulcastLayers: [
+          new VideoPreset(320, 180, 300_000, 20),
+          new VideoPreset(640, 360, 900_000, 24),
+        ],
+      },
     });
     room
       .on(RoomEvent.TrackSubscribed,          lkOnTrackSubscribed)
@@ -1128,7 +1134,10 @@ async function flipCamera() {
     oldTrack.stop();
     state._localCamTrack = null;
     const track = await createLocalVideoTrack({ facingMode: state.media.flipCamFacing });
-    await state._lkRoom.localParticipant.publishTrack(track);
+    const _encBitrate = state.settings.cameraResolution === '1080p' ? 4_000_000 : 2_500_000;
+    await state._lkRoom.localParticipant.publishTrack(track, {
+      videoEncoding: { maxBitrate: _encBitrate, maxFramerate: 30 },
+    });
     state._localCamTrack = track;
     showParticipantVideo(track, state.user.sessionId);
   } catch {
@@ -2122,7 +2131,9 @@ async function toggleCamera() {
             throw firstErr;
           }
         }
-        await state._lkRoom.localParticipant.publishTrack(track);
+        await state._lkRoom.localParticipant.publishTrack(track, {
+          videoEncoding: { maxBitrate: rH >= 1080 ? 4_000_000 : 2_500_000, maxFramerate: 30 },
+        });
         state._localCamTrack = track;
         state.media.cameraOn = true;
         // Detect multiple cameras NOW (before showParticipantVideo) so the flip button
