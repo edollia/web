@@ -13,7 +13,7 @@ async function ensureLk() {
 }
 
 // ── § CONFIG ─────────────────────────────────────────────────────
-const VERSION        = '2026-06-30.26';
+const VERSION        = '2026-06-30.27';
 const SUPABASE_URL   = 'https://karogcjefsnnrvlxlgpf.supabase.co';
 const SUPABASE_ANON  = 'sb_publishable_z2jS9qvQUvkSXVspdi2U5w_dFGM_rG-';
 const LIVEKIT_WS_URL = 'wss://pawsweb-z0kamke4.livekit.cloud';
@@ -1622,18 +1622,31 @@ function renderParticipants() {
   }
   _pendingParticipantRender = false;
 
-  // Snapshot live video wraps before destroying the grid so videos don't flicker
-  // on every mute/badge update — only new/removed participants lose their wrap.
+  // Lift video wraps into an off-screen stash BEFORE the innerHTML wipe so they
+  // stay inside the document tree. Setting innerHTML destroys children; a detached
+  // video element gets paused/blanked by iOS Safari and some Android browsers.
+  // The stash keeps them alive and playing during the synchronous re-render.
+  let stash = document.getElementById('_video-stash');
+  if (!stash) {
+    stash = document.createElement('div');
+    stash.id = '_video-stash';
+    stash.style.cssText = 'position:fixed;top:-10000px;left:-10000px;pointer-events:none';
+    document.body.appendChild(stash);
+  }
+
   const wrapMap = {};
   grid.querySelectorAll('.participant-card[data-sid]').forEach(card => {
     const wrap = card.querySelector('.p-video-wrap');
-    if (wrap) wrapMap[card.dataset.sid] = wrap;
+    if (wrap) {
+      wrapMap[card.dataset.sid] = wrap;
+      stash.appendChild(wrap); // moves it out of grid before innerHTML wipe
+    }
   });
 
   const visible = state.participants.filter(p => !(p.sessionId === state.user.sessionId && state.user.ghost));
   grid.innerHTML = visible.map(p => renderParticipantCard(p, isHost)).join('');
 
-  // Re-insert preserved video wraps into matching new cards.
+  // Re-insert preserved wraps from stash into their new cards.
   grid.querySelectorAll('.participant-card[data-sid]').forEach(card => {
     const wrap = wrapMap[card.dataset.sid];
     if (wrap) {
@@ -1644,6 +1657,9 @@ function renderParticipants() {
       card.classList.add('cam-loading');
     }
   });
+
+  // Wraps still in stash belong to participants who just left — clean them up.
+  stash.innerHTML = '';
 
   if (isHost || state.user.isAdmin) {
     grid.querySelectorAll('.participant-card.host-can-act').forEach(card => {
