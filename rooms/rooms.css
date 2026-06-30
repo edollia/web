@@ -709,17 +709,6 @@ a { color: inherit; text-decoration: none; }
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* Room name display (read-only, always shows @hostname) */
-.topbar-room-name {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--v-text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  flex-shrink: 1;
-  min-width: 0;
-}
 .topbar-right {
   display: flex;
   align-items: center;
