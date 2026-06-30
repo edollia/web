@@ -13,7 +13,7 @@ async function ensureLk() {
 }
 
 // ── § CONFIG ─────────────────────────────────────────────────────
-const VERSION        = '2026-06-30.25';
+const VERSION        = '2026-06-30.26';
 const SUPABASE_URL   = 'https://karogcjefsnnrvlxlgpf.supabase.co';
 const SUPABASE_ANON  = 'sb_publishable_z2jS9qvQUvkSXVspdi2U5w_dFGM_rG-';
 const LIVEKIT_WS_URL = 'wss://pawsweb-z0kamke4.livekit.cloud';
@@ -1051,13 +1051,15 @@ function showParticipantVideo(track, identity) {
   addFullscreenBtn(wrap, video);
   if (isLocal && state.media.hasMultipleCameras) addFlipCamBtn(wrap);
   card.classList.add('has-video');
-  // Once we know the stream's real dimensions, snap the wrap to the exact
-  // aspect ratio so the full frame shows with no bars and no crop.
-  video.addEventListener('loadedmetadata', () => {
+  // Snap the wrap to the video's real aspect ratio on first load and again
+  // any time the camera rotates (resize fires on intrinsic-dimension changes).
+  const syncAspect = () => {
     if (video.videoWidth && video.videoHeight) {
       wrap.style.aspectRatio = `${video.videoWidth} / ${video.videoHeight}`;
     }
-  }, { once: true });
+  };
+  video.addEventListener('loadedmetadata', syncAspect, { once: true });
+  video.addEventListener('resize', syncAspect);
 }
 
 // Fullscreen toggle for any video tile (works on desktop + iOS Safari).
