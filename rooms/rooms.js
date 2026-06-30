@@ -13,7 +13,7 @@ async function ensureLk() {
 }
 
 // ── § CONFIG ─────────────────────────────────────────────────────
-const VERSION        = '2026-06-29.16';
+const VERSION        = '2026-06-29.18';
 const SUPABASE_URL   = 'https://karogcjefsnnrvlxlgpf.supabase.co';
 const SUPABASE_ANON  = 'sb_publishable_z2jS9qvQUvkSXVspdi2U5w_dFGM_rG-';
 const LIVEKIT_WS_URL = 'wss://pawsweb-z0kamke4.livekit.cloud';
@@ -1309,8 +1309,11 @@ async function doShowLobby() {
     cameraOn: false, screenOn: false, _preDeafenMicOn: false, _preServerMuteWantsMic: false,
     hasMultipleCameras: false, flipCamFacing: 'user', _localScreenAudioTrack: null,
   };
-  _cameraToggling = false;
-  _screenToggling = false;
+  _cameraToggling  = false;
+  _screenToggling  = false;
+  _lockToggling    = false;
+  _audienceToggling = false;
+  _ghostToggling   = false;
   _lastJoinTime   = 0;
   state.ui.settingsOpen = false;
   stopMicTest();
@@ -2324,8 +2327,10 @@ function populateDevices() {
 }
 
 // ── § HOST CONTROLS ───────────────────────────────────────────────
+let _lockToggling = false;
 async function toggleLock() {
-  if (!state.room) return;
+  if (!state.room || _lockToggling) return;
+  _lockToggling = true;
   const prev = state.room.locked;
   state.room.locked = !prev;
   updateDock();
@@ -2341,11 +2346,15 @@ async function toggleLock() {
     updateDock();
     updateTopbar();
     showBanner('Failed to update room. Try again.', null, null, 'error');
+  } finally {
+    _lockToggling = false;
   }
 }
 
+let _audienceToggling = false;
 async function toggleAudience() {
-  if (!state.room) return;
+  if (!state.room || _audienceToggling) return;
+  _audienceToggling = true;
   const prev = state.room.audience;
   state.room.audience = !prev;
   updateTopbar();
@@ -2365,10 +2374,15 @@ async function toggleAudience() {
     updateDock();
     renderParticipants();
     showBanner('Failed to update room. Try again.', null, null, 'error');
+  } finally {
+    _audienceToggling = false;
   }
 }
 
+let _ghostToggling = false;
 async function toggleGhost() {
+  if (_ghostToggling) return;
+  _ghostToggling = true;
   state.user.ghost = !state.user.ghost;
   updateDock();
   updateTopbar(); // ghost badge
@@ -2376,15 +2390,18 @@ async function toggleGhost() {
 
   // Truly hide from others by leaving presence; you stay connected to audio + chat.
   // The presence sync handler re-adds you to your own list, so you still see yourself.
-  if (state.user.ghost) {
-    try { await state._sbPresenceChan?.untrack(); } catch {}
-  } else {
-    await sbTrackPresence({});
+  try {
+    if (state.user.ghost) {
+      try { await state._sbPresenceChan?.untrack(); } catch {}
+    } else {
+      await sbTrackPresence({});
+    }
+    appendSystemMessage(
+      state.user.ghost ? 'You went ghost — hidden from the list' : 'You are visible again', 'action'
+    );
+  } finally {
+    _ghostToggling = false;
   }
-
-  appendSystemMessage(
-    state.user.ghost ? 'You went ghost — hidden from the list' : 'You are visible again', 'action'
-  );
 }
 
 // ── § CHAT ────────────────────────────────────────────────────────
