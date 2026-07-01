@@ -3,39 +3,50 @@
    Scoped to /rooms/ only. Never imported by other pages.
    ════════════════════════════════════════════════════════════════ */
 
-/* ── Design tokens ─────────────────────────────────────────────── */
+/* ── Design tokens ───────────────────────────────────────────────────
+   doll.gg "Rooms Final" system (see ROOMS-REDESIGN-SPEC.md §3). Base
+   #fff7fb / #fffafd, hot pink #ff8fc4, ink rgba(122,76,92). Almost every
+   rule below reads these via var(), so this block is the single source of
+   truth for the reskin — change colors here, not in individual rules. */
 :root {
   --v-bg:           #fff7fb;
-  --v-bg-room:      #fdf2f8;
-  --v-surface:      rgba(255, 247, 251, 0.95);
-  --v-surface-2:    rgba(253, 238, 245, 0.9);
-  --v-surface-3:    rgba(255, 225, 242, 0.85);
-  --v-border:       rgba(255, 174, 207, 0.45);
-  --v-border-soft:  rgba(255, 174, 207, 0.25);
+  --v-bg-room:      #fffafd;
+  --v-surface:      #ffffff;
+  --v-surface-2:    rgba(255, 247, 251, 0.6);
+  --v-surface-3:    rgba(255, 219, 238, 0.5);
+  --v-border:       rgba(255, 199, 222, 0.5);
+  --v-border-soft:  rgba(255, 199, 222, 0.3);
 
-  --v-pink:         #ff98ca;
+  --v-pink:         #ff8fc4;
   --v-pink-light:   #ffdbee;
-  --v-pink-mid:     #f7a8cb;
+  --v-pink-mid:     #ffbadd;
   --v-pink-dark:    #d96c9e;
-  --v-pink-btn:     #f083b3;
-  --v-pink-btn-h:   #e5739f;
+  --v-pink-btn:     #ff8fc4;
+  --v-pink-btn-h:   #ff7ab8;
 
-  --v-text:         rgba(90, 70, 82, 0.92);
-  --v-text-muted:   rgba(120, 95, 110, 0.55);
-  --v-text-light:   rgba(150, 120, 138, 0.45);
+  /* Signature gradients (exact values from the mockup) */
+  --v-grad-primary:   linear-gradient(to right, #fbdde9, #ff8fc4);
+  --v-grad-primary-h: linear-gradient(to right, #ffd2e6, #ff7ab8);
+  --v-grad-soft:      linear-gradient(to right, #fdeef5, #ffdbee);
+
+  --v-text:         rgba(122, 76, 92, 0.95);
+  --v-text-muted:   rgba(122, 76, 92, 0.6);
+  --v-text-light:   rgba(122, 76, 92, 0.45);
+  --v-hand:         rgba(174, 85, 130, 0.9);   /* handwriting accent ink */
 
   --v-amber:        #c78d4a;
   --v-amber-bg:     rgba(199, 141, 74, 0.12);
-  --v-danger:       #d95f7a;
-  --v-danger-bg:    rgba(217, 95, 122, 0.12);
+  --v-danger:       rgba(216, 80, 120, 0.95);
+  --v-danger-bg:    rgba(216, 80, 120, 0.12);
+  --v-leave-bg:     rgba(255, 218, 234, 0.9);  /* soft leave/danger surface */
   --v-success:      #5a9e7a;
 
-  --v-shadow-sm:    0 2px 8px rgba(255, 145, 195, 0.1);
-  --v-shadow:       0 4px 18px rgba(255, 145, 195, 0.14);
-  --v-shadow-lg:    0 8px 32px rgba(255, 145, 195, 0.18);
+  --v-shadow-sm:    0 4px 12px rgba(255, 145, 195, 0.1);
+  --v-shadow:       0 8px 18px rgba(255, 145, 195, 0.16);
+  --v-shadow-lg:    0 14px 28px rgba(255, 145, 195, 0.24);
 
-  --v-radius:       14px;
-  --v-radius-sm:    8px;
+  --v-radius:       16px;
+  --v-radius-sm:    10px;
   --v-radius-xs:    6px;
 
   --v-topbar-h:     46px;
@@ -44,7 +55,12 @@
   --v-chat-w:       310px;
 
   --v-font-head:    "Comic Sans MS", "Chalkboard SE", "Trebuchet MS", cursive;
-  --v-font-body:    "Arial", -apple-system, sans-serif;
+  --v-font-body:    "Trebuchet MS", "Comic Sans MS", -apple-system, sans-serif;
+  /* Caveat (handwriting) + Gochi Hand (tags) fall back to Comic Sans until a
+     later phase adds `font-src` to the CSP and self-hosts the woff2 files —
+     the current strict CSP (default-src 'none', no font-src) blocks web fonts. */
+  --v-font-hand:    "Caveat", "Comic Sans MS", "Segoe Script", cursive;
+  --v-font-tag:     "Gochi Hand", "Comic Sans MS", "Segoe Script", cursive;
 }
 
 /* ── Base ───────────────────────────────────────────────────────── */
@@ -88,19 +104,19 @@ a { color: inherit; text-decoration: none; }
   justify-content: center;
   gap: 6px;
   padding: 10px 20px;
-  background: var(--v-pink-btn);
+  background: var(--v-grad-primary);
   color: #fff;
   border-radius: 999px;
   font-weight: 600;
   font-size: 13px;
   letter-spacing: 0.02em;
   transition: background 0.15s, transform 0.1s, box-shadow 0.15s;
-  box-shadow: 0 2px 10px rgba(240, 131, 179, 0.3);
+  box-shadow: 0 4px 10px rgba(255, 145, 198, 0.28);
   white-space: nowrap;
 }
 .btn-primary:hover {
-  background: var(--v-pink-btn-h);
-  box-shadow: 0 4px 14px rgba(240, 131, 179, 0.4);
+  background: var(--v-grad-primary-h);
+  box-shadow: 0 8px 18px rgba(255, 145, 195, 0.36);
   transform: translateY(-1px);
 }
 .btn-primary:active { transform: translateY(0); }
@@ -195,16 +211,17 @@ a { color: inherit; text-decoration: none; }
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
-  color: var(--v-text-muted);
+  background: var(--v-grad-soft);   /* soft-pink circle, always visible per mockup */
+  color: var(--v-pink-dark);
   font-size: 16px;
   font-weight: 600;
   transition: background 0.15s, color 0.15s;
   flex-shrink: 0;
 }
-.btn-back:hover { background: var(--v-surface-3); color: var(--v-text); }
+.btn-back:hover { background: var(--v-grad-primary); color: #fff; }
 
 .btn-danger.is-leaving, .btn-back.is-leaving {
   cursor: wait;
@@ -217,11 +234,12 @@ a { color: inherit; text-decoration: none; }
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  padding: 2px 8px;
+  padding: 2px 9px;
   border-radius: 999px;
-  font-size: 11px;
+  font-family: var(--v-font-tag);
+  font-size: 12px;
   font-weight: 700;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.02em;
   white-space: nowrap;
 }
 /* Without this, .badge's display:inline-flex overrides the [hidden] attribute
@@ -274,7 +292,7 @@ a { color: inherit; text-decoration: none; }
   font-size: 10px;
 }
 .badge-speaker {
-  background: rgba(255, 152, 202, 0.12);
+  background: rgba(255, 143, 196, 0.12);
   color: var(--v-pink-dark);
   border: 1px solid var(--v-border-soft);
   text-transform: uppercase;
@@ -349,7 +367,7 @@ a { color: inherit; text-decoration: none; }
 .modal-input::placeholder { color: var(--v-text-muted); }
 .modal-input:focus {
   border-color: var(--v-pink);
-  box-shadow: 0 0 0 3px rgba(255, 152, 202, 0.15);
+  box-shadow: 0 0 0 3px rgba(255, 143, 196, 0.15);
 }
 
 .modal-error {
@@ -507,15 +525,28 @@ a { color: inherit; text-decoration: none; }
 .lobby-header-text { flex: 1; min-width: 0; }
 .lobby-title {
   font-family: var(--v-font-head);
-  font-size: 26px;
+  font-size: 28px;
   color: var(--v-text);
   line-height: 1.2;
-  margin-bottom: 6px;
+  margin-bottom: 10px;
+  display: inline-block;
+}
+/* hand-drawn wavy squiggle under the word "rooms" (no heart) — inline SVG
+   data-URI background, allowed by CSP img-src 'self' data: blob: */
+.lobby-title::after {
+  content: '';
+  display: block;
+  width: 128px;
+  height: 10px;
+  margin-top: 4px;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='128' height='10' viewBox='0 0 128 10'%3E%3Cpath d='M3 6 C 20 1, 38 1, 55 5.5 S 92 10, 125 4' fill='none' stroke='%23ff8fc4' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat;
+  background-size: contain;
 }
 .lobby-sub {
-  font-size: 13px;
-  color: var(--v-text-muted);
-  line-height: 1.5;
+  font-family: var(--v-font-hand);
+  font-size: 16px;
+  color: var(--v-hand);
+  line-height: 1.4;
   max-width: 480px;
 }
 
@@ -560,7 +591,9 @@ a { color: inherit; text-decoration: none; }
 .rooms-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(176px, 1fr));
-  gap: 14px;
+  /* extra vertical gap leaves room for the tape overhang + tilt */
+  gap: 22px 16px;
+  padding-top: 6px;
 }
 
 /* ── Lobby loading skeleton ─────────────────────────────────────────
@@ -602,7 +635,14 @@ a { color: inherit; text-decoration: none; }
 }
 
 /* ── Room card ──────────────────────────────────────────────────── */
+/* Taped, slightly-tilted note-cards (doll.gg §3). The scrapbook tilt comes
+   from --tilt, varied per position via :nth-child so no two neighbours match;
+   hover keeps the tilt and lifts. Live cards get a strip of washi tape
+   (::after); locked cards drop the tape and go dashed. No overflow:hidden here
+   so the tape can overhang the top edge — the gradient sheen ::before instead
+   clips itself with border-radius:inherit. */
 .room-card {
+  --tilt: -1.5deg;
   background: var(--v-surface);
   border: 1.5px solid var(--v-border);
   border-radius: var(--v-radius);
@@ -613,28 +653,52 @@ a { color: inherit; text-decoration: none; }
   gap: 10px;
   text-align: center;
   cursor: pointer;
-  transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
-  box-shadow: var(--v-shadow-sm);
+  transition: border-color 0.15s, box-shadow 0.18s ease, transform 0.18s ease;
+  box-shadow: var(--v-shadow);
   position: relative;
-  overflow: hidden;
+  transform: rotate(var(--tilt));
 }
 .room-card::before {
   content: '';
   position: absolute;
   inset: 0;
+  border-radius: inherit;
   background: linear-gradient(135deg, rgba(255,220,240,0.18) 0%, transparent 60%);
   pointer-events: none;
 }
+/* washi tape strip on live cards */
+.room-card::after {
+  content: '';
+  position: absolute;
+  top: -8px;
+  left: 50%;
+  transform: translateX(-50%) rotate(3deg);
+  width: 46px;
+  height: 16px;
+  background: rgba(255, 214, 230, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  box-shadow: 0 1px 3px rgba(255, 145, 195, 0.25);
+  pointer-events: none;
+  z-index: 1;
+}
+/* alternate the tilt so the grid reads hand-placed, not uniform */
+.room-card:nth-child(even) { --tilt: 1.5deg; }
+.room-card:nth-child(3n)   { --tilt: -0.8deg; }
+.room-card:nth-child(3n)::after { transform: translateX(-50%) rotate(-4deg); }
+.room-card:nth-child(4n+1)::after { transform: translateX(-50%) rotate(-2deg); }
 .room-card:hover {
   border-color: var(--v-pink-mid);
-  box-shadow: var(--v-shadow);
-  transform: translateY(-2px);
+  box-shadow: var(--v-shadow-lg);
+  transform: rotate(var(--tilt)) translateY(-4px);
 }
 .room-card.locked {
+  --tilt: 0deg;
   opacity: 0.75;
   cursor: default;
+  border-style: dashed;
 }
-.room-card.locked:hover { transform: none; }
+.room-card.locked::after { display: none; }   /* locked cards: no tape */
+.room-card.locked:hover { transform: rotate(0deg); box-shadow: var(--v-shadow); }
 .room-card.yours { border-color: var(--v-pink-mid); }
 
 .card-avatar {
@@ -724,21 +788,24 @@ a { color: inherit; text-decoration: none; }
 .card-meta .count { display: flex; align-items: center; gap: 3px; }
 
 .card-join {
-  font-size: 11px;
+  font-family: var(--v-font-tag);
+  font-size: 13px;
   font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  letter-spacing: 0.04em;
   color: var(--v-pink-dark);
-  padding: 4px 14px;
+  padding: 5px 18px;
+  background: var(--v-grad-soft);          /* filled soft-pink pill per mockup */
   border: 1.5px solid var(--v-border);
   border-radius: 999px;
-  transition: background 0.15s, border-color 0.15s;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
   margin-top: 2px;
 }
 .room-card:not(.locked):hover .card-join {
-  background: var(--v-pink-light);
-  border-color: var(--v-pink-mid);
+  background: var(--v-grad-primary);
+  border-color: var(--v-pink);
+  color: #fff;
 }
+.room-card.locked .card-join { background: transparent; }
 .room-card.locked .card-join {
   color: var(--v-text-light);
   pointer-events: none;
@@ -765,7 +832,7 @@ a { color: inherit; text-decoration: none; }
   padding: 60px 20px;
 }
 .empty-icon { width: 40px; height: 40px; fill: var(--v-pink-mid); opacity: 0.5; }
-.empty-text { font-size: 14px; color: var(--v-text-muted); }
+.empty-text { font-family: var(--v-font-hand); font-size: 18px; color: var(--v-hand); }
 
 /* ── Room topbar ────────────────────────────────────────────────── */
 .room-topbar {
@@ -933,11 +1000,12 @@ a { color: inherit; text-decoration: none; }
 }
 
 .section-label {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--v-text-muted);
+  font-family: var(--v-font-hand);
+  font-size: 18px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--v-hand);
   margin-bottom: 14px;
 }
 
@@ -964,7 +1032,7 @@ a { color: inherit; text-decoration: none; }
 }
 
 .participant-card {
-  background: var(--v-surface-2);
+  background: #fff;
   border: 1.5px solid var(--v-border-soft);
   border-radius: var(--v-radius);
   padding: 18px 12px 14px;
@@ -975,14 +1043,18 @@ a { color: inherit; text-decoration: none; }
   text-align: center;
   position: relative;
   overflow: hidden;
+  box-shadow: var(--v-shadow-sm);
   transition: border-color 0.15s, box-shadow 0.15s;
   cursor: default;
 }
-.participant-card:not(.has-video) { justify-content: center; min-height: 140px; }
-.participant-card.is-you { border-color: var(--v-border); }
+/* barely-there scrapbook tilt on non-video tiles — safe for the bin-packer,
+   which measures with estimateCardHeight() (not live getBoundingClientRect). */
+.participant-card:not(.has-video) { justify-content: center; min-height: 140px; transform: rotate(-0.8deg); }
+.participant-card:not(.has-video):nth-child(even) { transform: rotate(0.8deg); }
+.participant-card.is-you { border-color: var(--v-pink-mid); }
 .participant-card.speaking {
-  border-color: var(--v-pink-mid);
-  box-shadow: 0 0 0 2px rgba(255, 152, 202, 0.25);
+  border-color: var(--v-pink);
+  box-shadow: 0 0 0 3px rgba(255, 143, 196, 0.4), var(--v-shadow-sm);
 }
 
 .p-avatar {
@@ -1129,7 +1201,7 @@ a { color: inherit; text-decoration: none; }
   position: absolute;
   inset: -4px;
   border-radius: 50%;
-  border: 2px solid rgba(255, 152, 202, 0.6);
+  border: 2px solid rgba(255, 143, 196, 0.6);
   animation: speak-wave 1s ease-out infinite;
   transform: scale(calc(1 + var(--speak-level, 0.3) * 0.4));
 }
@@ -1139,19 +1211,21 @@ a { color: inherit; text-decoration: none; }
 }
 
 .room-hint {
-  font-size: 12px;
-  color: var(--v-text-muted);
+  font-family: var(--v-font-hand);
+  font-size: 16px;
+  color: var(--v-hand);
   padding: 16px 0 0;
-  line-height: 1.5;
+  line-height: 1.4;
 }
 
 /* ── Chat panel ─────────────────────────────────────────────────── */
 .chat-header-bar {
-  padding: 11px 14px;
-  font-size: 12px;
+  padding: 12px 14px;
+  font-family: var(--v-font-head);
+  font-size: 15px;
   font-weight: 700;
-  letter-spacing: 0.04em;
-  color: var(--v-text-muted);
+  letter-spacing: 0;
+  color: var(--v-text);
   border-bottom: 1px solid var(--v-border-soft);
   flex-shrink: 0;
 }
@@ -1168,35 +1242,56 @@ a { color: inherit; text-decoration: none; }
 .chat-msg {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
+  align-items: flex-start;
 }
 .chat-msg-header {
   display: flex;
   align-items: baseline;
   gap: 5px;
+  padding: 0 2px;
 }
 .chat-msg-nick {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   color: var(--v-pink-dark);
 }
-.chat-msg-nick.is-you { color: var(--v-success); }
+.chat-msg-nick.is-you { color: var(--v-pink); }
 .chat-msg-time {
   font-size: 10px;
   color: var(--v-text-light);
 }
+/* Message bubbles: white for others, pink gradient for you (right-aligned).
+   Own rows are detected via :has() on the .is-you nick — no JS/markup change. */
 .chat-msg-body {
   font-size: 13px;
   color: var(--v-text);
+  background: #fff;
+  border: 1.5px solid var(--v-border);
+  border-radius: 4px 14px 14px 14px;
+  padding: 7px 11px;
+  max-width: 90%;
   word-break: break-word;
   white-space: pre-wrap;
-  line-height: 1.45;
+  line-height: 1.4;
+}
+.chat-msg:has(.chat-msg-nick.is-you) { align-items: flex-end; }
+.chat-msg:has(.chat-msg-nick.is-you) .chat-msg-body {
+  background: var(--v-grad-primary);
+  color: #fff;
+  border-color: transparent;
+  border-radius: 14px 4px 14px 14px;
 }
 .chat-msg-sys {
+  align-self: center;
   font-size: 11px;
-  color: var(--v-text-light);
+  color: var(--v-text-muted);
   font-style: italic;
-  padding: 2px 0;
+  padding: 3px 12px;
+  background: var(--v-surface-3);
+  border-radius: 999px;
+  text-align: center;
+  max-width: 90%;
 }
 .chat-msg-sys.join { color: rgba(90, 158, 122, 0.7); }
 .chat-msg-sys.leave { color: rgba(180, 130, 145, 0.6); }
@@ -1292,7 +1387,7 @@ a { color: inherit; text-decoration: none; }
 .chat-input::placeholder { color: var(--v-text-muted); }
 .chat-input:focus {
   border-color: var(--v-pink);
-  box-shadow: 0 0 0 3px rgba(255, 152, 202, 0.12);
+  box-shadow: 0 0 0 3px rgba(255, 143, 196, 0.12);
 }
 
 /* Image button in the chat input row */
@@ -1364,8 +1459,10 @@ a { color: inherit; text-decoration: none; }
   justify-content: space-between;
   padding: 0 12px;
   padding-bottom: env(safe-area-inset-bottom, 0px);
-  background: var(--v-surface);
+  /* soft pink dock surface (doll.gg §3) */
+  background: var(--v-grad-soft);
   border-top: 1px solid var(--v-border);
+  box-shadow: 0 -4px 14px rgba(255, 145, 195, 0.12);
   flex-shrink: 0;
   gap: 8px;
 }
@@ -1392,32 +1489,33 @@ a { color: inherit; text-decoration: none; }
 
 /* Dock buttons */
 .dock-btn {
-  width: 38px;
-  height: 38px;
-  border-radius: 50%;
+  width: 42px;
+  height: 42px;
+  border-radius: 13px;   /* rounded-square dock buttons per mockup */
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--v-surface-3);
+  background: var(--v-grad-soft);
   border: 1.5px solid var(--v-border);
-  color: var(--v-text);
-  transition: background 0.15s, border-color 0.15s, transform 0.1s, box-shadow 0.15s;
+  color: var(--v-pink-dark);
+  transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.1s, box-shadow 0.15s;
   flex-shrink: 0;
   position: relative;
 }
 .dock-btn:hover {
-  background: var(--v-pink-light);
-  border-color: var(--v-pink-mid);
+  background: var(--v-grad-primary);
+  border-color: var(--v-pink);
+  color: #fff;
   transform: translateY(-1px);
   box-shadow: var(--v-shadow-sm);
 }
 .dock-btn:active { transform: translateY(0); }
 
-/* Active state (camera on, screen share active, deafen active) */
+/* Active state (camera on, screen share active, deafen active) = filled pink */
 .dock-btn[aria-pressed="true"] {
-  background: var(--v-pink-light);
-  border-color: var(--v-pink-mid);
-  color: var(--v-pink-dark);
+  background: var(--v-grad-primary);
+  border-color: var(--v-pink);
+  color: #fff;
 }
 
 /* Mic muted = danger red */
@@ -1523,27 +1621,39 @@ a { color: inherit; text-decoration: none; }
   mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.49.49 0 0 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32a.49.49 0 0 0-.12-.61l-2-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z'/%3E%3C/svg%3E");
 }
 
-.dock-leave { padding: 8px 15px; font-size: 12px; }
+/* Leave = soft pink surface with pink-red ink (not a hard red button) per spec §3 */
+.btn-danger.dock-leave {
+  padding: 8px 15px;
+  font-size: 12px;
+  background: var(--v-leave-bg);
+  color: var(--v-danger);
+  border: 1.5px solid rgba(216, 80, 120, 0.25);
+  box-shadow: 0 2px 8px rgba(255, 145, 195, 0.18);
+}
+.btn-danger.dock-leave:hover {
+  background: rgba(255, 205, 226, 0.95);
+  color: var(--v-danger);
+}
 
-/* Host/admin controls are compact icon toggles (ghost / lock / audience). */
+/* Host/admin controls are compact rounded-square icon toggles (ghost / lock / audience). */
 .dock-ctrl {
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: transparent;
+  background: var(--v-grad-soft);
   border: 1.5px solid var(--v-border);
-  color: var(--v-text-muted);
+  color: var(--v-pink-dark);
   transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.1s;
   flex-shrink: 0;
 }
 .dock-ctrl[hidden] { display: none; }
 .dock-ctrl:hover {
-  background: var(--v-pink-light);
-  border-color: var(--v-pink-mid);
-  color: var(--v-text);
+  background: var(--v-grad-primary);
+  border-color: var(--v-pink);
+  color: #fff;
   transform: translateY(-1px);
 }
 .dock-ctrl .dock-icon { width: 16px; height: 16px; }
@@ -2142,27 +2252,27 @@ a { color: inherit; text-decoration: none; }
 
 /* ── Touch: neutralise stuck hover states ───────────────────────── */
 @media (hover: none) {
-  .btn-primary:hover { background: var(--v-pink-btn); box-shadow: 0 2px 10px rgba(240, 131, 179, 0.3); transform: none; }
+  .btn-primary:hover { background: var(--v-grad-primary); box-shadow: 0 4px 10px rgba(255, 145, 198, 0.28); transform: none; }
   .btn-ghost:hover   { border-color: var(--v-border); color: var(--v-text-muted); background: transparent; }
   .btn-text:hover    { background: transparent; color: var(--v-text-muted); }
   .btn-text-sm:hover { color: var(--v-text-muted); }
   .btn-danger:hover  { background: var(--v-danger); transform: none; }
-  .btn-back:hover    { background: transparent; color: var(--v-text-muted); }
+  .btn-back:hover    { background: var(--v-grad-soft); color: var(--v-pink-dark); }
 
-  .room-card:hover { border-color: var(--v-border-soft); box-shadow: none; transform: none; }
-  .room-card:not(.locked):hover .card-join { background: transparent; border-color: var(--v-border); }
+  .room-card:hover { border-color: var(--v-border); box-shadow: var(--v-shadow); transform: rotate(var(--tilt)); }
+  .room-card:not(.locked):hover .card-join { background: var(--v-grad-soft); border-color: var(--v-border); color: var(--v-pink-dark); }
 
   .participant-card.host-can-act:hover { background: var(--v-surface-2); }
   .p-mute-btn:hover { background: rgba(217, 95, 122, 0.12); }
   .p-dots-btn:hover { background: rgba(0,0,0,0.08); }
 
-  .dock-btn:hover { background: var(--v-surface-3); border-color: var(--v-border); transform: none; box-shadow: none; color: var(--v-text); }
+  .dock-btn:hover { background: var(--v-grad-soft); border-color: var(--v-border); transform: none; box-shadow: none; color: var(--v-pink-dark); }
   .dock-btn.mic-muted:hover      { background: var(--v-danger-bg); }
   .dock-btn.mic-disconnected:hover { background: var(--v-surface-2); }
   .dock-btn.mic-server-muted:hover { background: var(--v-danger-bg); }
   .dock-btn.deafened:hover       { background: var(--v-danger-bg); }
 
-  .dock-ctrl:hover { background: transparent; border-color: var(--v-border); color: var(--v-text-muted); transform: none; }
+  .dock-ctrl:hover { background: var(--v-grad-soft); border-color: var(--v-border); color: var(--v-pink-dark); transform: none; }
   .dock-ctrl[aria-pressed="true"]:hover { background: var(--v-pink-btn); color: #fff; }
   .dock-ctrl-danger:hover { background: rgba(217,95,122,0.08); color: var(--v-danger); }
 }
