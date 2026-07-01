@@ -144,7 +144,6 @@ const LS = {
   color:       'dg_rooms_color',
   hostKeys:    'dg_rooms_host_keys',
   settings:    'dg_rooms_settings',
-  camPrompted: 'dg_rooms_cam_prompted', // set after camera permission is settled (grant or deny)
 };
 
 function loadHostKeys() {
@@ -808,19 +807,6 @@ async function lkConnect(slug, tokenData) {
 
     await room.connect(lkUrl || LIVEKIT_WS_URL, token);
     state._lkRoom = room;
-
-    // iOS Safari queues a camera permission request when a WebRTC session
-    // includes a video SDP (even for receiving-only). The dialog is deferred
-    // until the next page-focus event — which means it appears on the lobby
-    // AFTER the user has left the room and locked+unlocked their phone.
-    // Settle it here (once ever) while the user is still in-room, so the
-    // dialog appears in the right context. Tracks are stopped immediately.
-    if (!localStorage.getItem(LS.camPrompted)) {
-      navigator.mediaDevices?.getUserMedia({ video: true, audio: false })
-        .then(s => s.getTracks().forEach(t => t.stop()))
-        .catch(() => {})
-        .finally(() => { try { localStorage.setItem(LS.camPrompted, '1'); } catch {} });
-    }
 
     // Always re-announce presence after a successful connect. Without this, a manual
     // "Rejoin" after retries exhausted (which called untrack()) leaves the user invisible
@@ -1598,8 +1584,12 @@ async function createRoom() {
 
 // ── § RENDER / ROOM ───────────────────────────────────────────────
 function renderRoom() {
-  document.getElementById('view-lobby').hidden = true;
-  document.getElementById('view-room').hidden  = false;
+  const swap = () => {
+    document.getElementById('view-lobby').hidden = true;
+    document.getElementById('view-room').hidden  = false;
+  };
+  if (document.startViewTransition) document.startViewTransition(swap);
+  else swap();
   updateTopbar();
   renderParticipants();
   renderChat(state.chat);
@@ -1676,7 +1666,9 @@ function renderParticipants() {
   }
 
   const wrapMap = {};
+  const knownSids = new Set();
   grid.querySelectorAll('.participant-card[data-sid]').forEach(card => {
+    knownSids.add(card.dataset.sid);
     const wrap = card.querySelector('.p-video-wrap');
     if (wrap) {
       wrapMap[card.dataset.sid] = wrap;
@@ -1698,6 +1690,9 @@ function renderParticipants() {
     }
     if (_cameraToggling && card.dataset.sid === state.user.sessionId) {
       card.classList.add('cam-loading');
+    }
+    if (!knownSids.has(card.dataset.sid)) {
+      card.classList.add('is-new');
     }
   });
 
@@ -2041,6 +2036,9 @@ async function setMic(on, opts = {}) {
     if (!opts.silent) micBanner();
     return;
   }
+  // Optimistic: flip the button immediately so it never visibly lags the click.
+  state.media.micOn = on;
+  updateMicBtn();
   try {
     await state._lkRoom.localParticipant.setMicrophoneEnabled(on, {
       echoCancellation: true,
@@ -2048,7 +2046,6 @@ async function setMic(on, opts = {}) {
       autoGainControl:  true,
       deviceId: state.settings.micDeviceId !== 'default' ? state.settings.micDeviceId : undefined,
     });
-    state.media.micOn = on;
     if (on) {
       if (!state.media.micReady) populateDevices(); // device labels become readable after first permission grant
       state.media.micReady = true;
@@ -2056,6 +2053,8 @@ async function setMic(on, opts = {}) {
     state._localMicTrack = state._lkRoom.localParticipant.getTrackPublication?.(_lk?.Track?.Source?.Microphone)?.track || state._localMicTrack;
     if (!opts.silent) { if (on) hideBanner(); else micBanner(); }
   } catch (err) {
+    state.media.micOn = !on;
+    updateMicBtn();
     if (on && userIntent) state.media.wantsMic = false;
     if (!opts.silent) handleMicError(err);
     return;
@@ -2101,6 +2100,7 @@ function micBanner() {
 }
 
 function toggleMic() {
+  navigator.vibrate?.(8);
   if (!state._lkRoom && state.view === 'room') {
     showBanner('Voice is still connecting.', '', null, 'warning');
     return;
@@ -2138,6 +2138,7 @@ async function setMicMuted(muted, reason, opts = {}) {
 }
 
 function toggleDeafen() {
+  navigator.vibrate?.(8);
   // Deafen = mute all incoming audio for yourself. Discord-style, it also mutes
   // your own mic while deafened, then restores it when you undeafen.
   state.media.deafened = !state.media.deafened;

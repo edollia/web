@@ -1671,6 +1671,19 @@ a { color: inherit; text-decoration: none; }
   from { opacity: 0; transform: translateX(-50%) scale(0.96) translateY(6px); }
   to   { opacity: 1; transform: translateX(-50%) scale(1) translateY(0); }
 }
+.participant-card.is-new { animation: card-in 0.2s ease; }
+@keyframes card-in {
+  from { opacity: 0; transform: scale(0.94); }
+  to   { opacity: 1; transform: scale(1); }
+}
+.chat-msg, .chat-msg-sys { animation: msg-in 0.15s ease; }
+@keyframes msg-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+::view-transition-old(root), ::view-transition-new(root) {
+  animation-duration: 0.15s;
+}
 
 /* ── Mobile responsive (≤ 767px) ───────────────────────────────── */
 @media (max-width: 767px) {
