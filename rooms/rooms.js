@@ -110,6 +110,8 @@ let _qualityMap = {}; // sessionId → LiveKit ConnectionQuality string
 let _pendingParticipantRender = false; // deferred re-render while video is fullscreen
 let _sharingOrder   = new Map(); // sessionId → monotonic rank (lower = started sharing earlier)
 let _sharingCounter = 0;
+let _videoAspectRatio = {}; // sessionId → { w, h } once a camera's real aspect ratio is known
+let _repackTimer = null;    // debounce handle for scheduleRepack()
 
 // ── § DEBUG LOGGER ────────────────────────────────────────────────
 // Silent in production. Enable with: localStorage.setItem('dg_debug', '1')
@@ -1086,10 +1088,19 @@ function showParticipantVideo(track, identity) {
   const syncAspect = () => {
     if (video.videoWidth && video.videoHeight) {
       wrap.style.aspectRatio = `${video.videoWidth} / ${video.videoHeight}`;
+      const prev = _videoAspectRatio[identity];
+      if (!prev || prev.w !== video.videoWidth || prev.h !== video.videoHeight) {
+        _videoAspectRatio[identity] = { w: video.videoWidth, h: video.videoHeight };
+        scheduleRepack(); // real height now known/changed — the packer was using a placeholder estimate
+      }
     }
   };
   video.addEventListener('loadedmetadata', syncAspect, { once: true });
   video.addEventListener('resize', syncAspect);
+  // The card just grew from a 140px avatar-only estimate to a video tile — the
+  // packer needs to redistribute columns using the (still placeholder, until
+  // syncAspect resolves) video-sized estimate instead of the stale avatar one.
+  scheduleRepack();
 }
 
 // Fullscreen toggle for any video tile (works on desktop + iOS Safari).
@@ -1198,6 +1209,8 @@ function hideParticipantVideo(identity) {
   if (!card) return;
   card.querySelector('.p-video-wrap')?.remove();
   card.classList.remove('has-video');
+  delete _videoAspectRatio[identity];
+  scheduleRepack(); // card just shrank back to the 140px avatar estimate — redistribute columns
 }
 
 function showScreenShareVideo(track, participant) {
@@ -1272,6 +1285,10 @@ window.addEventListener('popstate', async () => {
 
 // ── § RENDER / LOBBY ──────────────────────────────────────────────
 function renderLobby() {
+  // One-time: the skeleton is only ever visible before the first real render.
+  document.getElementById('lobby-skeleton')?.remove();
+  document.getElementById('lobby-skeleton-pill')?.remove();
+
   const grid   = document.getElementById('rooms-grid');
   const empty  = document.getElementById('empty-state');
   const nickEl = document.getElementById('lobby-nick-display');
@@ -1382,6 +1399,7 @@ async function doShowLobby() {
   _qualityMap      = {};
   _sharingOrder    = new Map();
   _sharingCounter  = 0;
+  _videoAspectRatio = {};
   document.getElementById('btn-leave')?.classList.remove('is-leaving');
   document.getElementById('btn-back')?.classList.remove('is-leaving');
 
@@ -1404,8 +1422,7 @@ async function doShowLobby() {
 
   _msgBurst.length = 0; // reset chat cooldown between sessions
 
-  state.rooms = await sbLoadRooms();
-  state.roomsLocked = await sbGetLockdown();
+  [state.rooms, state.roomsLocked] = await Promise.all([sbLoadRooms(), sbGetLockdown()]);
   renderLobby();
 
   // Subscribe to room list changes (once; stays alive)
@@ -1425,6 +1442,12 @@ async function doShowLobby() {
       renderLobby();
     });
   }
+
+  // Speculative warm-up: most people browse the lobby for at least a moment
+  // before clicking a room, so pre-fetch the LiveKit SDK now (ensureLk() memoizes,
+  // so this just makes the real join-time call resolve from cache). Silently
+  // falls back to today's on-demand load path on a slow/offline connection.
+  setTimeout(() => { ensureLk().catch(() => {}); }, 400);
 }
 
 let _lastJoinTime = 0;
@@ -1513,6 +1536,13 @@ async function enterRoom(room, pushNav, tokenData) {
     accent: myAccent(), avatar: state.user.avatar, sessionId: state.user.sessionId, speaking: false,
   }];
 
+  // Connect to LiveKit (non-blocking, fire-and-forget). Started here rather than at
+  // the end of this function so the WebRTC handshake runs concurrently with the chat
+  // history fetch below instead of strictly after it — lkConnect() has no dependency
+  // on state.chat or any of the subscriptions set up further down. Pass pre-fetched
+  // tokenData when available to skip the extra round-trip.
+  if (room.id) lkConnect(room.slug, tokenData);
+
   // Load message history
   state.chat = await sbLoadMessages(room.id);
 
@@ -1564,9 +1594,6 @@ async function enterRoom(room, pushNav, tokenData) {
   micBanner();
   setTimeout(() => appendSystemMessage(`${state.user.nickname} joined`, 'join'), 200);
   if (state.settings.joinSound) playJoinSound();
-
-  // Connect to LiveKit (non-blocking). Pass pre-fetched tokenData when available to skip the extra round-trip.
-  if (room.id) lkConnect(room.slug, tokenData);
 }
 
 async function leaveRoom() {
@@ -1719,6 +1746,77 @@ function sortParticipants(list) {
   });
 }
 
+// ── § PARTICIPANT GRID PACKING ──────────────────────────────────────
+// Greedy shortest-column bin-packing so a tall camera tile never strands a
+// shorter neighbor's row with dead space (see the comment on .participant-grid
+// in rooms.css for why grid-auto-flow:dense and CSS multi-column don't work here).
+
+const PG_COLUMN_GAP = 12; // must match .participant-grid/.pg-column's `gap` in rooms.css
+
+// Reads .pg-column's current computed width from CSS rather than hardcoding
+// 163/178 in JS, so the per-breakpoint card width only ever lives in one place.
+function getColumnWidth() {
+  const existing = document.querySelector('.pg-column');
+  if (existing) return parseFloat(getComputedStyle(existing).width) || 178;
+  const grid = document.getElementById('participant-grid');
+  if (!grid) return 178;
+  const probe = document.createElement('div');
+  probe.className = 'pg-column';
+  probe.style.visibility = 'hidden';
+  probe.style.position = 'absolute';
+  grid.appendChild(probe);
+  const w = parseFloat(getComputedStyle(probe).width) || 178;
+  probe.remove();
+  return w;
+}
+
+function getColumnCount(containerWidth, cardWidth) {
+  const isMobilePortrait = window.matchMedia('(max-width: 767px)').matches
+    && !window.matchMedia('(orientation: landscape) and (max-height: 500px)').matches;
+  if (isMobilePortrait) return 2; // matches the fixed 2-column mobile layout
+  return Math.max(1, Math.floor((containerWidth + PG_COLUMN_GAP) / (cardWidth + PG_COLUMN_GAP)));
+}
+
+// Pre-measurement estimate used only for packing decisions — never applied to
+// the DOM. Real rendered height still comes from the browser (padding, name,
+// badges, and — once known — the video's real aspect ratio).
+function estimateCardHeight(p, cardWidth) {
+  if (p.sharing !== 'cam') return 140; // matches .participant-card:not(.has-video) min-height
+  const known = _videoAspectRatio[p.sessionId];
+  const ratio = known ? (known.h / known.w) : (9 / 16); // 16:9 placeholder default until known
+  return Math.round(cardWidth * ratio) + 60; // + avatar/name/badges chrome below the video
+}
+
+// Walks sortParticipants()'s already sharer-first list and drops each participant
+// into whichever column currently has the smallest running estimated height.
+function packIntoColumns(sortedList, columnCount, cardWidth) {
+  const columns = Array.from({ length: columnCount }, () => []);
+  const heights = new Array(columnCount).fill(0);
+  for (const p of sortedList) {
+    let shortest = 0;
+    for (let i = 1; i < columnCount; i++) {
+      if (heights[i] < heights[shortest]) shortest = i;
+    }
+    columns[shortest].push(p);
+    heights[shortest] += estimateCardHeight(p, cardWidth) + PG_COLUMN_GAP;
+  }
+  return columns;
+}
+
+// Debounced re-render for the few triggers where a card's real height becomes
+// known/changes AFTER it was already placed (a video's real aspect ratio
+// resolving, a camera toggling on/off, a container resize). Every existing
+// renderParticipants() call site (mute, join/leave, kick, sharing change, etc.)
+// keeps calling it directly for instant feedback — only those triggers should
+// ever go through this debounce.
+function scheduleRepack() {
+  clearTimeout(_repackTimer);
+  _repackTimer = setTimeout(() => {
+    _repackTimer = null;
+    renderParticipants();
+  }, 120);
+}
+
 function renderParticipants() {
   const grid   = document.getElementById('participant-grid');
   const hintEl = document.getElementById('room-hint');
@@ -1762,7 +1860,12 @@ function renderParticipants() {
   const visible = sortParticipants(
     state.participants.filter(p => !(p.sessionId === state.user.sessionId && state.user.ghost))
   );
-  grid.innerHTML = visible.map(p => renderParticipantCard(p, isHost)).join('');
+  const cardWidth   = getColumnWidth();
+  const columnCount = Math.min(getColumnCount(grid.parentElement.clientWidth, cardWidth), visible.length || 1);
+  const columns     = packIntoColumns(visible, columnCount, cardWidth);
+  grid.innerHTML = columns
+    .map(col => `<div class="pg-column">${col.map(p => renderParticipantCard(p, isHost)).join('')}</div>`)
+    .join('');
 
   // Re-insert preserved wraps from stash into their new cards.
   grid.querySelectorAll('.participant-card[data-sid]').forEach(card => {
@@ -3198,6 +3301,14 @@ async function init() {
   window.addEventListener('resize', () => {
     if (!document.getElementById('user-menu').hidden) closeUserMenu();
   });
+
+  // Re-pack the participant grid whenever the panel's width changes for any
+  // reason — window resize, orientation change, or the "hide chat" button
+  // widening the panel with no viewport resize at all. One observer covers
+  // all three causes instead of wiring a separate listener for each.
+  new ResizeObserver(() => {
+    if (state.view === 'room') scheduleRepack();
+  }).observe(document.getElementById('panel-participants'));
 
   // ── Route ──
   const initialSlug = parseSlug();

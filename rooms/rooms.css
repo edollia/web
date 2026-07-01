@@ -563,6 +563,44 @@ a { color: inherit; text-decoration: none; }
   gap: 14px;
 }
 
+/* ── Lobby loading skeleton ─────────────────────────────────────────
+   Visible from first paint (plain HTML/CSS, no JS gating); renderLobby()
+   removes both nodes the instant real data lands, so the network wait
+   becomes invisible instead of a sudden pop over dead space. */
+.skel-pill {
+  width: 108px;
+  height: 36px;
+  border-radius: 999px;
+  background: var(--v-surface-3);
+  position: relative;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.lobby-skeleton {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(176px, 1fr));
+  gap: 14px;
+}
+.skel-card {
+  height: 152px;
+  border-radius: var(--v-radius);
+  background: var(--v-surface-3);
+  border: 1.5px solid var(--v-border-soft);
+  position: relative;
+  overflow: hidden;
+}
+.skel-card::after, .skel-pill::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+  animation: skel-shimmer 1.5s infinite;
+}
+@keyframes skel-shimmer {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
 /* ── Room card ──────────────────────────────────────────────────── */
 .room-card {
   background: var(--v-surface);
@@ -903,14 +941,26 @@ a { color: inherit; text-decoration: none; }
   margin-bottom: 14px;
 }
 
-/* ── Participant grid ───────────────────────────────────────────── */
+/* ── Participant grid ───────────────────────────────────────────────
+   JS-packed masonry: greedy shortest-column bin-packing (see packIntoColumns()
+   in rooms.js) rather than plain CSS grid, so a tall camera tile never strands
+   a shorter neighbor's row with dead space — grid-auto-flow:dense can't fix this
+   (no multi-span occupancy holes exist here, only row-track-height variance),
+   and CSS multi-column can't guarantee the sharer lands top-of-column-1 on a
+   container whose height varies by breakpoint. Column width below is the single
+   source of truth JS reads via getColumnWidth() — change it only here. */
 .participant-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, 178px);
-  grid-auto-rows: auto;
-  align-items: start;
+  display: flex;
+  flex-direction: row;
   justify-content: center;
+  align-items: flex-start;
   gap: 12px;
+}
+.pg-column {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 178px;
 }
 
 .participant-card {
@@ -1825,7 +1875,8 @@ a { color: inherit; text-decoration: none; }
   #topbar-audience-badge,
   #topbar-ghost-badge { display: none; }
 
-  .participant-grid { grid-template-columns: repeat(2, 163px); justify-content: center; }
+  .participant-grid { justify-content: center; }
+  .pg-column { width: 163px; }
 }
 
 /* ── Mobile landscape: side-by-side panels + compact dock ────────── */
@@ -1854,7 +1905,8 @@ a { color: inherit; text-decoration: none; }
   /* Hide the redundant chat label in landscape — saves precious vertical space */
   .chat-header-bar { display: none; }
   /* Participant grid compact in landscape */
-  .participant-grid { grid-template-columns: repeat(auto-fill, 178px); justify-content: start; }
+  .participant-grid { justify-content: start; }
+  .pg-column { width: 178px; }
 }
 
 /* ── Chat hide/show toggle ──────────────────────────────────────── */
@@ -2157,7 +2209,8 @@ a { color: inherit; text-decoration: none; }
   .room-card.joining .card-join,
   .btn-loading-dot,
   .participant-card.is-new,
-  .chat-msg, .chat-msg-sys {
+  .chat-msg, .chat-msg-sys,
+  .skel-card::after, .skel-pill::after {
     animation: none;
   }
   ::view-transition-old(root), ::view-transition-new(root) {
