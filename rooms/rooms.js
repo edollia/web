@@ -1382,11 +1382,17 @@ async function doShowLobby() {
   _qualityMap      = {};
   _sharingOrder    = new Map();
   _sharingCounter  = 0;
+  document.getElementById('btn-leave')?.classList.remove('is-leaving');
+  document.getElementById('btn-back')?.classList.remove('is-leaving');
 
-  document.getElementById('view-room').hidden = true;
-  document.getElementById('view-lobby').hidden = false;
-  document.getElementById('settings-panel').hidden = true;
-  document.getElementById('user-menu').hidden = true;
+  const swap = () => {
+    document.getElementById('view-room').hidden = true;
+    document.getElementById('view-lobby').hidden = false;
+    document.getElementById('settings-panel').hidden = true;
+    document.getElementById('user-menu').hidden = true;
+  };
+  if (document.startViewTransition) document.startViewTransition(swap);
+  else swap();
 
   if (state.ui.chatHidden) {
     state.ui.chatHidden = false;
@@ -1429,9 +1435,17 @@ async function joinRoom(slug) {
   if (now - _lastJoinTime < 2000) return;
   _lastJoinTime = now;
 
+  // Pulse the room card's join pill while the access-check/token fetch is in flight.
+  // Looked up by slug (not passed in) since joinRoom() has multiple call sites —
+  // a lobby card click, an auto-rejoin path, and a ?room= deep link — and not all
+  // of them have a visible card to begin with, hence the optional chaining throughout.
+  const card = document.querySelector(`.room-card[data-slug="${CSS.escape(slug)}"]`);
+  card?.classList.add('joining');
+  const stopLoading = () => card?.classList.remove('joining');
+
   let room = state.rooms.find(r => r.slug === slug);
   if (!room) room = await sbFetchRoom(slug);
-  if (!room) { _lastJoinTime = 0; return; }
+  if (!room) { _lastJoinTime = 0; stopLoading(); return; }
 
   // Re-fetch to get the latest locked state
   if (room.id) {
@@ -1442,6 +1456,7 @@ async function joinRoom(slug) {
   if (room.locked && !isHostForRoom(room)) {
     showLobbyBanner('This room is locked.');
     _lastJoinTime = 0;
+    stopLoading();
     return;
   }
 
@@ -1467,12 +1482,16 @@ async function joinRoom(slug) {
       showLobbyBanner('Could not join room. Try again.');
     }
     _lastJoinTime = 0;
+    stopLoading();
     return;
   }
 
   state.user.role = tokenData.role === 'host' ? 'host' : 'guest';
 
   await enterRoom(room, true, tokenData);
+  // No explicit stopLoading() here: enterRoom() swaps the visible view away from
+  // the lobby, and this card's HTML is fully regenerated next time renderLobby()
+  // runs, so the 'joining' class never has a chance to linger visibly.
 }
 
 async function enterRoom(room, pushNav, tokenData) {
@@ -1554,6 +1573,9 @@ async function leaveRoom() {
   if (!state.room) { doShowLobby(); return; }
   dbg('lifecycle', 'leave room', state.room?.slug, 'role:', state.user.role);
 
+  document.getElementById('btn-leave')?.classList.add('is-leaving');
+  document.getElementById('btn-back')?.classList.add('is-leaving');
+
   appendSystemMessage(`${state.user.nickname} left`, 'leave');
 
   if (state.room.id && state.user.role === 'host' && isHostForRoom(state.room)) {
@@ -1572,6 +1594,7 @@ function resetLeaveConfirm() {
 }
 
 function requestLeaveRoom() {
+  navigator.vibrate?.(8);
   const liveMedia = state.media.cameraOn || state.media.screenOn;
   if (liveMedia && !_leaveConfirmTimer) {
     const btn = document.getElementById('btn-leave');
@@ -1598,6 +1621,8 @@ async function createRoom() {
     return;
   }
   _lastRoomCreate = now;
+  const btns = [document.getElementById('btn-create'), document.getElementById('btn-create-empty')].filter(Boolean);
+  btns.forEach(b => setBtnLoading(b, true, 'Starting…'));
   const title  = state.user.nickname; // default title = your name
   const slug   = generateSlug(`${title}-${Math.floor(Math.random() * 900) + 100}`);
   let room = null;
@@ -1614,11 +1639,13 @@ async function createRoom() {
       } catch (err2) {
         console.error('Failed to create room (retry):', err2);
         _lastRoomCreate = 0; // release cooldown so the user can try again immediately
+        btns.forEach(b => setBtnLoading(b, false));
         showLobbyBanner('Could not create room. Try again.');
         return;
       }
     } else {
       _lastRoomCreate = 0; // release cooldown on any other failure too
+      btns.forEach(b => setBtnLoading(b, false));
       if (err.httpStatus === 403 && String(err.message).includes('temporarily disabled')) {
         state.roomsLocked = true;
         renderLobby();
@@ -1632,6 +1659,7 @@ async function createRoom() {
   }
 
   state.user.role = 'host';
+  btns.forEach(b => setBtnLoading(b, false));
   await enterRoom(room, true);
 }
 
@@ -1942,6 +1970,17 @@ function updateDockBtnState(id, active) {
   if (btn) btn.setAttribute('aria-pressed', active ? 'true' : 'false');
 }
 
+// Generic button loading state: dims the button, blocks re-clicks, swaps its
+// label for a pulsing-dot + text. Restores the original innerHTML when turned off.
+function setBtnLoading(btn, isLoading, label) {
+  if (!btn) return;
+  if (!btn.dataset.defaultHtml) btn.dataset.defaultHtml = btn.innerHTML;
+  btn.classList.toggle('is-loading', isLoading);
+  btn.innerHTML = isLoading
+    ? `<span class="btn-loading-dot" aria-hidden="true"></span><span>${label}</span>`
+    : btn.dataset.defaultHtml;
+}
+
 // ── § SETUP MODAL ─────────────────────────────────────────────────
 // Name + optional photo + name color. Draft values live here until confirm.
 let _setupAvatar = '';
@@ -2216,6 +2255,7 @@ function toggleDeafen() {
 let _cameraToggling = false;
 async function toggleCamera() {
   if (_cameraToggling) return;
+  navigator.vibrate?.(8);
   _cameraToggling = true;
   try {
     if (!state._lkRoom) {
@@ -2297,6 +2337,7 @@ async function toggleCamera() {
 let _screenToggling = false;
 async function toggleScreen() {
   if (_screenToggling) return;
+  navigator.vibrate?.(8);
   _screenToggling = true;
   try {
     if (!state._lkRoom) {
@@ -2306,6 +2347,8 @@ async function toggleScreen() {
     }
 
     if (!state.media.screenOn) {
+      const screenBtn = document.getElementById('btn-screen');
+      screenBtn?.classList.add('screen-loading');
       const { createLocalScreenTracks } = await ensureLk();
       try {
         const tracks = await createLocalScreenTracks({ audio: true });
@@ -2333,6 +2376,8 @@ async function toggleScreen() {
           logEvent('error', 'screen_share_failed', { errName: err?.name || 'unknown' });
           showBanner('Could not share screen.', 'OK', hideBanner);
         }
+      } finally {
+        screenBtn?.classList.remove('screen-loading');
       }
     } else {
       if (state._localScreenTrack) {
@@ -2796,6 +2841,7 @@ async function handleUserAction(action) {
   const p = _menuTarget;
   closeUserMenu();
   if (!p) return;
+  navigator.vibrate?.(8);
 
   switch (action) {
     case 'mute': {

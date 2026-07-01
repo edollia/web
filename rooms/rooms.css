@@ -113,6 +113,27 @@ a { color: inherit; text-decoration: none; }
 }
 .btn-primary.btn-sm { padding: 7px 14px; font-size: 12px; }
 
+.btn-primary.is-loading {
+  cursor: wait;
+  opacity: 0.86;
+  transform: none;
+  pointer-events: none;
+}
+.btn-loading-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 7px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 10px 0 0 rgba(255, 255, 255, 0.68), 20px 0 0 rgba(255, 255, 255, 0.42);
+  animation: btn-loading-dots 0.86s ease-in-out infinite;
+}
+@keyframes btn-loading-dots {
+  0%, 100% { opacity: 0.55; transform: translateY(0); }
+  50%      { opacity: 1;    transform: translateY(-2px); }
+}
+
 .btn-ghost {
   display: inline-flex;
   align-items: center;
@@ -184,6 +205,12 @@ a { color: inherit; text-decoration: none; }
   flex-shrink: 0;
 }
 .btn-back:hover { background: var(--v-surface-3); color: var(--v-text); }
+
+.btn-danger.is-leaving, .btn-back.is-leaving {
+  cursor: wait;
+  opacity: 0.7;
+  pointer-events: none;
+}
 
 /* ── Badges ─────────────────────────────────────────────────────── */
 .badge {
@@ -677,6 +704,16 @@ a { color: inherit; text-decoration: none; }
 .room-card.locked .card-join {
   color: var(--v-text-light);
   pointer-events: none;
+}
+
+/* Joining: pulse the pill while the access-check/token fetch is in flight */
+.room-card.joining { cursor: wait; }
+.room-card.joining .card-join {
+  animation: card-join-pulse 1s ease-in-out infinite;
+}
+@keyframes card-join-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.45; }
 }
 
 /* ── Empty state ────────────────────────────────────────────────── */
@@ -2034,6 +2071,12 @@ a { color: inherit; text-decoration: none; }
   50%       { opacity: 0.45; }
 }
 
+/* Screen-share acquiring: pulse the dock button while the OS picker / track creation is pending */
+.dock-btn.screen-loading {
+  animation: cam-pulse 1s ease-in-out infinite;
+  pointer-events: none;
+}
+
 /* ── Scrollbar ──────────────────────────────────────────────────── */
 .chat-messages::-webkit-scrollbar,
 .panel-participants::-webkit-scrollbar { width: 4px; }
@@ -2098,4 +2141,26 @@ a { color: inherit; text-decoration: none; }
   margin: 0 0 22px;
   font-size: 13px; color: var(--v-text-muted);
   line-height: 1.5;
+}
+
+/* ── Reduced motion ─────────────────────────────────────────────────
+   Placed last on purpose: several of these selectors (cam-loading,
+   screen-loading, joining) are also targeted by unconditional animation
+   rules earlier in this file, and at equal specificity the later rule
+   wins the cascade — this block must stay the last thing in the file
+   to reliably override all of them, including future additions. */
+@media (prefers-reduced-motion: reduce) {
+  .lk-signal.lk-connecting, .lk-signal.lk-reconnecting,
+  .participant-card.speaking .p-avatar::after,
+  .participant-card.cam-loading .p-avatar,
+  .dock-btn.screen-loading,
+  .room-card.joining .card-join,
+  .btn-loading-dot,
+  .participant-card.is-new,
+  .chat-msg, .chat-msg-sys {
+    animation: none;
+  }
+  ::view-transition-old(root), ::view-transition-new(root) {
+    animation: none;
+  }
 }
