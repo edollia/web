@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="theme-color" content="#fff7fb">
   <meta name="referrer" content="strict-origin-when-cross-origin">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' https://esm.sh https://cdn.esm.sh; style-src 'self' 'unsafe-inline'; connect-src https://karogcjefsnnrvlxlgpf.supabase.co wss://karogcjefsnnrvlxlgpf.supabase.co https://pawsweb-z0kamke4.livekit.cloud wss://pawsweb-z0kamke4.livekit.cloud; img-src 'self' data: blob:; media-src blob: mediastream:; frame-src 'none'; form-action 'self'; base-uri 'self';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' https://esm.sh https://cdn.esm.sh; style-src 'self' 'unsafe-inline'; font-src 'self'; connect-src https://karogcjefsnnrvlxlgpf.supabase.co wss://karogcjefsnnrvlxlgpf.supabase.co https://pawsweb-z0kamke4.livekit.cloud wss://pawsweb-z0kamke4.livekit.cloud; img-src 'self' data: blob:; media-src blob: mediastream:; frame-src 'none'; form-action 'self'; base-uri 'self';">
   <!-- Warm the DNS/TCP/TLS handshake for every origin this page will talk to,
        before rooms.js even finishes parsing — same hosts as the CSP connect-src above. -->
   <link rel="preconnect" href="https://esm.sh" crossorigin>
@@ -16,7 +16,7 @@
   <meta property="og:title" content="rooms · doll.gg">
   <meta property="og:description" content="join a room">
   <meta property="og:url" content="https://doll.gg/rooms/">
-  <link rel="stylesheet" href="rooms.css?v=29">
+  <link rel="stylesheet" href="rooms.css?v=30">
 </head>
 <body>
 
@@ -77,6 +77,28 @@
       <div class="skel-card"></div>
       <div class="skel-card"></div>
     </div>
+    <!-- Admin pinned-room banner (NEW). Rendered by JS in Phase 3 when the
+         admin's hosted room has pinned_in_lobby; otherwise that room shows as a
+         normal card. Dynamic media state (vinyl / poster / none). Hidden until
+         wired. -->
+    <div id="lobby-pinned-banner" class="pinned-banner" hidden>
+      <span id="pinned-art" class="pinned-art" aria-hidden="true">
+        <svg class="np-vinyl" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 13.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"/></svg>
+      </span>
+      <div class="pinned-body">
+        <div class="pinned-titlerow">
+          <b id="pinned-title" class="pinned-title"></b>
+          <span class="pinned-live">live</span>
+        </div>
+        <div id="pinned-np" class="pinned-np"></div>
+        <div id="pinned-tagline" class="pinned-tagline"></div>
+      </div>
+      <div class="pinned-side">
+        <span class="pinned-badge">pinned · admin</span>
+        <div id="pinned-bubbles" class="card-bubbles"></div>
+        <button id="btn-pinned-join" class="btn-primary btn-sm">join</button>
+      </div>
+    </div>
     <div id="rooms-grid" class="rooms-grid"></div>
     <div id="empty-state" class="empty-state" hidden>
       <svg class="empty-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5-3c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
@@ -119,6 +141,15 @@
       <span id="topbar-count" class="topbar-count"></span>
       <button id="btn-copy-link" class="btn-ghost btn-sm">copy link</button>
       <button id="btn-toggle-chat" class="btn-ghost btn-sm">hide chat</button>
+      <!-- 3-state chat view (NEW: full / peek / hidden). Wired + shown in
+           Phase 3, which also retires #btn-copy-link (→ room-for-one-more) and
+           #btn-toggle-chat above; both kept now so their existing (null-unsafe)
+           bindings still resolve. -->
+      <div id="chat-view-control" class="seg-control" role="group" aria-label="Chat view" hidden>
+        <button class="seg-btn is-active" data-view="full">full</button>
+        <button class="seg-btn" data-view="peek">peek</button>
+        <button class="seg-btn" data-view="hidden">hide</button>
+      </div>
     </div>
   </div>
 
@@ -128,6 +159,25 @@
     <button id="banner-action-btn" class="banner-action"></button>
   </div>
 
+  <!-- Now-playing media banner (NEW — separate from the warning #room-banner
+       above; see NOTES). Populated + shown/hidden by JS in Phase 3; hidden and
+       inert until then. music OR movie; no idle state. -->
+  <div id="now-playing" class="now-playing" hidden>
+    <span id="np-art" class="np-art" aria-hidden="true">
+      <svg class="np-vinyl" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 13.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"/></svg>
+    </span>
+    <span class="np-eq" aria-hidden="true"><i></i><i></i><i></i></span>
+    <span class="np-text"><span id="np-label">now playing</span> · <b id="np-title"></b> <span id="np-source"></span></span>
+    <button id="np-change" class="np-change host-ctrl" hidden>tap to change ~</button>
+    <span class="np-spacer"></span>
+    <button id="btn-np-pause" class="np-btn" aria-label="Pause">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6zm8-14v14h4V5z"/></svg>
+    </button>
+    <button id="btn-np-toggle" class="np-btn" aria-label="Hide now playing">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M7.41 15.41 12 10.83l4.59 4.58L18 14l-6-6-6 6z"/></svg>
+    </button>
+  </div>
+
   <!-- Main content area -->
   <div class="room-main" id="room-main">
 
@@ -135,9 +185,20 @@
     <div id="panel-participants" class="panel panel-participants" data-panel="participants">
       <div id="screenshare-area" class="screenshare-area" hidden></div>
       <div class="section-label">
-        in the room (<span id="participant-count">0</span>)
+        who's here rn ~<span id="participant-count" hidden>0</span>
       </div>
       <div id="participant-grid" class="participant-grid"></div>
+      <!-- "room for one more" copy-invite tile (NEW). Placed outside the
+           JS-rendered #participant-grid so re-renders don't wipe it; wired to
+           the existing copy-link handler + moved into the grid flow in Phase 3.
+           Hidden until then. -->
+      <button id="room-for-one-more" class="room-for-one-more" hidden>
+        <span class="rfom-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"/></svg>
+        </span>
+        <span class="rfom-title">room for one more</span>
+        <span class="rfom-sub">tap to copy invite</span>
+      </button>
       <div id="room-hint" class="room-hint" hidden>
         just you so far. share the link to get people in.
       </div>
@@ -145,7 +206,15 @@
 
     <!-- Chat panel -->
     <div id="panel-chat" class="panel panel-chat" data-panel="chat">
-      <div class="chat-header-bar">room chat</div>
+      <div class="chat-header-bar">
+        <span class="chat-header-title">room chat</span>
+        <!-- lock-chat toggle (NEW, host only; distinct from lock room). Wired
+             in Phase 3; hidden until then. -->
+        <button id="btn-lock-chat" class="chat-lock-btn host-ctrl" hidden aria-pressed="false" title="Lock chat" aria-label="Lock chat">
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zM9 6c0-1.66 1.34-3 3-3s3 1.34 3 3v2H9V6z"/></svg>
+          <span>lock chat</span>
+        </button>
+      </div>
       <div id="chat-messages" class="chat-messages" aria-live="polite"></div>
       <button id="btn-scroll-bottom" class="chat-scroll-btn" hidden aria-label="Scroll to latest messages">
         <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20 12l-1.41-1.41L13 16.17V4h-2v12.17l-5.58-5.59L4 12l8 8 8-8z"/></svg>
@@ -158,7 +227,7 @@
         </button>
         <input id="chat-file" type="file" accept="image/*" hidden>
         <input id="chat-input" class="chat-input" type="text"
-               placeholder="message the room" maxlength="500"
+               placeholder="say something cute ~" maxlength="500"
                autocomplete="off" autocorrect="off">
         <button id="btn-send" class="btn-primary btn-sm">send</button>
       </div>

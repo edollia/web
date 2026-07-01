@@ -3,6 +3,25 @@
    Scoped to /rooms/ only. Never imported by other pages.
    ════════════════════════════════════════════════════════════════ */
 
+/* ── Self-hosted display fonts ───────────────────────────────────────
+   Caveat (handwriting) + Gochi Hand (tags), latin subset, served from
+   /rooms/fonts/ (same-origin → needs `font-src 'self'` in the CSP).
+   Caveat's woff2 is variable (wght 400–700). */
+@font-face {
+  font-family: 'Caveat';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('fonts/caveat.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Gochi Hand';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('fonts/gochi-hand.woff2') format('woff2');
+}
+
 /* ── Design tokens ───────────────────────────────────────────────────
    doll.gg "Rooms Final" system (see ROOMS-REDESIGN-SPEC.md §3). Base
    #fff7fb / #fffafd, hot pink #ff8fc4, ink rgba(122,76,92). Almost every
@@ -56,11 +75,11 @@
 
   --v-font-head:    "Comic Sans MS", "Chalkboard SE", "Trebuchet MS", cursive;
   --v-font-body:    "Trebuchet MS", "Comic Sans MS", -apple-system, sans-serif;
-  /* Caveat (handwriting) + Gochi Hand (tags) fall back to Comic Sans until a
-     later phase adds `font-src` to the CSP and self-hosts the woff2 files —
-     the current strict CSP (default-src 'none', no font-src) blocks web fonts. */
-  --v-font-hand:    "Caveat", "Comic Sans MS", "Segoe Script", cursive;
-  --v-font-tag:     "Gochi Hand", "Comic Sans MS", "Segoe Script", cursive;
+  /* Caveat = handwriting accents, Gochi Hand = tags (self-hosted @font-face
+     above; CSP allows them via `font-src 'self'`). Comic Sans/cursive is the
+     fallback while the woff2 is still loading. */
+  --v-font-hand:    "Caveat", "Comic Sans MS", cursive;
+  --v-font-tag:     "Gochi Hand", "Comic Sans MS", cursive;
 }
 
 /* ── Base ───────────────────────────────────────────────────────── */
@@ -1220,7 +1239,11 @@ a { color: inherit; text-decoration: none; }
 
 /* ── Chat panel ─────────────────────────────────────────────────── */
 .chat-header-bar {
-  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 14px;
   font-family: var(--v-font-head);
   font-size: 15px;
   font-weight: 700;
@@ -1229,6 +1252,7 @@ a { color: inherit; text-decoration: none; }
   border-bottom: 1px solid var(--v-border-soft);
   flex-shrink: 0;
 }
+.chat-header-title { line-height: 1.4; }
 .chat-messages {
   flex: 1;
   overflow-y: auto;
@@ -2304,6 +2328,173 @@ a { color: inherit; text-decoration: none; }
   font-size: 13px; color: var(--v-text-muted);
   line-height: 1.5;
 }
+
+/* ════════════════════════════════════════════════════════════════════
+   Phase 2 — new element chrome (doll.gg mockup). These are all hidden in
+   markup until Phase 3 wires them; styled here so they're ready to show.
+   ════════════════════════════════════════════════════════════════════ */
+
+/* full / peek / hidden chat-view segmented control (topbar) */
+.seg-control {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 999px;
+  background: var(--v-grad-soft);
+  border: 1.5px solid var(--v-border);
+}
+.seg-control[hidden] { display: none; }
+.seg-btn {
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-family: var(--v-font-tag);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--v-pink-dark);
+  background: transparent;
+  transition: background 0.15s, color 0.15s;
+}
+.seg-btn.is-active { background: #fff; color: var(--v-text); box-shadow: var(--v-shadow-sm); }
+
+/* lock-chat toggle (chat header, host) */
+.chat-lock-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1.5px solid var(--v-border);
+  background: var(--v-grad-soft);
+  color: var(--v-pink-dark);
+  font-family: var(--v-font-tag);
+  font-size: 12px;
+  font-weight: 700;
+}
+.chat-lock-btn[hidden] { display: none; }
+.chat-lock-btn svg { width: 12px; height: 12px; }
+.chat-lock-btn[aria-pressed="true"] { background: var(--v-grad-primary); color: #fff; border-color: var(--v-pink); }
+
+/* vinyl disc art (shared by now-playing banner + lobby pinned banner) */
+.np-art, .pinned-art {
+  position: relative;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: repeating-radial-gradient(circle, #2b1a24 0 1px, #3a2230 1px 2.5px);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+.np-art { width: 30px; height: 30px; }
+.pinned-art { width: 64px; height: 64px; }
+.np-art::after, .pinned-art::after {
+  content: '';
+  position: absolute;
+  inset: 38%;
+  border-radius: 50%;
+  background: var(--v-pink);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.5);
+}
+.np-art .np-vinyl, .pinned-art .np-vinyl { display: none; }
+
+/* now-playing media banner (under the topbar) */
+.now-playing {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  background: var(--v-grad-soft);
+  border-bottom: 1px solid var(--v-border);
+  flex-shrink: 0;
+  color: var(--v-text);
+  font-size: 13px;
+}
+.now-playing[hidden] { display: none; }
+.np-eq { display: inline-flex; align-items: flex-end; gap: 2px; height: 14px; flex-shrink: 0; }
+.np-eq i { width: 3px; background: var(--v-pink); border-radius: 1px; animation: np-eq 0.8s ease-in-out infinite; }
+.np-eq i:nth-child(1) { height: 6px;  animation-delay: 0s; }
+.np-eq i:nth-child(2) { height: 12px; animation-delay: 0.15s; }
+.np-eq i:nth-child(3) { height: 8px;  animation-delay: 0.3s; }
+@keyframes np-eq { 0%, 100% { transform: scaleY(0.5); } 50% { transform: scaleY(1); } }
+.np-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.np-text b { color: var(--v-pink-dark); }
+.np-change { font-family: var(--v-font-hand); font-size: 15px; color: var(--v-hand); background: none; flex-shrink: 0; }
+.np-change[hidden] { display: none; }
+.np-spacer { flex: 1; }
+.np-btn {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: #fff;
+  border: 1.5px solid var(--v-border);
+  color: var(--v-pink-dark);
+  flex-shrink: 0;
+}
+.np-btn svg { width: 15px; height: 15px; }
+
+/* admin pinned-room banner (lobby, above the grid) */
+.pinned-banner {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 18px;
+  margin-bottom: 22px;
+  background: #fff;
+  border: 1.5px solid var(--v-border);
+  border-radius: 20px;
+  box-shadow: var(--v-shadow);
+  position: relative;
+}
+.pinned-banner[hidden] { display: none; }
+.pinned-banner.is-spinning .pinned-art { animation: vinyl-spin 4s linear infinite; }
+@keyframes vinyl-spin { to { transform: rotate(360deg); } }
+.pinned-body { flex: 1; min-width: 0; }
+.pinned-titlerow { display: flex; align-items: center; gap: 8px; }
+.pinned-title { font-family: var(--v-font-head); font-size: 18px; color: var(--v-text); }
+.pinned-live {
+  font-family: var(--v-font-tag);
+  font-size: 11px; font-weight: 700; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--v-pink);
+}
+.pinned-np { font-size: 13px; color: var(--v-text-muted); margin-top: 3px; }
+.pinned-np b { color: var(--v-pink-dark); }
+.pinned-tagline { font-family: var(--v-font-hand); font-size: 15px; color: var(--v-hand); margin-top: 2px; }
+.pinned-side { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; flex-shrink: 0; }
+.pinned-badge {
+  font-family: var(--v-font-tag);
+  font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--v-pink-dark);
+  background: var(--v-surface-3);
+  border: 1px solid var(--v-border);
+  border-radius: 999px;
+  padding: 2px 9px;
+}
+
+/* "room for one more" copy-invite tile (participants panel) */
+.room-for-one-more {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 140px;
+  margin-top: 12px;
+  border: 1.5px dashed var(--v-pink-mid);
+  border-radius: var(--v-radius);
+  background: rgba(255, 247, 251, 0.5);
+  text-align: center;
+  transition: background 0.15s, border-color 0.15s;
+}
+.room-for-one-more[hidden] { display: none; }
+.room-for-one-more:hover { background: var(--v-grad-soft); border-color: var(--v-pink); }
+.rfom-icon {
+  width: 38px; height: 38px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  border: 1.5px dashed var(--v-pink-mid);
+  color: var(--v-pink-dark);
+}
+.rfom-icon svg { width: 20px; height: 20px; }
+.rfom-title { font-family: var(--v-font-head); font-size: 14px; color: var(--v-text); }
+.rfom-sub { font-family: var(--v-font-hand); font-size: 15px; color: var(--v-hand); }
 
 /* ── Reduced motion ─────────────────────────────────────────────────
    Placed last on purpose: several of these selectors (cam-loading,
