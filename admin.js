@@ -782,6 +782,7 @@ async function openDashboard() {
     } catch (error) {
         setStatus(els.adminStatus, error.message || 'Could not load admin data.');
     }
+    window.roomsLockdownStatus?.().catch(err => console.error('rooms lockdown status:', err));
 }
 
 function startAdminChatPolling() {
@@ -823,10 +824,10 @@ async function handleLogin(e) {
     e.preventDefault();
     setStatus(els.loginStatus, 'checking...');
 
-    const { error } = await adminClient.auth.signInWithPassword({
-        email: els.email.value.trim(),
-        password: els.password.value
-    });
+    const email = els.email.value.trim();
+    const password = els.password.value;
+
+    const { error } = await adminClient.auth.signInWithPassword({ email, password });
 
     if (error) {
         setStatus(els.loginStatus, error.message || 'Login failed.');
@@ -836,6 +837,14 @@ async function handleLogin(e) {
     if (!(await ensureAdminSession())) {
         setStatus(els.loginStatus, 'This login is not allowed here.');
         return;
+    }
+
+    // Same credentials sign into the rooms project too, so one login covers both.
+    // Don't let a rooms-project hiccup block the main dashboard from opening.
+    try {
+        await window.roomsSignIn(email, password);
+    } catch (err) {
+        console.error('rooms login failed:', err);
     }
 
     els.password.value = '';
@@ -1313,6 +1322,8 @@ function initTabs() {
         document.getElementById(button.dataset.panel)?.classList.add('active');
         if (button.dataset.panel === 'chat-panel') {
             loadStreamChatOnly();
+        } else if (button.dataset.panel === 'rooms-panel') {
+            window.initRoomsPanel?.();
         }
     });
 }
@@ -1337,6 +1348,7 @@ async function init() {
     els.logout.addEventListener('click', async () => {
         await stopAdminRealtime();
         await adminClient.auth.signOut();
+        await window.roomsSignOut?.().catch(err => console.error('rooms signOut:', err));
         sessionStorage.removeItem('doll_admin_gate');
         showPanel(els.gatePanel);
     });
@@ -1425,6 +1437,7 @@ async function init() {
     }
 
     if (await ensureAdminSession()) {
+        await window.roomsRestoreSession?.().catch(err => console.error('rooms session restore:', err));
         await openDashboard();
     } else {
         showPanel(els.loginPanel);

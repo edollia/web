@@ -1392,3 +1392,144 @@ button.emergency {
         grid-template-columns: 1fr 1fr;
     }
 }
+
+/* ── Rooms panel ──────────────────────────────────────────────────── */
+
+button.danger {
+    background: linear-gradient(180deg, rgba(255, 151, 174, 0.96), rgba(230, 92, 124, 0.9));
+}
+
+#lockdown-banner {
+    background: #7a1f2b;
+    color: #fff;
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    margin: 0 0 14px;
+}
+
+#table-wrap,
+#bans-table-wrap {
+    overflow-x: auto;
+}
+
+#rooms-panel table {
+    width: 100%;
+    min-width: 480px;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+#rooms-panel thead th {
+    text-align: left;
+    padding: 0 12px 8px 0;
+    opacity: .55;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+}
+
+#rooms-panel tbody tr {
+    border-top: 1px solid var(--admin-line-soft);
+}
+
+#rooms-panel tbody tr:hover {
+    background: rgba(255, 255, 255, 0.35);
+}
+
+#rooms-panel td {
+    padding: 9px 12px 9px 0;
+}
+
+#rooms-panel .slug-link {
+    cursor: pointer;
+    text-decoration: underline;
+    opacity: .85;
+}
+
+#rooms-panel .slug-link:hover {
+    opacity: 1;
+}
+
+#rooms-panel .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+#rooms-panel .badge-active { background: rgba(90, 158, 122, .2); color: #5a9e7a; }
+#rooms-panel .badge-ended  { background: rgba(150, 150, 160, .15); color: #888; }
+#rooms-panel .badge-stale  { background: rgba(199, 141, 74, .2); color: #c78d4a; }
+
+#rooms-panel .detail-kv {
+    display: flex;
+    gap: 12px;
+    margin: 6px 0;
+    font-size: 13px;
+}
+
+#rooms-panel .detail-key {
+    opacity: .5;
+    min-width: 140px;
+}
+
+#rooms-panel .back-link {
+    cursor: pointer;
+    opacity: .6;
+    font-size: 13px;
+}
+
+#rooms-panel .back-link:hover {
+    opacity: 1;
+}
+
+#rooms-panel .log-output {
+    background: rgba(0, 0, 0, .15);
+    border: 1px solid var(--admin-line-soft);
+    border-radius: 8px;
+    padding: 12px;
+    font-family: monospace;
+    font-size: 12px;
+    max-height: 180px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    margin-top: 14px;
+}
+
+#rooms-panel .log-ok   { color: #5a9e7a; }
+#rooms-panel .log-err  { color: #d95f7a; }
+#rooms-panel .log-warn { color: #c78d4a; }
+
+#rooms-panel .bans-form {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+    margin-bottom: 14px;
+}
+
+#rooms-panel .bans-form input,
+#rooms-panel .bans-form select {
+    background: rgba(255, 255, 255, 0.6);
+    border: 1px solid var(--admin-line-soft);
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 13px;
+    color: inherit;
+}
+
+#rooms-panel .participants-list {
+    margin-top: 10px;
+}
+
+#rooms-panel .participant-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 0;
+    border-top: 1px solid var(--admin-line-soft);
+    font-size: 13px;
+}

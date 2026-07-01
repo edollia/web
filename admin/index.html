@@ -47,6 +47,8 @@
                 </div>
             </header>
 
+            <p id="lockdown-banner" class="hidden">lockdown is ON — only the admin can create or join rooms.</p>
+
             <section class="admin-stats" id="admin-stats"></section>
 
             <nav class="admin-tabs" id="admin-tabs">
@@ -56,6 +58,7 @@
                 <button data-panel="links-panel"><span>links <b id="links-tab-count">0/4</b></span></button>
                 <button data-panel="search-panel"><span>search</span></button>
                 <button data-panel="chat-panel"><span>live chat <b id="chat-tab-count">0</b></span></button>
+                <button data-panel="rooms-panel"><span>rooms</span></button>
             </nav>
 
             <p class="admin-status" id="admin-status"></p>
@@ -180,6 +183,97 @@
                             <div class="admin-ban-list" id="stream-ban-list"></div>
                         </div>
                     </aside>
+                </div>
+            </section>
+
+            <section class="admin-panel" id="rooms-panel">
+                <div class="admin-panel-intro">
+                    <div>
+                        <p class="admin-kicker">rooms</p>
+                        <h2>rooms admin</h2>
+                    </div>
+                </div>
+
+                <div class="admin-control-grid">
+                    <details class="admin-link-card admin-control-card" data-link-card="rooms-lockdown" open>
+                        <summary>
+                            <div class="admin-link-card-title">
+                                <span class="admin-link-icon">R</span>
+                                <div>
+                                    <strong>rooms lockdown</strong>
+                                    <small id="lockdown-state">off</small>
+                                </div>
+                            </div>
+                            <label class="admin-switch">
+                                <input id="lockdown-toggle" type="checkbox">
+                                <span></span>
+                            </label>
+                        </summary>
+                        <div class="admin-link-card-body">
+                            <p class="admin-tool-note">No one but you can create or join rooms while this is on.</p>
+                            <div class="admin-inline-actions">
+                                <button class="danger emergency" type="button" id="btn-force-close-all">force-close all active rooms</button>
+                            </div>
+                        </div>
+                    </details>
+                </div>
+
+                <div class="admin-section-heading">
+                    <h2>rooms</h2>
+                    <div class="admin-bulk-bar compact">
+                        <button type="button" id="btn-list-recent">list recent</button>
+                        <button type="button" id="btn-list-stale">list stale</button>
+                        <button class="danger" type="button" id="btn-cleanup">cleanup stale</button>
+                    </div>
+                </div>
+
+                <p class="admin-status" id="rooms-status"></p>
+
+                <div id="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>slug</th><th>status</th><th>members</th><th>host</th><th>age</th><th></th>
+                            </tr>
+                        </thead>
+                        <tbody id="rooms-tbody"></tbody>
+                    </table>
+                </div>
+
+                <div id="inspect-wrap" class="hidden">
+                    <span class="back-link" id="btn-back">← back to list</span>
+                    <div id="inspect-detail" style="margin-top:14px"></div>
+                    <div style="margin-top:14px">
+                        <button class="danger hidden" type="button" id="btn-force-close">force-close this room</button>
+                    </div>
+                    <div class="participants-list">
+                        <p class="admin-section-title">live participants</p>
+                        <div id="participants-out"><span style="opacity:.5">not loaded</span></div>
+                    </div>
+                </div>
+
+                <div class="admin-section-heading">
+                    <h2>global bans</h2>
+                </div>
+                <form class="bans-form" id="ban-add-form">
+                    <select id="ban-type">
+                        <option value="session">session</option>
+                        <option value="nickname">nickname</option>
+                    </select>
+                    <input id="ban-value" type="text" placeholder="value" maxlength="128">
+                    <button type="submit">add ban</button>
+                </form>
+                <div id="bans-table-wrap">
+                    <table>
+                        <thead>
+                            <tr><th>type</th><th>value</th><th>added</th><th></th></tr>
+                        </thead>
+                        <tbody id="bans-tbody"></tbody>
+                    </table>
+                </div>
+
+                <div id="log-wrap" class="hidden">
+                    <div class="log-output" id="log-output"></div>
                 </div>
             </section>
 
@@ -531,6 +625,7 @@
     </main>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="../admin-rooms.js?v=3.9"></script>
     <script src="../admin.js?v=3.9"></script>
 </body>
 </html>
