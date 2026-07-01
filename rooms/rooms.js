@@ -112,6 +112,8 @@ let _sharingOrder   = new Map(); // sessionId → monotonic rank (lower = starte
 let _sharingCounter = 0;
 let _videoAspectRatio = {}; // sessionId → { w, h } once a camera's real aspect ratio is known
 let _repackTimer = null;    // debounce handle for scheduleRepack()
+let _lastColumnCount = 0;   // column count used by the most recent renderParticipants() — lets a
+                            // resize skip repacking entirely when it wouldn't actually change anything
 
 // ── § DEBUG LOGGER ────────────────────────────────────────────────
 // Silent in production. Enable with: localStorage.setItem('dg_debug', '1')
@@ -1400,6 +1402,9 @@ async function doShowLobby() {
   _sharingOrder    = new Map();
   _sharingCounter  = 0;
   _videoAspectRatio = {};
+  clearTimeout(_repackTimer);
+  _repackTimer     = null;
+  _lastColumnCount = 0;
   document.getElementById('btn-leave')?.classList.remove('is-leaving');
   document.getElementById('btn-back')?.classList.remove('is-leaving');
 
@@ -1535,6 +1540,15 @@ async function enterRoom(room, pushNav, tokenData) {
     muted: true, serverMuted: false, sharing: null,
     accent: myAccent(), avatar: state.user.avatar, sessionId: state.user.sessionId, speaking: false,
   }];
+
+  // Build the participant-card DOM now, before starting LiveKit — otherwise an
+  // unusually fast TrackSubscribed event could arrive before any .participant-card
+  // exists to attach its video to (showParticipantVideo() no-ops silently rather
+  // than crashing, so that would just be a dropped tile, not an error). Harmless
+  // to run this while #view-room is still hidden: clientWidth reads 0, so the
+  // masonry packer clamps to a single column, and renderRoom()'s later call
+  // (after the view is actually visible) recomputes the real column count.
+  renderParticipants();
 
   // Connect to LiveKit (non-blocking, fire-and-forget). Started here rather than at
   // the end of this function so the WebRTC handshake runs concurrently with the chat
@@ -1862,6 +1876,7 @@ function renderParticipants() {
   );
   const cardWidth   = getColumnWidth();
   const columnCount = Math.min(getColumnCount(grid.parentElement.clientWidth, cardWidth), visible.length || 1);
+  _lastColumnCount  = columnCount;
   const columns     = packIntoColumns(visible, columnCount, cardWidth);
   grid.innerHTML = columns
     .map(col => `<div class="pg-column">${col.map(p => renderParticipantCard(p, isHost)).join('')}</div>`)
@@ -3306,8 +3321,23 @@ async function init() {
   // reason — window resize, orientation change, or the "hide chat" button
   // widening the panel with no viewport resize at all. One observer covers
   // all three causes instead of wiring a separate listener for each.
+  //
+  // Gated on the column count actually changing: most width changes (chat
+  // toggle in particular — it only changes the panel's side margins, not how
+  // many 178px columns fit) don't change the packing at all. Repacking anyway
+  // would force a full grid rebuild, and reparenting live <video> elements
+  // during that rebuild is visibly disruptive (one dropped/flickered frame)
+  // even though the same DOM nodes survive it — so skip the rebuild entirely
+  // unless the column count itself would actually be different.
   new ResizeObserver(() => {
-    if (state.view === 'room') scheduleRepack();
+    if (state.view !== 'room') return;
+    const panel = document.getElementById('panel-participants');
+    const prospectiveCount = Math.min(
+      getColumnCount(panel.clientWidth, getColumnWidth()),
+      state.participants.length || 1
+    );
+    if (prospectiveCount === _lastColumnCount) return;
+    scheduleRepack();
   }).observe(document.getElementById('panel-participants'));
 
   // ── Route ──
