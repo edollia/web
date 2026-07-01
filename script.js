@@ -1468,29 +1468,11 @@ document.addEventListener("DOMContentLoaded", async function() {
         }
 
         function updateTourVeil() {
-            if (!veilLayer) return;
-            const iconRect = document.querySelector('.button-group')?.getBoundingClientRect();
-            if (!iconRect) return;
-
-            const padding = 18;
-            const gap = {
-                top: Math.max(0, iconRect.top - padding),
-                left: Math.max(0, iconRect.left - padding),
-                right: Math.min(window.innerWidth, iconRect.right + padding),
-                bottom: Math.min(window.innerHeight, iconRect.bottom + padding)
-            };
-
-            const pieces = [
-                { left: 0, top: 0, width: window.innerWidth, height: gap.top },
-                { left: 0, top: gap.bottom, width: window.innerWidth, height: window.innerHeight - gap.bottom },
-                { left: 0, top: gap.top, width: gap.left, height: gap.bottom - gap.top },
-                { left: gap.right, top: gap.top, width: window.innerWidth - gap.right, height: gap.bottom - gap.top }
-            ];
-
-            veilLayer.innerHTML = pieces
-                .filter(piece => piece.width > 0 && piece.height > 0)
-                .map(piece => `<span class="tour-veil-piece" style="left:${piece.left}px;top:${piece.top}px;width:${piece.width}px;height:${piece.height}px"></span>`)
-                .join('');
+            if (!veilLayer || veilLayer.firstChild) return;
+            // Single full-screen element. The button-group sits at z-index 10006,
+            // above this tour overlay at 10005, so each button floats through
+            // as a crisp punch-hole in the uniformly blurred background.
+            veilLayer.innerHTML = '<span class="tour-veil-piece"></span>';
         }
 
         function finishTour() {

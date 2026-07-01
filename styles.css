@@ -74,9 +74,7 @@ canvas {
     left: 0;
     width: 100%;
     height: 100%;
-    background:
-        radial-gradient(circle at 50% 37%, rgba(255, 226, 240, 0.7), transparent 32%),
-        #fff7fb;
+    background: linear-gradient(180deg, #ffeef6 0%, #fff7fb 100%);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1456,22 +1454,27 @@ body.first-visit-tour-active .tour-highlight-target {
 
 .tour-veil-piece {
     position: fixed;
+    inset: 0;
     display: block;
-    background:
-        radial-gradient(circle at 50% 42%, rgba(255, 255, 255, 0.2), transparent 34%),
-        radial-gradient(circle at 12% 18%, rgba(255, 210, 232, 0.18), transparent 26%),
-        radial-gradient(circle at 88% 70%, rgba(255, 196, 224, 0.16), transparent 28%),
-        rgba(255, 247, 251, 0.16);
-    backdrop-filter: blur(2px);
-    -webkit-backdrop-filter: blur(2px);
+    background: rgba(255, 247, 251, 0.46);
+    backdrop-filter: blur(4.8px);
+    -webkit-backdrop-filter: blur(4.8px);
     opacity: 0;
-    transform: translateZ(0);
     will-change: opacity;
     animation: tourVeilIn 0.42s ease forwards;
 }
 
 .first-visit-tour.leaving {
     opacity: 0;
+}
+
+.first-visit-tour.leaving .tour-step-layer {
+    animation: tourStepOut 0.18s ease forwards;
+}
+
+@keyframes tourStepOut {
+    from { opacity: 1; }
+    to   { opacity: 0; }
 }
 
 .tour-step-layer {
@@ -1581,7 +1584,7 @@ body.first-visit-tour-active .tour-highlight-target {
     font-size: 24px;
     font-weight: 700;
     line-height: 0.96;
-    letter-spacing: -0.7px;
+    letter-spacing: 0.8px;
     text-align: center;
     opacity: 1;
     transform: translate(-50%, -50%) scale(1) rotate(var(--tour-label-rotation));
@@ -1678,21 +1681,10 @@ body.first-visit-tour-active .tour-highlight-target {
     filter: none;
 }
 
-.kofi-social-option {
-    font-size: 17px;
-    font-weight: 700;
-    color: rgba(122, 76, 92, 0.76);
-    border-radius: 50%;
-    background: rgba(255, 232, 243, 0.62);
-    box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.58),
-        0 1px 4px rgba(255, 145, 195, 0.12);
-}
-
 .kofi-social-option img {
     width: 25px;
     height: 25px;
-    filter: brightness(0.72) contrast(1.16) saturate(1.08) drop-shadow(0 1px 2px rgba(122, 76, 92, 0.16));
+    filter: brightness(0.72) contrast(1.16) saturate(1.08);
 }
 
 .social-option:hover,
@@ -1876,7 +1868,7 @@ body.first-visit-tour-active .tour-highlight-target {
     box-shadow: none;
     overflow-y: auto;
     transition: color 0.3s ease;
-    font-size: 13px !important;
+    font-size: 16px !important;
     line-height: 1.35;
     text-align: center;
     -webkit-text-size-adjust: 100%;
@@ -1891,7 +1883,7 @@ body.first-visit-tour-active .tour-highlight-target {
 #ask-textarea:focus {
     border-color: transparent !important;
     box-shadow: none;
-    font-size: 13px !important;
+    font-size: 16px !important;
 }
 
 #ask-textarea::placeholder {
@@ -1959,18 +1951,6 @@ body.first-visit-tour-active .tour-highlight-target {
     pointer-events: none;
 }
 
-.ask-heart-left {
-    top: 17px;
-    left: 18px;
-    width: 13px;
-    height: 13px;
-    background: rgba(255, 132, 187, 0.76);
-    border-radius: 2px;
-    color: transparent;
-    font-size: 0;
-    transform: rotate(-45deg);
-}
-
 .ask-sparkle-left {
     top: 30px;
     left: 8px;
@@ -1990,30 +1970,6 @@ body.first-visit-tour-active .tour-highlight-target {
     font-family: "Comic Sans MS", "Trebuchet MS", sans-serif;
     font-size: 17px;
     transform: rotate(11deg);
-}
-
-.ask-heart-left::before,
-.ask-heart-left::after,
-.posts-heart-left::before,
-.posts-heart-left::after {
-    content: '';
-    position: absolute;
-    width: 100%;
-    height: 100%;
-    background: inherit;
-    border-radius: 50%;
-}
-
-.ask-heart-left::before,
-.posts-heart-left::before {
-    top: -50%;
-    left: 0;
-}
-
-.ask-heart-left::after,
-.posts-heart-left::after {
-    top: 0;
-    left: 50%;
 }
 
 .ask-corner-mascot {
@@ -2083,18 +2039,6 @@ body.first-visit-tour-active .tour-highlight-target {
     font-family: "Comic Sans MS", "Trebuchet MS", cursive;
     line-height: 1;
     pointer-events: none;
-}
-
-.posts-heart-left {
-    top: 17px;
-    left: 19px;
-    width: 12px;
-    height: 12px;
-    background: rgba(255, 132, 187, 0.72);
-    border-radius: 2px;
-    color: transparent;
-    font-size: 0;
-    transform: rotate(-45deg);
 }
 
 .posts-sparkle-left {
@@ -2799,11 +2743,19 @@ body.first-visit-tour-active .tour-highlight-target {
 .answer-text .answer-link {
     position: relative;
     text-decoration: none;
-    color: #ffb6c1;
-    background: linear-gradient(90deg, #ffb6c1 0%, #ffb6c1 100%) no-repeat;
-    background-size: 100% 1px;
-    background-position: 0 100%;
+    color: #a85070;
+    background: linear-gradient(105deg, rgba(255, 192, 220, 0.38) 0%, rgba(255, 168, 208, 0.32) 100%);
+    border-radius: 5px;
+    padding: 0 4px 1px;
     display: inline;
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
+    box-shadow: 0 1px 0 rgba(255, 130, 185, 0.28), inset 0 -1px 0 rgba(255, 160, 205, 0.2);
+    transition: background 0.18s ease;
+}
+
+.answer-text .answer-link:hover {
+    background: linear-gradient(105deg, rgba(255, 200, 228, 0.58) 0%, rgba(255, 176, 215, 0.52) 100%);
 }
 
 .answer-text .answer-link::after {
@@ -2814,7 +2766,7 @@ body.first-visit-tour-active .tour-highlight-target {
         105deg,
         transparent 20%,
         rgba(255, 182, 193, 0.0) 35%,
-        rgba(255, 220, 230, 0.9) 50%,
+        rgba(255, 230, 240, 0.85) 50%,
         rgba(255, 182, 193, 0.0) 65%,
         transparent 80%
     );
@@ -2822,8 +2774,8 @@ body.first-visit-tour-active .tour-highlight-target {
     background-position: -200% 0;
     animation: linkShine 3.75s linear infinite;
     pointer-events: none;
-    border-radius: 0;
-    mix-blend-mode: color-dodge;
+    border-radius: 5px;
+    mix-blend-mode: overlay;
 }
 
 @keyframes linkShine {
