@@ -6,7 +6,9 @@
 // Secrets required (all auto-provided by Supabase):
 //   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET
 //
-// Actions: list-recent, list-stale, inspect, force-close, cleanup
+// Actions: list-recent, list-stale, inspect, force-close, cleanup,
+//          set-lockdown, force-close-all, list-bans, add-ban, remove-ban,
+//          list-participants, remove-participant
 
 import { serve }        from 'https://deno.land/std@0.208.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
@@ -52,19 +54,28 @@ async function mintLiveKitRoomToken(roomName: string): Promise<string | null> {
   return `${msg}.${sig}`
 }
 
-async function deleteLiveKitRoom(roomName: string): Promise<void> {
+async function callLiveKit(method: string, roomName: string, body: Record<string, unknown>) {
   const base  = liveKitHttpUrl()
   const token = await mintLiveKitRoomToken(roomName)
-  if (!base || !token) return
-  const res = await fetch(`${base}/twirp/livekit.RoomService/DeleteRoom`, {
+  if (!base || !token) throw new Error('missing LiveKit admin configuration')
+  const res = await fetch(`${base}/twirp/livekit.RoomService/${method}`, {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ room: roomName }),
+    body: JSON.stringify(body),
   })
   if (!res.ok && res.status !== 404) {
     const text = await res.text().catch(() => '')
-    throw new Error(`LiveKit DeleteRoom ${res.status}: ${text.slice(0, 120)}`)
+    throw new Error(`LiveKit ${method} ${res.status}: ${text.slice(0, 160)}`)
   }
+  return res.json().catch(() => ({}))
+}
+
+async function deleteLiveKitRoom(roomName: string): Promise<void> {
+  await callLiveKit('DeleteRoom', roomName, { room: roomName })
+}
+
+function cleanText(value: unknown, max: number): string {
+  return String(value ?? '').trim().replace(/\s+/g, ' ').slice(0, max)
 }
 
 function buildCors(req: Request) {
@@ -105,7 +116,8 @@ serve(async (req) => {
   if (user.id !== ADMIN_UID) return json({ error: 'forbidden' }, 403)
 
   try {
-    const { action, roomSlug } = await req.json()
+    const body = await req.json()
+    const { action, roomSlug } = body
 
     // ── list-recent ───────────────────────────────────────────────
     if (action === 'list-recent') {
@@ -207,6 +219,105 @@ serve(async (req) => {
         msgsPurged: msgsPurged ?? 0,
         msgPurgeError: msgErr ? String(msgErr) : null,
       })
+    }
+
+    // ── set-lockdown ─────────────────────────────────────────────
+    if (action === 'set-lockdown') {
+      const locked = !!body.locked
+      const note = typeof body.note === 'string' ? cleanText(body.note, 200) : null
+      const { error } = await sb.from('app_settings')
+        .upsert({
+          id: 'global',
+          rooms_locked: locked,
+          locked_note: note,
+          locked_at: locked ? new Date().toISOString() : null,
+          updated_at: new Date().toISOString(),
+        })
+      if (error) throw error
+      return json({ ok: true, rooms_locked: locked })
+    }
+
+    // ── force-close-all ──────────────────────────────────────────
+    if (action === 'force-close-all') {
+      const { data: active, error: listErr } = await sb.from('rooms')
+        .select('id, slug')
+        .eq('status', 'active')
+      if (listErr) throw listErr
+
+      const closed: string[] = []
+      for (const r of active ?? []) {
+        const { error } = await sb.from('rooms')
+          .update({ status: 'ended', ended_at: new Date().toISOString() })
+          .eq('id', r.id)
+        if (!error) {
+          closed.push(r.slug)
+          await deleteLiveKitRoom(r.slug).catch(err => console.error(`LK delete ${r.slug}:`, err))
+        }
+      }
+      return json({ closed, closedCount: closed.length })
+    }
+
+    // ── list-bans ─────────────────────────────────────────────────
+    if (action === 'list-bans') {
+      const { data, error } = await sb.from('room_bans')
+        .select('id, type, value, created_at')
+        .is('room_id', null)
+        .eq('is_active', true)
+        .order('created_at', { ascending: false })
+      if (error) throw error
+      return json({ bans: data ?? [] })
+    }
+
+    // ── add-ban ───────────────────────────────────────────────────
+    if (action === 'add-ban') {
+      const type = String(body.type ?? '')
+      const rawValue = cleanText(body.value, type === 'nickname' ? 24 : 128)
+      const value = type === 'nickname' ? rawValue.toLowerCase() : rawValue
+      if (!['session', 'nickname'].includes(type) || !value) {
+        return json({ error: 'invalid ban' }, 400)
+      }
+      const { error } = await sb.from('room_bans').insert({
+        room_id: null,
+        type,
+        value,
+        is_active: true,
+      })
+      if (error && error.code !== '23505') throw error
+      return json({ ok: true })
+    }
+
+    // ── remove-ban ────────────────────────────────────────────────
+    if (action === 'remove-ban') {
+      const banId = String(body.banId ?? '')
+      if (!banId) return json({ error: 'banId required' }, 400)
+      const { error } = await sb.from('room_bans')
+        .update({ is_active: false })
+        .eq('id', banId)
+      if (error) throw error
+      return json({ ok: true })
+    }
+
+    // ── list-participants ────────────────────────────────────────
+    if (action === 'list-participants') {
+      if (!roomSlug) return json({ error: 'roomSlug required' }, 400)
+      const result = await callLiveKit('ListParticipants', roomSlug, { room: roomSlug })
+      const participants = (Array.isArray(result.participants) ? result.participants : []).map(
+        (p: Record<string, unknown>) => ({
+          identity: p.identity ?? '',
+          name: p.name ?? '',
+          joinedAt: p.joinedAt ?? null,
+        }),
+      )
+      return json({ participants })
+    }
+
+    // ── remove-participant ───────────────────────────────────────
+    if (action === 'remove-participant') {
+      if (!roomSlug) return json({ error: 'roomSlug required' }, 400)
+      const identity = cleanText(body.identity, 128)
+      if (!identity) return json({ error: 'identity required' }, 400)
+      await callLiveKit('RemoveParticipant', roomSlug, { room: roomSlug, identity })
+      return json({ ok: true })
     }
 
     return json({ error: 'unknown action' }, 400)

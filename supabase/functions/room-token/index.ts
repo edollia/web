@@ -111,13 +111,23 @@ serve(async (req) => {
     // Verify room exists and is still active.
     const { data: room, error: roomErr } = await sb
       .from('rooms')
-      .select('id, status, locked, audience_mode')
+      .select('id, status, locked, audience_mode, host_is_admin')
       .eq('slug', roomSlug)
       .single()
 
     if (roomErr || !room) return json({ error: 'room not found' }, 404)
 
     if (room.status !== 'active') return json({ error: 'room has ended' }, 410)
+
+    // During a lockdown, only the admin and rooms the admin themself created
+    // remain joinable — everything else is closed to new joins.
+    const { data: settings } = await sb.from('app_settings')
+      .select('rooms_locked')
+      .eq('id', 'global')
+      .single()
+    if (settings?.rooms_locked && !isAdmin && !room.host_is_admin) {
+      return json({ error: 'rooms are temporarily disabled' }, 403)
+    }
 
     const { data: hostKeyRow } = await sb
       .from('room_host_keys')

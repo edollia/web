@@ -65,6 +65,8 @@ serve(async (req) => {
       headers: { ...CORS, 'Content-Type': 'application/json' },
     })
 
+  const ADMIN_UID = '9ea1a89e-5a00-4b91-b98c-d69a5e383df4'
+
   try {
     const body = await req.json()
     const slug = cleanText(body.roomSlug, 64).toLowerCase()
@@ -81,14 +83,29 @@ serve(async (req) => {
       return json({ error: 'missing host identity' }, 400)
     }
 
-    const hostKey = randomHostKey()
-    const hostKeyHash = await sha256Hex(hostKey)
-
     const sb = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
       { auth: { persistSession: false } },
     )
+
+    // Verify admin JWT if provided — admin can still create rooms during a lockdown.
+    let isAdmin = false
+    if (body.adminJwt && typeof body.adminJwt === 'string') {
+      const { data: { user } } = await sb.auth.getUser(body.adminJwt)
+      isAdmin = user?.id === ADMIN_UID
+    }
+
+    const { data: settings } = await sb.from('app_settings')
+      .select('rooms_locked')
+      .eq('id', 'global')
+      .single()
+    if (settings?.rooms_locked && !isAdmin) {
+      return json({ error: 'rooms are temporarily disabled' }, 403)
+    }
+
+    const hostKey = randomHostKey()
+    const hostKeyHash = await sha256Hex(hostKey)
 
     const { data: room, error } = await sb.from('rooms')
       .insert({
@@ -99,6 +116,7 @@ serve(async (req) => {
         host_nickname: nickname,
         host_session_id: sessionId,
         host_accent: hostAccent,
+        host_is_admin: isAdmin,
         status: 'active',
         member_count: 1,
       })

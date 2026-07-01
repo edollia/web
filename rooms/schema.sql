@@ -104,6 +104,29 @@ BEGIN
   END IF;
 END $$;
 
+-- Marks rooms created by the admin while a lockdown is active, so guests can
+-- still join that one room without being able to create or join anything else.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'rooms' AND column_name = 'host_is_admin'
+  ) THEN
+    ALTER TABLE rooms ADD COLUMN host_is_admin boolean NOT NULL DEFAULT false;
+  END IF;
+END $$;
+
+-- Global feature-flag row for the rooms lockdown kill switch.
+CREATE TABLE IF NOT EXISTS app_settings (
+  id           text        PRIMARY KEY DEFAULT 'global',
+  rooms_locked boolean     NOT NULL DEFAULT false,
+  locked_note  text,
+  locked_at    timestamptz,
+  updated_at   timestamptz NOT NULL DEFAULT now()
+);
+
+INSERT INTO app_settings (id) VALUES ('global') ON CONFLICT (id) DO NOTHING;
+
 -- ── §3  INDEXES ────────────────────────────────────────────────────
 
 CREATE INDEX IF NOT EXISTS idx_rooms_status
@@ -155,6 +178,7 @@ ALTER TABLE room_host_keys ENABLE ROW LEVEL SECURITY;
 ALTER TABLE room_messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE room_bans     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE room_moderation_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE app_settings  ENABLE ROW LEVEL SECURITY;
 
 -- ── §4b  SECURITY-DEFINER POLICY HELPERS ──────────────────────────
 -- RLS policies run for anon clients, but ban rows themselves are private.
@@ -359,6 +383,34 @@ CREATE POLICY "moderation_delete" ON room_moderation_events
   FOR DELETE
   USING (false);
 
+-- ── app_settings ──
+
+DROP POLICY IF EXISTS "app_settings_select" ON app_settings;
+DROP POLICY IF EXISTS "app_settings_insert" ON app_settings;
+DROP POLICY IF EXISTS "app_settings_update" ON app_settings;
+DROP POLICY IF EXISTS "app_settings_delete" ON app_settings;
+
+-- SELECT: open to anon. This is a non-sensitive boolean flag — the public
+-- lobby needs to read it (to show "rooms disabled") without an auth round-trip.
+CREATE POLICY "app_settings_select" ON app_settings
+  FOR SELECT
+  USING (true);
+
+-- INSERT/UPDATE/DELETE: blocked for anon. Only the admin-rooms Edge Function
+-- (service role, verified ADMIN_UID) may change the lockdown state.
+CREATE POLICY "app_settings_insert" ON app_settings
+  FOR INSERT
+  WITH CHECK (false);
+
+CREATE POLICY "app_settings_update" ON app_settings
+  FOR UPDATE
+  USING (false)
+  WITH CHECK (false);
+
+CREATE POLICY "app_settings_delete" ON app_settings
+  FOR DELETE
+  USING (false);
+
 -- ── §5b  PRIVILEGES ───────────────────────────────────────────────
 
 REVOKE SELECT, INSERT, UPDATE, DELETE ON room_host_keys FROM anon, authenticated;
@@ -498,6 +550,14 @@ BEGIN
       AND  tablename = 'room_moderation_events'
   ) THEN
     ALTER PUBLICATION supabase_realtime ADD TABLE room_moderation_events;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables
+    WHERE  pubname   = 'supabase_realtime'
+      AND  tablename = 'app_settings'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE app_settings;
   END IF;
 END $$;
 

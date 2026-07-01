@@ -32,6 +32,34 @@
     .log-warn { color: #c78d4a; }
     .back-link { cursor: pointer; opacity: .6; font-size: 13px; }
     .back-link:hover { opacity: 1; }
+
+    .admin-section { margin-bottom: 28px; }
+    .admin-section-title { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; opacity: .55; margin: 0 0 10px; }
+    .emergency { background: #7a1f2b; color: #fff; border-color: #7a1f2b; }
+    .emergency:hover { background: #92242f; }
+
+    .lockdown-panel {
+      border: 1px solid rgba(217,95,122,.35); border-radius: 10px; padding: 16px;
+      display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+    }
+    .lockdown-panel-info strong { display: block; font-size: 14px; }
+    .lockdown-panel-info small { opacity: .6; }
+    .lockdown-panel-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    #lockdown-banner {
+      background: #7a1f2b; color: #fff; padding: 8px 16px; border-radius: 8px;
+      font-size: 13px; font-weight: 600; margin-bottom: 16px;
+    }
+
+    .bans-form { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; }
+    .bans-form input, .bans-form select {
+      background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.12);
+      border-radius: 6px; padding: 6px 10px; font-size: 13px; color: inherit;
+    }
+    .participants-list { margin-top: 10px; }
+    .participant-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 6px 0; border-top: 1px solid rgba(255,255,255,.06); font-size: 13px;
+    }
   </style>
 </head>
 <body>
@@ -76,32 +104,79 @@
       </div>
     </header>
 
-    <div class="rooms-actions">
-      <button id="btn-list-recent">list recent</button>
-      <button id="btn-list-stale">list stale</button>
-      <button class="danger" id="btn-cleanup">cleanup stale</button>
-    </div>
+    <p id="lockdown-banner" class="hidden">lockdown is ON — only the admin can create or join rooms.</p>
 
-    <p class="admin-status" id="rooms-status"></p>
+    <!-- Lockdown ── precaution switch ── -->
+    <section class="admin-section">
+      <p class="admin-section-title">precautions</p>
+      <div class="lockdown-panel">
+        <div class="lockdown-panel-info">
+          <strong>rooms lockdown</strong>
+          <small id="lockdown-state">off</small>
+        </div>
+        <div class="lockdown-panel-actions">
+          <label class="admin-switch">
+            <input id="lockdown-toggle" type="checkbox">
+            <span></span>
+          </label>
+          <button class="emergency" id="btn-force-close-all">force-close all active rooms</button>
+        </div>
+      </div>
+    </section>
 
-    <div id="table-wrap">
+    <!-- Rooms ── existing recovery tools ── -->
+    <section class="admin-section">
+      <p class="admin-section-title">rooms</p>
+      <div class="rooms-actions">
+        <button id="btn-list-recent">list recent</button>
+        <button id="btn-list-stale">list stale</button>
+        <button class="danger" id="btn-cleanup">cleanup stale</button>
+      </div>
+
+      <p class="admin-status" id="rooms-status"></p>
+
+      <div id="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>slug</th><th>status</th><th>members</th><th>host</th><th>age</th><th></th>
+            </tr>
+          </thead>
+          <tbody id="rooms-tbody"></tbody>
+        </table>
+      </div>
+
+      <div id="inspect-wrap" class="hidden">
+        <span class="back-link" id="btn-back">← back to list</span>
+        <div id="inspect-detail" style="margin-top:14px"></div>
+        <div style="margin-top:14px">
+          <button class="danger hidden" id="btn-force-close">force-close this room</button>
+        </div>
+        <div class="participants-list">
+          <p class="admin-section-title">live participants</p>
+          <div id="participants-out"><span style="opacity:.5">not loaded</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Global bans ── ────────────────────────────────────────────── -->
+    <section class="admin-section">
+      <p class="admin-section-title">global bans</p>
+      <form class="bans-form" id="ban-add-form">
+        <select id="ban-type">
+          <option value="session">session</option>
+          <option value="nickname">nickname</option>
+        </select>
+        <input id="ban-value" type="text" placeholder="value" maxlength="128">
+        <button type="submit">add ban</button>
+      </form>
       <table>
         <thead>
-          <tr>
-            <th>slug</th><th>status</th><th>members</th><th>host</th><th>age</th><th></th>
-          </tr>
+          <tr><th>type</th><th>value</th><th>added</th><th></th></tr>
         </thead>
-        <tbody id="rooms-tbody"></tbody>
+        <tbody id="bans-tbody"></tbody>
       </table>
-    </div>
-
-    <div id="inspect-wrap" class="hidden">
-      <span class="back-link" id="btn-back">← back to list</span>
-      <div id="inspect-detail" style="margin-top:14px"></div>
-      <div style="margin-top:14px">
-        <button class="danger hidden" id="btn-force-close">force-close this room</button>
-      </div>
-    </div>
+    </section>
 
     <div id="log-wrap" class="hidden">
       <div class="log-output" id="log-output"></div>
@@ -184,6 +259,8 @@
     document.getElementById('login-panel').classList.add('hidden');
     document.getElementById('dashboard-panel').classList.remove('hidden');
     loadRecent();
+    loadLockdown();
+    loadBans();
   });
 
   async function ensureAdminSession() {
@@ -240,6 +317,44 @@
     out.appendChild(line);
     out.scrollTop = out.scrollHeight;
   }
+
+  // ── Lockdown ─────────────────────────────────────────────────────
+  function renderLockdownState(locked) {
+    document.getElementById('lockdown-toggle').checked = locked;
+    document.getElementById('lockdown-state').textContent = locked ? 'on' : 'off';
+    document.getElementById('lockdown-banner').classList.toggle('hidden', !locked);
+  }
+
+  async function loadLockdown() {
+    const { data, error } = await roomsClient.from('app_settings')
+      .select('rooms_locked').eq('id', 'global').single();
+    if (error) { appendLog('err', `loadLockdown: ${error.message}`); return; }
+    renderLockdownState(data?.rooms_locked === true);
+  }
+
+  document.getElementById('lockdown-toggle').addEventListener('change', async (e) => {
+    const locked = e.currentTarget.checked;
+    const msg = locked
+      ? 'Turn ON rooms lockdown? No one but you will be able to create or join rooms until you turn it back off.'
+      : 'Turn OFF rooms lockdown? Rooms will work normally again for everyone.';
+    if (!confirm(msg)) { e.currentTarget.checked = !locked; return; }
+    try {
+      const data = await callAdmin({ action: 'set-lockdown', locked });
+      renderLockdownState(data.rooms_locked);
+      appendLog('ok', `lockdown ${data.rooms_locked ? 'enabled' : 'disabled'}`);
+    } catch {
+      e.currentTarget.checked = !locked; // revert on failure
+    }
+  });
+
+  document.getElementById('btn-force-close-all').addEventListener('click', async () => {
+    if (!confirm('Force-close EVERY active room right now? This disconnects all current calls.')) return;
+    const data = await callAdmin({ action: 'force-close-all' }).catch(() => null);
+    if (data) {
+      appendLog('ok', `closed ${data.closedCount} rooms: ${data.closed.join(', ') || 'none'}`);
+      loadRecent();
+    }
+  });
 
   // ── Room table ───────────────────────────────────────────────────
   function renderTable(rooms) {
@@ -313,6 +428,38 @@
       ${kv('messages', data.msgCount)}${kv('active bans', data.banCount)}
     `;
     appendLog('ok', `inspected ${slug}`);
+
+    const partsOut = document.getElementById('participants-out');
+    if (r.status !== 'active') {
+      partsOut.innerHTML = '<span style="opacity:.5">room has ended</span>';
+    } else {
+      partsOut.innerHTML = '<span style="opacity:.5">loading…</span>';
+      const pdata = await callAdmin({ action: 'list-participants', roomSlug: slug }).catch(() => null);
+      renderParticipants(slug, pdata?.participants || []);
+    }
+  }
+
+  function renderParticipants(slug, participants) {
+    const partsOut = document.getElementById('participants-out');
+    if (!participants.length) {
+      partsOut.innerHTML = '<span style="opacity:.5">no one connected</span>';
+      return;
+    }
+    partsOut.innerHTML = participants.map(p => `
+      <div class="participant-row">
+        <span>${esc(p.name || '?')} <span style="opacity:.4">(${esc(p.identity)})</span></span>
+        <button class="danger" style="padding:3px 10px;font-size:11px" data-identity="${esc(p.identity)}">kick</button>
+      </div>
+    `).join('');
+    partsOut.querySelectorAll('button[data-identity]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const identity = btn.dataset.identity;
+        if (!confirm(`Remove this participant from "${slug}"?`)) return;
+        await callAdmin({ action: 'remove-participant', roomSlug: slug, identity }).catch(() => null);
+        appendLog('ok', `removed ${identity} from ${slug}`);
+        btn.closest('.participant-row')?.remove();
+      });
+    });
   }
 
   document.getElementById('btn-force-close').addEventListener('click', async (e) => {
@@ -348,6 +495,50 @@
     }
   });
 
+  // ── Global bans ──────────────────────────────────────────────────
+  function renderBans(bans) {
+    const tbody = document.getElementById('bans-tbody');
+    tbody.innerHTML = '';
+    if (!bans.length) {
+      tbody.innerHTML = '<tr><td colspan="4" style="opacity:.5;padding:12px 0">no global bans</td></tr>';
+      return;
+    }
+    for (const b of bans) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${esc(b.type)}</td>
+        <td>${esc(b.value)}</td>
+        <td title="${esc(b.created_at)}">${new Date(b.created_at).toLocaleDateString()}</td>
+        <td><button class="danger" style="padding:3px 10px;font-size:11px" data-ban-id="${esc(b.id)}">remove</button></td>
+      `;
+      tr.querySelector('button').addEventListener('click', async () => {
+        if (!confirm(`Remove global ban on ${b.value}?`)) return;
+        await callAdmin({ action: 'remove-ban', banId: b.id }).catch(() => null);
+        appendLog('ok', `removed ban on ${b.value}`);
+        loadBans();
+      });
+      tbody.appendChild(tr);
+    }
+  }
+
+  async function loadBans() {
+    const data = await callAdmin({ action: 'list-bans' }).catch(() => null);
+    if (data) renderBans(data.bans || []);
+  }
+
+  document.getElementById('ban-add-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const type  = document.getElementById('ban-type').value;
+    const value = document.getElementById('ban-value').value.trim();
+    if (!value) return;
+    const data = await callAdmin({ action: 'add-ban', type, value }).catch(() => null);
+    if (data) {
+      appendLog('ok', `banned ${type}: ${value}`);
+      document.getElementById('ban-value').value = '';
+      loadBans();
+    }
+  });
+
   // ── Util ─────────────────────────────────────────────────────────
   function esc(s) {
     return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -362,6 +553,8 @@
       document.getElementById('gate-panel').classList.add('hidden');
       document.getElementById('dashboard-panel').classList.remove('hidden');
       loadRecent();
+      loadLockdown();
+      loadBans();
     }
   })();
 </script>

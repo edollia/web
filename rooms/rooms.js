@@ -105,6 +105,7 @@ const state = {
 
 // Module-level room-list subscription (stays alive across lobby visits)
 let _sbRoomListSub = null;
+let _sbLockdownSub = null;
 let _qualityMap = {}; // sessionId → LiveKit ConnectionQuality string
 let _pendingParticipantRender = false; // deferred re-render while video is fullscreen
 let _sharingOrder   = new Map(); // sessionId → monotonic rank (lower = started sharing earlier)
@@ -399,6 +400,20 @@ async function sbLoadRooms() {
   }
 }
 
+async function sbGetLockdown() {
+  try {
+    const { data, error } = await sb.from('app_settings')
+      .select('rooms_locked')
+      .eq('id', 'global')
+      .single();
+    if (error) throw error;
+    return data?.rooms_locked === true;
+  } catch (err) {
+    console.error('sbGetLockdown:', err);
+    return false;
+  }
+}
+
 async function sbFetchRoom(slug) {
   try {
     const { data, error } = await sb.from('rooms')
@@ -409,6 +424,7 @@ async function sbFetchRoom(slug) {
 }
 
 async function sbCreateRoom(slug, title, locked) {
+  const adminJwt = state.user.isAdmin ? await getAdminJwt() : null;
   const res = await fetch(`${SUPABASE_URL}/functions/v1/create-room`, {
     method: 'POST',
     headers: {
@@ -422,10 +438,15 @@ async function sbCreateRoom(slug, title, locked) {
       nickname: state.user.nickname,
       sessionId: state.user.sessionId,
       hostAccent: myAccent(),
+      adminJwt: adminJwt || undefined,
     }),
   });
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(body.error || `create-room ${res.status}`);
+  if (!res.ok) {
+    const err = new Error(body.error || `create-room ${res.status}`);
+    err.httpStatus = res.status;
+    throw err;
+  }
   if (body.hostKey) saveHostKey(slug, body.hostKey);
   return body.room;
 }
@@ -554,6 +575,12 @@ async function sbModerate(action, targetSessionId, extra = {}) {
 function sbWatchRooms(onChange) {
   return sb.channel('lobby:rooms')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'rooms' }, onChange)
+    .subscribe();
+}
+
+function sbWatchLockdown(onChange) {
+  return sb.channel('lobby:app_settings')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'app_settings' }, onChange)
     .subscribe();
 }
 
@@ -1249,8 +1276,16 @@ function renderLobby() {
   const empty  = document.getElementById('empty-state');
   const nickEl = document.getElementById('lobby-nick-display');
   const createBtn = document.getElementById('btn-create');
+  const createEmptyBtn = document.getElementById('btn-create-empty');
+  const lockdownNotice = document.getElementById('lobby-lockdown-notice');
 
   if (state.user.nickname && nickEl) nickEl.textContent = state.user.nickname;
+
+  // Lockdown blocks room creation for everyone except the admin.
+  const locked = !!state.roomsLocked && !state.user.isAdmin;
+  if (lockdownNotice) lockdownNotice.hidden = !locked;
+  if (createBtn) createBtn.disabled = locked;
+  if (createEmptyBtn) createEmptyBtn.disabled = locked;
 
   const hasRooms = state.rooms.length > 0;
   // When the lobby is empty, only the empty-state CTA shows; the header button
@@ -1364,6 +1399,7 @@ async function doShowLobby() {
   _msgBurst.length = 0; // reset chat cooldown between sessions
 
   state.rooms = await sbLoadRooms();
+  state.roomsLocked = await sbGetLockdown();
   renderLobby();
 
   // Subscribe to room list changes (once; stays alive)
@@ -1371,6 +1407,15 @@ async function doShowLobby() {
     _sbRoomListSub = sbWatchRooms(async () => {
       if (state.view !== 'lobby') return;
       state.rooms = await sbLoadRooms();
+      renderLobby();
+    });
+  }
+  // Subscribe to lockdown changes (once; stays alive) so the lobby updates
+  // live if an admin flips the switch while someone is browsing.
+  if (!_sbLockdownSub) {
+    _sbLockdownSub = sbWatchLockdown(async () => {
+      if (state.view !== 'lobby') return;
+      state.roomsLocked = await sbGetLockdown();
       renderLobby();
     });
   }
@@ -1410,6 +1455,10 @@ async function joinRoom(slug) {
     const s = err.httpStatus;
     if (s === 403 && String(err.message).includes('banned')) {
       showLobbyBanner('You are banned from this room.');
+    } else if (s === 403 && String(err.message).includes('temporarily disabled')) {
+      state.roomsLocked = true;
+      renderLobby();
+      showLobbyBanner('Rooms are temporarily paused.');
     } else if (s === 403) {
       showLobbyBanner('This room is locked.');
     } else if (s === 404 || s === 410) {
@@ -1569,9 +1618,15 @@ async function createRoom() {
         return;
       }
     } else {
-      console.error('Failed to create room:', err);
       _lastRoomCreate = 0; // release cooldown on any other failure too
-      showLobbyBanner('Could not create room. Try again.');
+      if (err.httpStatus === 403 && String(err.message).includes('temporarily disabled')) {
+        state.roomsLocked = true;
+        renderLobby();
+        showLobbyBanner('Rooms are temporarily paused.');
+      } else {
+        console.error('Failed to create room:', err);
+        showLobbyBanner('Could not create room. Try again.');
+      }
       return;
     }
   }

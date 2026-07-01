@@ -104,6 +104,13 @@ a { color: inherit; text-decoration: none; }
   transform: translateY(-1px);
 }
 .btn-primary:active { transform: translateY(0); }
+.btn-primary:disabled {
+  background: var(--v-surface-3);
+  color: var(--v-text-muted);
+  box-shadow: none;
+  cursor: not-allowed;
+  transform: none;
+}
 .btn-primary.btn-sm { padding: 7px 14px; font-size: 12px; }
 
 .btn-ghost {
@@ -483,6 +490,17 @@ a { color: inherit; text-decoration: none; }
   color: var(--v-text-muted);
   line-height: 1.5;
   max-width: 480px;
+}
+
+.lobby-lockdown-notice {
+  display: inline-block;
+  margin-top: 8px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--v-amber);
+  background: var(--v-amber-bg);
+  border-radius: 8px;
 }
 
 .lobby-main {
