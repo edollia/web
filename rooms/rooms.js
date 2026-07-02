@@ -69,6 +69,7 @@ const ICON = {
   image:  _svg('M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z'),
   dots:   _svg('M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z'),
   end:    _svg('M6 6h12v12H6z'),
+  paw:    _svg('M8.35 3C7 3 6 4.5 6 6s1 3 2.35 3S10.7 7.5 10.7 6 9.7 3 8.35 3zm7.3 0C14.3 3 13.3 4.5 13.3 6s1 3 2.35 3S18 7.5 18 6s-1-3-2.35-3zM4 8.5C2.9 8.5 2 9.8 2 11s.9 2.5 2 2.5 2-1.3 2-2.5S5.1 8.5 4 8.5zm16 0c-1.1 0-2 1.3-2 2.5s.9 2.5 2 2.5 2-1.3 2-2.5-.9-2.5-2-2.5zM12 11c-2.5 0-6 2.5-6 5.5 0 1.9 1.6 2.5 3 2.5 1.1 0 2-.5 3-.5s1.9.5 3 .5c1.4 0 3-.6 3-2.5 0-3-3.5-5.5-6-5.5z'),
 };
 
 
@@ -90,7 +91,7 @@ const state = {
     cameraResolution: '720p',
     noiseSuppression: true, joinSound: true, mirrorSelf: true,
   },
-  ui: { settingsOpen: false, chatHidden: false },
+  ui: { settingsOpen: false, chatHidden: false, chatView: 'full' },
   _pendingAction: null,
   _sbPresenceChan: null,
   _sbChatSub:      null,
@@ -1360,12 +1361,13 @@ function renderRoomCard(room) {
                data-slug="${escHtml(room.slug)}"
                role="button" tabindex="${room.locked && !isYours ? '-1' : '0'}"
                aria-label="${title}, ${room.member_count} participant${room.member_count !== 1 ? 's' : ''}${room.locked ? ', locked' : ''}">
+    ${room.locked ? '' : '<span class="card-live">live</span>'}
     ${thumbnailHtml}
     <div class="card-name">
       ${title}${isYours ? ' <span class="yours-tag">(yours)</span>' : ''}
     </div>
     <div class="card-meta">
-      <span class="count">${ICON.people} ${room.member_count}</span>
+      <span class="card-hanging">${room.member_count} hanging out ~</span>
       ${room.locked ? `<span class="badge badge-locked">${ICON.lock} locked</span>` : ''}
     </div>
     ${!room.locked || isYours ? '<div class="card-join">join</div>' : ''}
@@ -1417,13 +1419,8 @@ async function doShowLobby() {
   if (document.startViewTransition) document.startViewTransition(swap);
   else swap();
 
-  if (state.ui.chatHidden) {
-    state.ui.chatHidden = false;
-    document.getElementById('panel-chat')?.classList.remove('chat-hidden');
-    document.getElementById('panel-participants')?.classList.remove('chat-hidden-partner');
-    const tb = document.getElementById('btn-toggle-chat');
-    if (tb) tb.textContent = 'hide chat';
-  }
+  // reset chat view to full between sessions
+  if (state.ui.chatView !== 'full') setChatView('full');
 
   _msgBurst.length = 0; // reset chat cooldown between sessions
 
@@ -1627,19 +1624,26 @@ async function leaveRoom() {
   history.replaceState({ view: 'lobby' }, '', location.pathname);
 }
 
+// Update only the leave button's text label, preserving its paw icon.
+function setLeaveLabel(txt) {
+  const btn = document.getElementById('btn-leave');
+  if (!btn) return;
+  const label = btn.querySelector('.leave-label');
+  if (label) label.textContent = txt;
+  else btn.textContent = txt;
+}
+
 function resetLeaveConfirm() {
   clearTimeout(_leaveConfirmTimer);
   _leaveConfirmTimer = null;
-  const btn = document.getElementById('btn-leave');
-  if (btn) btn.textContent = 'leave';
+  setLeaveLabel('leave');
 }
 
 function requestLeaveRoom() {
   navigator.vibrate?.(8);
   const liveMedia = state.media.cameraOn || state.media.screenOn;
   if (liveMedia && !_leaveConfirmTimer) {
-    const btn = document.getElementById('btn-leave');
-    if (btn) btn.textContent = 'end?';
+    setLeaveLabel('end?');
     showBanner('Camera or screen share is still on.', 'End now', () => {
       resetLeaveConfirm();
       leaveRoom();
@@ -1829,6 +1833,42 @@ function scheduleRepack() {
     _repackTimer = null;
     renderParticipants();
   }, 120);
+}
+
+// 3-state chat view: 'full' (default), 'peek' (compact), 'hidden' (closed).
+// Pure UI — no LiveKit/Supabase involvement. Repacks participants so tiles use
+// the new available width/height.
+function setChatView(view) {
+  if (!['full', 'peek', 'hidden'].includes(view)) view = 'full';
+  state.ui.chatView = view;
+  state.ui.chatHidden = (view === 'hidden');
+  const chat  = document.getElementById('panel-chat');
+  const parts = document.getElementById('panel-participants');
+  chat?.classList.toggle('chat-hidden', view === 'hidden');
+  chat?.classList.toggle('chat-peek', view === 'peek');
+  parts?.classList.toggle('chat-hidden-partner', view === 'hidden');
+  parts?.classList.toggle('chat-peek-partner', view === 'peek');
+  document.querySelectorAll('#chat-view-control .seg-btn').forEach(b =>
+    b.classList.toggle('is-active', b.dataset.view === view));
+  const tb = document.getElementById('btn-toggle-chat');
+  if (tb) tb.textContent = view === 'hidden' ? 'show chat' : 'hide chat';
+  scheduleRepack();
+}
+
+// Hook for the deferred shared-music/movie project: populate + reveal the
+// now-playing banner. No callers yet (no data source / CSP for players); wiring
+// lives here so the banner is ready when that project lands. UI only.
+function setNowPlaying(info) {
+  const banner = document.getElementById('now-playing');
+  if (!banner) return;
+  if (!info || !info.title) { banner.hidden = true; return; }
+  const t = document.getElementById('np-title');
+  const s = document.getElementById('np-source');
+  if (t) t.textContent = info.title;
+  if (s) s.textContent = info.source ? `— ${info.source}` : '';
+  const change = document.getElementById('np-change');
+  if (change) change.hidden = state.user.role !== 'host';
+  banner.hidden = false;
 }
 
 function renderParticipants() {
@@ -3200,11 +3240,46 @@ async function init() {
     }).catch(() => {});
   });
 
-  document.getElementById('btn-toggle-chat').addEventListener('click', () => {
-    state.ui.chatHidden = !state.ui.chatHidden;
-    document.getElementById('panel-chat').classList.toggle('chat-hidden', state.ui.chatHidden);
-    document.getElementById('panel-participants').classList.toggle('chat-hidden-partner', state.ui.chatHidden);
-    document.getElementById('btn-toggle-chat').textContent = state.ui.chatHidden ? 'show chat' : 'hide chat';
+  // 3-state chat view (full / peek / hidden) via the segmented control.
+  document.querySelectorAll('#chat-view-control .seg-btn').forEach(btn => {
+    btn.addEventListener('click', () => setChatView(btn.dataset.view));
+  });
+  // Legacy toggle kept for its id (null-safe); now drives the same state.
+  document.getElementById('btn-toggle-chat')?.addEventListener('click', () => {
+    setChatView(state.ui.chatView === 'hidden' ? 'full' : 'hidden');
+  });
+
+  // Retire the old topbar buttons in favour of the mockup controls, and reveal
+  // the segmented control + the "room for one more" invite tile.
+  document.getElementById('btn-toggle-chat')?.setAttribute('hidden', '');
+  document.getElementById('btn-copy-link')?.setAttribute('hidden', '');
+  document.getElementById('chat-view-control')?.removeAttribute('hidden');
+  const rfom = document.getElementById('room-for-one-more');
+  if (rfom) {
+    rfom.hidden = false;
+    // reuses the same invite-copy behaviour as #btn-copy-link
+    rfom.addEventListener('click', () => {
+      navigator.clipboard?.writeText(location.href).then(() => {
+        const sub = rfom.querySelector('.rfom-sub');
+        if (sub) { const o = sub.textContent; sub.textContent = 'copied! ~'; setTimeout(() => { sub.textContent = o; }, 1500); }
+      }).catch(() => {});
+    });
+  }
+
+  // Leave button: paw icon + label span (so the 'end?' text swap keeps the paw).
+  const leaveBtn = document.getElementById('btn-leave');
+  if (leaveBtn && !leaveBtn.querySelector('.leave-label')) {
+    leaveBtn.innerHTML = `${ICON.paw}<span class="leave-label">leave</span>`;
+  }
+
+  // Now-playing banner: hide button + pause toggle. UI only — the media data
+  // source (now_playing_* columns / player) is a later, separate project, so
+  // the banner stays absent until setNowPlaying() is called with real data.
+  document.getElementById('btn-np-toggle')?.addEventListener('click', () => {
+    document.getElementById('now-playing')?.setAttribute('hidden', '');
+  });
+  document.getElementById('btn-np-pause')?.addEventListener('click', e => {
+    e.currentTarget.classList.toggle('is-paused');
   });
 
   // ── Host controls ──

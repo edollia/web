@@ -2475,8 +2475,9 @@ a { color: inherit; text-decoration: none; }
   justify-content: center;
   gap: 6px;
   width: 100%;
+  max-width: 178px;
   min-height: 140px;
-  margin-top: 12px;
+  margin: 14px auto 0;   /* centered tile below the packed columns */
   border: 1.5px dashed var(--v-pink-mid);
   border-radius: var(--v-radius);
   background: rgba(255, 247, 251, 0.5);
@@ -2496,6 +2497,54 @@ a { color: inherit; text-decoration: none; }
 .rfom-title { font-family: var(--v-font-head); font-size: 14px; color: var(--v-text); }
 .rfom-sub { font-family: var(--v-font-hand); font-size: 15px; color: var(--v-hand); }
 
+/* ════════════════════════════════════════════════════════════════════
+   Phase 3 — chrome for the newly-rendered output (live tag, "hanging out"
+   count, paw leave button, peek chat state, now-playing paused).
+   ════════════════════════════════════════════════════════════════════ */
+
+/* "· live" tag, top-right of active lobby cards */
+.card-live {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--v-font-tag);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--v-pink);
+  z-index: 2;
+}
+.card-live::before {
+  content: '';
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--v-pink);
+  animation: live-pulse 1.5s infinite;
+}
+@keyframes live-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+/* "N hanging out ~" count line (handwriting) */
+.card-hanging { font-family: var(--v-font-hand); font-size: 15px; color: var(--v-hand); }
+
+/* leave button: paw icon + label */
+.btn-danger.dock-leave { gap: 5px; }
+.btn-danger.dock-leave .ic { width: 15px; height: 15px; }
+.leave-label { line-height: 1; }
+
+/* now-playing pause button pressed */
+.np-btn.is-paused { background: var(--v-grad-primary); color: #fff; border-color: var(--v-pink); }
+
+/* chat "peek" — a compact chat so participants stay prominent. On desktop the
+   side column narrows; on mobile the bottom sheet shrinks to ~a third. */
+.panel-chat.chat-peek { width: 232px; }
+@media (max-width: 767px) {
+  .panel-chat.chat-peek { flex: 0 0 34% !important; min-height: 96px; }
+  .panel-participants.chat-peek-partner { flex: 1 1 66% !important; }
+}
+
 /* ── Reduced motion ─────────────────────────────────────────────────
    Placed last on purpose: several of these selectors (cam-loading,
    screen-loading, joining) are also targeted by unconditional animation
@@ -2511,6 +2560,9 @@ a { color: inherit; text-decoration: none; }
   .btn-loading-dot,
   .participant-card.is-new,
   .chat-msg, .chat-msg-sys,
+  .card-live::before,
+  .np-eq i,
+  .pinned-banner.is-spinning .pinned-art,
   .skel-card::after, .skel-pill::after {
     animation: none;
   }
