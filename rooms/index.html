@@ -16,7 +16,7 @@
   <meta property="og:title" content="rooms · doll.gg">
   <meta property="og:description" content="join a room">
   <meta property="og:url" content="https://doll.gg/rooms/">
-  <link rel="stylesheet" href="rooms.css?v=30">
+  <link rel="stylesheet" href="rooms.css?v=31">
 </head>
 <body>
 
@@ -29,7 +29,7 @@
 <div id="modal-setup" class="modal" hidden aria-modal="true" role="dialog" aria-labelledby="modal-setup-title">
   <div class="modal-box">
     <h2 class="modal-title" id="modal-setup-title">you in rooms</h2>
-    <p class="modal-sub">pick a name. a photo and color are optional.</p>
+    <p class="modal-sub">pick a name. a photo and color are optional ~</p>
 
     <div class="setup-identity">
       <button type="button" id="setup-avatar" class="setup-avatar" aria-label="Add a photo">
@@ -63,11 +63,14 @@
 
   <header class="lobby-header">
     <div class="lobby-header-text">
-      <h1 class="lobby-title">rooms</h1>
+      <div class="lobby-title-row">
+        <h1 class="lobby-title">rooms</h1>
+        <span id="lobby-open-tag" class="lobby-open-tag" hidden></span>
+      </div>
       <p class="lobby-sub">jump into any room, or start your own. locked rooms show here but can't be entered.</p>
-      <p id="lobby-lockdown-notice" class="lobby-lockdown-notice" hidden>rooms are temporarily paused — check back soon.</p>
+      <p id="lobby-lockdown-notice" class="lobby-lockdown-notice" hidden>rooms are paused ~ check back soon</p>
     </div>
-    <button id="btn-create" class="btn-primary" hidden>start a room</button>
+    <button id="btn-create" class="btn-primary" hidden><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M13.5 12a1.5 1.5 0 1 1-1.5-1.5A3.5 3.5 0 1 0 15.5 14 5.5 5.5 0 1 1 10 8.5"/></svg>start a room</button>
     <div id="lobby-skeleton-pill" class="skel-pill" aria-hidden="true"></div>
   </header>
 
@@ -94,7 +97,7 @@
         <div id="pinned-tagline" class="pinned-tagline"></div>
       </div>
       <div class="pinned-side">
-        <span class="pinned-badge">pinned · admin</span>
+        <span class="pinned-badge"><svg class="ic" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l2.6 6.9L22 9.3l-5.5 4.6L18.2 22 12 17.8 5.8 22l1.7-8.1L2 9.3l7.4-.4z"/></svg>pinned · admin</span>
         <div id="pinned-bubbles" class="card-bubbles"></div>
         <button id="btn-pinned-join" class="btn-primary btn-sm">join</button>
       </div>
@@ -102,13 +105,18 @@
     <div id="rooms-grid" class="rooms-grid"></div>
     <div id="empty-state" class="empty-state" hidden>
       <svg class="empty-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5-3c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
-      <p class="empty-text">no one's in a room right now.</p>
-      <button id="btn-create-empty" class="btn-primary">be the first. start your room</button>
+      <p class="empty-text">no one's in a room right now :0</p>
+      <button id="btn-create-empty" class="btn-primary"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M13.5 12a1.5 1.5 0 1 1-1.5-1.5A3.5 3.5 0 1 0 15.5 14 5.5 5.5 0 1 1 10 8.5"/></svg>be the first</button>
     </div>
   </main>
 
   <footer class="lobby-footer">
-    <span class="lobby-nick-display" id="lobby-nick-display"></span>
+    <span class="profile-chip">
+      <svg class="ic-heart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 20.3l-1.3-1.2C6 14.8 3 12 3 8.7 3 6.2 5 4.2 7.5 4.2c1.5 0 2.9.7 3.8 1.9l.7.9.7-.9c.9-1.2 2.3-1.9 3.8-1.9C19 4.2 21 6.2 21 8.7c0 3.3-3 6.1-7.7 10.4L12 20.3z"/></svg>
+      <span class="profile-chip-you">you</span>
+      <span id="lobby-avatar" class="chip-avatar" aria-hidden="true"></span>
+    </span>
+    <span class="lobby-nick-display" id="lobby-nick-display" hidden></span>
     <button id="btn-change-nick" class="btn-text-sm">change name</button>
     <a href="/" class="btn-text-sm lobby-home-link">← home</a>
   </footer>
@@ -136,6 +144,7 @@
       <span id="topbar-ghost-badge" class="badge badge-ghost" hidden>
         <svg class="ic" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75C21.27 7.11 17 4 12 4c-1.27 0-2.49.2-3.64.57l2.17 2.17C11.06 6.49 11.51 7 12 7zM2 4.27l2.28 2.28.46.46C3.08 8.3 1.78 10.02 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z"/></svg>ghost
       </span>
+      <span id="topbar-vibe-badge" class="badge badge-vibe">cozy<svg class="ic-heart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M12 20.3l-1.3-1.2C6 14.8 3 12 3 8.7 3 6.2 5 4.2 7.5 4.2c1.5 0 2.9.7 3.8 1.9l.7.9.7-.9c.9-1.2 2.3-1.9 3.8-1.9C19 4.2 21 6.2 21 8.7c0 3.3-3 6.1-7.7 10.4L12 20.3z"/></svg></span>
     </div>
     <div class="topbar-right">
       <span id="topbar-count" class="topbar-count"></span>
@@ -200,14 +209,14 @@
         <span class="rfom-sub">tap to copy invite</span>
       </button>
       <div id="room-hint" class="room-hint" hidden>
-        just you so far. share the link to get people in.
+        just you so far ~ share the link to get people in
       </div>
     </div>
 
     <!-- Chat panel -->
     <div id="panel-chat" class="panel panel-chat" data-panel="chat">
       <div class="chat-header-bar">
-        <span class="chat-header-title">room chat</span>
+        <span class="chat-header-title">room chat<svg class="ic-heart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 20.3l-1.3-1.2C6 14.8 3 12 3 8.7 3 6.2 5 4.2 7.5 4.2c1.5 0 2.9.7 3.8 1.9l.7.9.7-.9c.9-1.2 2.3-1.9 3.8-1.9C19 4.2 21 6.2 21 8.7c0 3.3-3 6.1-7.7 10.4L12 20.3z"/></svg></span>
         <!-- lock-chat toggle (NEW, host only; distinct from lock room). Wired
              in Phase 3; hidden until then. -->
         <button id="btn-lock-chat" class="chat-lock-btn host-ctrl" hidden aria-pressed="false" title="Lock chat" aria-label="Lock chat">
@@ -229,11 +238,17 @@
         <input id="chat-input" class="chat-input" type="text"
                placeholder="say something cute ~" maxlength="500"
                autocomplete="off" autocorrect="off">
-        <button id="btn-send" class="btn-primary btn-sm">send</button>
+        <button id="btn-send" class="btn-primary send-btn" aria-label="Send">
+          <svg class="ic" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 20.5L21 12 3 3.5 3 10l12 2-12 2z"/></svg>
+        </button>
       </div>
     </div>
 
   </div><!-- .room-main -->
+
+  <!-- Mobile-only labeled host controls (lock room / audience) sit above the
+       dock; JS relocates #btn-lock + #btn-audience here on mobile. -->
+  <div id="mobile-host-bar" class="mobile-host-bar"></div>
 
   <!-- Bottom dock -->
   <div class="room-dock" id="room-dock">
@@ -259,6 +274,11 @@
       <button id="btn-settings" class="dock-btn dock-btn-settings" aria-label="Settings" title="Settings">
         <span class="dock-icon dock-icon-settings"></span>
       </button>
+      <!-- Mobile-only: open the chat sheet (chat is an overlay on mobile). -->
+      <button id="btn-chat-toggle" class="dock-btn dock-chat-btn" aria-label="Chat" title="Chat">
+        <span class="dock-icon dock-icon-chat"></span>
+        <span id="chat-unread" class="dock-chat-badge" hidden>0</span>
+      </button>
     </div>
 
     <div class="dock-right">
@@ -270,9 +290,11 @@
       </button>
       <button id="btn-lock"     class="dock-ctrl host-ctrl" aria-pressed="false" hidden title="Lock room" aria-label="Lock room">
         <span class="dock-icon dock-icon-lock"></span>
+        <span class="ctrl-label">lock room</span>
       </button>
       <button id="btn-audience" class="dock-ctrl host-ctrl" aria-pressed="false" hidden title="Audience mode — only you can speak" aria-label="Audience mode">
         <span class="dock-icon dock-icon-audience"></span>
+        <span class="ctrl-label">audience</span>
       </button>
       <button id="btn-leave"    class="btn-danger dock-leave">leave</button>
     </div>
@@ -283,7 +305,7 @@
   <div id="settings-panel" class="settings-panel" hidden>
     <div class="settings-inner">
       <div class="settings-header">
-        <span class="settings-title">settings</span>
+        <span class="settings-title">settings<svg class="ic-heart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 20.3l-1.3-1.2C6 14.8 3 12 3 8.7 3 6.2 5 4.2 7.5 4.2c1.5 0 2.9.7 3.8 1.9l.7.9.7-.9c.9-1.2 2.3-1.9 3.8-1.9C19 4.2 21 6.2 21 8.7c0 3.3-3 6.1-7.7 10.4L12 20.3z"/></svg></span>
         <button id="btn-close-settings" class="settings-close-btn" aria-label="Close settings">
           <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
         </button>
@@ -308,17 +330,26 @@
         <option value="720p" selected>720p</option>
       </select>
 
-      <label class="settings-check-row">
-        <input type="checkbox" id="chk-noise" checked>
-        <span>noise suppression</span>
+      <label class="toggle-row settings-toggle-row">
+        <span class="toggle-label-text">noise suppression</span>
+        <span class="toggle-wrap">
+          <input type="checkbox" id="chk-noise" class="toggle-input" checked>
+          <span class="toggle-thumb"></span>
+        </span>
       </label>
-      <label class="settings-check-row">
-        <input type="checkbox" id="chk-joinsound" checked>
-        <span>join sound</span>
+      <label class="toggle-row settings-toggle-row">
+        <span class="toggle-label-text">join sound</span>
+        <span class="toggle-wrap">
+          <input type="checkbox" id="chk-joinsound" class="toggle-input" checked>
+          <span class="toggle-thumb"></span>
+        </span>
       </label>
-      <label class="settings-check-row">
-        <input type="checkbox" id="chk-mirror" checked>
-        <span>mirror my camera</span>
+      <label class="toggle-row settings-toggle-row">
+        <span class="toggle-label-text">mirror my camera</span>
+        <span class="toggle-wrap">
+          <input type="checkbox" id="chk-mirror" class="toggle-input" checked>
+          <span class="toggle-thumb"></span>
+        </span>
       </label>
 
       <div class="settings-mictest">
@@ -354,6 +385,6 @@
   </div>
 </div>
 
-<script type="module" src="rooms.js?v=30"></script>
+<script type="module" src="rooms.js?v=31"></script>
 </body>
 </html>

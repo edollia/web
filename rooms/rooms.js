@@ -26,18 +26,20 @@ const sb = createClient(SUPABASE_URL, SUPABASE_ANON, {
 
 // 8 distinct pastel/muted colors + 5 vivid/shiny colors.
 // SHINY_COLORS are displayed with a glow effect in the picker.
+// Cohesive cozy palette (pink / lilac / peach / blue / teal family) — matches
+// the doll.gg mockup; the old rainbow read as generic. Rendered as gradients.
 const NORMAL_COLORS = [
-  '#f08ab5', // pink
-  '#c4a0d4', // lavender
-  '#7ab8d4', // sky blue
-  '#8ec4a0', // mint
-  '#d4b07a', // tan
-  '#d47aaa', // deep pink
-  '#e8875a', // terracotta
-  '#c8b054', // gold-olive
+  '#ff8fc4', // pink
+  '#c9a0e8', // lilac
+  '#ffb38a', // peach
+  '#8ec5e8', // blue
+  '#7fd6c0', // teal
+  '#ffa6d0', // rose
+  '#b0a6ec', // periwinkle
+  '#ffc48a', // apricot
 ];
 const SHINY_COLORS = [
-  '#ff5fa0', '#9b55ff', '#00b8f5', '#00d47a', '#ffb300',
+  '#ff5fa0', '#b57bff', '#ff9e6b', '#5fc8f0', '#4fd6b0',
 ];
 const ACCENT_COLORS = [...NORMAL_COLORS, ...SHINY_COLORS];
 
@@ -70,6 +72,12 @@ const ICON = {
   dots:   _svg('M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z'),
   end:    _svg('M6 6h12v12H6z'),
   paw:    _svg('M8.35 3C7 3 6 4.5 6 6s1 3 2.35 3S10.7 7.5 10.7 6 9.7 3 8.35 3zm7.3 0C14.3 3 13.3 4.5 13.3 6s1 3 2.35 3S18 7.5 18 6s-1-3-2.35-3zM4 8.5C2.9 8.5 2 9.8 2 11s.9 2.5 2 2.5 2-1.3 2-2.5S5.1 8.5 4 8.5zm16 0c-1.1 0-2 1.3-2 2.5s.9 2.5 2 2.5 2-1.3 2-2.5-.9-2.5-2-2.5zM12 11c-2.5 0-6 2.5-6 5.5 0 1.9 1.6 2.5 3 2.5 1.1 0 2-.5 3-.5s1.9.5 3 .5c1.4 0 3-.6 3-2.5 0-3-3.5-5.5-6-5.5z'),
+  star:   _svg('M12 2l2.6 6.9L22 9.3l-5.5 4.6L18.2 22 12 17.8 5.8 22l1.7-8.1L2 9.3l7.4-.4z'),
+  send:   _svg('M3 20.5L21 12 3 3.5 3 10l12 2-12 2z'),
+  enter:  _svg('M20 11H7.83l4.88-4.88L11.3 4.7 4 12l7.3 7.3 1.41-1.42L7.83 13H20z'),
+  heartFill: _svg('M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54z'),
+  // swirl (stroked spiral) — kept outside _svg so it can be fill:none/stroke
+  swirl:  '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M13.5 12a1.5 1.5 0 1 1-1.5-1.5A3.5 3.5 0 1 0 15.5 14 5.5 5.5 0 1 1 10 8.5"/></svg>',
 };
 
 
@@ -1301,6 +1309,19 @@ function renderLobby() {
 
   if (state.user.nickname && nickEl) nickEl.textContent = state.user.nickname;
 
+  // "N open :3" tag beside the title
+  const openTag = document.getElementById('lobby-open-tag');
+  if (openTag) {
+    openTag.textContent = `${state.rooms.length} open :3`;
+    openTag.hidden = state.rooms.length === 0;
+  }
+  // Profile-chip avatar (photo or initial, tinted with the user's accent)
+  const av = document.getElementById('lobby-avatar');
+  if (av) {
+    av.style.setProperty('--c', myAccent());
+    av.innerHTML = avatarInner(state.user.nickname, state.user.color, state.user.avatar);
+  }
+
   // Lockdown blocks room creation for everyone except the admin.
   const locked = !!state.roomsLocked && !state.user.isAdmin;
   if (lockdownNotice) lockdownNotice.hidden = !locked;
@@ -1345,16 +1366,19 @@ function renderRoomCard(room) {
   const overflow = room.member_count - shown.length;
 
   let thumbnailHtml;
-  if (shown.length > 0) {
+  if (room.locked) {
+    // Locked rooms show a lock badge instead of participant previews (mockup).
+    thumbnailHtml = `<div class="card-avatar card-lock">${ICON.lock}</div>`;
+  } else if (shown.length > 0) {
     const bubbles = shown.map((p, i) =>
-      `<div class="card-bubble" style="background:${escHtml(p.a)};z-index:${shown.length - i}">${avatarInner(p.n, p.a, '')}</div>`
+      `<div class="card-bubble" style="--c:${escHtml(p.a)};z-index:${shown.length - i}">${avatarInner(p.n, p.a, '')}</div>`
     ).join('');
     const moreHtml = overflow > 0
       ? `<div class="card-bubble card-bubble-more">+${overflow}</div>`
       : '';
     thumbnailHtml = `<div class="card-bubbles">${bubbles}${moreHtml}</div>`;
   } else {
-    thumbnailHtml = `<div class="card-avatar" style="background:${room.hostAccent}">${avatarInner(room.host, room.hostAccent, '')}</div>`;
+    thumbnailHtml = `<div class="card-avatar" style="--c:${escHtml(room.hostAccent)}">${avatarInner(room.host, room.hostAccent, '')}</div>`;
   }
 
   return `<div class="room-card${room.locked ? ' locked' : ''}${isYours ? ' yours' : ''}"
@@ -1367,10 +1391,13 @@ function renderRoomCard(room) {
       ${title}${isYours ? ' <span class="yours-tag">(yours)</span>' : ''}
     </div>
     <div class="card-meta">
-      <span class="card-hanging">${room.member_count} hanging out ~</span>
-      ${room.locked ? `<span class="badge badge-locked">${ICON.lock} locked</span>` : ''}
+      ${room.locked
+        ? `<span class="card-hanging">shhh~ locked</span><span class="badge badge-locked">${ICON.lock} locked</span>`
+        : `<span class="card-hanging">${room.member_count} hanging out ~</span>`}
     </div>
-    ${!room.locked || isYours ? '<div class="card-join">join</div>' : ''}
+    ${room.locked && !isYours
+        ? `<div class="card-ask">ask ${escHtml(room.host)} :0</div>`
+        : `<div class="card-join">join ${ICON.enter}</div>`}
   </div>`;
 }
 
@@ -1564,7 +1591,14 @@ async function enterRoom(room, pushNav, tokenData) {
   state._sbChatSub = sbWatchMessages(room.id, (msg) => {
     state.chat.push(msg);
     appendMessage(msg.nick, msg.body, msg.time, false, { dbId: msg.dbId, sessionId: msg.sessionId });
+    if (msg.sessionId !== state.user.sessionId) bumpChatUnread();
   });
+
+  // On mobile, chat is an overlay sheet — start closed so participants fill the
+  // screen, and dock the full/peek/hide control inside the sheet header.
+  placeChatViewControl();
+  placeHostControls();
+  if (isMobileView()) setChatView('hidden');
 
   // Trusted host moderation events (service-role inserted by room-control)
   state._sbModerationSub = sbWatchModeration(room.id, handleModerationEvent);
@@ -1852,7 +1886,51 @@ function setChatView(view) {
     b.classList.toggle('is-active', b.dataset.view === view));
   const tb = document.getElementById('btn-toggle-chat');
   if (tb) tb.textContent = view === 'hidden' ? 'show chat' : 'hide chat';
+  if (view !== 'hidden') clearChatUnread();
   scheduleRepack();
+}
+
+// ── Mobile chat (chat is an overlay sheet opened from the dock) ──────
+function isMobileView() { return window.matchMedia('(max-width: 767px)').matches; }
+
+// The full/peek/hide control lives in the topbar on desktop and inside the chat
+// sheet header on mobile. Move the same node (keeps its id + handlers) to match.
+function placeChatViewControl() {
+  const seg = document.getElementById('chat-view-control');
+  if (!seg) return;
+  const target = isMobileView()
+    ? document.querySelector('.chat-header-bar')
+    : document.querySelector('.topbar-right');
+  if (target && seg.parentElement !== target) target.appendChild(seg);
+}
+
+// Lock/audience are icon buttons in the dock on desktop, but a labeled pill row
+// above the dock on mobile — move the same nodes so ids/handlers are preserved.
+function placeHostControls() {
+  const lock = document.getElementById('btn-lock');
+  const audience = document.getElementById('btn-audience');
+  const bar = document.getElementById('mobile-host-bar');
+  if (!lock || !audience) return;
+  if (isMobileView()) {
+    if (bar) { bar.appendChild(lock); bar.appendChild(audience); }
+  } else {
+    const dockRight = document.querySelector('.dock-right');
+    const leave = document.getElementById('btn-leave');
+    if (dockRight && leave) { dockRight.insertBefore(lock, leave); dockRight.insertBefore(audience, leave); }
+  }
+}
+
+let _chatUnread = 0;
+function bumpChatUnread() {
+  if (!isMobileView() || state.ui.chatView !== 'hidden') return;
+  _chatUnread++;
+  const b = document.getElementById('chat-unread');
+  if (b) { b.textContent = _chatUnread > 9 ? '9+' : String(_chatUnread); b.hidden = false; }
+}
+function clearChatUnread() {
+  _chatUnread = 0;
+  const b = document.getElementById('chat-unread');
+  if (b) b.hidden = true;
 }
 
 // Hook for the deferred shared-music/movie project: populate + reveal the
@@ -2028,7 +2106,7 @@ function renderParticipantCard(p, isHost) {
                data-sid="${escHtml(p.sessionId || '')}"${speakLevelStyle}>
     ${canAct ? `<button class="p-mute-btn${p.serverMuted ? ' is-muted' : ''}" data-nick="${escHtml(p.nickname)}" title="${p.serverMuted ? 'Unmute' : 'Mute'}" aria-label="${p.serverMuted ? 'Unmute' : 'Mute'} ${escHtml(p.nickname)}">${p.serverMuted ? ICON.micOff : ICON.mic}</button>` : ''}
     ${canAct ? `<button class="p-dots-btn" title="Options" aria-label="Options for ${escHtml(p.nickname)}">${ICON.dots}</button>` : ''}
-    <div class="p-avatar${p.avatar ? ' has-photo' : ''}" style="background:${p.accent}">
+    <div class="p-avatar${p.avatar ? ' has-photo' : ''}" style="--c:${escHtml(p.accent)}">
       ${avatarInner(p.nickname, p.accent, p.avatar)}
       ${p.muted || p.serverMuted ? '<div class="p-mic-off" title="Muted"></div>' : ''}
       ${qualityHtml}
@@ -2199,7 +2277,7 @@ function renderSetupAvatar() {
   if (!el) return;
   const name   = (document.getElementById('input-nickname').value || state.user.nickname || '?');
   const accent = _setupColor || accentForNick(name);
-  el.style.background = accent;
+  el.style.setProperty('--c', accent);
   el.classList.toggle('has-photo', !!_setupAvatar);
 
   let img = el.querySelector('.setup-avatar-img');
@@ -3280,6 +3358,19 @@ async function init() {
   });
   document.getElementById('btn-np-pause')?.addEventListener('click', e => {
     e.currentTarget.classList.toggle('is-paused');
+  });
+
+  // Dock chat button (mobile): open the chat sheet, or close it if already open.
+  document.getElementById('btn-chat-toggle')?.addEventListener('click', () => {
+    setChatView(state.ui.chatView === 'hidden' ? 'full' : 'hidden');
+  });
+  // Keep the full/peek/hide control + host-control pills in the correct
+  // container across breakpoints.
+  placeChatViewControl();
+  placeHostControls();
+  window.matchMedia('(max-width: 767px)').addEventListener('change', () => {
+    placeChatViewControl();
+    placeHostControls();
   });
 
   // ── Host controls ──

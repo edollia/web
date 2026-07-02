@@ -2545,6 +2545,254 @@ a { color: inherit; text-decoration: none; }
   .panel-participants.chat-peek-partner { flex: 1 1 66% !important; }
 }
 
+/* ════════════════════════════════════════════════════════════════════
+   Phase 4 — parity pass (lobby tag, profile chip, settings toggles, state
+   polish) + full mobile 1:1 rewrite (list lobby, sheet chat, dock chat btn).
+   ════════════════════════════════════════════════════════════════════ */
+
+/* "N open :3" tag beside the lobby title */
+.lobby-title-row { display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap; }
+.lobby-open-tag {
+  font-family: var(--v-font-tag);
+  font-size: 13px; font-weight: 700;
+  color: var(--v-pink-dark);
+  background: var(--v-surface-3);
+  border: 1px solid var(--v-border);
+  border-radius: 999px;
+  padding: 3px 11px;
+  margin-top: 6px;
+}
+.lobby-open-tag[hidden] { display: none; }
+
+/* profile chip pill in the footer */
+.profile-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-right: auto;             /* pushes change-name / home to the right */
+  padding: 4px 5px 4px 12px;
+  background: #fff;
+  border: 1.5px solid var(--v-border);
+  border-radius: 999px;
+  box-shadow: var(--v-shadow-sm);
+}
+.profile-chip .ic-heart { width: 14px; height: 14px; color: var(--v-pink); flex-shrink: 0; }
+.profile-chip-you { font-size: 13px; color: var(--v-text); font-weight: 600; }
+.chip-avatar {
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: #fff; font-weight: 700; font-size: 12px;
+  background: var(--v-pink);
+  position: relative; overflow: hidden;
+  flex-shrink: 0;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.12);
+}
+.chip-avatar .avatar-img { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
+
+/* settings: toggle switches (reuse .toggle-* chrome) instead of checkboxes */
+.settings-toggle-row { padding: 4px 0; }
+
+/* icon glyphs inside primary buttons (swirl on start/be-the-first) */
+.btn-primary .ic { width: 15px; height: 15px; }
+
+/* "join ↩" — arrow after the label */
+.card-join { display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
+.card-join .ic { width: 13px; height: 13px; }
+
+/* star on the pinned badge */
+.pinned-badge { display: inline-flex; align-items: center; gap: 4px; }
+.pinned-badge .ic { width: 10px; height: 10px; }
+
+/* room-vibe tag ("cozy ♡") */
+.badge-vibe {
+  background: var(--v-surface-3);
+  color: var(--v-pink-dark);
+  border: 1px solid var(--v-border);
+}
+.badge-vibe .ic-heart { width: 11px; height: 11px; color: var(--v-pink); }
+
+/* hearts on the "room chat" / "settings" titles */
+.chat-header-title, .settings-title { display: inline-flex; align-items: center; gap: 6px; }
+.chat-header-title .ic-heart, .settings-title .ic-heart { width: 14px; height: 14px; color: var(--v-pink); }
+
+/* lowercase settings labels (mockup) */
+.settings-label, .settings-title { text-transform: none; letter-spacing: 0; }
+
+/* circular send button (icon, not "send" text) */
+.btn-primary.send-btn {
+  width: 38px; height: 38px;
+  border-radius: 50%;
+  padding: 0;
+  flex-shrink: 0;
+}
+.send-btn .ic { width: 17px; height: 17px; }
+
+/* labeled host controls: label hidden on desktop (icon-only dock button) */
+.ctrl-label { display: none; }
+.mobile-host-bar { display: none; }
+
+/* Gradient avatars (cozy pink/lilac/peach set) — driven by --c so a single
+   stored hex renders as the mockup's light→saturated gradient. */
+.card-avatar,
+.card-bubble:not(.card-bubble-more),
+.p-avatar,
+.setup-avatar,
+.chip-avatar {
+  background: linear-gradient(135deg, color-mix(in srgb, var(--c, var(--v-pink)) 58%, #fff), var(--c, var(--v-pink)));
+}
+/* locked room card: lock glyph in a soft disc instead of a gradient avatar */
+.card-avatar.card-lock {
+  background: var(--v-surface-3);
+  color: var(--v-pink-dark);
+}
+.card-lock .ic { width: 24px; height: 24px; }
+/* "ask <host> :0" line on locked cards */
+.card-ask {
+  font-family: var(--v-font-hand);
+  font-size: 15px;
+  color: var(--v-hand);
+  margin-top: 2px;
+}
+
+/* empty-state icon sits in a soft pink disc (mockup) */
+.empty-icon {
+  width: 28px; height: 28px;
+  padding: 15px;
+  box-sizing: content-box;
+  background: var(--v-surface-3);
+  border-radius: 50%;
+  fill: var(--v-pink-mid);
+  opacity: 1;
+}
+
+/* dock chat button (mobile only) + unread badge + chat-bubble icon */
+.dock-chat-btn { display: none; }
+.dock-chat-badge {
+  position: absolute;
+  top: -4px; right: -4px;
+  min-width: 17px; height: 17px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--v-pink-btn);
+  color: #fff;
+  font-family: var(--v-font-body);
+  font-size: 10px; font-weight: 700;
+  line-height: 17px;
+  text-align: center;
+  border: 1.5px solid var(--v-bg-room);
+}
+.dock-chat-badge[hidden] { display: none; }
+.dock-icon-chat {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z'/%3E%3C/svg%3E");
+}
+
+/* ── MOBILE 1:1 (≤ 767px) ─────────────────────────────────────────── */
+@media (max-width: 767px) {
+  /* Lobby cards become a vertical list of horizontal rows (no tape/tilt). */
+  .rooms-grid { grid-template-columns: 1fr; gap: 10px; padding-top: 0; }
+  .room-card {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    grid-template-areas: "bub name live" "bub meta live";
+    align-items: center;
+    column-gap: 12px;
+    row-gap: 2px;
+    padding: 12px 16px;
+    transform: none !important;
+    text-align: left;
+    box-shadow: var(--v-shadow-sm);
+  }
+  .room-card::after { display: none; }
+  .room-card:hover { transform: none !important; box-shadow: var(--v-shadow-sm); }
+  .card-bubbles { grid-area: bub; height: auto; }
+  .card-avatar { width: 44px; height: 44px; font-size: 18px; }
+  .card-bubble { width: 34px; height: 34px; font-size: 13px; }
+  .room-card .card-name { grid-area: name; text-align: left; align-self: end; }
+  .room-card .card-meta { grid-area: meta; align-self: start; justify-content: flex-start; }
+  .card-live { grid-area: live; position: static; align-self: center; }
+  .room-card .card-join { display: none; }
+
+  /* compact pinned banner */
+  .pinned-banner { gap: 12px; padding: 12px 14px; margin-bottom: 16px; }
+  .pinned-art { width: 48px; height: 48px; }
+  .pinned-title { font-size: 16px; }
+  #pinned-tagline { display: none; }
+
+  /* full-width "start a room" pinned near the bottom, above the footer */
+  #btn-create {
+    position: fixed;
+    left: 16px; right: 16px; bottom: 12px;
+    width: auto;
+    z-index: 20;
+    padding: 13px 20px;
+    box-shadow: var(--v-shadow-lg);
+  }
+  .view-lobby { padding-bottom: 78px; }
+
+  /* screen share is unsupported on mobile */
+  #btn-screen { display: none; }
+  /* chat opens from the dock instead of stacking */
+  .dock-chat-btn { display: flex; }
+
+  /* host controls become a labeled pill row above the dock (JS relocates the
+     lock + audience buttons here on mobile). */
+  .mobile-host-bar {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    padding: 0 12px;
+    flex-shrink: 0;
+  }
+  .mobile-host-bar:has(.host-ctrl:not([hidden])) { padding-bottom: 8px; }
+  .mobile-host-bar .dock-ctrl {
+    width: auto;
+    height: auto;
+    border-radius: 999px;
+    padding: 9px 18px;
+    gap: 6px;
+  }
+  .mobile-host-bar .ctrl-label {
+    display: inline;
+    font-family: var(--v-font-tag);
+    font-size: 13px;
+    font-weight: 700;
+  }
+  .mobile-host-bar .dock-ctrl .dock-icon { width: 15px; height: 15px; }
+
+  /* Participants fill the room; chat becomes an overlay sheet (not stacked). */
+  .panel-participants { flex: 1 1 100% !important; min-height: 0; padding: 14px 14px 10px; }
+  .panel-chat {
+    position: fixed;
+    inset: 0;                       /* 'full' = fullscreen sheet */
+    z-index: 40;
+    width: 100%;
+    flex: none;
+    border: none;
+    border-top: none;
+    background: var(--v-surface);
+    padding-top: env(safe-area-inset-top, 0px);
+    animation: chat-sheet-in 0.18s ease;
+  }
+  .panel-chat.chat-peek {
+    inset: auto 0 0 0;              /* 'peek' = bottom sheet */
+    height: 58%;
+    border-top: 1.5px solid var(--v-border);
+    border-radius: 18px 18px 0 0;
+    box-shadow: 0 -8px 24px rgba(255, 145, 195, 0.18);
+  }
+  /* .panel-chat.chat-hidden → display:none (global rule) */
+
+  /* chat sheet needs its header back (desktop-mobile hid it); it now carries the
+     lock toggle + the full/peek/hide control (JS moves #chat-view-control here). */
+  .chat-header-bar { display: flex; }
+  .chat-header-bar #chat-view-control { margin-left: auto; }
+  .panel-chat .seg-btn { padding: 4px 10px; }
+}
+
+@keyframes chat-sheet-in { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+
 /* ── Reduced motion ─────────────────────────────────────────────────
    Placed last on purpose: several of these selectors (cam-loading,
    screen-loading, joining) are also targeted by unconditional animation
