@@ -883,14 +883,15 @@ a { color: inherit; text-decoration: none; }
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* Host @name sits just before the title field */
+/* Room title in the topbar (doll.gg mockup) */
 .topbar-host {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--v-text-muted);
+  font-family: var(--v-font-head);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--v-text);
   white-space: nowrap;
-  flex-shrink: 0;
-  max-width: 30vw;
+  flex-shrink: 1;
+  max-width: 42vw;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -2735,6 +2736,22 @@ a { color: inherit; text-decoration: none; }
   #btn-screen { display: none; }
   /* chat opens from the dock instead of stacking */
   .dock-chat-btn { display: flex; }
+
+  /* "room for one more" → compact horizontal invite row on mobile */
+  .room-for-one-more {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 6px 12px;
+    max-width: none;
+    min-height: 0;
+    margin: 12px 0 0;
+    padding: 14px 16px;
+    text-align: left;
+  }
+  .room-for-one-more .rfom-icon { width: 34px; height: 34px; }
+  .room-for-one-more .rfom-title { flex: 1; }
 
   /* host controls become a labeled pill row above the dock (JS relocates the
      lock + audience buttons here on mobile). */

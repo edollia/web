@@ -1762,9 +1762,9 @@ function updateTopbar() {
   const room   = state.room;
   const isHost = state.user.role === 'host';
 
-  // Room name always shows host @name — not editable.
+  // Topbar shows the room title (mockup); falls back to @host when untitled.
   const hostEl = document.getElementById('topbar-host');
-  if (hostEl) hostEl.textContent = `@${room.host || ''}`;
+  if (hostEl) hostEl.textContent = room.title || `@${room.host || ''}`;
 
   document.getElementById('topbar-locked-badge').hidden = !room.locked;
   const audBadge = document.getElementById('topbar-audience-badge');
