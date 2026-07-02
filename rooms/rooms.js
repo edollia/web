@@ -1091,6 +1091,11 @@ function showParticipantVideo(track, identity) {
   if (isLocal && state.settings.mirrorSelf && state.media.flipCamFacing !== 'environment') video.style.transform = 'scaleX(-1)';
   wrap.innerHTML = '';
   wrap.appendChild(video);
+  // Camera-label overlay (mockup): little pill, bottom-left, camera glyph + name.
+  const _vidNameTag = document.createElement('div');
+  _vidNameTag.className = 'p-video-name';
+  _vidNameTag.innerHTML = `${ICON.cam}<span>${escHtml(card.dataset.nick || '')}</span>`;
+  wrap.appendChild(_vidNameTag);
   addFullscreenBtn(wrap, video);
   if (isLocal && state.media.hasMultipleCameras) addFlipCamBtn(wrap);
   card.classList.add('has-video');
@@ -1385,7 +1390,7 @@ function renderRoomCard(room) {
                data-slug="${escHtml(room.slug)}"
                role="button" tabindex="${room.locked && !isYours ? '-1' : '0'}"
                aria-label="${title}, ${room.member_count} participant${room.member_count !== 1 ? 's' : ''}${room.locked ? ', locked' : ''}">
-    ${room.locked ? '' : '<span class="card-live">live</span>'}
+    ${room.locked ? '' : `<span class="card-live"><span class="card-live-word">live</span><span class="card-live-num">${room.member_count}</span></span>`}
     ${thumbnailHtml}
     <div class="card-name">
       ${title}${isYours ? ' <span class="yours-tag">(yours)</span>' : ''}
@@ -2087,7 +2092,7 @@ function renderParticipantCard(p, isHost) {
   const canAct = (isHost || state.user.isAdmin) && !isYou;
 
   const badgeHtml = [
-    p.role === 'host'     ? `<span class="badge badge-host">host</span>`      : '',
+    // host is shown inline next to the name (.p-host-tag), not as a badge
     p.role === 'audience' ? `<span class="badge badge-audience">audience</span>` : '',
     p.serverMuted         ? `<span class="badge badge-muted">muted</span>`    : '',
     p.sharing === 'cam'   ? `<span class="p-sharing-label">${ICON.cam} cam</span>`    : '',
@@ -2111,8 +2116,9 @@ function renderParticipantCard(p, isHost) {
       ${p.muted || p.serverMuted ? '<div class="p-mic-off" title="Muted"></div>' : ''}
       ${qualityHtml}
     </div>
+    <span class="p-eq" aria-hidden="true"><i></i><i></i><i></i></span>
     <div class="p-name">
-      ${escHtml(p.nickname)}${isYou ? ' <span class="you-tag">(you)</span>' : ''}
+      ${escHtml(p.nickname)}${p.role === 'host' ? ` <span class="p-host-tag"><svg class="ic-heart" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 20.3l-1.3-1.2C6 14.8 3 12 3 8.7 3 6.2 5 4.2 7.5 4.2c1.5 0 2.9.7 3.8 1.9l.7.9.7-.9c.9-1.2 2.3-1.9 3.8-1.9C19 4.2 21 6.2 21 8.7c0 3.3-3 6.1-7.7 10.4L12 20.3z"/></svg>host</span>` : ''}${isYou ? ' <span class="you-tag">(you)</span>' : ''}
     </div>
     ${badgeHtml ? `<div class="p-badges">${badgeHtml}</div>` : ''}
   </div>`;
