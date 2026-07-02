@@ -1299,6 +1299,100 @@ window.addEventListener('popstate', async () => {
   }
 });
 
+// ─────────────────────────────────────────────────────────────────
+// DEMO MODE (?demo=1): a fully fake scenario for local UI testing — no
+// Supabase, no LiveKit. Fills the lobby + a room with fake rooms, people,
+// chat, now-playing, the admin pinned banner, and every redesign control.
+// Completely inert unless the ?demo=1 query flag is present, so it is safe
+// to ship on main (production never sees it).
+// ─────────────────────────────────────────────────────────────────
+const DEMO = typeof location !== 'undefined' && new URLSearchParams(location.search).has('demo');
+
+const DEMO_ROOMS = [
+  { id:'d-lia', slug:'lia', title:"lia's cozy corner", host:'lia', hostAccent:'#ff8fc4', status:'active',
+    locked:false, audience_mode:false, audience:false, chat_locked:false, member_count:9,
+    host_is_admin:true, pinned_in_lobby:true,
+    now_playing_kind:'music', now_playing_title:'sleepy town', now_playing_source:'lofi radio',
+    participant_previews:[{n:'lia',a:'#ff8fc4'},{n:'mika',a:'#c9a0e8'},{n:'sol',a:'#ffb38a'}] },
+  { id:'d-mika', slug:'mika', title:'mika & friends', host:'mika', hostAccent:'#c9a0e8', status:'active',
+    locked:false, audience_mode:false, audience:false, chat_locked:false, member_count:4,
+    participant_previews:[{n:'mika',a:'#c9a0e8'},{n:'kaz',a:'#8ec5e8'}] },
+  { id:'d-study', slug:'study', title:'study lounge', host:'sora', hostAccent:'#ffb38a', status:'active',
+    locked:false, audience_mode:true, audience:true, chat_locked:false, member_count:5,
+    participant_previews:[{n:'sora',a:'#ffb38a'},{n:'nao',a:'#7fd6c0'},{n:'yui',a:'#ffa6d0'}] },
+  { id:'d-priv', slug:'private', title:'private', host:'lia', hostAccent:'#ff8fc4', status:'active',
+    locked:true, audience_mode:false, audience:false, chat_locked:false, member_count:2,
+    participant_previews:[] },
+  { id:'d-rainy', slug:'rainy', title:'rainy day', host:'rin', hostAccent:'#ffa6d0', status:'active',
+    locked:false, audience_mode:false, audience:false, chat_locked:false, member_count:1,
+    participant_previews:[{n:'rin',a:'#ffa6d0'}] },
+  { id:'d-kpop', slug:'kpop', title:'kpop corner', host:'jin', hostAccent:'#8ec5e8', status:'active',
+    locked:false, audience_mode:false, audience:false, chat_locked:false, member_count:6,
+    participant_previews:[{n:'jin',a:'#8ec5e8'},{n:'ari',a:'#b0a6ec'},{n:'mei',a:'#ffc48a'}] },
+];
+
+function demoParticipants() {
+  return [
+    { nickname: state.user.nickname, role:'host',     muted:false, serverMuted:false, sharing:null,   accent: myAccent(), avatar: state.user.avatar, sessionId: state.user.sessionId, speaking:true },
+    { nickname:'mika', role:'guest',    muted:true,  serverMuted:false, sharing:null,   accent:'#c9a0e8', avatar:null, sessionId:'d-p-mika', speaking:false },
+    { nickname:'sol',  role:'guest',    muted:false, serverMuted:false, sharing:'cam',  accent:'#ffb38a', avatar:null, sessionId:'d-p-sol',  speaking:false },
+    { nickname:'kaz',  role:'guest',    muted:false, serverMuted:true,  sharing:null,   accent:'#8ec5e8', avatar:null, sessionId:'d-p-kaz',  speaking:false },
+    { nickname:'nao',  role:'audience', muted:true,  serverMuted:false, sharing:null,   accent:'#7fd6c0', avatar:null, sessionId:'d-p-nao',  speaking:false },
+  ];
+}
+
+function demoChat() {
+  const t = Date.now();
+  return [
+    { nick:'mika', body:'welcome in ~ get comfy', time:t-300000, sessionId:'d-p-mika' },
+    { nick:'kaz',  body:'this track is unreal fr', time:t-240000, sessionId:'d-p-kaz' },
+    { sys:true, kind:'action', body:'mika reacted to the song' },
+    { nick:'sol',  body:'sharing my cam hehe ~', time:t-120000, sessionId:'d-p-sol' },
+    { nick: state.user.nickname, body:'just got here, hi all :3', time:t-60000, sessionId: state.user.sessionId },
+  ];
+}
+
+function startDemo() {
+  state.user.nickname  = state.user.nickname || 'you';
+  state.user.sessionId = state.user.sessionId || 'demo-you';
+  state.user.isAdmin   = true; // so admin-only controls (ghost, etc.) also show
+  state.roomsLocked    = false;
+  state.rooms = DEMO_ROOMS.map(r => ({ ...r }));
+  state.view  = 'lobby';
+  document.getElementById('view-room').hidden  = true;
+  document.getElementById('view-lobby').hidden = false;
+  renderLobby();
+  showLobbyBanner('demo mode ~ fake data, no live connection. tap any room.');
+}
+
+function demoEnterRoom(slug) {
+  const src = state.rooms.find(r => r.slug === slug) || state.rooms[0];
+  state.user.role = 'host'; // host so every host/admin control is visible
+  state.room = { ...src, host: src.host, audience: !!src.audience_mode, chat_locked: false };
+  state.participants = demoParticipants();
+  state.chat = demoChat();
+  renderRoom();
+  placeChatViewControl();
+  placeHostControls();
+  updateChatLockUI();
+  // Demo always shows the now-playing banner so the feature is visible.
+  setNowPlaying({ title: src.now_playing_title || 'sleepy town', source: src.now_playing_source || 'lofi radio' });
+  if (isMobileView()) setChatView('hidden');
+  // Fake a live video tile so the camera-label overlay (#3) is visible too.
+  requestAnimationFrame(() => {
+    const solCard = document.querySelector('.participant-card[data-sid="d-p-sol"]');
+    if (solCard && !solCard.querySelector('.p-video-wrap')) {
+      const wrap = document.createElement('div');
+      wrap.className = 'p-video-wrap';
+      wrap.style.cssText = 'aspect-ratio:16/9;background:linear-gradient(135deg,#ffd6a6,#ff9fb6);border-radius:14px;overflow:hidden;position:relative';
+      wrap.innerHTML = `<div class="p-video-name">${ICON.cam}<span>sol</span></div>`;
+      (solCard.querySelector('.p-avatar') || solCard).after(wrap);
+      solCard.classList.add('has-video');
+      scheduleRepack();
+    }
+  });
+}
+
 // ── § RENDER / LOBBY ──────────────────────────────────────────────
 
 // §9 admin pinned banner: an admin-hosted room that opts into `pinned_in_lobby`
@@ -1510,6 +1604,8 @@ async function doShowLobby() {
 
   _msgBurst.length = 0; // reset chat cooldown between sessions
 
+  if (DEMO) { state.rooms = DEMO_ROOMS.map(r => ({ ...r })); renderLobby(); return; }
+
   [state.rooms, state.roomsLocked] = await Promise.all([sbLoadRooms(), sbGetLockdown()]);
   renderLobby();
 
@@ -1542,6 +1638,7 @@ let _lastJoinTime = 0;
 let _leaveConfirmTimer = null;
 
 async function joinRoom(slug) {
+  if (DEMO) { demoEnterRoom(slug); return; }
   const now = Date.now();
   if (now - _lastJoinTime < 2000) return;
   _lastJoinTime = now;
@@ -3677,6 +3774,7 @@ async function init() {
   }).observe(document.getElementById('panel-participants'));
 
   // ── Route ──
+  if (DEMO) { startDemo(); return; }
   const initialSlug = parseSlug();
   if (initialSlug) {
     history.replaceState({ view: 'lobby' }, '', location.pathname);
