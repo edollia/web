@@ -582,4 +582,83 @@ BEGIN
   END IF;
 END $$;
 
+-- ── §8/§9/§10  REDESIGN FEATURE COLUMNS (guarded, idempotent) ──────────
+-- Added for the doll.gg /rooms redesign. Safe to re-run. After applying this,
+-- ALSO: (a) allowlist these columns in the room-control Edge Function's
+-- `update` action, (b) for §8 add a host-key-verified `postMessage` action
+-- (a locked chat blocks ALL direct inserts, so the host must post via the EF),
+-- and (c) add the columns to ROOM_SELECT + the room mapper in rooms.js.
+-- Exact steps: rooms/ROOMS-FEATURES-DEPLOY.md.
+
+-- §8 lock chat: freeze chat for everyone but the host; the room stays open.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'rooms' AND column_name = 'chat_locked'
+  ) THEN
+    ALTER TABLE rooms ADD COLUMN chat_locked boolean NOT NULL DEFAULT false;
+  END IF;
+END $$;
+
+-- §9 admin pinned lobby banner: an admin-hosted room renders atop the lobby.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'rooms' AND column_name = 'pinned_in_lobby'
+  ) THEN
+    ALTER TABLE rooms ADD COLUMN pinned_in_lobby boolean NOT NULL DEFAULT false;
+  END IF;
+END $$;
+
+-- §10 now-playing (music/movie) metadata. Nullable; banner hides when kind is null.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'rooms' AND column_name = 'now_playing_kind'
+  ) THEN
+    ALTER TABLE rooms
+      ADD COLUMN now_playing_kind   text CHECK (now_playing_kind IN ('music','movie')),
+      ADD COLUMN now_playing_title  text,
+      ADD COLUMN now_playing_source text,
+      ADD COLUMN now_playing_art    text;
+  END IF;
+END $$;
+
+-- §8: extend the message-insert guard so a locked chat blocks direct inserts for
+-- everyone. The host posts through the room-control `postMessage` Edge Function
+-- (service role), which bypasses RLS. Re-created here AFTER chat_locked exists so
+-- the column reference resolves.
+CREATE OR REPLACE FUNCTION can_insert_room_message(
+  p_room_id    uuid,
+  p_session_id text,
+  p_nickname   text
+)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1 FROM rooms
+    WHERE id = p_room_id AND status = 'active' AND NOT locked AND NOT chat_locked
+  )
+  AND NOT EXISTS (
+    SELECT 1 FROM room_bans
+    WHERE is_active
+      AND (room_id = p_room_id OR room_id IS NULL)
+      AND (
+        (type = 'session'  AND value = p_session_id) OR
+        (type = 'nickname' AND value = lower(trim(regexp_replace(p_nickname, '\s+', ' ', 'g'))))
+      )
+  );
+END;
+$$;
+
+REVOKE ALL ON FUNCTION can_insert_room_message(uuid, text, text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION can_insert_room_message(uuid, text, text) TO anon, authenticated;
+
 COMMIT;

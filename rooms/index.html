@@ -16,7 +16,7 @@
   <meta property="og:title" content="rooms · doll.gg">
   <meta property="og:description" content="join a room">
   <meta property="og:url" content="https://doll.gg/rooms/">
-  <link rel="stylesheet" href="rooms.css?v=32">
+  <link rel="stylesheet" href="rooms.css?v=33">
 </head>
 <body>
 
@@ -179,12 +179,21 @@
     <span class="np-text"><span id="np-label">now playing</span> · <b id="np-title"></b> <span id="np-source"></span></span>
     <button id="np-change" class="np-change host-ctrl" hidden>tap to change ~</button>
     <span class="np-spacer"></span>
+    <div class="np-volume" title="Volume">
+      <button id="btn-np-mute" class="np-btn np-btn-vol" aria-label="Mute music">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 10v4h4l5 5V5L7 10H3zm13.5 2A4.5 4.5 0 0 0 14 8v8a4.5 4.5 0 0 0 2.5-4z"/></svg>
+      </button>
+      <input id="np-volume" class="np-volume-range" type="range" min="0" max="100" value="70" aria-label="Music volume" style="--vol:70%">
+    </div>
     <button id="btn-np-pause" class="np-btn" aria-label="Pause">
       <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6zm8-14v14h4V5z"/></svg>
     </button>
     <button id="btn-np-toggle" class="np-btn" aria-label="Hide now playing">
       <svg viewBox="0 0 24 24" fill="currentColor"><path d="M7.41 15.41 12 10.83l4.59 4.58L18 14l-6-6-6 6z"/></svg>
     </button>
+    <!-- Inert until a CSP-allowed (blob/mediastream) source is set by setNowPlaying;
+         no external src, so the strict media-src is never violated. -->
+    <audio id="np-audio" preload="none"></audio>
   </div>
 
   <!-- Main content area -->
@@ -385,6 +394,6 @@
   </div>
 </div>
 
-<script type="module" src="rooms.js?v=32"></script>
+<script type="module" src="rooms.js?v=33"></script>
 </body>
 </html>

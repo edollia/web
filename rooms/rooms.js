@@ -1300,6 +1300,57 @@ window.addEventListener('popstate', async () => {
 });
 
 // ── § RENDER / LOBBY ──────────────────────────────────────────────
+
+// §9 admin pinned banner: an admin-hosted room that opts into `pinned_in_lobby`
+// renders as the big banner atop the lobby (and its normal card is skipped).
+// Dormant-safe: `pinned_in_lobby` / `host_is_admin` aren't in ROOM_SELECT yet, so
+// they read undefined, no room matches, and the banner stays hidden — nothing
+// breaks pre-deploy. It lights up once the migration + select additions land.
+// Returns the pinned room's slug (to de-dupe its card), or null.
+function renderPinnedBanner(rooms) {
+  const banner = document.getElementById('lobby-pinned-banner');
+  if (!banner) return null;
+  const room = rooms.find(r => r.pinned_in_lobby && r.host_is_admin && r.status !== 'ended');
+  if (!room) { banner.hidden = true; return null; }
+
+  const titleEl = document.getElementById('pinned-title');
+  const npEl    = document.getElementById('pinned-np');
+  const tagEl   = document.getElementById('pinned-tagline');
+  const bubbles = document.getElementById('pinned-bubbles');
+  const joinBtn = document.getElementById('btn-pinned-join');
+
+  if (titleEl) titleEl.textContent = room.title || `@${room.host || ''}`;
+
+  // now-playing line with the little equalizer glyph (#5), only when §10 data exists
+  if (npEl) {
+    if (room.now_playing_title) {
+      npEl.innerHTML = '<span class="np-eq" aria-hidden="true"><i></i><i></i><i></i></span>'
+        + `now playing · <b>${escHtml(room.now_playing_title)}</b>`
+        + (room.now_playing_source ? ` — ${escHtml(room.now_playing_source)}` : '');
+      npEl.hidden = false;
+    } else { npEl.textContent = ''; npEl.hidden = true; }
+  }
+  if (tagEl) tagEl.textContent = 'come sit w me ~';
+
+  // participant bubbles — same builder as the normal room cards
+  if (bubbles) {
+    const shown = (room.participant_previews || []).slice(0, 3);
+    const overflow = (room.member_count || 0) - shown.length;
+    bubbles.innerHTML = shown.map((p, i) =>
+      `<div class="card-bubble" style="--c:${escHtml(p.a)};z-index:${shown.length - i}">${avatarInner(p.n, p.a, '')}</div>`
+    ).join('') + (overflow > 0 ? `<div class="card-bubble card-bubble-more">+${overflow}</div>` : '');
+  }
+
+  // "join {host} ♡" (#5) — heart matches the mockup
+  if (joinBtn) {
+    joinBtn.innerHTML = `join ${escHtml(room.host || '')} <svg class="ic-heart" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 20.3l-1.3-1.2C6 14.8 3 12 3 8.7 3 6.2 5 4.2 7.5 4.2c1.5 0 2.9.7 3.8 1.9l.7.9.7-.9c.9-1.2 2.3-1.9 3.8-1.9C19 4.2 21 6.2 21 8.7c0 3.3-3 6.1-7.7 10.4L12 20.3z"/></svg>`;
+    joinBtn.onclick = () => requireNickname(() => joinRoom(room.slug));
+  }
+
+  banner.hidden = false;
+  return room.slug;
+}
+
 function renderLobby() {
   // One-time: the skeleton is only ever visible before the first real render.
   document.getElementById('lobby-skeleton')?.remove();
@@ -1333,6 +1384,9 @@ function renderLobby() {
   if (createBtn) createBtn.disabled = locked;
   if (createEmptyBtn) createEmptyBtn.disabled = locked;
 
+  // §9: an admin-hosted pinned room becomes the banner and skips its own card.
+  const pinnedSlug = renderPinnedBanner(state.rooms);
+
   const hasRooms = state.rooms.length > 0;
   // When the lobby is empty, only the empty-state CTA shows; the header button
   // appears once there are rooms to sit beside.
@@ -1343,7 +1397,7 @@ function renderLobby() {
     empty.hidden = false;
   } else {
     empty.hidden = true;
-    grid.innerHTML = state.rooms.map(renderRoomCard).join('');
+    grid.innerHTML = state.rooms.filter(r => r.slug !== pinnedSlug).map(renderRoomCard).join('');
     grid.querySelectorAll('.room-card').forEach(card => {
       const tryJoin = () => {
         const slug = card.dataset.slug;
@@ -1621,6 +1675,16 @@ async function enterRoom(room, pushNav, tokenData) {
     (updated) => {
       if (!state.room) return;
       if (typeof updated.locked !== 'undefined') state.room.locked = updated.locked;
+      if (typeof updated.chat_locked !== 'undefined') {
+        const wasChatLocked = state.room.chat_locked;
+        state.room.chat_locked = updated.chat_locked;
+        if (updated.chat_locked !== wasChatLocked) {
+          updateChatLockUI();
+          if (state.user.role !== 'host') {
+            appendSystemMessage(updated.chat_locked ? 'Chat locked by host' : 'Chat unlocked by host', 'action');
+          }
+        }
+      }
       if (typeof updated.audience_mode !== 'undefined') {
         const wasAudience = state.room.audience;
         state.room.audience = updated.audience_mode;
@@ -1641,6 +1705,7 @@ async function enterRoom(room, pushNav, tokenData) {
   );
 
   renderRoom();
+  updateChatLockUI();
   micBanner();
   setTimeout(() => appendSystemMessage(`${state.user.nickname} joined`, 'join'), 200);
   if (state.settings.joinSound) playJoinSound();
@@ -1941,6 +2006,27 @@ function clearChatUnread() {
 // Hook for the deferred shared-music/movie project: populate + reveal the
 // now-playing banner. No callers yet (no data source / CSP for players); wiring
 // lives here so the banner is ready when that project lands. UI only.
+let _npVolume = 70;          // 0–100, persisted across sessions
+let _npPreMuteVolume = 70;   // remembers level so un-mute restores it
+
+// Apply a music-volume level to the (inert until sourced) <audio>, the slider
+// fill, and the mute-button state. Safe to call before any media exists.
+function applyNpVolume(v, persist = true) {
+  _npVolume = Math.max(0, Math.min(100, Math.round(v)));
+  const audio  = document.getElementById('np-audio');
+  const slider = document.getElementById('np-volume');
+  const mute   = document.getElementById('btn-np-mute');
+  if (audio)  audio.volume = _npVolume / 100;
+  if (slider) { slider.value = _npVolume; slider.style.setProperty('--vol', _npVolume + '%'); }
+  if (mute)   mute.classList.toggle('is-muted', _npVolume === 0);
+  if (persist) { try { localStorage.setItem('dg_rooms_music_vol', String(_npVolume)); } catch {} }
+}
+
+function toggleNpMute() {
+  if (_npVolume === 0) applyNpVolume(_npPreMuteVolume || 70);
+  else { _npPreMuteVolume = _npVolume; applyNpVolume(0); }
+}
+
 function setNowPlaying(info) {
   const banner = document.getElementById('now-playing');
   if (!banner) return;
@@ -1951,6 +2037,14 @@ function setNowPlaying(info) {
   if (s) s.textContent = info.source ? `— ${info.source}` : '';
   const change = document.getElementById('np-change');
   if (change) change.hidden = state.user.role !== 'host';
+  // Only attach CSP-allowed sources (blob: / MediaStream); external URLs are
+  // intentionally ignored so the strict `media-src blob: mediastream:` holds.
+  const audio = document.getElementById('np-audio');
+  if (audio) {
+    if (info.mediaStream) { audio.srcObject = info.mediaStream; audio.play?.().catch(() => {}); }
+    else if (typeof info.audioSrc === 'string' && info.audioSrc.startsWith('blob:')) { audio.src = info.audioSrc; audio.play?.().catch(() => {}); }
+    applyNpVolume(_npVolume, false);
+  }
   banner.hidden = false;
 }
 
@@ -2776,6 +2870,55 @@ async function toggleLock() {
   }
 }
 
+// §8 lock chat — freezes chat for everyone but the host; the room stays open.
+// Dormant-safe: the control only surfaces once `chat_locked` is actually selected
+// on the room (typeof === 'boolean'), i.e. after the migration + Edge Function are
+// deployed. Until then it reads undefined, the button stays hidden, and the send
+// guard never trips — so shipping this pre-deploy changes nothing.
+let _chatLockToggling = false;
+async function toggleChatLock() {
+  if (!state.room || _chatLockToggling) return;
+  if (typeof state.room.chat_locked !== 'boolean') return; // feature not deployed yet
+  _chatLockToggling = true;
+  const prev = state.room.chat_locked;
+  state.room.chat_locked = !prev;
+  updateChatLockUI();
+  try {
+    await sbUpdateRoom(state.room.slug, { chat_locked: state.room.chat_locked });
+    appendSystemMessage(state.room.chat_locked ? 'Chat locked by host' : 'Chat unlocked by host', 'action');
+    const r = state.rooms.find(x => x.slug === state.room?.slug);
+    if (r) r.chat_locked = state.room.chat_locked;
+  } catch {
+    state.room.chat_locked = prev;
+    updateChatLockUI();
+    showBanner('Failed to update chat lock. Try again.', null, null, 'error');
+  } finally {
+    _chatLockToggling = false;
+  }
+}
+
+function updateChatLockUI() {
+  const available = typeof state.room?.chat_locked === 'boolean';
+  const locked = available && state.room.chat_locked;
+  const isHost = state.user.role === 'host';
+  const btn = document.getElementById('btn-lock-chat');
+  if (btn) {
+    btn.hidden = !(available && isHost);
+    btn.setAttribute('aria-pressed', String(locked));
+    btn.classList.toggle('is-active', locked);
+    const lbl = btn.querySelector('span');
+    if (lbl) lbl.textContent = locked ? 'chat locked' : 'lock chat';
+    btn.title = locked ? 'Unlock chat' : 'Lock chat';
+  }
+  const input = document.getElementById('chat-input');
+  if (input) {
+    if (!input.dataset.ph) input.dataset.ph = input.getAttribute('placeholder') || '';
+    const block = locked && !isHost;
+    input.disabled = block;
+    input.placeholder = block ? 'chat is locked ~' : input.dataset.ph;
+  }
+}
+
 let _audienceToggling = false;
 async function toggleAudience() {
   if (!state.room || _audienceToggling) return;
@@ -2853,6 +2996,19 @@ async function sendMessage() {
     if (el) {
       clearInterval(_cooldownTimer);
       el.textContent = 'Room is locked — chat is paused.';
+      el.hidden = false;
+      el.classList.add('show');
+      setTimeout(hideChatCooldown, 3000);
+    }
+    return;
+  }
+
+  // §8: while chat is locked, only the host may post.
+  if (state.room?.chat_locked && state.user.role !== 'host') {
+    const el = document.getElementById('chat-cooldown');
+    if (el) {
+      clearInterval(_cooldownTimer);
+      el.textContent = 'Chat is locked by the host.';
       el.hidden = false;
       el.classList.add('show');
       setTimeout(hideChatCooldown, 3000);
@@ -3364,7 +3520,14 @@ async function init() {
   });
   document.getElementById('btn-np-pause')?.addEventListener('click', e => {
     e.currentTarget.classList.toggle('is-paused');
+    const audio = document.getElementById('np-audio');
+    if (audio) { if (e.currentTarget.classList.contains('is-paused')) audio.pause?.(); else audio.play?.().catch(() => {}); }
   });
+  // Now-playing volume (§10): restore persisted level, then wire slider + mute.
+  try { const v = parseInt(localStorage.getItem('dg_rooms_music_vol') || '', 10); if (!Number.isNaN(v)) _npVolume = Math.max(0, Math.min(100, v)); } catch {}
+  applyNpVolume(_npVolume, false);
+  document.getElementById('np-volume')?.addEventListener('input', e => applyNpVolume(+e.currentTarget.value));
+  document.getElementById('btn-np-mute')?.addEventListener('click', toggleNpMute);
 
   // Dock chat button (mobile): open the chat sheet, or close it if already open.
   document.getElementById('btn-chat-toggle')?.addEventListener('click', () => {
@@ -3392,6 +3555,7 @@ async function init() {
 
   // ── Chat ──
   document.getElementById('btn-send').addEventListener('click', sendMessage);
+  document.getElementById('btn-lock-chat')?.addEventListener('click', toggleChatLock);
   document.getElementById('chat-input').addEventListener('keydown', e => {
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); sendMessage(); }
   });
