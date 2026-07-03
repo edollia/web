@@ -2938,7 +2938,6 @@ a { color: inherit; text-decoration: none; }
 
 /* labeled host controls: label hidden on desktop (icon-only dock button) */
 .ctrl-label { display: none; }
-.mobile-host-bar { display: none; }
 
 /* Gradient avatars (cozy pink/lilac/peach set) — driven by --c so a single
    stored hex renders as the mockup's light→saturated gradient. */
@@ -3060,31 +3059,6 @@ a { color: inherit; text-decoration: none; }
     transform: rotate(0deg);
   }
   .room-for-one-more .rfom-icon { width: 34px; height: 34px; }
-
-  /* host controls become a labeled pill row above the dock (JS relocates the
-     lock + audience buttons here on mobile). */
-  .mobile-host-bar {
-    display: flex;
-    justify-content: center;
-    gap: 8px;
-    padding: 0 12px;
-    flex-shrink: 0;
-  }
-  .mobile-host-bar:has(.host-ctrl:not([hidden])) { padding-bottom: 8px; }
-  .mobile-host-bar .dock-ctrl {
-    width: auto;
-    height: auto;
-    border-radius: 999px;
-    padding: 9px 18px;
-    gap: 6px;
-  }
-  .mobile-host-bar .ctrl-label {
-    display: inline;
-    font-family: var(--v-font-tag);
-    font-size: 13px;
-    font-weight: 700;
-  }
-  .mobile-host-bar .dock-ctrl .dock-icon { width: 15px; height: 15px; }
 
   /* Room = a vertical split: participants on top, a drag-resizable chat sheet
      on the bottom. Drag #chat-grabber to change the split; drag it shut to hide

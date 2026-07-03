@@ -138,6 +138,7 @@ serve(async (req) => {
 
     return json({ room, hostKey })
   } catch (err) {
-    return json({ error: String(err) }, 500)
+    console.error('create-room error:', err) // detail stays server-side
+    return json({ error: 'internal error' }, 500)
   }
 })

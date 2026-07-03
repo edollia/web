@@ -63,13 +63,20 @@ function safeAccent(value: unknown, fallback = '#f08ab5'): string {
   return /^#[0-9a-f]{6}$/.test(s) ? s : fallback
 }
 
-function cleanPreviews(value: unknown): Array<{ n: string; a: string }> | null {
+function cleanPreviews(value: unknown): Array<{ n: string; a: string; s?: string }> | null {
   if (value === null) return null
   if (!Array.isArray(value)) return null
-  return value.slice(0, 5).map((p) => ({
-    n: cleanText((p as { n?: unknown })?.n, 24) || '?',
-    a: safeAccent((p as { a?: unknown })?.a),
-  }))
+  return value.slice(0, 5).map((p) => {
+    // `s` = this participant's live media (cam/screen) — drives the lobby "live"
+    // dot. Preserve it (allowlisted values only); omit otherwise.
+    const s = (p as { s?: unknown })?.s
+    const preview: { n: string; a: string; s?: string } = {
+      n: cleanText((p as { n?: unknown })?.n, 24) || '?',
+      a: safeAccent((p as { a?: unknown })?.a),
+    }
+    if (s === 'cam' || s === 'screen') preview.s = s
+    return preview
+  })
 }
 
 function hasOwn(obj: object, key: string): boolean {
@@ -336,6 +343,7 @@ serve(async (req) => {
 
     return json({ error: 'unknown action' }, 400)
   } catch (err) {
-    return json({ error: String(err) }, 500)
+    console.error('room-control error:', err) // detail stays server-side
+    return json({ error: 'internal error' }, 500)
   }
 })

@@ -348,6 +348,16 @@ function generateSlug(title) {
   return `${adj}-${noun}-${Math.floor(Math.random() * 90) + 10}`;
 }
 
+// Room slug = slugified title + a random suffix that ALWAYS survives the 24-char
+// cap. (Appending the suffix before the slice meant a long name swallowed it,
+// yielding the same slug every time — so even the collision retry re-collided.)
+function slugWithSuffix(title) {
+  // Strip any hyphen the slice left dangling so we never emit `base--NNNN`
+  // (the create-room slug regex rejects trailing/double hyphens).
+  const base = generateSlug(title).slice(0, 18).replace(/-+$/, '') || 'room';
+  return `${base}-${Math.floor(Math.random() * 9000) + 1000}`;
+}
+
 function formatTime(ts) {
   return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
@@ -534,14 +544,15 @@ async function sbLoadMessages(roomId, limit = 50) {
 }
 
 async function sbSendMessage(roomId, body) {
-  if (DEMO) return; // demo: the optimistic append is all there is
-  const { error } = await sb.from('room_messages').insert({
+  if (DEMO) return null; // demo: the optimistic append is all there is
+  const { data, error } = await sb.from('room_messages').insert({
     room_id:    roomId,
     nickname:   state.user.nickname,
     session_id: state.user.sessionId,
     body,
-  });
+  }).select('id').single();
   if (error) throw error;
+  return data?.id ?? null; // shared id so reactions/replies key consistently across clients
 }
 
 async function sbAddBan(roomId, type, value) {
@@ -1791,6 +1802,10 @@ async function enterRoom(room, pushNav, tokenData) {
     },
     (updated) => {
       if (!state.room) return;
+      if (typeof updated.title !== 'undefined' && updated.title !== state.room.title) {
+        state.room.title = updated.title;
+        updateTopbar(); // reflect a host's inline rename for everyone else in the room
+      }
       if (typeof updated.locked !== 'undefined') state.room.locked = updated.locked;
       if (typeof updated.chat_locked !== 'undefined') {
         const wasChatLocked = state.room.chat_locked;
@@ -1890,7 +1905,7 @@ async function createRoom() {
   const btns = [document.getElementById('btn-create'), document.getElementById('btn-create-empty')].filter(Boolean);
   btns.forEach(b => setBtnLoading(b, true, 'Starting…'));
   const title  = state.user.nickname; // default title = your name
-  const slug   = generateSlug(`${title}-${Math.floor(Math.random() * 900) + 100}`);
+  const slug   = slugWithSuffix(title);
   let room = null;
   try {
     const data = await sbCreateRoom(slug, title, false);
@@ -1898,7 +1913,7 @@ async function createRoom() {
   } catch (err) {
     // On slug collision, retry once with a freshly generated slug.
     if (String(err.message).includes('slug already exists')) {
-      const retrySlug = generateSlug(`${title}-${Math.floor(Math.random() * 900) + 100}`);
+      const retrySlug = slugWithSuffix(title);
       try {
         const data2 = await sbCreateRoom(retrySlug, title, false);
         room = roomFromDb(data2);
@@ -3231,17 +3246,22 @@ async function sendMessage() {
     const time = Date.now();
     const msg = { nick: state.user.nickname, body, time };
     state.chat.push(msg);
-    appendMessage(msg.nick, msg.body, msg.time, true, { msgId, sessionId: state.user.sessionId, replyTo }); // optimistic
-    if (replyTo) { broadcastReply(msgKey(state.user.sessionId, time), replyTo); replyUsed = true; }
+    const el = appendMessage(msg.nick, msg.body, msg.time, true, { msgId, sessionId: state.user.sessionId, replyTo }); // optimistic
+    if (replyTo) replyUsed = true;
 
     if (state.room?.id) {
       try {
-        await sbSendMessage(state.room.id, body);
+        const dbId = await sbSendMessage(state.room.id, body);
+        rekeyMessage(el, dbId); // adopt the shared id so peers' reactions/replies match
+        // Broadcast the reply against the final shared key (or the optimistic one in demo).
+        if (replyTo) broadcastReply(dbId ? 'm' + dbId : msgKey(state.user.sessionId, time), replyTo);
       } catch (err) {
         logEvent('error', 'msg_send_failed', { code: err?.code });
         console.error('sendMessage failed:', err);
         markMsgFailed(msgId, body);
       }
+    } else if (replyTo) {
+      broadcastReply(msgKey(state.user.sessionId, time), replyTo);
     }
   }
 
@@ -3318,6 +3338,22 @@ const REACT_IMG = Object.fromEntries(CHAT_REACTIONS.map(r => [r.key, r.img]));
 // every message, DB or broadcast), so a reaction/reply lands on the same message
 // for everyone in the room.
 function msgKey(sessionId, time, nick) { return `${sessionId || nick || '?'}:${time || 0}`; }
+
+// Once the DB assigns your own message an id, adopt the shared `m<id>` key (which
+// every other client already uses for it) and migrate any reactions/reply the
+// optimistic node collected — otherwise your own message's reactions/replies
+// would never line up with everyone else's.
+function rekeyMessage(div, dbId) {
+  if (!div || !dbId) return;
+  const oldKey = div.dataset.key;
+  const newKey = 'm' + dbId;
+  if (oldKey === newKey) return;
+  div.dataset.key = newKey;
+  div.dataset.msgDbId = dbId;
+  if (_reactions.has(oldKey)) { _reactions.set(newKey, _reactions.get(oldKey)); _reactions.delete(oldKey); }
+  if (_replyMeta.has(oldKey)) { _replyMeta.set(newKey, _replyMeta.get(oldKey)); _replyMeta.delete(oldKey); }
+  renderReactions(div, newKey);
+}
 
 const _reactions = new Map();   // key → Map(type → Set(sessionId))
 const _replyMeta = new Map();   // key → replyTo, for replies that arrive before their message
@@ -3465,7 +3501,9 @@ function appendMessage(nick, body, time, isNewMsg, { msgId, dbId, sessionId, rep
   const isYou = sessionId ? sessionId === state.user.sessionId : nick === state.user.nickname;
   const color = nickColor(nick, sessionId);
   const styleAttr = color ? ` style="color:${escHtml(color)}"` : '';
-  const key = msgKey(sessionId, time, nick);
+  // Prefer the shared DB id as the key so reactions/replies match across clients;
+  // fall back to sender+time for optimistic/ephemeral messages.
+  const key = dbId ? 'm' + dbId : msgKey(sessionId, time, nick);
   div.dataset.key = key;
   replyTo = replyTo || _replyMeta.get(key);
   if (reactions) seedReactions(key, reactions);

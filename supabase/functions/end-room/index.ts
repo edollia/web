@@ -187,6 +187,7 @@ serve(async (req) => {
     return json({ ok: true })
 
   } catch (err) {
-    return json({ error: String(err) }, 500)
+    console.error('end-room error:', err) // detail stays server-side
+    return json({ error: 'internal error' }, 500)
   }
 })

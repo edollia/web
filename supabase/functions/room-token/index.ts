@@ -175,6 +175,7 @@ serve(async (req) => {
     return json({ token, lkUrl: Deno.env.get('LIVEKIT_URL')!, role: effectiveRole })
 
   } catch (err) {
-    return json({ error: String(err) }, 500)
+    console.error('room-token error:', err) // detail stays server-side
+    return json({ error: 'internal error' }, 500)
   }
 })
