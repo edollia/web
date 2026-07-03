@@ -1584,6 +1584,9 @@ async function doShowLobby() {
   await sbCleanupChannels();
   resetLeaveConfirm();
 
+  // Release the demo camera preview if it's on (real getUserMedia stream).
+  if (_demoCamStream) { _demoCamStream.getTracks().forEach(t => t.stop()); _demoCamStream = null; }
+
   // Discard any half-composed chat state (staged images, pending reply, reaction
   // stores) so nothing leaks into the next room.
   clearStagedImages();
@@ -2801,11 +2804,42 @@ function toggleDeafen() {
 }
 
 let _cameraToggling = false;
+// Demo-only: a real getUserMedia camera preview so you can eyeball yourself
+// before going live. No LiveKit — the stream attaches straight to your own tile.
+let _demoCamStream = null;
+async function toggleDemoCamera() {
+  const sel = `.participant-card[data-sid="${CSS.escape(state.user.sessionId)}"]`;
+  if (!state.media.cameraOn) {
+    document.querySelector(sel)?.classList.add('cam-loading');
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      _demoCamStream = stream;
+      state.media.cameraOn = true;
+      // Minimal LiveKit-track-shaped shim so showParticipantVideo() works unchanged.
+      showParticipantVideo({ _stream: stream, attach() { const v = document.createElement('video'); v.srcObject = stream; return v; }, detach() { return []; } },
+        state.user.sessionId);
+    } catch (err) {
+      state.media.cameraOn = false;
+      if (err?.name === 'NotAllowedError' || err?.name === 'PermissionDeniedError') showBanner('Camera access denied. Allow it in browser settings, then retry.', 'Retry', () => toggleCamera());
+      else if (err?.name === 'NotFoundError') showBanner('No camera found.', 'OK', hideBanner);
+      else showBanner('Could not start camera.', 'Retry', toggleCamera);
+    } finally {
+      document.querySelector(sel)?.classList.remove('cam-loading');
+    }
+  } else {
+    if (_demoCamStream) { _demoCamStream.getTracks().forEach(t => t.stop()); _demoCamStream = null; }
+    state.media.cameraOn = false;
+    hideParticipantVideo(state.user.sessionId);
+  }
+  updateDockBtnState('btn-camera', state.media.cameraOn);
+}
+
 async function toggleCamera() {
   if (_cameraToggling) return;
   navigator.vibrate?.(8);
   _cameraToggling = true;
   try {
+    if (DEMO) { await toggleDemoCamera(); return; }
     if (!state._lkRoom) {
       showBanner('Camera is available after voice connects.', '', null, 'warning');
       updateDockBtnState('btn-camera', false);
@@ -3518,7 +3552,9 @@ function appendMessage(nick, body, time, isNewMsg, { msgId, dbId, sessionId, rep
   attachMsgControls(div, { nick, body, sessionId, time, key });
   el.appendChild(div);
   renderReactions(div, key);
-  if (isNearBottom(el)) el.scrollTop = el.scrollHeight;
+  // Your own just-sent message always scrolls into view (even if you were reading
+  // history up top); others' messages only follow when you're already at the bottom.
+  if (isNewMsg || isNearBottom(el)) el.scrollTop = el.scrollHeight;
   updateScrollBtn();
   return div;
 }
@@ -3573,7 +3609,8 @@ function appendImageMessage(nick, thumb, full, time, sessionId, { replyTo } = {}
   attachMsgControls(div, { nick, body: 'photo', sessionId, time, key });
   el.appendChild(div);
   renderReactions(div, key);
-  if (isNearBottom(el)) el.scrollTop = el.scrollHeight;
+  // Your own image scrolls into view; others' only when already at the bottom.
+  if (isYou || isNearBottom(el)) el.scrollTop = el.scrollHeight;
   updateScrollBtn();
   return div;
 }
@@ -3654,7 +3691,10 @@ function autoGrowChatInput() {
   const el = document.getElementById('chat-input');
   if (!el || el.tagName !== 'TEXTAREA') return;
   el.style.height = 'auto';
-  el.style.height = Math.min(el.scrollHeight, CHAT_INPUT_MAX_H) + 'px';
+  const full = el.scrollHeight;
+  el.style.height = Math.min(full, CHAT_INPUT_MAX_H) + 'px';
+  // Only show the scrollbar once we've actually hit the cap (no bar on a line or two).
+  el.style.overflowY = full > CHAT_INPUT_MAX_H ? 'auto' : 'hidden';
 }
 
 function openImageViewer(src) {
