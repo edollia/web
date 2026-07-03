@@ -71,7 +71,8 @@ const ICON = {
   image:  _svg('M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z'),
   dots:   _svg('M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z'),
   end:    _svg('M6 6h12v12H6z'),
-  paw:    _svg('M8.35 3C7 3 6 4.5 6 6s1 3 2.35 3S10.7 7.5 10.7 6 9.7 3 8.35 3zm7.3 0C14.3 3 13.3 4.5 13.3 6s1 3 2.35 3S18 7.5 18 6s-1-3-2.35-3zM4 8.5C2.9 8.5 2 9.8 2 11s.9 2.5 2 2.5 2-1.3 2-2.5S5.1 8.5 4 8.5zm16 0c-1.1 0-2 1.3-2 2.5s.9 2.5 2 2.5 2-1.3 2-2.5-.9-2.5-2-2.5zM12 11c-2.5 0-6 2.5-6 5.5 0 1.9 1.6 2.5 3 2.5 1.1 0 2-.5 3-.5s1.9.5 3 .5c1.4 0 3-.6 3-2.5 0-3-3.5-5.5-6-5.5z'),
+  // paw print: one rounded pad + four toe beans (prettier than the old blob)
+  paw:    _svg('M12 12.2c3.2 0 5.9 2.4 5.9 5.2 0 1.7-1.4 2.6-3.1 2.6-1.1 0-2-.5-2.8-.5s-1.7.5-2.8.5c-1.7 0-3.1-.9-3.1-2.6 0-2.8 2.7-5.2 5.9-5.2zM6.1 8.2c1.2 0 2.1 1.2 2.1 2.6S7.3 13.4 6.1 13.4 4 12.2 4 10.8s.9-2.6 2.1-2.6zm11.8 0c1.2 0 2.1 1.2 2.1 2.6s-.9 2.6-2.1 2.6-2.1-1.2-2.1-2.6.9-2.6 2.1-2.6zM9.7 3.8c1.2 0 2.1 1.3 2.1 2.8s-.9 2.8-2.1 2.8S7.6 8.1 7.6 6.6 8.5 3.8 9.7 3.8zm4.6 0c1.2 0 2.1 1.3 2.1 2.8s-.9 2.8-2.1 2.8-2.1-1.3-2.1-2.8.9-2.8 2.1-2.8z'),
   star:   _svg('M12 2l2.6 6.9L22 9.3l-5.5 4.6L18.2 22 12 17.8 5.8 22l1.7-8.1L2 9.3l7.4-.4z'),
   send:   _svg('M3 20.5L21 12 3 3.5 3 10l12 2-12 2z'),
   enter:  _svg('M20 11H7.83l4.88-4.88L11.3 4.7 4 12l7.3 7.3 1.41-1.42L7.83 13H20z'),
@@ -718,7 +719,15 @@ function sbJoinPresence(slug) {
     if (size > 900_000) return; // drop oversized payloads to prevent OOM/stall
     const thumb = payload.thumb || payload.src;
     const full  = payload.full  || payload.thumb || payload.src;
-    appendImageMessage(payload.nick, thumb, full, payload.time || Date.now(), payload.sessionId);
+    appendImageMessage(payload.nick, thumb, full, payload.time || Date.now(), payload.sessionId, { replyTo: payload.replyTo });
+  });
+
+  // Ephemeral message reactions + reply context — broadcast only, never stored.
+  channel.on('broadcast', { event: 'chat:reaction' }, ({ payload }) => {
+    if (state.view === 'room') applyRemoteReaction(payload);
+  });
+  channel.on('broadcast', { event: 'chat:reply' }, ({ payload }) => {
+    if (state.view === 'room') applyRemoteReply(payload);
   });
 
   channel.subscribe(async (status) => {
@@ -760,6 +769,9 @@ async function sbTrackPresence(updates) {
 
 // Fire a realtime broadcast to everyone on the room's presence channel.
 function broadcastToRoom(event, payload) {
+  // Demo has no realtime channel — treat the optimistic local render as sent so
+  // images/reactions/replies aren't rolled back by the "send failed" catch.
+  if (DEMO) return Promise.resolve();
   if (!state._sbPresenceChan) return Promise.reject(new Error('no channel'));
   return state._sbPresenceChan.send({ type: 'broadcast', event, payload });
 }
@@ -1353,10 +1365,13 @@ function demoParticipants() {
 function demoChat() {
   const t = Date.now();
   return [
-    { nick:'mika', body:'welcome in ~ get comfy', time:t-300000, sessionId:'d-p-mika' },
-    { nick:'kaz',  body:'this track is unreal fr', time:t-240000, sessionId:'d-p-kaz' },
+    { nick:'mika', body:'welcome in ~ get comfy', time:t-300000, sessionId:'d-p-mika',
+      reactions:{ happy:['d-p-kaz','d-p-sol'] } },
+    { nick:'kaz',  body:'this track is unreal fr', time:t-240000, sessionId:'d-p-kaz',
+      reactions:{ cool:['d-p-mika'] } },
     { sys:true, kind:'action', body:'mika reacted to the song' },
-    { nick:'sol',  body:'sharing my cam hehe ~', time:t-120000, sessionId:'d-p-sol' },
+    { nick:'sol',  body:'sharing my cam hehe ~', time:t-120000, sessionId:'d-p-sol',
+      replyTo:{ nick:'kaz', text:'this track is unreal fr' } },
     { nick: state.user.nickname, body:'just got here, hi all :3', time:t-60000, sessionId: state.user.sessionId },
   ];
 }
@@ -1544,10 +1559,7 @@ function renderRoomCard(room) {
     ${room.is_streaming && !room.locked ? `<span class="card-live"><span class="card-live-word">live</span><span class="card-live-num">${room.member_count}</span></span>` : ''}
     ${thumbnailHtml}
     <div class="card-name">
-      ${title}${isYours ? ' <span class="yours-tag">(yours)</span>' : ''}
-    </div>
-    <div class="card-meta">
-      ${room.locked ? `<span class="badge badge-locked">${ICON.lock} locked</span>` : ''}
+      ${title}${isYours ? ' <span class="yours-tag">(yours)</span>' : ''}${room.locked ? ` <span class="badge badge-locked">${ICON.lock} locked</span>` : ''}
     </div>
     ${room.locked && !isYours
         ? `<div class="card-ask">dont ask me</div>`
@@ -1560,6 +1572,14 @@ async function doShowLobby() {
   await lkDisconnect();
   await sbCleanupChannels();
   resetLeaveConfirm();
+
+  // Discard any half-composed chat state (staged images, pending reply, reaction
+  // stores) so nothing leaks into the next room.
+  clearStagedImages();
+  clearReplyTarget();
+  _reactions.clear();
+  _replyMeta.clear();
+  closeReactionPicker();
 
   state.view = 'lobby';
   state.room = null;
@@ -1930,8 +1950,14 @@ function updateTopbar() {
   const isHost = state.user.role === 'host';
 
   // Topbar shows the room title (mockup); falls back to @host when untitled.
+  // The host can tap it to rename the room inline (initEditableTitle) — don't
+  // clobber the field while it's being edited.
   const hostEl = document.getElementById('topbar-host');
-  if (hostEl) hostEl.textContent = room.title || `@${room.host || ''}`;
+  if (hostEl && !hostEl.querySelector('input')) hostEl.textContent = room.title || `@${room.host || ''}`;
+  if (hostEl) {
+    hostEl.classList.toggle('editable', isHost);
+    hostEl.title = isHost ? 'Tap to rename the room' : '';
+  }
 
   document.getElementById('topbar-locked-badge').hidden = !room.locked;
   const audBadge = document.getElementById('topbar-audience-badge');
@@ -1941,6 +1967,45 @@ function updateTopbar() {
 
   document.getElementById('topbar-count').innerHTML = `${ICON.people} ${state.participants.length}`;
   document.getElementById('participant-count').textContent = state.participants.length;
+}
+
+// The room title defaults to the host's @username; the host can tap it in the
+// topbar to type a custom name. Wired once — the node is static.
+function initEditableTitle() {
+  const el = document.getElementById('topbar-host');
+  if (!el || el._wired) return;
+  el._wired = true;
+  el.addEventListener('click', () => {
+    if (state.user.role !== 'host' || el.querySelector('input')) return;
+    const input = document.createElement('input');
+    input.className = 'topbar-title-input';
+    input.type = 'text';
+    input.maxLength = 40;
+    input.value = state.room?.title || '';
+    input.placeholder = state.room?.host ? `@${state.room.host}` : 'room name';
+    el.textContent = '';
+    el.appendChild(input);
+    input.focus(); input.select();
+    let done = false;
+    const commit = async (save) => {
+      if (done) return; done = true;
+      const val = input.value.trim().slice(0, 40);
+      input.remove();                 // drop the field so updateTopbar can repaint the text
+      if (save && state.room) {
+        state.room.title = val || null;
+        const r = state.rooms.find(x => x.slug === state.room.slug);
+        if (r) r.title = state.room.title;
+        try { if (!DEMO && state.room.slug) await sbUpdateRoom(state.room.slug, { title: state.room.title }); } catch {}
+      }
+      updateTopbar();
+    };
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter')  { e.preventDefault(); commit(true); }
+      if (e.key === 'Escape') { e.preventDefault(); commit(false); }
+    });
+    input.addEventListener('blur', () => commit(true));
+    input.addEventListener('click', (e) => e.stopPropagation());
+  });
 }
 
 // Sort order: streamers first (earliest start first), then host, then stable.
@@ -2022,14 +2087,18 @@ function initChatResize() {
   grabber._wired = true;
 
   const MIN = 120;        // smallest the sheet snaps to while open
-  const CLOSE_AT = 90;    // release below this height → hide the sheet entirely
+  const CLOSE_AT = 90;    // release below this (raw) height → hide the sheet
   const FULL_GAP = 72;    // release within this of the top → go fullscreen
-  const maxH = () => main.clientHeight;   // allow the sheet to fill the room
+  const RESERVE  = 132;   // px always kept for participants: the *applied* sheet
+                          // height is capped at (room − RESERVE) so it can never
+                          // overflow room-main and slide under/over the dock.
+  const partialMax = () => Math.max(MIN, main.clientHeight - RESERVE);
 
-  let dragging = false, startY = 0, startH = 0, live = 0;
+  let dragging = false, startY = 0, startH = 0, live = 0, raw = 0;
 
   const apply = (h) => {
-    live = Math.min(maxH(), Math.max(40, h));
+    raw  = h;                                   // true finger target (for thresholds)
+    live = Math.min(partialMax(), Math.max(40, h)); // safe, dock-preserving height
     main.style.setProperty('--chat-h', live + 'px');
   };
   const onMove = (e) => {
@@ -2045,13 +2114,13 @@ function initChatResize() {
     main.classList.remove('chat-dragging');   // re-enable the snap transition
     document.removeEventListener('pointermove', onMove);
     document.removeEventListener('pointerup', onUp);
-    if (live <= CLOSE_AT) {                      // pulled all the way down → hide
+    if (raw <= CLOSE_AT) {                            // pulled all the way down → hide
       main.classList.remove('chat-full');
       setChatView('hidden');
-    } else if (live >= maxH() - FULL_GAP) {      // pulled all the way up → fullscreen
-      main.classList.add('chat-full');
-      _chatSheetH = Math.round(maxH() * 0.5);    // where it returns to on the next drag
-    } else {                                     // settle at the dragged split
+    } else if (raw >= main.clientHeight - FULL_GAP) { // pulled all the way up → fullscreen
+      main.classList.add('chat-full');                // (CSS fills the room; dock stays put)
+      _chatSheetH = Math.round(partialMax() * 0.7);   // where it returns to on the next drag
+    } else {                                          // settle at the dragged split
       main.classList.remove('chat-full');
       _chatSheetH = Math.max(MIN, live);
       main.style.setProperty('--chat-h', _chatSheetH + 'px');
@@ -2062,9 +2131,10 @@ function initChatResize() {
     dragging = true;
     grabber.classList.add('dragging');
     main.classList.add('chat-dragging');   // suppress transition so the drag tracks 1:1
+    main.classList.remove('chat-full');    // leave fullscreen so --chat-h drives the drag
     startY = e.touches ? e.touches[0].clientY : e.clientY;
     startH = chat.getBoundingClientRect().height;
-    live = startH;
+    live = startH; raw = startH;
     document.addEventListener('pointermove', onMove, { passive: false });
     document.addEventListener('pointerup', onUp);
     e.preventDefault();
@@ -2359,7 +2429,7 @@ function renderChat(messages) {
   el.innerHTML = '';
   messages.forEach(m => {
     if (m.sys) appendSystemMessage(m.body, m.kind);
-    else appendMessage(m.nick, m.body, m.time, false, { sessionId: m.sessionId });
+    else appendMessage(m.nick, m.body, m.time, false, { sessionId: m.sessionId, replyTo: m.replyTo, reactions: m.reactions });
   });
   el.scrollTop = el.scrollHeight;
   updateScrollBtn();
@@ -3115,7 +3185,8 @@ function chatCooldownMs() {
 async function sendMessage() {
   const input = document.getElementById('chat-input');
   const body  = input.value.trim();
-  if (!body) return;
+  const hasImages = _stagedImages.length > 0;
+  if (!body && !hasImages) return;
 
   if (state.room?.locked) {
     const el = document.getElementById('chat-cooldown');
@@ -3146,23 +3217,47 @@ async function sendMessage() {
   if (wait > 0) { showChatCooldown(wait); return; }
   hideChatCooldown();
 
-  _msgBurst.push(Date.now());
+  // The reply applies to whichever piece is sent first (text, else the images).
+  const replyTo = _replyTarget ? { nick: _replyTarget.nick, text: _replyTarget.text } : null;
+  clearReplyTarget();
+  let replyUsed = false;
 
-  const msgId = ++_msgIdSeq;
-  input.value = '';
-  const msg = { nick: state.user.nickname, body, time: Date.now() };
-  state.chat.push(msg);
-  appendMessage(msg.nick, msg.body, msg.time, true, { msgId, sessionId: state.user.sessionId }); // optimistic
+  if (body) {
+    _msgBurst.push(Date.now());
+    const msgId = ++_msgIdSeq;
+    input.value = '';
+    autoGrowChatInput();
+    const time = Date.now();
+    const msg = { nick: state.user.nickname, body, time };
+    state.chat.push(msg);
+    appendMessage(msg.nick, msg.body, msg.time, true, { msgId, sessionId: state.user.sessionId, replyTo }); // optimistic
+    if (replyTo) { broadcastReply(msgKey(state.user.sessionId, time), replyTo); replyUsed = true; }
 
-  if (state.room?.id) {
-    try {
-      await sbSendMessage(state.room.id, body);
-    } catch (err) {
-      logEvent('error', 'msg_send_failed', { code: err?.code });
-      console.error('sendMessage failed:', err);
-      markMsgFailed(msgId, body);
+    if (state.room?.id) {
+      try {
+        await sbSendMessage(state.room.id, body);
+      } catch (err) {
+        logEvent('error', 'msg_send_failed', { code: err?.code });
+        console.error('sendMessage failed:', err);
+        markMsgFailed(msgId, body);
+      }
     }
   }
+
+  // Send every staged image at once; a batch is one user action, so it bypasses
+  // the per-message spam gate. The reply (if unused by text) rides the first one.
+  if (hasImages) {
+    const imgs = _stagedImages.slice();
+    clearStagedImages();
+    _msgBurst.push(Date.now());
+    for (let i = 0; i < imgs.length; i++) {
+      await sendChatImage(imgs[i].file, { replyTo: (!replyUsed && i === 0) ? replyTo : null, skipGate: true });
+    }
+  }
+}
+
+function broadcastReply(key, replyTo) {
+  broadcastToRoom('chat:reply', { key, replyTo, sessionId: state.user.sessionId }).catch(() => {});
 }
 
 // Visible anti-spam notice with a live countdown above the chat input.
@@ -3206,7 +3301,161 @@ function nickColor(nick, sessionId) {
   return state.participants.find(x => sessionId ? x.sessionId === sessionId : x.nickname === nick)?.accent || '';
 }
 
-function appendMessage(nick, body, time, isNewMsg, { msgId, dbId, sessionId } = {}) {
+// ── § CHAT REACTIONS + REPLIES ─────────────────────────────────────
+// Reactions reuse the site's existing face set (happy/cool/meh/sad PNGs at the
+// repo root; CSP img-src 'self' allows same-origin). Reactions + replies are
+// ephemeral like chat images — broadcast over realtime, never written to the DB.
+const CHAT_REACTIONS = [
+  { key: 'happy', img: '../happy.png', label: 'happy' },
+  { key: 'cool',  img: '../cool.png',  label: 'cool'  },
+  { key: 'meh',   img: '../meh.png',   label: 'meh'   },
+  { key: 'sad',   img: '../sad.png',   label: 'sad'   },
+];
+const REACT_IMG = Object.fromEntries(CHAT_REACTIONS.map(r => [r.key, r.img]));
+
+// A message's stable cross-client identity: sender + timestamp (both travel with
+// every message, DB or broadcast), so a reaction/reply lands on the same message
+// for everyone in the room.
+function msgKey(sessionId, time, nick) { return `${sessionId || nick || '?'}:${time || 0}`; }
+
+const _reactions = new Map();   // key → Map(type → Set(sessionId))
+const _replyMeta = new Map();   // key → replyTo, for replies that arrive before their message
+let _replyTarget = null;        // the message currently being replied to
+
+function getReact(key) {
+  let m = _reactions.get(key);
+  if (!m) { m = new Map(); _reactions.set(key, m); }
+  return m;
+}
+function seedReactions(key, seed) {
+  // seed: { type: [sessionId, …] } — used by demo/preload data.
+  const m = getReact(key);
+  for (const [type, ids] of Object.entries(seed || {})) {
+    let set = m.get(type); if (!set) { set = new Set(); m.set(type, set); }
+    (ids || []).forEach(id => set.add(id));
+  }
+}
+function reactionSelector(key) {
+  return `.chat-msg[data-key="${(window.CSS && CSS.escape) ? CSS.escape(key) : key}"]`;
+}
+function renderReactionsByKey(key) {
+  document.querySelectorAll(reactionSelector(key)).forEach(div => renderReactions(div, key));
+}
+function renderReactions(div, key) {
+  const cont = div.querySelector('.chat-msg-reactions');
+  if (!cont) return;
+  const m = _reactions.get(key);
+  const me = state.user.sessionId;
+  let html = '';
+  if (m) for (const r of CHAT_REACTIONS) {
+    const set = m.get(r.key);
+    if (set && set.size) {
+      html += `<button class="chat-react-pill${set.has(me) ? ' mine' : ''}" data-type="${r.key}">`
+            + `<img src="${r.img}" alt="${r.label}"><span>${set.size}</span></button>`;
+    }
+  }
+  cont.innerHTML = html;
+  cont.hidden = !html;
+  cont.querySelectorAll('.chat-react-pill').forEach(b =>
+    b.addEventListener('click', (e) => { e.stopPropagation(); toggleReaction(key, b.dataset.type, true); }));
+}
+function toggleReaction(key, type, doBroadcast) {
+  const m = getReact(key);
+  let set = m.get(type); if (!set) { set = new Set(); m.set(type, set); }
+  const me = state.user.sessionId;
+  const add = !set.has(me);
+  if (add) set.add(me); else set.delete(me);
+  renderReactionsByKey(key);
+  if (doBroadcast) broadcastToRoom('chat:reaction', { key, type, add, sessionId: me }).catch(() => {});
+}
+// Applies a reaction arriving over realtime from someone else.
+function applyRemoteReaction(payload) {
+  if (!payload || payload.sessionId === state.user.sessionId) return;
+  const m = getReact(payload.key);
+  let set = m.get(payload.type); if (!set) { set = new Set(); m.set(payload.type, set); }
+  if (payload.add) set.add(payload.sessionId); else set.delete(payload.sessionId);
+  renderReactionsByKey(payload.key);
+}
+function applyRemoteReply(payload) {
+  if (!payload || !payload.key) return;
+  _replyMeta.set(payload.key, payload.replyTo);
+  document.querySelectorAll(reactionSelector(payload.key)).forEach(div => {
+    if (div.querySelector('.chat-msg-replyref')) return;
+    const body = div.querySelector('.chat-msg-body') || div.querySelector('.chat-msg-img');
+    const ref = document.createElement('div');
+    ref.innerHTML = replyRefHtml(payload.replyTo);
+    if (body && ref.firstElementChild) body.parentElement.insertBefore(ref.firstElementChild, body);
+  });
+}
+
+function replyRefHtml(replyTo) {
+  if (!replyTo) return '';
+  const snippet = (replyTo.text || '').slice(0, 80);
+  return `<div class="chat-msg-replyref"><b>${escHtml(replyTo.nick || '')}</b>${escHtml(snippet)}</div>`;
+}
+
+// Per-message hover/tap actions: react + reply.
+function attachMsgControls(div, info) {
+  const actions = document.createElement('div');
+  actions.className = 'chat-msg-actions';
+  actions.innerHTML = `
+    <button class="msg-act msg-act-react" title="React" aria-label="React">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M8.5 14a4 4 0 0 0 7 0" stroke-linecap="round"/><circle cx="9" cy="10" r="1.1" fill="currentColor" stroke="none"/><circle cx="15" cy="10" r="1.1" fill="currentColor" stroke="none"/></svg>
+    </button>
+    <button class="msg-act msg-act-reply" title="Reply" aria-label="Reply">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 9V5l-7 7 7 7v-4.1c5 0 8.5 1.6 11 5.1-1-5-4-10-11-11z"/></svg>
+    </button>`;
+  div.appendChild(actions);
+  actions.querySelector('.msg-act-reply').addEventListener('click', (e) => {
+    e.stopPropagation(); setReplyTarget(info);
+  });
+  actions.querySelector('.msg-act-react').addEventListener('click', (e) => {
+    e.stopPropagation(); openReactionPicker(e.currentTarget, info.key);
+  });
+  // Touch devices have no hover — tap the bubble to reveal its actions.
+  div.addEventListener('click', (e) => {
+    if (e.target.closest('.chat-msg-actions, .chat-msg-reactions, a, img')) return;
+    document.querySelectorAll('.chat-msg.show-actions').forEach(m => { if (m !== div) m.classList.remove('show-actions'); });
+    div.classList.toggle('show-actions');
+  });
+}
+
+let _reactPicker = null;
+function closeReactionPicker() { _reactPicker?.remove(); _reactPicker = null; }
+function openReactionPicker(anchor, key) {
+  closeReactionPicker();
+  const pick = document.createElement('div');
+  pick.className = 'chat-react-picker';
+  pick.innerHTML = CHAT_REACTIONS.map(r =>
+    `<button class="chat-react-choice" data-type="${r.key}" title="${r.label}"><img src="${r.img}" alt="${r.label}"></button>`
+  ).join('');
+  document.body.appendChild(pick);
+  const rect = anchor.getBoundingClientRect();
+  pick.style.left = `${Math.max(6, Math.min(rect.left - 8, window.innerWidth - pick.offsetWidth - 6))}px`;
+  pick.style.top  = `${Math.max(6, rect.top - pick.offsetHeight - 8)}px`;
+  pick.querySelectorAll('.chat-react-choice').forEach(b =>
+    b.addEventListener('click', (e) => { e.stopPropagation(); toggleReaction(key, b.dataset.type, true); closeReactionPicker(); }));
+  _reactPicker = pick;
+  setTimeout(() => document.addEventListener('click', closeReactionPicker, { once: true }), 0);
+}
+
+function setReplyTarget(info) {
+  _replyTarget = { key: info.key, nick: info.nick, text: info.body };
+  const bar = document.getElementById('chat-reply-bar');
+  const to  = document.getElementById('chat-reply-to');
+  const tx  = document.getElementById('chat-reply-text');
+  if (to) to.textContent = info.nick || '';
+  if (tx) tx.textContent = (info.body || '').slice(0, 80);
+  if (bar) bar.hidden = false;
+  document.getElementById('chat-input')?.focus();
+}
+function clearReplyTarget() {
+  _replyTarget = null;
+  const bar = document.getElementById('chat-reply-bar');
+  if (bar) bar.hidden = true;
+}
+
+function appendMessage(nick, body, time, isNewMsg, { msgId, dbId, sessionId, replyTo, reactions } = {}) {
   const el  = document.getElementById('chat-messages');
   const div = document.createElement('div');
   div.className = 'chat-msg';
@@ -3215,14 +3464,21 @@ function appendMessage(nick, body, time, isNewMsg, { msgId, dbId, sessionId } = 
   const isYou = sessionId ? sessionId === state.user.sessionId : nick === state.user.nickname;
   const color = nickColor(nick, sessionId);
   const styleAttr = color ? ` style="color:${escHtml(color)}"` : '';
+  const key = msgKey(sessionId, time, nick);
+  div.dataset.key = key;
+  replyTo = replyTo || _replyMeta.get(key);
+  if (reactions) seedReactions(key, reactions);
   div.innerHTML = `
     <div class="chat-msg-header">
       <span class="chat-msg-nick${isYou ? ' is-you' : ''}"${styleAttr}>${escHtml(nick)}</span>
       <span class="chat-msg-time">${formatTime(time)}</span>
     </div>
-    <div class="chat-msg-body">${escHtml(body)}</div>
+    <div class="chat-msg-body">${replyRefHtml(replyTo)}<span class="chat-msg-text">${escHtml(body)}</span></div>
+    <div class="chat-msg-reactions" hidden></div>
   `;
+  attachMsgControls(div, { nick, body, sessionId, time, key });
   el.appendChild(div);
+  renderReactions(div, key);
   if (isNearBottom(el)) el.scrollTop = el.scrollHeight;
   updateScrollBtn();
   return div;
@@ -3252,7 +3508,7 @@ function markMsgFailed(msgId, body) {
 // Image message — rendered as a thumbnail that opens a fullscreen viewer.
 // Images are ephemeral: broadcast over realtime, never written to the DB.
 // thumb: small inline preview; full: higher-quality for the viewer.
-function appendImageMessage(nick, thumb, full, time, sessionId) {
+function appendImageMessage(nick, thumb, full, time, sessionId, { replyTo } = {}) {
   const el = document.getElementById('chat-messages');
   if (!el) return;
   const div = document.createElement('div');
@@ -3260,27 +3516,36 @@ function appendImageMessage(nick, thumb, full, time, sessionId) {
   const isYou = sessionId ? sessionId === state.user.sessionId : nick === state.user.nickname;
   const color = nickColor(nick, sessionId);
   const styleAttr = color ? ` style="color:${escHtml(color)}"` : '';
+  const key = msgKey(sessionId, time, nick);
+  div.dataset.key = key;
+  replyTo = replyTo || _replyMeta.get(key);
   div.innerHTML = `
     <div class="chat-msg-header">
       <span class="chat-msg-nick${isYou ? ' is-you' : ''}"${styleAttr}>${escHtml(nick)}</span>
       <span class="chat-msg-time">${formatTime(time)}</span>
     </div>
+    ${replyTo ? `<div class="chat-msg-body chat-msg-body--img">${replyRefHtml(replyTo)}</div>` : ''}
     <img class="chat-msg-img" src="${escHtml(thumb)}" alt="image from ${escHtml(nick)}">
+    <div class="chat-msg-reactions" hidden></div>
   `;
-  el.appendChild(div);
   const imgEl = div.querySelector('.chat-msg-img');
   imgEl?.addEventListener('click', () => openImageViewer(full));
   imgEl?.addEventListener('error', () => imgEl.classList.add('chat-msg-img--broken'));
+  attachMsgControls(div, { nick, body: 'photo', sessionId, time, key });
+  el.appendChild(div);
+  renderReactions(div, key);
   if (isNearBottom(el)) el.scrollTop = el.scrollHeight;
   updateScrollBtn();
   return div;
 }
 
-async function sendChatImage(file) {
+async function sendChatImage(file, { replyTo = null, skipGate = false } = {}) {
   if (!file) return;
   if (!state.room) return;
-  const wait = chatCooldownMs();
-  if (wait > 0) { showChatCooldown(wait); return; }
+  if (!skipGate) {
+    const wait = chatCooldownMs();
+    if (wait > 0) { showChatCooldown(wait); return; }
+  }
   let thumb, full;
   try {
     ({ thumb, full } = await fileToThumbAndFull(file));
@@ -3293,18 +3558,64 @@ async function sendChatImage(file) {
     showChatImgError('Image is too large to send. Try a smaller photo.');
     return;
   }
-  _msgBurst.push(Date.now());
-  const optimisticEl = appendImageMessage(state.user.nickname, thumb, full, Date.now(), state.user.sessionId); // optimistic
+  if (!skipGate) _msgBurst.push(Date.now());
+  const time = Date.now();   // one timestamp so the optimistic + broadcast keys match
+  const optimisticEl = appendImageMessage(state.user.nickname, thumb, full, time, state.user.sessionId, { replyTo }); // optimistic
   try {
     await broadcastToRoom('chat:image', {
       nick: state.user.nickname, thumb, full,
       src: thumb, // backward compat for old clients
-      time: Date.now(), sessionId: state.user.sessionId,
+      time, sessionId: state.user.sessionId, replyTo,
     });
+    if (replyTo) broadcastReply(msgKey(state.user.sessionId, time), replyTo);
   } catch {
     optimisticEl?.remove();
     showChatImgError("Couldn't send image. Check your connection.");
   }
+}
+
+// ── Multi-image staging: pick several, preview them, send all on ✈ ──────────
+let _stagedImages = [];   // { file, url } — object URLs revoked on clear
+function stageImageFiles(fileList) {
+  const files = [...(fileList || [])].filter(f => f && f.type.startsWith('image/'));
+  if (!files.length) return;
+  const room = 12 - _stagedImages.length;      // sane cap so previews stay usable
+  for (const file of files.slice(0, Math.max(0, room))) {
+    _stagedImages.push({ file, url: URL.createObjectURL(file) });
+  }
+  if (files.length > room) showChatImgError('You can attach up to 12 images at once.');
+  renderImgPreview();
+}
+function removeStagedImage(idx) {
+  const [gone] = _stagedImages.splice(idx, 1);
+  if (gone) URL.revokeObjectURL(gone.url);
+  renderImgPreview();
+}
+function clearStagedImages() {
+  _stagedImages.forEach(s => URL.revokeObjectURL(s.url));
+  _stagedImages = [];
+  renderImgPreview();
+}
+function renderImgPreview() {
+  const strip = document.getElementById('chat-img-preview');
+  if (!strip) return;
+  strip.hidden = _stagedImages.length === 0;
+  strip.innerHTML = _stagedImages.map((s, i) =>
+    `<div class="chat-img-thumb"><img src="${s.url}" alt="attachment ${i + 1}">`
+    + `<button class="chat-img-rm" data-i="${i}" aria-label="Remove image" title="Remove">`
+    + `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M18.3 5.7a1 1 0 0 0-1.4 0L12 10.6 7.1 5.7A1 1 0 0 0 5.7 7.1L10.6 12l-4.9 4.9a1 1 0 1 0 1.4 1.4L12 13.4l4.9 4.9a1 1 0 0 0 1.4-1.4L13.4 12l4.9-4.9a1 1 0 0 0 0-1.4z"/></svg></button></div>`
+  ).join('');
+  strip.querySelectorAll('.chat-img-rm').forEach(b =>
+    b.addEventListener('click', () => removeStagedImage(Number(b.dataset.i))));
+}
+
+// Grow the chat textarea with its content, up to ~4 lines, then let it scroll.
+const CHAT_INPUT_MAX_H = 112;
+function autoGrowChatInput() {
+  const el = document.getElementById('chat-input');
+  if (!el || el.tagName !== 'TEXTAREA') return;
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, CHAT_INPUT_MAX_H) + 'px';
 }
 
 function openImageViewer(src) {
@@ -3680,21 +3991,26 @@ async function init() {
   // ── Chat ──
   document.getElementById('btn-send').addEventListener('click', sendMessage);
   document.getElementById('btn-lock-chat')?.addEventListener('click', toggleChatLock);
-  document.getElementById('chat-input').addEventListener('keydown', e => {
+  const chatInput = document.getElementById('chat-input');
+  chatInput.addEventListener('keydown', e => {
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); sendMessage(); }
   });
+  // Grow the field as you type (up to ~4 rows, then it scrolls — see CSS).
+  chatInput.addEventListener('input', autoGrowChatInput);
+  document.getElementById('btn-cancel-reply')?.addEventListener('click', clearReplyTarget);
+  initEditableTitle();
 
-  // Chat images (ephemeral — broadcast only, never stored)
+  // Chat images (ephemeral — broadcast only, never stored). Multi-select: files
+  // are staged into a preview strip and all sent together on ✈.
   const chatFile = document.getElementById('chat-file');
   document.getElementById('btn-chat-image').addEventListener('click', () => chatFile.click());
   chatFile.addEventListener('change', () => {
-    const f = chatFile.files?.[0];
+    stageImageFiles(chatFile.files);
     chatFile.value = '';
-    if (f) sendChatImage(f);
   });
-  document.getElementById('chat-input').addEventListener('paste', e => {
-    const item = [...(e.clipboardData?.items || [])].find(i => i.type.startsWith('image/'));
-    if (item) { e.preventDefault(); sendChatImage(item.getAsFile()); }
+  chatInput.addEventListener('paste', e => {
+    const imgs = [...(e.clipboardData?.items || [])].filter(i => i.type.startsWith('image/'));
+    if (imgs.length) { e.preventDefault(); stageImageFiles(imgs.map(i => i.getAsFile())); }
   });
 
   // Scroll-to-bottom button

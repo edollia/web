@@ -551,15 +551,16 @@ a { color: inherit; text-decoration: none; }
   margin-bottom: 10px;
   display: inline-block;
 }
-/* hand-drawn wavy squiggle under the word "rooms" (no heart) — inline SVG
+/* short hand-drawn swash under the word "rooms" — a single confident marker
+   stroke (shorter + calmer than the old full-width squiggle). Inline SVG
    data-URI background, allowed by CSP img-src 'self' data: blob: */
 .lobby-title::after {
   content: '';
   display: block;
-  width: 128px;
-  height: 10px;
-  margin-top: 4px;
-  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='128' height='10' viewBox='0 0 128 10'%3E%3Cpath d='M3 6 C 20 1, 38 1, 55 5.5 S 92 10, 125 4' fill='none' stroke='%23ff8fc4' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat;
+  width: 72px;
+  height: 9px;
+  margin-top: 2px;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='72' height='9' viewBox='0 0 72 9'%3E%3Cpath d='M3 6.4 C 18 2.6, 40 2.2, 69 4.4' fill='none' stroke='%23ff8fc4' stroke-width='3.2' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat;
   background-size: contain;
 }
 .lobby-sub {
@@ -720,6 +721,11 @@ a { color: inherit; text-decoration: none; }
 .room-card.locked::after { display: none; }   /* locked cards: no tape */
 .room-card.locked:hover { transform: rotate(0deg); box-shadow: var(--v-shadow); }
 .room-card.yours { border-color: var(--v-pink-mid); }
+/* Touch devices can't hover — keep the locked card's dashed outline clearly
+   visible at all times so "locked" always reads. */
+@media (hover: none) {
+  .room-card.locked { border-color: var(--v-pink-mid); opacity: 0.9; }
+}
 
 .card-avatar {
   width: 56px;
@@ -1366,8 +1372,10 @@ a { color: inherit; text-decoration: none; }
 }
 .chat-msg:has(.chat-msg-nick.is-you) { align-items: flex-end; }
 .chat-msg:has(.chat-msg-nick.is-you) .chat-msg-body {
-  background: var(--v-grad-primary);
-  color: #fff;
+  /* Your own bubbles: soft pink with deep-rose ink (white-on-pale-pink was
+     unreadable). Still clearly "you". */
+  background: linear-gradient(135deg, #ffd9ec, #ffc2e0);
+  color: #7a2f57;
   border-color: transparent;
   border-radius: 14px 4px 14px 14px;
 }
@@ -1467,11 +1475,18 @@ a { color: inherit; text-decoration: none; }
   padding: 8px 12px;
   background: var(--v-bg);
   border: 1.5px solid var(--v-border);
-  border-radius: 999px;
+  border-radius: 18px;
   color: var(--v-text);
+  font-family: var(--v-font-body);
   font-size: 16px; /* 16px prevents iOS auto-zoom on focus */
   outline: none;
   transition: border-color 0.15s, box-shadow 0.15s;
+  /* Autogrow textarea: starts at one line, grows to ~4 (JS caps the height),
+     then scrolls. */
+  resize: none;
+  line-height: 1.35;
+  max-height: 112px;
+  overflow-y: auto;
 }
 .chat-input::placeholder { color: var(--v-text-muted); }
 .chat-input:focus {
@@ -1495,6 +1510,187 @@ a { color: inherit; text-decoration: none; }
 }
 .chat-icon-btn:hover { background: var(--v-pink-light); color: var(--v-pink-dark); border-color: var(--v-pink-mid); }
 .chat-icon-btn .dock-icon { width: 17px; height: 17px; }
+
+/* ══════════════════ CHAT: reactions · replies · staged images ══════════════ */
+
+.chat-msg { position: relative; }
+
+/* Quoted reply preview shown above a message's text (and in the composer bar) */
+.chat-msg-replyref {
+  display: block;
+  margin-bottom: 4px;
+  padding: 3px 8px;
+  border-left: 3px solid var(--v-pink-mid);
+  border-radius: 4px;
+  background: rgba(255, 143, 196, 0.10);
+  font-size: 11.5px;
+  line-height: 1.3;
+  color: var(--v-text-muted);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chat-msg-replyref b { color: var(--v-pink-dark); font-weight: 700; margin-right: 5px; }
+.chat-msg:has(.chat-msg-nick.is-you) .chat-msg-replyref { color: #9a5476; background: rgba(255,255,255,0.5); border-left-color: #e39; }
+.chat-msg-body--img { background: none !important; border: none !important; padding: 0 !important; max-width: 100%; }
+
+/* Per-message hover/tap toolbar (react + reply), floats at the top corner */
+.chat-msg-actions {
+  position: absolute;
+  top: -7px;
+  right: 4px;
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  background: #fff;
+  border: 1px solid var(--v-border);
+  border-radius: 999px;
+  box-shadow: var(--v-shadow-sm);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s;
+  z-index: 3;
+}
+.chat-msg:has(.chat-msg-nick.is-you) .chat-msg-actions { right: auto; left: 4px; }
+.chat-msg:hover .chat-msg-actions,
+.chat-msg.show-actions .chat-msg-actions { opacity: 1; pointer-events: auto; }
+.msg-act {
+  width: 24px; height: 24px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 50%;
+  background: none; border: none;
+  color: var(--v-pink-dark);
+  cursor: pointer;
+}
+.msg-act:hover { background: var(--v-pink-light); }
+.msg-act svg { width: 15px; height: 15px; }
+
+/* Reaction pills under a message */
+.chat-msg-reactions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; }
+.chat-msg-reactions[hidden] { display: none; }
+.chat-msg:has(.chat-msg-nick.is-you) .chat-msg-reactions { justify-content: flex-end; }
+.chat-react-pill {
+  display: inline-flex; align-items: center; gap: 3px;
+  padding: 1px 7px 1px 3px;
+  border-radius: 999px;
+  background: var(--v-surface-3);
+  border: 1.5px solid var(--v-border);
+  cursor: pointer;
+  line-height: 1;
+  transition: background 0.12s, border-color 0.12s;
+}
+.chat-react-pill img { width: 15px; height: 15px; object-fit: contain; }
+.chat-react-pill span { font-size: 11px; font-weight: 700; color: var(--v-text-muted); }
+.chat-react-pill.mine { background: var(--v-pink-light); border-color: var(--v-pink-mid); }
+.chat-react-pill.mine span { color: var(--v-pink-dark); }
+.chat-react-pill:hover { border-color: var(--v-pink-mid); }
+
+/* Reaction face picker popover */
+.chat-react-picker {
+  position: fixed;
+  z-index: 960;
+  display: flex;
+  gap: 2px;
+  padding: 5px;
+  background: #fff;
+  border: 1.5px solid var(--v-border);
+  border-radius: 999px;
+  box-shadow: var(--v-shadow-lg);
+  animation: popover-in 0.14s ease;
+}
+.chat-react-choice {
+  width: 34px; height: 34px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 50%;
+  background: none; border: none; cursor: pointer;
+  transition: transform 0.1s, background 0.1s;
+}
+.chat-react-choice img { width: 24px; height: 24px; object-fit: contain; }
+.chat-react-choice:hover { background: var(--v-pink-light); transform: scale(1.16); }
+
+/* Composer reply bar (above the input row) */
+.chat-reply-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 10px 6px;
+  padding: 6px 8px 6px 10px;
+  background: var(--v-grad-soft);
+  border-left: 3px solid var(--v-pink);
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+.chat-reply-bar[hidden] { display: none; }
+.chat-reply-icon { display: flex; color: var(--v-pink-dark); flex-shrink: 0; }
+.chat-reply-icon svg { width: 15px; height: 15px; }
+.chat-reply-meta { min-width: 0; flex: 1; display: flex; flex-direction: column; line-height: 1.25; }
+.chat-reply-to { font-size: 11px; font-weight: 700; color: var(--v-pink-dark); }
+.chat-reply-text { font-size: 12px; color: var(--v-text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-reply-x {
+  width: 24px; height: 24px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 50%; background: none; border: none; color: var(--v-text-muted); cursor: pointer;
+}
+.chat-reply-x:hover { background: rgba(0,0,0,0.05); color: var(--v-pink-dark); }
+.chat-reply-x svg { width: 14px; height: 14px; }
+
+/* Staged multi-image preview strip (above the input) */
+.chat-img-preview {
+  display: flex;
+  gap: 8px;
+  margin: 0 10px 6px;
+  padding: 6px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  background: var(--v-surface-3);
+  border-radius: 10px;
+  flex-shrink: 0;
+  scrollbar-width: thin;
+}
+.chat-img-preview[hidden] { display: none; }
+.chat-img-thumb { position: relative; flex-shrink: 0; }
+.chat-img-thumb img {
+  width: 58px; height: 58px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1.5px solid var(--v-border);
+  display: block;
+}
+.chat-img-rm {
+  position: absolute;
+  top: -5px; right: -5px;
+  width: 19px; height: 19px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 50%;
+  background: var(--v-pink-btn);
+  color: #fff;
+  border: 1.5px solid #fff;
+  cursor: pointer;
+  padding: 0;
+}
+.chat-img-rm svg { width: 11px; height: 11px; }
+
+/* keep the send/image buttons pinned to the bottom as the textarea grows */
+.chat-input-row { align-items: flex-end; }
+
+/* editable room title (host taps the topbar title to rename) */
+.topbar-host.editable { cursor: text; border-radius: 6px; padding: 1px 4px; margin: -1px -4px; transition: background 0.12s; }
+.topbar-host.editable:hover { background: rgba(255, 143, 196, 0.12); }
+.topbar-title-input {
+  font: inherit;
+  color: var(--v-text);
+  background: #fff;
+  border: 1.5px solid var(--v-pink);
+  border-radius: 6px;
+  padding: 1px 6px;
+  outline: none;
+  max-width: 60vw;
+  width: 12ch;
+}
+
+/* pinned banner now-playing: give the little eq glyph room to breathe */
+.pinned-np .np-eq { margin-right: 6px; height: 12px; transform: translateY(1px); }
 
 /* Image message thumbnail */
 .chat-msg-img {
@@ -2439,7 +2635,9 @@ a { color: inherit; text-decoration: none; }
 }
 .chat-lock-btn[hidden] { display: none; }
 .chat-lock-btn svg { width: 12px; height: 12px; }
-.chat-lock-btn[aria-pressed="true"] { background: var(--v-grad-primary); color: #fff; border-color: var(--v-pink); }
+/* Locked state: solid deep rose so "chat locked" stays legible (the old pale
+   gradient made white text vanish). */
+.chat-lock-btn[aria-pressed="true"] { background: #c0407d; color: #fff; border-color: #a8356b; }
 
 /* vinyl disc art (shared by now-playing banner + lobby pinned banner) */
 .np-art, .pinned-art {
@@ -2805,10 +3003,9 @@ a { color: inherit; text-decoration: none; }
   .room-card {
     display: grid;
     grid-template-columns: auto 1fr auto;
-    grid-template-areas: "bub name live" "bub meta live";
+    grid-template-areas: "bub name live";
     align-items: center;
     column-gap: 12px;
-    row-gap: 2px;
     padding: 12px 16px;
     transform: none !important;
     text-align: left;
@@ -2819,14 +3016,17 @@ a { color: inherit; text-decoration: none; }
   .card-bubbles { grid-area: bub; height: auto; }
   .card-avatar { width: 44px; height: 44px; font-size: 18px; }
   .card-bubble { width: 34px; height: 34px; font-size: 13px; }
-  .room-card .card-name { grid-area: name; text-align: left; align-self: end; }
-  .room-card .card-meta { grid-area: meta; align-self: start; justify-content: flex-start; }
+  /* Single row now (locked tag flows inline with the name) — the old two-row
+     grid left a tall empty gap above the name on locked cards. */
+  .room-card .card-name {
+    grid-area: name; text-align: left; align-self: center;
+    display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px;
+  }
   .card-live { grid-area: live; position: static; align-self: center; }
   .card-live-word { display: none; }
   .card-live-num { display: inline; }
   .room-card .card-join { display: none; }
-  /* locked card: "dont ask me" sits in the right column instead of wrapping to a
-     new auto row (which showed as a tall empty gap inside the card). */
+  /* locked card: "dont ask me" sits in the right column, vertically centered. */
   .room-card .card-ask { grid-area: live; align-self: center; justify-self: end; text-align: right; }
 
   /* compact pinned banner */
@@ -2888,8 +3088,10 @@ a { color: inherit; text-decoration: none; }
 
   /* Room = a vertical split: participants on top, a drag-resizable chat sheet
      on the bottom. Drag #chat-grabber to change the split; drag it shut to hide
-     the chat (the dock chat button reopens it). No fixed overlay, no peek. */
-  .room-main { flex-direction: column; }
+     the chat (the dock chat button reopens it). No fixed overlay, no peek.
+     overflow:hidden is a hard guard so the sheet can never spill past room-main
+     and slide under/over the dock during a resize. */
+  .room-main { flex-direction: column; overflow: hidden; }
   .panel-participants { flex: 1 1 auto !important; min-height: 120px; padding: 14px 14px 10px; }
   .panel-chat {
     flex: none;
