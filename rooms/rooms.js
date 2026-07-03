@@ -121,8 +121,6 @@ let _sharingOrder   = new Map(); // sessionId → monotonic rank (lower = starte
 let _sharingCounter = 0;
 let _videoAspectRatio = {}; // sessionId → { w, h } once a camera's real aspect ratio is known
 let _repackTimer = null;    // debounce handle for scheduleRepack()
-let _lastColumnCount = 0;   // column count used by the most recent renderParticipants() — lets a
-                            // resize skip repacking entirely when it wouldn't actually change anything
 
 // ── § DEBUG LOGGER ────────────────────────────────────────────────
 // Silent in production. Enable with: localStorage.setItem('dg_debug', '1')
@@ -465,6 +463,7 @@ async function sbCreateRoom(slug, title, locked) {
 }
 
 async function sbUpdateRoom(slug, updates) {
+  if (DEMO) return; // demo mode: no backend — optimistic local state is the truth
   const hostKey = getHostKey(slug);
   const adminJwt = !hostKey && state.user.isAdmin ? await getAdminJwt() : null;
   if (!hostKey && !adminJwt) throw new Error('missing host key');
@@ -529,6 +528,7 @@ async function sbLoadMessages(roomId, limit = 50) {
 }
 
 async function sbSendMessage(roomId, body) {
+  if (DEMO) return; // demo: the optimistic append is all there is
   const { error } = await sb.from('room_messages').insert({
     room_id:    roomId,
     nickname:   state.user.nickname,
@@ -539,6 +539,7 @@ async function sbSendMessage(roomId, body) {
 }
 
 async function sbAddBan(roomId, type, value) {
+  if (DEMO) return; // demo: ban is local only
   if (!state.room?.slug) return;
   const hostKey = getHostKey(state.room.slug);
   const adminJwt = !hostKey && state.user.isAdmin ? await getAdminJwt() : null;
@@ -563,6 +564,7 @@ async function sbAddBan(roomId, type, value) {
 }
 
 async function sbModerate(action, targetSessionId, extra = {}) {
+  if (DEMO) return {}; // demo: moderation is applied to local state only
   if (!state.room?.slug || !targetSessionId) return;
   const hostKey = getHostKey(state.room.slug);
   const adminJwt = !hostKey && state.user.isAdmin ? await getAdminJwt() : null;
@@ -1316,6 +1318,7 @@ const DEMO_ROOMS = [
     participant_previews:[{n:'lia',a:'#ff8fc4'},{n:'mika',a:'#c9a0e8'},{n:'sol',a:'#ffb38a'}] },
   { id:'d-mika', slug:'mika', title:'mika & friends', host:'mika', hostAccent:'#c9a0e8', status:'active',
     locked:false, audience_mode:false, audience:false, chat_locked:false, member_count:4,
+    now_playing_kind:'music', now_playing_title:'midnight drive', now_playing_source:'synthwave',
     participant_previews:[{n:'mika',a:'#c9a0e8'},{n:'kaz',a:'#8ec5e8'}] },
   { id:'d-study', slug:'study', title:'study lounge', host:'sora', hostAccent:'#ffb38a', status:'active',
     locked:false, audience_mode:true, audience:true, chat_locked:false, member_count:5,
@@ -1326,8 +1329,9 @@ const DEMO_ROOMS = [
   { id:'d-rainy', slug:'rainy', title:'rainy day', host:'rin', hostAccent:'#ffa6d0', status:'active',
     locked:false, audience_mode:false, audience:false, chat_locked:false, member_count:1,
     participant_previews:[{n:'rin',a:'#ffa6d0'}] },
-  { id:'d-kpop', slug:'kpop', title:'kpop corner', host:'jin', hostAccent:'#8ec5e8', status:'active',
+  { id:'d-kpop', slug:'kpop', title:'movie night', host:'jin', hostAccent:'#8ec5e8', status:'active',
     locked:false, audience_mode:false, audience:false, chat_locked:false, member_count:6,
+    now_playing_kind:'movie', now_playing_title:'spirited away', now_playing_source:'watch party',
     participant_previews:[{n:'jin',a:'#8ec5e8'},{n:'ari',a:'#b0a6ec'},{n:'mei',a:'#ffc48a'}] },
 ];
 
@@ -1375,20 +1379,20 @@ function demoEnterRoom(slug) {
   placeChatViewControl();
   placeHostControls();
   updateChatLockUI();
-  // Demo always shows the now-playing banner so the feature is visible.
-  setNowPlaying({ title: src.now_playing_title || 'sleepy town', source: src.now_playing_source || 'lofi radio' });
+  // Show the room's real now-playing (music/movie), or no banner if none —
+  // so all three states are eyeball-able across the demo rooms.
+  if (src.now_playing_title) setNowPlaying({ kind: src.now_playing_kind, title: src.now_playing_title, source: src.now_playing_source });
+  else setNowPlaying(null);
   if (isMobileView()) setChatView('hidden');
   // Fake a live video tile so the camera-label overlay (#3) is visible too.
   requestAnimationFrame(() => {
     const solCard = document.querySelector('.participant-card[data-sid="d-p-sol"]');
     if (solCard && !solCard.querySelector('.p-video-wrap')) {
       const wrap = document.createElement('div');
-      wrap.className = 'p-video-wrap';
-      wrap.style.cssText = 'aspect-ratio:16/9;background:linear-gradient(135deg,#ffd6a6,#ff9fb6);border-radius:14px;overflow:hidden;position:relative';
+      wrap.className = 'p-video-wrap';       // full-bleed via .has-video CSS
       wrap.innerHTML = `<div class="p-video-name">${ICON.cam}<span>sol</span></div>`;
       (solCard.querySelector('.p-avatar') || solCard).after(wrap);
       solCard.classList.add('has-video');
-      scheduleRepack();
     }
   });
 }
@@ -1586,7 +1590,6 @@ async function doShowLobby() {
   _videoAspectRatio = {};
   clearTimeout(_repackTimer);
   _repackTimer     = null;
-  _lastColumnCount = 0;
   document.getElementById('btn-leave')?.classList.remove('is-leaving');
   document.getElementById('btn-back')?.classList.remove('is-leaving');
 
@@ -1965,69 +1968,12 @@ function sortParticipants(list) {
   });
 }
 
-// ── § PARTICIPANT GRID PACKING ──────────────────────────────────────
-// Greedy shortest-column bin-packing so a tall camera tile never strands a
-// shorter neighbor's row with dead space (see the comment on .participant-grid
-// in rooms.css for why grid-auto-flow:dense and CSS multi-column don't work here).
-
-const PG_COLUMN_GAP = 12; // must match .participant-grid/.pg-column's `gap` in rooms.css
-
-// Reads .pg-column's current computed width from CSS rather than hardcoding
-// 163/178 in JS, so the per-breakpoint card width only ever lives in one place.
-function getColumnWidth() {
-  const existing = document.querySelector('.pg-column');
-  if (existing) return parseFloat(getComputedStyle(existing).width) || 178;
-  const grid = document.getElementById('participant-grid');
-  if (!grid) return 178;
-  const probe = document.createElement('div');
-  probe.className = 'pg-column';
-  probe.style.visibility = 'hidden';
-  probe.style.position = 'absolute';
-  grid.appendChild(probe);
-  const w = parseFloat(getComputedStyle(probe).width) || 178;
-  probe.remove();
-  return w;
-}
-
-function getColumnCount(containerWidth, cardWidth) {
-  const isMobilePortrait = window.matchMedia('(max-width: 767px)').matches
-    && !window.matchMedia('(orientation: landscape) and (max-height: 500px)').matches;
-  if (isMobilePortrait) return 2; // matches the fixed 2-column mobile layout
-  return Math.max(1, Math.floor((containerWidth + PG_COLUMN_GAP) / (cardWidth + PG_COLUMN_GAP)));
-}
-
-// Pre-measurement estimate used only for packing decisions — never applied to
-// the DOM. Real rendered height still comes from the browser (padding, name,
-// badges, and — once known — the video's real aspect ratio).
-function estimateCardHeight(p, cardWidth) {
-  if (p.sharing !== 'cam') return 140; // matches .participant-card:not(.has-video) min-height
-  const known = _videoAspectRatio[p.sessionId];
-  const ratio = known ? (known.h / known.w) : (9 / 16); // 16:9 placeholder default until known
-  return Math.round(cardWidth * ratio) + 60; // + avatar/name/badges chrome below the video
-}
-
-// Walks sortParticipants()'s already sharer-first list and drops each participant
-// into whichever column currently has the smallest running estimated height.
-function packIntoColumns(sortedList, columnCount, cardWidth) {
-  const columns = Array.from({ length: columnCount }, () => []);
-  const heights = new Array(columnCount).fill(0);
-  for (const p of sortedList) {
-    let shortest = 0;
-    for (let i = 1; i < columnCount; i++) {
-      if (heights[i] < heights[shortest]) shortest = i;
-    }
-    columns[shortest].push(p);
-    heights[shortest] += estimateCardHeight(p, cardWidth) + PG_COLUMN_GAP;
-  }
-  return columns;
-}
-
-// Debounced re-render for the few triggers where a card's real height becomes
-// known/changes AFTER it was already placed (a video's real aspect ratio
-// resolving, a camera toggling on/off, a container resize). Every existing
-// renderParticipants() call site (mute, join/leave, kick, sharing change, etc.)
-// keeps calling it directly for instant feedback — only those triggers should
-// ever go through this debounce.
+// ── § PARTICIPANT GRID ──────────────────────────────────────────────
+// The grid is now plain responsive CSS (see .participant-grid in rooms.css), so
+// there's no JS bin-packing. scheduleRepack() is kept only as a debounced
+// re-render for the few triggers where a card changes AFTER first paint (a
+// video's real aspect ratio resolving, a camera toggling on/off) — the CSS grid
+// reflows on its own, but re-rendering keeps the tile markup in sync.
 function scheduleRepack() {
   clearTimeout(_repackTimer);
   _repackTimer = setTimeout(() => {
@@ -2036,32 +1982,94 @@ function scheduleRepack() {
   }, 120);
 }
 
-// 3-state chat view: 'full' (default), 'peek' (compact), 'hidden' (closed).
-// Pure UI — no LiveKit/Supabase involvement. Repacks participants so tiles use
-// the new available width/height.
+// Chat view: 'full' (shown) or 'hidden'. Pure UI — no LiveKit/Supabase. On
+// mobile the sheet's height is set separately by the drag handle (initChatResize).
 function setChatView(view) {
-  if (!['full', 'peek', 'hidden'].includes(view)) view = 'full';
+  // Two states only: chat is shown ('full') or hidden. (Legacy 'peek' → shown.)
+  view = (view === 'hidden') ? 'hidden' : 'full';
+  if (view === 'full') ensureChatSheetHeight();
   state.ui.chatView = view;
   state.ui.chatHidden = (view === 'hidden');
   const chat  = document.getElementById('panel-chat');
   const parts = document.getElementById('panel-participants');
   chat?.classList.toggle('chat-hidden', view === 'hidden');
-  chat?.classList.toggle('chat-peek', view === 'peek');
   parts?.classList.toggle('chat-hidden-partner', view === 'hidden');
-  parts?.classList.toggle('chat-peek-partner', view === 'peek');
-  document.querySelectorAll('#chat-view-control .seg-btn').forEach(b =>
-    b.classList.toggle('is-active', b.dataset.view === view));
+  const toggle = document.getElementById('btn-chat-view');
+  if (toggle) {
+    toggle.textContent = view === 'hidden' ? 'show chat' : 'hide chat';
+    toggle.title = view === 'hidden' ? 'Show chat' : 'Hide chat';
+    toggle.setAttribute('aria-pressed', String(view === 'hidden'));
+  }
   const tb = document.getElementById('btn-toggle-chat');
   if (tb) tb.textContent = view === 'hidden' ? 'show chat' : 'hide chat';
   if (view !== 'hidden') clearChatUnread();
-  scheduleRepack();
 }
 
-// ── Mobile chat (chat is an overlay sheet opened from the dock) ──────
+// ── Mobile chat: a drag-resizable bottom sheet split with participants ──────
 function isMobileView() { return window.matchMedia('(max-width: 767px)').matches; }
 
-// The full/peek/hide control lives in the topbar on desktop and inside the chat
-// sheet header on mobile. Move the same node (keeps its id + handlers) to match.
+// Remembered chat-sheet height (px) so it re-opens at the last size the user set.
+let _chatSheetH = 0;
+
+// Mobile only: dragging #chat-grabber resizes the participants/chat split by
+// setting --chat-h on #room-main. Dragging it (nearly) shut hides the chat.
+// Desktop is unaffected (the grabber is display:none there).
+function initChatResize() {
+  const grabber = document.getElementById('chat-grabber');
+  const chat    = document.getElementById('panel-chat');
+  const main    = document.getElementById('room-main');
+  if (!grabber || !chat || !main || grabber._wired) return;
+  grabber._wired = true;
+
+  const MIN = 120;        // never shrink the sheet below this while open
+  const CLOSE_AT = 96;    // drag below this → close the sheet
+  const maxH = () => Math.max(MIN, main.clientHeight - 130); // keep participants visible
+
+  let dragging = false, startY = 0, startH = 0, live = 0;
+
+  const apply = (h) => {
+    live = Math.min(maxH(), Math.max(CLOSE_AT - 20, h));
+    main.style.setProperty('--chat-h', live + 'px');
+  };
+  const onMove = (e) => {
+    if (!dragging) return;
+    const y = e.touches ? e.touches[0].clientY : e.clientY;
+    apply(startH + (startY - y));   // drag up → taller
+    e.preventDefault();
+  };
+  const onUp = () => {
+    if (!dragging) return;
+    dragging = false;
+    grabber.classList.remove('dragging');
+    document.removeEventListener('pointermove', onMove);
+    document.removeEventListener('pointerup', onUp);
+    if (live <= CLOSE_AT) { setChatView('hidden'); }
+    else { _chatSheetH = Math.max(MIN, live); }
+  };
+  const onDown = (e) => {
+    if (!isMobileView()) return;
+    dragging = true;
+    grabber.classList.add('dragging');
+    startY = e.touches ? e.touches[0].clientY : e.clientY;
+    startH = chat.getBoundingClientRect().height;
+    live = startH;
+    document.addEventListener('pointermove', onMove, { passive: false });
+    document.addEventListener('pointerup', onUp);
+    e.preventDefault();
+  };
+  grabber.addEventListener('pointerdown', onDown);
+}
+
+// Give the mobile chat sheet a sensible starting height the first time it opens.
+function ensureChatSheetHeight() {
+  const main = document.getElementById('room-main');
+  if (!main || !isMobileView()) return;
+  if (!_chatSheetH) _chatSheetH = Math.round(main.clientHeight * 0.5) || 320;
+  main.style.setProperty('--chat-h', _chatSheetH + 'px');
+}
+
+// (Legacy no-op — the standalone chat toggle now lives statically in the topbar
+// and is hidden on mobile via CSS, so nothing needs relocating per breakpoint.)
 function placeChatViewControl() {
   const seg = document.getElementById('chat-view-control');
   if (!seg) return;
@@ -2124,10 +2132,20 @@ function toggleNpMute() {
   else { _npPreMuteVolume = _npVolume; applyNpVolume(0); }
 }
 
+// Vinyl (music) vs film-strip (movie) art for the now-playing banner.
+const NP_ART_MUSIC = '<svg class="np-vinyl" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 13.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"/></svg>';
+const NP_ART_MOVIE = '<svg class="np-film" viewBox="0 0 24 24" fill="currentColor"><path d="M18 4l2 4h-3l-2-4h-2l2 4h-3l-2-4H8l2 4H7L5 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V4h-4z"/></svg>';
+
 function setNowPlaying(info) {
   const banner = document.getElementById('now-playing');
   if (!banner) return;
   if (!info || !info.title) { banner.hidden = true; return; }
+  const kind = info.kind === 'movie' ? 'movie' : 'music';
+  banner.classList.toggle('np-movie', kind === 'movie');
+  const label = document.getElementById('np-label');
+  if (label) label.textContent = kind === 'movie' ? 'now watching' : 'now playing';
+  const art = document.getElementById('np-art');
+  if (art) art.innerHTML = kind === 'movie' ? NP_ART_MOVIE : NP_ART_MUSIC;
   const t = document.getElementById('np-title');
   const s = document.getElementById('np-source');
   if (t) t.textContent = info.title;
@@ -2188,13 +2206,16 @@ function renderParticipants() {
   const visible = sortParticipants(
     state.participants.filter(p => !(p.sessionId === state.user.sessionId && state.user.ghost))
   );
-  const cardWidth   = getColumnWidth();
-  const columnCount = Math.min(getColumnCount(grid.parentElement.clientWidth, cardWidth), visible.length || 1);
-  _lastColumnCount  = columnCount;
-  const columns     = packIntoColumns(visible, columnCount, cardWidth);
-  grid.innerHTML = columns
-    .map(col => `<div class="pg-column">${col.map(p => renderParticipantCard(p, isHost)).join('')}</div>`)
-    .join('');
+
+  // The invite tile lives in the grid as its final cell; detach it (preserving
+  // its node + bound copy handler) so the innerHTML wipe below doesn't destroy it.
+  const rfom = document.getElementById('room-for-one-more');
+  if (rfom && rfom.parentElement === grid) rfom.remove();
+
+  grid.innerHTML = visible.map(p => renderParticipantCard(p, isHost)).join('');
+
+  // Invite tile flows as the last grid cell (mockup).
+  if (rfom && !rfom.hidden) grid.appendChild(rfom);
 
   // Re-insert preserved wraps from stash into their new cards.
   grid.querySelectorAll('.participant-card[data-sid]').forEach(card => {
@@ -3577,20 +3598,18 @@ async function init() {
     }).catch(() => {});
   });
 
-  // 3-state chat view (full / peek / hidden) via the segmented control.
-  document.querySelectorAll('#chat-view-control .seg-btn').forEach(btn => {
-    btn.addEventListener('click', () => setChatView(btn.dataset.view));
+  // Chat is shown or hidden — one desktop toggle. On mobile the chat is a
+  // drag-resizable bottom sheet opened from the dock (see initChatResize).
+  document.getElementById('btn-chat-view')?.addEventListener('click', () => {
+    setChatView(state.ui.chatView === 'hidden' ? 'full' : 'hidden');
   });
-  // Legacy toggle kept for its id (null-safe); now drives the same state.
   document.getElementById('btn-toggle-chat')?.addEventListener('click', () => {
     setChatView(state.ui.chatView === 'hidden' ? 'full' : 'hidden');
   });
+  initChatResize();
 
-  // Retire the old topbar buttons in favour of the mockup controls, and reveal
-  // the segmented control + the "room for one more" invite tile.
-  document.getElementById('btn-toggle-chat')?.setAttribute('hidden', '');
-  document.getElementById('btn-copy-link')?.setAttribute('hidden', '');
-  document.getElementById('chat-view-control')?.removeAttribute('hidden');
+  // Reveal the desktop show/hide toggle + the "room for one more" invite tile.
+  document.getElementById('btn-chat-view')?.removeAttribute('hidden');
   const rfom = document.getElementById('room-for-one-more');
   if (rfom) {
     rfom.hidden = false;
@@ -3755,23 +3774,8 @@ async function init() {
   // widening the panel with no viewport resize at all. One observer covers
   // all three causes instead of wiring a separate listener for each.
   //
-  // Gated on the column count actually changing: most width changes (chat
-  // toggle in particular — it only changes the panel's side margins, not how
-  // many 178px columns fit) don't change the packing at all. Repacking anyway
-  // would force a full grid rebuild, and reparenting live <video> elements
-  // during that rebuild is visibly disruptive (one dropped/flickered frame)
-  // even though the same DOM nodes survive it — so skip the rebuild entirely
-  // unless the column count itself would actually be different.
-  new ResizeObserver(() => {
-    if (state.view !== 'room') return;
-    const panel = document.getElementById('panel-participants');
-    const prospectiveCount = Math.min(
-      getColumnCount(panel.clientWidth, getColumnWidth()),
-      state.participants.length || 1
-    );
-    if (prospectiveCount === _lastColumnCount) return;
-    scheduleRepack();
-  }).observe(document.getElementById('panel-participants'));
+  // Participant tiles are a plain responsive CSS grid now — the browser reflows
+  // columns on resize with no JS help, so no ResizeObserver/repack is needed.
 
   // ── Route ──
   if (DEMO) { startDemo(); return; }
