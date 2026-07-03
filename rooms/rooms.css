@@ -1010,6 +1010,9 @@ a { color: inherit; text-decoration: none; }
   padding: 18px 20px;
   overflow-y: auto;
   overscroll-behavior: contain;
+  /* Always reserve the scrollbar gutter so opening/closing chat (which changes
+     this panel's height) never nudges the cards left↔right as the bar appears. */
+  scrollbar-gutter: stable;
   gap: 0;
 }
 .panel-chat {
@@ -2129,7 +2132,7 @@ a { color: inherit; text-decoration: none; }
   display: none;
   align-items: center;
   justify-content: center;
-  height: 22px;
+  height: 28px;          /* roomy touch target so the pull feels smooth to grab */
   flex-shrink: 0;
   cursor: ns-resize;
   touch-action: none;
@@ -2443,8 +2446,9 @@ a { color: inherit; text-decoration: none; }
   position: relative;
   border-radius: 50%;
   flex-shrink: 0;
-  background: repeating-radial-gradient(circle, #2b1a24 0 1px, #3a2230 1px 2.5px);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  background: repeating-radial-gradient(circle at 50% 50%, #4a3540 0 1.6px, #5a414c 1.6px 2.8px);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  animation: vinyl-spin 7s linear infinite;   /* the disc spins while playing (mockup) */
 }
 .np-art { width: 30px; height: 30px; }
 .pinned-art { width: 64px; height: 64px; }
@@ -2465,6 +2469,7 @@ a { color: inherit; text-decoration: none; }
   border-radius: 8px;
   background: linear-gradient(135deg, #c9b6f0, #ffb6dd);
   box-shadow: none;
+  animation: none;   /* a movie poster tile shouldn't spin like a record */
 }
 .now-playing.np-movie .np-art::after { display: none; }
 .now-playing.np-movie .np-art .np-film {
@@ -2492,7 +2497,7 @@ a { color: inherit; text-decoration: none; }
 }
 .now-playing[hidden] { display: none; }
 .np-eq { display: inline-flex; align-items: flex-end; gap: 2px; height: 14px; flex-shrink: 0; }
-.np-eq i { width: 3px; background: var(--v-pink); border-radius: 1px; animation: np-eq 0.8s ease-in-out infinite; }
+.np-eq i { width: 3px; background: var(--v-pink); border-radius: 1px; transform-origin: bottom; animation: np-eq 0.8s ease-in-out infinite; }
 .np-eq i:nth-child(1) { height: 6px;  animation-delay: 0s; }
 .np-eq i:nth-child(2) { height: 12px; animation-delay: 0.15s; }
 .np-eq i:nth-child(3) { height: 8px;  animation-delay: 0.3s; }
@@ -2556,7 +2561,6 @@ a { color: inherit; text-decoration: none; }
   position: relative;
 }
 .pinned-banner[hidden] { display: none; }
-.pinned-banner.is-spinning .pinned-art { animation: vinyl-spin 4s linear infinite; }
 @keyframes vinyl-spin { to { transform: rotate(360deg); } }
 .pinned-body { flex: 1; min-width: 0; }
 .pinned-titlerow { display: flex; align-items: center; gap: 8px; }
@@ -2821,6 +2825,9 @@ a { color: inherit; text-decoration: none; }
   .card-live-word { display: none; }
   .card-live-num { display: inline; }
   .room-card .card-join { display: none; }
+  /* locked card: "dont ask me" sits in the right column instead of wrapping to a
+     new auto row (which showed as a tall empty gap inside the card). */
+  .room-card .card-ask { grid-area: live; align-self: center; justify-self: end; text-align: right; }
 
   /* compact pinned banner */
   .pinned-banner { gap: 12px; padding: 12px 14px; margin-bottom: 16px; }
@@ -2828,38 +2835,31 @@ a { color: inherit; text-decoration: none; }
   .pinned-title { font-size: 16px; }
   #pinned-tagline { display: none; }
 
-  /* full-width "start a room" pinned near the bottom, above the footer */
+  /* "start a room" stays at the top of the lobby (in the header, full-width
+     under the title) — it is NOT pinned to the bottom of the screen. */
   #btn-create {
-    position: fixed;
-    left: 16px; right: 16px; bottom: 12px;
-    width: auto;
-    z-index: 20;
+    align-self: stretch;
+    justify-content: center;
     padding: 13px 20px;
-    box-shadow: var(--v-shadow-lg);
   }
-  .view-lobby { padding-bottom: 78px; }
 
   /* screen share is unsupported on mobile */
   #btn-screen { display: none; }
   /* chat opens from the dock instead of stacking */
   .dock-chat-btn { display: flex; }
 
-  /* "room for one more" → full-width invite row spanning both grid columns */
+  /* "room for one more" invite = one normal grid cell that matches the
+     participant cards beside it (it used to span the full width and read as an
+     oversized banner). */
   .room-for-one-more {
-    grid-column: 1 / -1;
-    flex-direction: row;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: flex-start;
-    gap: 6px 12px;
     min-height: 0;
     margin: 0;
-    padding: 14px 16px;
-    text-align: left;
+    padding: 16px 10px;
+    gap: 6px;
+    text-align: center;
     transform: rotate(0deg);
   }
   .room-for-one-more .rfom-icon { width: 34px; height: 34px; }
-  .room-for-one-more .rfom-title { flex: 1; }
 
   /* host controls become a labeled pill row above the dock (JS relocates the
      lock + audience buttons here on mobile). */
@@ -2905,6 +2905,14 @@ a { color: inherit; text-decoration: none; }
   }
   /* .panel-chat.chat-hidden → display:none (global rule) → participants fill */
 
+  /* Chat sheet resize feel: snap smoothly when the drag ends, but track the
+     finger 1:1 mid-drag (transition suppressed via .chat-dragging). */
+  .panel-chat { transition: height 0.22s cubic-bezier(0.4, 0, 0.2, 1); }
+  .room-main.chat-dragging .panel-chat { transition: none; }
+  /* Pulled all the way up → chat fills the room (participants tucked away). */
+  .room-main.chat-full .panel-participants { display: none; }
+  .room-main.chat-full .panel-chat { height: 100% !important; border-radius: 0; }
+
   /* Drag handle + chat header (desktop-mobile hid the header) */
   .chat-grabber { display: flex; }
   .chat-header-bar { display: flex; padding-top: 4px; }
@@ -2931,7 +2939,7 @@ a { color: inherit; text-decoration: none; }
   .card-live::before,
   .np-eq i,
   .p-eq i,
-  .pinned-banner.is-spinning .pinned-art,
+  .np-art, .pinned-art,
   .skel-card::after, .skel-pill::after {
     animation: none;
   }

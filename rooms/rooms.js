@@ -363,6 +363,9 @@ function roomFromDb(r) {
     ? r.participant_previews.slice(0, 5).map(p => ({
       n: String(p?.n || '?').slice(0, 24),
       a: safeAccent(p?.a, accentForNick(String(p?.n || '?'))),
+      // `s` = this participant's live media (cam/screen), if the host wrote it.
+      // Travels inside the existing previews JSON → no schema change needed.
+      s: (p?.s === 'cam' || p?.s === 'screen') ? p.s : null,
     }))
     : [];
   return {
@@ -375,6 +378,8 @@ function roomFromDb(r) {
     locked:          r.locked,
     audience_mode:   r.audience_mode,
     audience:        r.audience_mode,
+    // "live" dot on a lobby card only when someone inside is on cam/screen.
+    is_streaming:    previews.some(p => p.s === 'cam' || p.s === 'screen'),
     startedAt:            new Date(r.created_at).getTime(),
     participant_previews: previews,
   };
@@ -695,7 +700,7 @@ function sbJoinPresence(slug) {
         if (state.room?.slug) {
           const visible = state.participants
             .filter(p => !(p.sessionId === state.user.sessionId && state.user.ghost));
-          const previews = visible.slice(0, 5).map(p => ({ n: p.nickname, a: p.accent }));
+          const previews = visible.slice(0, 5).map(p => ({ n: p.nickname, a: p.accent, s: p.sharing || null }));
           sbUpdateRoom(state.room.slug, {
             member_count: visible.length,
             participant_previews: previews,
@@ -1321,8 +1326,8 @@ const DEMO_ROOMS = [
     now_playing_kind:'music', now_playing_title:'midnight drive', now_playing_source:'synthwave',
     participant_previews:[{n:'mika',a:'#c9a0e8'},{n:'kaz',a:'#8ec5e8'}] },
   { id:'d-study', slug:'study', title:'study lounge', host:'sora', hostAccent:'#ffb38a', status:'active',
-    locked:false, audience_mode:true, audience:true, chat_locked:false, member_count:5,
-    participant_previews:[{n:'sora',a:'#ffb38a'},{n:'nao',a:'#7fd6c0'},{n:'yui',a:'#ffa6d0'}] },
+    locked:false, audience_mode:true, audience:true, chat_locked:false, member_count:5, is_streaming:true,
+    participant_previews:[{n:'sora',a:'#ffb38a',s:'cam'},{n:'nao',a:'#7fd6c0'},{n:'yui',a:'#ffa6d0'}] },
   { id:'d-priv', slug:'private', title:'private', host:'lia', hostAccent:'#ff8fc4', status:'active',
     locked:true, audience_mode:false, audience:false, chat_locked:false, member_count:2,
     participant_previews:[] },
@@ -1330,9 +1335,9 @@ const DEMO_ROOMS = [
     locked:false, audience_mode:false, audience:false, chat_locked:false, member_count:1,
     participant_previews:[{n:'rin',a:'#ffa6d0'}] },
   { id:'d-kpop', slug:'kpop', title:'movie night', host:'jin', hostAccent:'#8ec5e8', status:'active',
-    locked:false, audience_mode:false, audience:false, chat_locked:false, member_count:6,
+    locked:false, audience_mode:false, audience:false, chat_locked:false, member_count:6, is_streaming:true,
     now_playing_kind:'movie', now_playing_title:'spirited away', now_playing_source:'watch party',
-    participant_previews:[{n:'jin',a:'#8ec5e8'},{n:'ari',a:'#b0a6ec'},{n:'mei',a:'#ffc48a'}] },
+    participant_previews:[{n:'jin',a:'#8ec5e8',s:'screen'},{n:'ari',a:'#b0a6ec'},{n:'mei',a:'#ffc48a'}] },
 ];
 
 function demoParticipants() {
@@ -1463,12 +1468,6 @@ function renderLobby() {
 
   if (state.user.nickname && nickEl) nickEl.textContent = state.user.nickname;
 
-  // "N open :3" tag beside the title
-  const openTag = document.getElementById('lobby-open-tag');
-  if (openTag) {
-    openTag.textContent = `${state.rooms.length} open :3`;
-    openTag.hidden = state.rooms.length === 0;
-  }
   // Profile-chip avatar (photo or initial, tinted with the user's accent)
   const av = document.getElementById('lobby-avatar');
   if (av) {
@@ -1542,18 +1541,16 @@ function renderRoomCard(room) {
                data-slug="${escHtml(room.slug)}"
                role="button" tabindex="${room.locked && !isYours ? '-1' : '0'}"
                aria-label="${title}, ${room.member_count} participant${room.member_count !== 1 ? 's' : ''}${room.locked ? ', locked' : ''}">
-    ${room.locked ? '' : `<span class="card-live"><span class="card-live-word">live</span><span class="card-live-num">${room.member_count}</span></span>`}
+    ${room.is_streaming && !room.locked ? `<span class="card-live"><span class="card-live-word">live</span><span class="card-live-num">${room.member_count}</span></span>` : ''}
     ${thumbnailHtml}
     <div class="card-name">
       ${title}${isYours ? ' <span class="yours-tag">(yours)</span>' : ''}
     </div>
     <div class="card-meta">
-      ${room.locked
-        ? `<span class="card-hanging">shhh~ locked</span><span class="badge badge-locked">${ICON.lock} locked</span>`
-        : `<span class="card-hanging">${room.member_count} hanging out ~</span>`}
+      ${room.locked ? `<span class="badge badge-locked">${ICON.lock} locked</span>` : ''}
     </div>
     ${room.locked && !isYours
-        ? `<div class="card-ask">ask ${escHtml(room.host)} :0</div>`
+        ? `<div class="card-ask">dont ask me</div>`
         : `<div class="card-join">join ${ICON.enter}</div>`}
   </div>`;
 }
@@ -1987,6 +1984,9 @@ function scheduleRepack() {
 function setChatView(view) {
   // Two states only: chat is shown ('full') or hidden. (Legacy 'peek' → shown.)
   view = (view === 'hidden') ? 'hidden' : 'full';
+  // Leaving the drag-resize fullscreen state whenever chat is toggled, so
+  // participants never stay hidden while the sheet is closed.
+  document.getElementById('room-main')?.classList.remove('chat-full');
   if (view === 'full') ensureChatSheetHeight();
   state.ui.chatView = view;
   state.ui.chatHidden = (view === 'hidden');
@@ -2021,14 +2021,15 @@ function initChatResize() {
   if (!grabber || !chat || !main || grabber._wired) return;
   grabber._wired = true;
 
-  const MIN = 120;        // never shrink the sheet below this while open
-  const CLOSE_AT = 96;    // drag below this → close the sheet
-  const maxH = () => Math.max(MIN, main.clientHeight - 130); // keep participants visible
+  const MIN = 120;        // smallest the sheet snaps to while open
+  const CLOSE_AT = 90;    // release below this height → hide the sheet entirely
+  const FULL_GAP = 72;    // release within this of the top → go fullscreen
+  const maxH = () => main.clientHeight;   // allow the sheet to fill the room
 
   let dragging = false, startY = 0, startH = 0, live = 0;
 
   const apply = (h) => {
-    live = Math.min(maxH(), Math.max(CLOSE_AT - 20, h));
+    live = Math.min(maxH(), Math.max(40, h));
     main.style.setProperty('--chat-h', live + 'px');
   };
   const onMove = (e) => {
@@ -2041,15 +2042,26 @@ function initChatResize() {
     if (!dragging) return;
     dragging = false;
     grabber.classList.remove('dragging');
+    main.classList.remove('chat-dragging');   // re-enable the snap transition
     document.removeEventListener('pointermove', onMove);
     document.removeEventListener('pointerup', onUp);
-    if (live <= CLOSE_AT) { setChatView('hidden'); }
-    else { _chatSheetH = Math.max(MIN, live); }
+    if (live <= CLOSE_AT) {                      // pulled all the way down → hide
+      main.classList.remove('chat-full');
+      setChatView('hidden');
+    } else if (live >= maxH() - FULL_GAP) {      // pulled all the way up → fullscreen
+      main.classList.add('chat-full');
+      _chatSheetH = Math.round(maxH() * 0.5);    // where it returns to on the next drag
+    } else {                                     // settle at the dragged split
+      main.classList.remove('chat-full');
+      _chatSheetH = Math.max(MIN, live);
+      main.style.setProperty('--chat-h', _chatSheetH + 'px');
+    }
   };
   const onDown = (e) => {
     if (!isMobileView()) return;
     dragging = true;
     grabber.classList.add('dragging');
+    main.classList.add('chat-dragging');   // suppress transition so the drag tracks 1:1
     startY = e.touches ? e.touches[0].clientY : e.clientY;
     startH = chat.getBoundingClientRect().height;
     live = startH;
@@ -2079,20 +2091,16 @@ function placeChatViewControl() {
   if (target && seg.parentElement !== target) target.appendChild(seg);
 }
 
-// Lock/audience are icon buttons in the dock on desktop, but a labeled pill row
-// above the dock on mobile — move the same nodes so ids/handlers are preserved.
+// Lock/audience are icon buttons that live in the dock (bottom bar) on every
+// breakpoint — same nodes, so ids/handlers are preserved. (They used to hop to a
+// separate strip above the dock on mobile; the user asked for them in the bar.)
 function placeHostControls() {
   const lock = document.getElementById('btn-lock');
   const audience = document.getElementById('btn-audience');
-  const bar = document.getElementById('mobile-host-bar');
   if (!lock || !audience) return;
-  if (isMobileView()) {
-    if (bar) { bar.appendChild(lock); bar.appendChild(audience); }
-  } else {
-    const dockRight = document.querySelector('.dock-right');
-    const leave = document.getElementById('btn-leave');
-    if (dockRight && leave) { dockRight.insertBefore(lock, leave); dockRight.insertBefore(audience, leave); }
-  }
+  const dockRight = document.querySelector('.dock-right');
+  const leave = document.getElementById('btn-leave');
+  if (dockRight && leave) { dockRight.insertBefore(lock, leave); dockRight.insertBefore(audience, leave); }
 }
 
 let _chatUnread = 0;
