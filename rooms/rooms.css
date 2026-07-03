@@ -51,7 +51,7 @@
   --v-text:         rgba(122, 76, 92, 0.95);
   --v-text-muted:   rgba(122, 76, 92, 0.6);
   --v-text-light:   rgba(122, 76, 92, 0.45);
-  --v-hand:         rgba(174, 85, 130, 0.9);   /* handwriting accent ink */
+  --v-hand:         #a63c73;                   /* handwriting accent ink (darkened for contrast) */
 
   --v-amber:        #c78d4a;
   --v-amber-bg:     rgba(199, 141, 74, 0.12);
@@ -75,11 +75,12 @@
 
   --v-font-head:    "Comic Sans MS", "Chalkboard SE", "Trebuchet MS", cursive;
   --v-font-body:    "Trebuchet MS", "Comic Sans MS", -apple-system, sans-serif;
-  /* Caveat = handwriting accents, Gochi Hand = tags (self-hosted @font-face
-     above; CSP allows them via `font-src 'self'`). Comic Sans/cursive is the
-     fallback while the woff2 is still loading. */
-  --v-font-hand:    "Caveat", "Comic Sans MS", cursive;
-  --v-font-tag:     "Gochi Hand", "Comic Sans MS", cursive;
+  /* Gochi Hand = handwriting accents + tags (self-hosted @font-face above; CSP
+     allows it via `font-src 'self'`). Caveat was too thin/low-contrast to read,
+     so hand accents now use Gochi. Fallback is a readable sans (never bare
+     `cursive`, which resolves to unreadable Apple Chancery on macOS). */
+  --v-font-hand:    "Gochi Hand", "Comic Sans MS", "Trebuchet MS", sans-serif;
+  --v-font-tag:     "Gochi Hand", "Comic Sans MS", "Trebuchet MS", sans-serif;
 }
 
 /* ── Base ───────────────────────────────────────────────────────── */
