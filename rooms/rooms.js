@@ -1358,7 +1358,7 @@ function demoParticipants() {
     { nickname:'mika', role:'guest',    muted:true,  serverMuted:false, sharing:null,   accent:'#c9a0e8', avatar:null, sessionId:'d-p-mika', speaking:false },
     { nickname:'sol',  role:'guest',    muted:false, serverMuted:false, sharing:'cam',  accent:'#ffb38a', avatar:null, sessionId:'d-p-sol',  speaking:false },
     { nickname:'kaz',  role:'guest',    muted:false, serverMuted:true,  sharing:null,   accent:'#8ec5e8', avatar:null, sessionId:'d-p-kaz',  speaking:false },
-    { nickname:'nao',  role:'audience', muted:true,  serverMuted:false, sharing:null,   accent:'#7fd6c0', avatar:null, sessionId:'d-p-nao',  speaking:false },
+    { nickname:'nao',  role:'guest',    muted:true,  serverMuted:false, sharing:null,   accent:'#7fd6c0', avatar:null, sessionId:'d-p-nao',  speaking:false },
   ];
 }
 
@@ -2382,8 +2382,9 @@ function renderParticipantCard(p, isHost) {
   const canAct = (isHost || state.user.isAdmin) && !isYou;
 
   const badgeHtml = [
-    // host is shown inline next to the name (.p-host-tag), not as a badge
-    p.role === 'audience' ? `<span class="badge badge-audience">audience</span>` : '',
+    // "audience" is a ROOM mode (host-controlled: mutes everyone but the host),
+    // not a per-person role — so there's no per-participant audience badge. The
+    // room-level state shows in the topbar (#topbar-audience-badge).
     p.serverMuted         ? `<span class="badge badge-muted">muted</span>`    : '',
     p.sharing === 'cam'   ? `<span class="p-sharing-label">${ICON.cam} cam</span>`    : '',
     p.sharing === 'screen'? `<span class="p-sharing-label">${ICON.screen} screen</span>` : '',
