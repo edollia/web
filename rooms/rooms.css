@@ -2147,10 +2147,10 @@ button:focus-visible, a:focus-visible, [role="button"]:focus-visible, .room-card
   bottom: calc(var(--v-dock-h) + 10px);
   left: 50%;
   transform: translateX(-50%);
-  width: 268px;
+  width: 244px;
   max-width: calc(100vw - 16px);
   max-height: calc(100dvh - var(--v-dock-h) - var(--v-topbar-h) - 24px);
-  overflow-y: auto;
+  overflow: hidden;                 /* frame clips; the inner list is what scrolls */
   background: var(--v-surface);
   border: 1.5px solid var(--v-border);
   border-radius: var(--v-radius);
@@ -2159,7 +2159,14 @@ button:focus-visible, a:focus-visible, [role="button"]:focus-visible, .room-card
   animation: popover-in 0.15s cubic-bezier(0.34, 1.2, 0.64, 1);
 }
 .settings-panel[hidden] { display: none; }
-.settings-inner { padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+.settings-inner {
+  padding: 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  max-height: calc(100dvh - var(--v-dock-h) - var(--v-topbar-h) - 28px);
+  overflow-y: auto;                 /* keeps the floating X pinned while this scrolls */
+}
 
 .settings-label {
   font-size: 11px;
@@ -2222,24 +2229,15 @@ button:focus-visible, a:focus-visible, [role="button"]:focus-visible, .room-card
   transition: width 0.1s;
 }
 
-.settings-version { font-size: 10px; color: var(--v-text-muted); opacity: 0.5; text-align: right; padding-top: 6px; }
+.settings-version { font-size: 10px; color: var(--v-text-muted); opacity: 0.5; text-align: right; padding-top: 4px; }
 
-/* Just the close button now (the redundant "settings" title was removed) — a
-   compact row aligned right, no divider/empty band above the first control. */
-.settings-header {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  margin: -4px -4px -2px 0;
-}
-.settings-title {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--v-text-muted);
-}
+/* Close button floats in the panel's top-right corner (no header row → no blank
+   band above the first control). The first label starts at the top-left; the X
+   sits opposite it. */
 .settings-close-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
   width: 24px;
   height: 24px;
   border-radius: 50%;
@@ -2247,11 +2245,37 @@ button:focus-visible, a:focus-visible, [role="button"]:focus-visible, .room-card
   align-items: center;
   justify-content: center;
   color: var(--v-text-muted);
+  background: var(--v-surface);
   transition: background 0.15s, color 0.15s;
   touch-action: manipulation;
+  z-index: 2;
 }
 .settings-close-btn:hover { background: var(--v-surface-3); color: var(--v-text); }
 .settings-close-btn svg { width: 16px; height: 16px; }
+
+/* Admin action rows in the settings panel (ghost + end-room) */
+.settings-action {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 9px 11px;
+  border: 1.5px solid var(--v-border);
+  border-radius: var(--v-radius-sm);
+  background: var(--v-bg);
+  color: var(--v-text);
+  font-size: 13px;
+  font-weight: 600;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.settings-action[hidden] { display: none; }
+.settings-action .dock-icon { width: 17px; height: 17px; flex-shrink: 0; color: var(--v-pink-dark); }
+.settings-action:hover { border-color: var(--v-pink-mid); background: #fff0f7; }
+.settings-action[aria-pressed="true"] { background: var(--v-fill-pink-h); border-color: var(--v-pink-dark); color: #fff; }
+.settings-action[aria-pressed="true"] .dock-icon { color: #fff; }
+.settings-action-danger { color: var(--v-danger); }
+.settings-action-danger .dock-icon { color: var(--v-danger); }
+.settings-action-danger:hover { background: var(--v-danger-bg); border-color: rgba(216, 80, 120, 0.4); }
 
 /* ── Chat scroll-to-bottom button ───────────────────────────────── */
 .chat-scroll-btn {
@@ -2406,11 +2430,11 @@ button:focus-visible, a:focus-visible, [role="button"]:focus-visible, .room-card
     left: 50%;
     right: auto;
     transform: translateX(-50%);
-    width: 290px;
+    width: 260px;
     max-width: calc(100vw - 20px);
     bottom: calc(var(--v-dock-h) + 12px);
     max-height: calc(100dvh - var(--v-dock-h) - var(--v-topbar-h) - 24px);
-    overflow-y: auto;
+    overflow: hidden;
     border-radius: var(--v-radius);
     border-bottom: 1.5px solid var(--v-border);
   }
@@ -2744,57 +2768,16 @@ button:focus-visible, a:focus-visible, [role="button"]:focus-visible, .room-card
   .fs-btn { opacity: 0.85; }
 }
 
-/* ── Fit toggle (per-viewer fill / show-whole) — labeled pill, top-left ── */
-.fit-btn {
-  position: absolute;
-  top: 7px;
-  left: 7px;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  height: 25px;
-  padding: 0 10px 0 8px;
-  border-radius: 999px;
-  background: rgba(20, 8, 16, 0.52);
-  backdrop-filter: blur(3px);
-  -webkit-backdrop-filter: blur(3px);
-  color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  cursor: pointer;
-  opacity: 0;
-  transition: opacity 0.15s, background 0.15s, transform 0.08s;
-  z-index: 3;
-  touch-action: manipulation;
-  font-family: var(--v-font-tag);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-}
+/* ── Fit toggle (per-viewer fill / show-whole) ──────────────────────
+   Same round dark icon button as mirror/switch (.cam-tool-btn), just parked in
+   the top-left corner so it doesn't overlap them (bottom-right). No label, no
+   pink state — icon only. */
+.fit-btn { top: 6px; left: 6px; bottom: auto; right: auto; }
 .fit-btn .fit-ic { display: inline-flex; }
-.fit-btn .fit-ic .ic { width: 14px; height: 14px; display: block; }
-.fit-btn .fit-label { line-height: 1; }
-.fit-btn:hover { background: rgba(20, 8, 16, 0.72); }
-.fit-btn:active { transform: scale(0.94); }
-/* "whole" mode gets a pink tint so the current state reads at a glance. */
-.fit-btn.is-whole { background: rgba(216, 80, 120, 0.72); border-color: rgba(255, 200, 224, 0.5); }
-.p-video-wrap:hover .fit-btn { opacity: 1; }
-@media (hover: none) { .fit-btn { opacity: 0.92; } }
+.fit-btn .fit-ic .ic { width: 18px; height: 18px; display: block; }
 /* Show-the-whole-frame mode: let the video letterbox against black bars. */
 .p-video-wrap.fit-contain { background: #000 !important; }
 .p-video-wrap.fit-contain video { object-fit: contain; }
-
-/* Demo-only fake camera feed (so the sol tile reads as a person on cam, not an
-   empty labelled bubble). Soft pastel gradient with the initial floating in it. */
-.p-video-wrap.demo-cam {
-  background: radial-gradient(120% 90% at 50% 30%, #ffd9b0 0%, #ffb38a 45%, #ff8fb8 100%) !important;
-  display: flex; align-items: center; justify-content: center;
-}
-.demo-cam .demo-cam-face {
-  font-family: var(--v-font-head);
-  font-size: 40px; font-weight: 700; color: rgba(255, 255, 255, 0.9);
-  text-shadow: 0 2px 8px rgba(150, 60, 90, 0.35);
-  line-height: 1;
-}
 
 /* ── Participant card video ──────────────────────────────────────── */
 .p-video-wrap {

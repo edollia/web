@@ -11,7 +11,7 @@ async function ensureLk() {
 }
 
 // ── § CONFIG ─────────────────────────────────────────────────────
-const VERSION        = '2026-07-05.39';
+const VERSION        = '2026-07-05.40';
 const SUPABASE_URL   = 'https://karogcjefsnnrvlxlgpf.supabase.co';
 const SUPABASE_ANON  = 'sb_publishable_z2jS9qvQUvkSXVspdi2U5w_dFGM_rG-';
 const LIVEKIT_WS_URL = 'wss://pawsweb-z0kamke4.livekit.cloud';
@@ -1209,10 +1209,7 @@ function applyVideoFit(wrap, video, identity) {
   if (btn) {
     const toWhole = fit === 'cover';            // next tap shows the whole frame
     const ic  = btn.querySelector('.fit-ic');
-    const lbl = btn.querySelector('.fit-label');
     if (ic)  ic.innerHTML = toWhole ? ICON.fitWhole : ICON.fitFill;
-    if (lbl) lbl.textContent = toWhole ? 'whole' : 'fill';
-    btn.classList.toggle('is-whole', toWhole);
     btn.title = toWhole ? 'Show the whole video' : 'Fill the bubble';
     btn.setAttribute('aria-label', btn.title);
   }
@@ -1221,8 +1218,8 @@ function applyVideoFit(wrap, video, identity) {
 function addFitToggleBtn(wrap, video, identity) {
   if (wrap.querySelector('.fit-btn')) return;
   const btn = document.createElement('button');
-  btn.className = 'fit-btn';
-  btn.innerHTML = '<span class="fit-ic"></span><span class="fit-label"></span>';
+  btn.className = 'fit-btn cam-tool-btn';       // same round icon look as mirror/switch
+  btn.innerHTML = '<span class="fit-ic"></span>';
   btn.addEventListener('click', (e) => {
     e.stopPropagation();
     _videoFit[identity] = (_videoFit[identity] || 'cover') === 'cover' ? 'contain' : 'cover';
@@ -1323,7 +1320,7 @@ function addSwitchCamBtn(wrap) {
 
 async function switchCamera() {
   navigator.vibrate?.(8);
-  if (DEMO) { showLobbyBanner('demo has just one camera ~ this cycles lenses on a real device'); return; }
+  if (DEMO) { await switchDemoCamera(); return; }
   if (!state._lkRoom || !state.media.cameraOn || !state._localCamTrack) return;
 
   // Enumerate every camera and step to the next one (wraps around).
@@ -1489,7 +1486,7 @@ function demoParticipants() {
   return [
     { nickname: state.user.nickname, role:'host',     muted:false, serverMuted:false, sharing:null,   accent: myAccent(), avatar: state.user.avatar, sessionId: state.user.sessionId, speaking:true },
     { nickname:'mika', role:'guest',    muted:true,  serverMuted:false, sharing:null,   accent:'#c9a0e8', avatar:null, sessionId:'d-p-mika', speaking:false },
-    { nickname:'sol',  role:'guest',    muted:false, serverMuted:false, sharing:'cam',  accent:'#ffb38a', avatar:null, sessionId:'d-p-sol',  speaking:false },
+    { nickname:'sol',  role:'guest',    muted:false, serverMuted:false, sharing:null,   accent:'#ffb38a', avatar:null, sessionId:'d-p-sol',  speaking:false },
     { nickname:'kaz',  role:'guest',    muted:false, serverMuted:true,  sharing:null,   accent:'#8ec5e8', avatar:null, sessionId:'d-p-kaz',  speaking:false },
     { nickname:'nao',  role:'guest',    muted:true,  serverMuted:false, sharing:null,   accent:'#7fd6c0', avatar:null, sessionId:'d-p-nao',  speaking:false },
   ];
@@ -1537,19 +1534,6 @@ function demoEnterRoom(slug) {
   if (src.now_playing_title) setNowPlaying({ kind: src.now_playing_kind, title: src.now_playing_title, source: src.now_playing_source });
   else setNowPlaying(null);
   if (isMobileView()) setChatView('hidden');
-  // Fake a live video tile so the camera-label overlay (#3) is visible too.
-  requestAnimationFrame(() => {
-    const solCard = document.querySelector('.participant-card[data-sid="d-p-sol"]');
-    if (solCard && !solCard.querySelector('.p-video-wrap')) {
-      const wrap = document.createElement('div');
-      wrap.className = 'p-video-wrap demo-cam';   // full-bleed via .has-video CSS
-      // A soft gradient "feed" with sol's initial centered so the demo camera
-      // tile reads as a real person sharing their camera, not an empty bubble.
-      wrap.innerHTML = `<span class="demo-cam-face" style="--c:#ffb38a">s</span><div class="p-video-name">${ICON.cam}<span>sol</span></div>`;
-      (solCard.querySelector('.p-avatar') || solCard).after(wrap);
-      solCard.classList.add('has-video');
-    }
-  });
 }
 
 // ── § RENDER / LOBBY ──────────────────────────────────────────────
@@ -2663,6 +2647,8 @@ function updateDock() {
     ghostBtn.setAttribute('aria-pressed', state.user.ghost ? 'true' : 'false');
     const t = state.user.ghost ? 'Unghost — become visible' : 'Go ghost — hide yourself';
     ghostBtn.title = t; ghostBtn.setAttribute('aria-label', t);
+    const lbl = ghostBtn.querySelector('.settings-action-label');
+    if (lbl) lbl.textContent = state.user.ghost ? "you're hidden ~ tap to show" : 'go ghost';
   }
 
   updateMicBtn();
@@ -3047,7 +3033,7 @@ async function toggleDemoCamera() {
     }
     document.querySelector(sel)?.classList.add('cam-loading');
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: state.media.flipCamFacing } }, audio: false });
       _demoCamStream = stream;
       state.media.cameraOn = true;
       // Minimal LiveKit-track-shaped shim so showParticipantVideo() works unchanged.
@@ -3067,6 +3053,37 @@ async function toggleDemoCamera() {
     hideParticipantVideo(state.user.sessionId);
   }
   updateDockBtnState('btn-camera', state.media.cameraOn);
+}
+
+// Demo-only: actually flip between the front (user) and back (environment)
+// cameras by re-acquiring the stream with the toggled facingMode. Works on a
+// real phone; on a single-camera device it just re-gets the same one.
+async function switchDemoCamera() {
+  const sel = `.participant-card[data-sid="${CSS.escape(state.user.sessionId)}"]`;
+  if (!state.media.cameraOn || !_demoCamStream) { showLobbyBanner('turn your camera on first ~'); return; }
+  if (!navigator.mediaDevices?.getUserMedia) return;
+  state.media.flipCamFacing = state.media.flipCamFacing === 'environment' ? 'user' : 'environment';
+  document.querySelector(sel)?.classList.add('cam-loading');
+  try {
+    _demoCamStream.getTracks().forEach(t => t.stop());
+    _demoCamStream = null;
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: state.media.flipCamFacing } }, audio: false });
+    _demoCamStream = stream;
+    showParticipantVideo({ _stream: stream, attach() { const v = document.createElement('video'); v.srcObject = stream; return v; }, detach() { return []; } },
+      state.user.sessionId);
+    showLobbyBanner(state.media.flipCamFacing === 'environment' ? 'back camera ~' : 'front camera ~');
+  } catch {
+    // Re-grab whatever we can so the tile isn't left blank.
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      _demoCamStream = stream;
+      showParticipantVideo({ _stream: stream, attach() { const v = document.createElement('video'); v.srcObject = stream; return v; }, detach() { return []; } },
+        state.user.sessionId);
+    } catch {}
+    showLobbyBanner('this device has just one camera ~');
+  } finally {
+    document.querySelector(sel)?.classList.remove('cam-loading');
+  }
 }
 
 async function toggleCamera() {
@@ -4355,6 +4372,7 @@ async function init() {
   document.getElementById('btn-ghost').addEventListener('click', toggleGhost);
   document.getElementById('btn-admin-end')?.addEventListener('click', async () => {
     if (!state.room?.slug || !state.user.isAdmin) return;
+    closeSettings();   // it now lives in the settings panel — close it before confirming
     const ok = await showConfirm({
       title: 'end this room?',
       body: 'this closes the room for everyone and can’t be undone.',

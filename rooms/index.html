@@ -16,7 +16,7 @@
   <meta property="og:title" content="rooms · doll.gg">
   <meta property="og:description" content="join a room">
   <meta property="og:url" content="https://doll.gg/rooms/">
-  <link rel="stylesheet" href="rooms.css?v=49">
+  <link rel="stylesheet" href="rooms.css?v=50">
 </head>
 <body>
 
@@ -319,12 +319,7 @@
     </div>
 
     <div class="dock-right">
-      <button id="btn-admin-end" class="dock-ctrl admin-ctrl dock-ctrl-danger" hidden title="End room (admin)" aria-label="End room">
-        <span class="dock-icon dock-icon-end"></span>
-      </button>
-      <button id="btn-ghost"    class="dock-ctrl admin-ctrl" aria-pressed="false" hidden title="Go ghost — hide yourself" aria-label="Go ghost">
-        <span class="dock-icon dock-icon-ghost"></span>
-      </button>
+      <!-- ghost + end-room (admin-only) now live in the settings panel -->
       <button id="btn-lock"     class="dock-ctrl host-ctrl" aria-pressed="false" hidden title="Lock room" aria-label="Lock room">
         <span class="dock-icon dock-icon-lock"></span>
         <span class="ctrl-label">lock room</span>
@@ -343,12 +338,10 @@
 
   <!-- Settings panel: popover on desktop, sheet on mobile -->
   <div id="settings-panel" class="settings-panel" hidden>
+    <button id="btn-close-settings" class="settings-close-btn" aria-label="Close settings">
+      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+    </button>
     <div class="settings-inner">
-      <div class="settings-header">
-        <button id="btn-close-settings" class="settings-close-btn" aria-label="Close settings">
-          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
-        </button>
-      </div>
       <label class="settings-label" for="sel-mic">microphone</label>
       <select id="sel-mic" class="settings-select">
         <option value="default">Default</option>
@@ -397,6 +390,17 @@
           <div id="mictest-fill" class="mictest-fill"></div>
         </div>
       </div>
+
+      <!-- Admin-only actions (moved out of the dock). Hidden for non-admins. -->
+      <button id="btn-ghost" class="settings-action admin-ctrl" aria-pressed="false" hidden>
+        <span class="dock-icon dock-icon-ghost"></span>
+        <span class="settings-action-label">go ghost</span>
+      </button>
+      <button id="btn-admin-end" class="settings-action settings-action-danger admin-ctrl" hidden>
+        <span class="dock-icon dock-icon-end"></span>
+        <span class="settings-action-label">end room for everyone</span>
+      </button>
+
       <div id="settings-version" class="settings-version"></div>
     </div>
   </div>
@@ -424,6 +428,6 @@
   </div>
 </div>
 
-<script type="module" src="rooms.js?v=49"></script>
+<script type="module" src="rooms.js?v=50"></script>
 </body>
 </html>
