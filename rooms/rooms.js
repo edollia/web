@@ -11,7 +11,7 @@ async function ensureLk() {
 }
 
 // ── § CONFIG ─────────────────────────────────────────────────────
-const VERSION        = '2026-07-05.35';
+const VERSION        = '2026-07-05.36';
 const SUPABASE_URL   = 'https://karogcjefsnnrvlxlgpf.supabase.co';
 const SUPABASE_ANON  = 'sb_publishable_z2jS9qvQUvkSXVspdi2U5w_dFGM_rG-';
 const LIVEKIT_WS_URL = 'wss://pawsweb-z0kamke4.livekit.cloud';
@@ -203,6 +203,19 @@ function isHostForRoom(roomOrSlug) {
   return !!getHostKey(slug);
 }
 
+// Random session id. crypto.randomUUID() only exists in a *secure context*, so on
+// plain http:// (e.g. testing over a LAN IP on a phone) it's undefined and would
+// throw. Fall back to getRandomValues (available everywhere) so the app still boots.
+function genId() {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+  const b = (crypto?.getRandomValues?.(new Uint8Array(16))) ||
+            Uint8Array.from({ length: 16 }, () => Math.floor(Math.random() * 256));
+  b[6] = (b[6] & 0x0f) | 0x40;   // version 4
+  b[8] = (b[8] & 0x3f) | 0x80;   // variant
+  const h = [...b].map(x => x.toString(16).padStart(2, '0'));
+  return `${h[0]}${h[1]}${h[2]}${h[3]}-${h[4]}${h[5]}-${h[6]}${h[7]}-${h[8]}${h[9]}-${h[10]}${h[11]}${h[12]}${h[13]}${h[14]}${h[15]}`;
+}
+
 async function loadIdentity() {
   // One-time migration from the old /voice/ keys so existing visitors keep their name.
   for (const [oldK, newK] of [['dg_voice_nick', LS.nick], ['dg_voice_sid', LS.sid]]) {
@@ -211,7 +224,7 @@ async function loadIdentity() {
   }
 
   const nick   = localStorage.getItem(LS.nick);
-  const sid    = localStorage.getItem(LS.sid) || crypto.randomUUID();
+  const sid    = localStorage.getItem(LS.sid) || genId();
   localStorage.setItem(LS.sid, sid);
   state.user.sessionId = sid;
   if (nick) state.user.nickname = nick;
