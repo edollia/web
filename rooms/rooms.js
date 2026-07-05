@@ -13,7 +13,7 @@ async function ensureLk() {
 }
 
 // ── § CONFIG ─────────────────────────────────────────────────────
-const VERSION        = '2026-06-30.29';
+const VERSION        = '2026-07-04.32';
 const SUPABASE_URL   = 'https://karogcjefsnnrvlxlgpf.supabase.co';
 const SUPABASE_ANON  = 'sb_publishable_z2jS9qvQUvkSXVspdi2U5w_dFGM_rG-';
 const LIVEKIT_WS_URL = 'wss://pawsweb-z0kamke4.livekit.cloud';
@@ -65,6 +65,10 @@ const ICON = {
   mic:    _svg('M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5-3c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z'),
   micOff: _svg('M19 11h-1.7c0 .74-.16 1.43-.43 2.05l1.23 1.23c.56-.98.9-2.09.9-3.28zm-4.02.17c0-.06.02-.11.02-.17V5c0-1.66-1.34-3-3-3S9 3.34 9 5v.18l5.98 5.99zM4.27 3L3 4.27l6.01 6.01V11c0 1.66 1.34 3 3 3 .23 0 .44-.03.65-.08l1.66 1.66c-.71.33-1.5.52-2.31.52-2.76 0-5.3-2.1-5.3-5.1H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c.91-.13 1.77-.45 2.54-.9L19.73 21 21 19.73 4.27 3z'),
   fullscreen: _svg('M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z'),
+  // Fit toggle: arrows inward = "show the whole frame" (contain, may add black bars)
+  fitWhole:   _svg('M9 9V5H7v2H5v2h4zm6 0h4V7h-2V5h-2v4zM9 15H5v2h2v2h2v-4zm6 4h2v-2h2v-2h-4v4z'),
+  // arrows outward = "zoom in / fill the bubble" (cover, crops edges)
+  fitFill:    _svg('M7 7h2V5H5v4h2V7zm10-2h-2v2h2v2h2V5h-2zM7 17H5v2h4v-2H7v-2H5v2h2zm10 0v-2h-2v2h-2v2h4v-2z'),
   // Two-arrow rotate icon — clearly means "switch/flip"
   flipCam:    _svg('M19 8l-4 4h3c0 3.31-2.69 6-6 6-1.01 0-1.97-.25-2.8-.7l-1.46 1.46C8.97 19.54 10.43 20 12 20c4.42 0 8-3.58 8-8h3l-4-4zM6 12c0-3.31 2.69-6 6-6 1.01 0 1.97.25 2.8.7l1.46-1.46C15.03 4.46 13.57 4 12 4c-4.42 0-8 3.58-8 8H1l4 4 4-4H6z'),
   ghost:  _svg('M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75C21.27 7.11 17 4 12 4c-1.27 0-2.49.2-3.64.57l2.17 2.17C11.06 6.49 11.51 7 12 7zM2 4.27l2.28 2.28.46.46C3.08 8.3 1.78 10.02 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z'),
@@ -121,6 +125,7 @@ let _pendingParticipantRender = false; // deferred re-render while video is full
 let _sharingOrder   = new Map(); // sessionId → monotonic rank (lower = started sharing earlier)
 let _sharingCounter = 0;
 let _videoAspectRatio = {}; // sessionId → { w, h } once a camera's real aspect ratio is known
+let _videoFit = {};         // sessionId → 'cover' | 'contain' — each VIEWER's own per-stream zoom choice
 let _repackTimer = null;    // debounce handle for scheduleRepack()
 
 // ── § DEBUG LOGGER ────────────────────────────────────────────────
@@ -1127,26 +1132,52 @@ function showParticipantVideo(track, identity) {
   _vidNameTag.innerHTML = `${ICON.cam}<span>${escHtml(card.dataset.nick || '')}</span>`;
   wrap.appendChild(_vidNameTag);
   addFullscreenBtn(wrap, video);
-  if (isLocal && state.media.hasMultipleCameras) addFlipCamBtn(wrap);
+  addFitToggleBtn(wrap, video, identity);       // per-viewer zoom-in / view-whole
+  if (isLocal && (state.media.hasMultipleCameras || DEMO)) addFlipCamBtn(wrap);
   card.classList.add('has-video');
-  // Snap the wrap to the video's real aspect ratio on first load and again
-  // any time the camera rotates (resize fires on intrinsic-dimension changes).
-  const syncAspect = () => {
-    if (video.videoWidth && video.videoHeight) {
-      wrap.style.aspectRatio = `${video.videoWidth} / ${video.videoHeight}`;
-      const prev = _videoAspectRatio[identity];
-      if (!prev || prev.w !== video.videoWidth || prev.h !== video.videoHeight) {
-        _videoAspectRatio[identity] = { w: video.videoWidth, h: video.videoHeight };
-        scheduleRepack(); // real height now known/changed — the packer was using a placeholder estimate
-      }
-    }
+  applyVideoFit(wrap, video, identity);         // start from this viewer's saved choice (default: fill)
+  // The bubble is a FIXED shape — it never resizes to the video's aspect ratio.
+  // We only read the video's real dimensions to learn its orientation (portrait
+  // vs landscape) so styling/black-bars are correct, and we update that live when
+  // the camera rotates — WITHOUT re-rendering the grid (no flicker).
+  const syncOrientation = () => {
+    if (!video.videoWidth || !video.videoHeight) return;
+    _videoAspectRatio[identity] = { w: video.videoWidth, h: video.videoHeight };
+    const portrait = video.videoHeight > video.videoWidth;
+    wrap.classList.toggle('vid-portrait', portrait);
+    wrap.classList.toggle('vid-landscape', !portrait);
   };
-  video.addEventListener('loadedmetadata', syncAspect, { once: true });
-  video.addEventListener('resize', syncAspect);
-  // The card just grew from a 140px avatar-only estimate to a video tile — the
-  // packer needs to redistribute columns using the (still placeholder, until
-  // syncAspect resolves) video-sized estimate instead of the stale avatar one.
-  scheduleRepack();
+  video.addEventListener('loadedmetadata', syncOrientation);
+  video.addEventListener('resize', syncOrientation);  // fires on device rotation
+  syncOrientation();
+}
+
+// This viewer's per-stream fit: 'cover' fills the bubble (crops), 'contain' shows
+// the whole frame (black bars where the aspect doesn't match). Purely local — it
+// never touches presence or the other person's stream.
+function applyVideoFit(wrap, video, identity) {
+  const fit = _videoFit[identity] || 'cover';
+  video.style.objectFit = fit;
+  wrap.classList.toggle('fit-contain', fit === 'contain');
+  const btn = wrap.querySelector('.fit-btn');
+  if (btn) {
+    const toWhole = fit === 'cover';            // next tap shows the whole frame
+    btn.innerHTML = toWhole ? ICON.fitWhole : ICON.fitFill;
+    btn.title = toWhole ? 'Show whole video' : 'Fill bubble';
+    btn.setAttribute('aria-label', btn.title);
+  }
+}
+
+function addFitToggleBtn(wrap, video, identity) {
+  if (wrap.querySelector('.fit-btn')) return;
+  const btn = document.createElement('button');
+  btn.className = 'fit-btn';
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    _videoFit[identity] = (_videoFit[identity] || 'cover') === 'cover' ? 'contain' : 'cover';
+    applyVideoFit(wrap, video, identity);
+  });
+  wrap.appendChild(btn);
 }
 
 // Fullscreen toggle for any video tile (works on desktop + iOS Safari).
@@ -1217,6 +1248,16 @@ function addFlipCamBtn(wrap) {
 }
 
 async function flipCamera() {
+  // Demo has no LiveKit room/track — just mirror the local preview so the flip
+  // button is visible and does something you can see while checking the UI.
+  if (DEMO) {
+    if (!state.media.cameraOn) return;
+    state.media.flipCamFacing = state.media.flipCamFacing === 'environment' ? 'user' : 'environment';
+    const vid = document.querySelector(`.participant-card[data-sid="${CSS.escape(state.user.sessionId)}"] .p-video-wrap video`);
+    if (vid) vid.style.transform = state.media.flipCamFacing === 'environment' ? '' : (state.settings.mirrorSelf ? 'scaleX(-1)' : '');
+    navigator.vibrate?.(8);
+    return;
+  }
   if (!state._lkRoom || !state.media.cameraOn || !state._localCamTrack) return;
   const { createLocalVideoTrack } = await ensureLk();
   state.media.flipCamFacing = state.media.flipCamFacing === 'environment' ? 'user' : 'environment';
@@ -1256,7 +1297,8 @@ function hideParticipantVideo(identity) {
   card.querySelector('.p-video-wrap')?.remove();
   card.classList.remove('has-video');
   delete _videoAspectRatio[identity];
-  scheduleRepack(); // card just shrank back to the 140px avatar estimate — redistribute columns
+  // No repack: the CSS grid reflows on its own when .has-video is removed, and
+  // re-rendering the whole grid here caused visible flicker.
 }
 
 function showScreenShareVideo(track, participant) {
@@ -1388,7 +1430,7 @@ function demoChat() {
 }
 
 function startDemo() {
-  state.user.nickname  = state.user.nickname || 'you';
+  state.user.nickname  = state.user.nickname || 'lia';
   state.user.sessionId = state.user.sessionId || 'demo-you';
   state.user.isAdmin   = true; // so admin-only controls (ghost, etc.) also show
   state.roomsLocked    = false;
@@ -1493,6 +1535,9 @@ function renderLobby() {
   const lockdownNotice = document.getElementById('lobby-lockdown-notice');
 
   if (state.user.nickname && nickEl) nickEl.textContent = state.user.nickname;
+  // The chip shows the person's actual name (not the literal word "you").
+  const chipName = document.querySelector('.profile-chip-you');
+  if (chipName) chipName.textContent = state.user.nickname || 'set a name';
 
   // Profile-chip avatar (photo or initial, tinted with the user's accent)
   const av = document.getElementById('lobby-avatar');
@@ -2115,10 +2160,25 @@ function initChatResize() {
   let dragging = false, startY = 0, startH = 0, live = 0, raw = 0;
 
   const apply = (h) => {
-    raw  = h;                                   // true finger target (for thresholds)
-    live = Math.min(partialMax(), Math.max(40, h)); // safe, dock-preserving height
-    main.style.setProperty('--chat-h', live + 'px');
+    raw = h;                                    // true finger target (for thresholds)
+    const capped = Math.min(partialMax(), h);
+    if (capped < MIN) {
+      // Below the usable height: DON'T keep shrinking (that squished the input +
+      // messages and made them jump). Freeze the layout at MIN and slide the whole
+      // sheet down as one piece — smooth "pull to dismiss", no internal reflow.
+      live = MIN;
+      main.style.setProperty('--chat-h', MIN + 'px');
+      const slide = Math.min(MIN, MIN - capped);
+      chat.style.transform = `translateY(${slide}px)`;
+      chat.style.opacity = String(Math.max(0.4, 1 - slide / MIN));
+    } else {
+      live = capped;
+      main.style.setProperty('--chat-h', live + 'px');
+      chat.style.transform = '';
+      chat.style.opacity = '';
+    }
   };
+  const resetSlide = () => { chat.style.transform = ''; chat.style.opacity = ''; };
   const onMove = (e) => {
     if (!dragging) return;
     const y = e.touches ? e.touches[0].clientY : e.clientY;
@@ -2134,11 +2194,14 @@ function initChatResize() {
     document.removeEventListener('pointerup', onUp);
     if (raw <= CLOSE_AT) {                            // pulled all the way down → hide
       main.classList.remove('chat-full');
+      resetSlide();                                   // clear transform before it's hidden
       setChatView('hidden');
     } else if (raw >= main.clientHeight - FULL_GAP) { // pulled all the way up → fullscreen
+      resetSlide();
       main.classList.add('chat-full');                // (CSS fills the room; dock stays put)
       _chatSheetH = Math.round(partialMax() * 0.7);   // where it returns to on the next drag
     } else {                                          // settle at the dragged split
+      resetSlide();                                   // animates back up if it was mid-slide
       main.classList.remove('chat-full');
       _chatSheetH = Math.max(MIN, live);
       main.style.setProperty('--chat-h', _chatSheetH + 'px');
