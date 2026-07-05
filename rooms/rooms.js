@@ -13,7 +13,7 @@ async function ensureLk() {
 }
 
 // ── § CONFIG ─────────────────────────────────────────────────────
-const VERSION        = '2026-07-04.32';
+const VERSION        = '2026-07-05.34';
 const SUPABASE_URL   = 'https://karogcjefsnnrvlxlgpf.supabase.co';
 const SUPABASE_ANON  = 'sb_publishable_z2jS9qvQUvkSXVspdi2U5w_dFGM_rG-';
 const LIVEKIT_WS_URL = 'wss://pawsweb-z0kamke4.livekit.cloud';
@@ -69,8 +69,10 @@ const ICON = {
   fitWhole:   _svg('M9 9V5H7v2H5v2h4zm6 0h4V7h-2V5h-2v4zM9 15H5v2h2v2h2v-4zm6 4h2v-2h2v-2h-4v4z'),
   // arrows outward = "zoom in / fill the bubble" (cover, crops edges)
   fitFill:    _svg('M7 7h2V5H5v4h2V7zm10-2h-2v2h2v2h2V5h-2zM7 17H5v2h4v-2H7v-2H5v2h2zm10 0v-2h-2v2h-2v2h4v-2z'),
-  // Two-arrow rotate icon — clearly means "switch/flip"
+  // Two-arrow rotate icon — "switch camera" (cycle front/back/lenses)
   flipCam:    _svg('M19 8l-4 4h3c0 3.31-2.69 6-6 6-1.01 0-1.97-.25-2.8-.7l-1.46 1.46C8.97 19.54 10.43 20 12 20c4.42 0 8-3.58 8-8h3l-4-4zM6 12c0-3.31 2.69-6 6-6 1.01 0 1.97.25 2.8.7l1.46-1.46C15.03 4.46 13.57 4 12 4c-4.42 0-8 3.58-8 8H1l4 4 4-4H6z'),
+  // Flip-horizontal — "mirror camera" (visual left/right flip of your own view)
+  mirror:     _svg('M15 21h2v-2h-2v2zm4-12h2V7h-2v2zM3 5v14c0 1.1.9 2 2 2h4v-2H5V5h4V3H5c-1.1 0-2 .9-2 2zm16-2v2h2c0-1.1-.9-2-2-2zm-8 20h2V1h-2v22zm8-6h2v-2h-2v2zM15 5h2V3h-2v2zm4 8h2v-2h-2v2zm0 8c1.1 0 2-.9 2-2h-2v2z'),
   ghost:  _svg('M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75C21.27 7.11 17 4 12 4c-1.27 0-2.49.2-3.64.57l2.17 2.17C11.06 6.49 11.51 7 12 7zM2 4.27l2.28 2.28.46.46C3.08 8.3 1.78 10.02 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z'),
   image:  _svg('M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z'),
   dots:   _svg('M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z'),
@@ -1133,7 +1135,10 @@ function showParticipantVideo(track, identity) {
   wrap.appendChild(_vidNameTag);
   addFullscreenBtn(wrap, video);
   addFitToggleBtn(wrap, video, identity);       // per-viewer zoom-in / view-whole
-  if (isLocal && (state.media.hasMultipleCameras || DEMO)) addFlipCamBtn(wrap);
+  if (isLocal) {
+    addMirrorBtn(wrap);                          // flip your own view left/right
+    if (state.media.hasMultipleCameras || DEMO) addSwitchCamBtn(wrap); // cycle front/back/lenses
+  }
   card.classList.add('has-video');
   applyVideoFit(wrap, video, identity);         // start from this viewer's saved choice (default: fill)
   // The bubble is a FIXED shape — it never resizes to the video's aspect ratio.
@@ -1162,8 +1167,12 @@ function applyVideoFit(wrap, video, identity) {
   const btn = wrap.querySelector('.fit-btn');
   if (btn) {
     const toWhole = fit === 'cover';            // next tap shows the whole frame
-    btn.innerHTML = toWhole ? ICON.fitWhole : ICON.fitFill;
-    btn.title = toWhole ? 'Show whole video' : 'Fill bubble';
+    const ic  = btn.querySelector('.fit-ic');
+    const lbl = btn.querySelector('.fit-label');
+    if (ic)  ic.innerHTML = toWhole ? ICON.fitWhole : ICON.fitFill;
+    if (lbl) lbl.textContent = toWhole ? 'whole' : 'fill';
+    btn.classList.toggle('is-whole', toWhole);
+    btn.title = toWhole ? 'Show the whole video' : 'Fill the bubble';
     btn.setAttribute('aria-label', btn.title);
   }
 }
@@ -1172,6 +1181,7 @@ function addFitToggleBtn(wrap, video, identity) {
   if (wrap.querySelector('.fit-btn')) return;
   const btn = document.createElement('button');
   btn.className = 'fit-btn';
+  btn.innerHTML = '<span class="fit-ic"></span><span class="fit-label"></span>';
   btn.addEventListener('click', (e) => {
     e.stopPropagation();
     _videoFit[identity] = (_videoFit[identity] || 'cover') === 'cover' ? 'contain' : 'cover';
@@ -1237,30 +1247,62 @@ function addFullscreenBtn(container, video) {
   container.appendChild(btn);
 }
 
-function addFlipCamBtn(wrap) {
+// Mirror button — flips YOUR OWN view left/right (visual only, local). Handy so
+// text/gestures read the right way round. Persists via the mirrorSelf setting.
+function addMirrorBtn(wrap) {
   const btn = document.createElement('button');
-  btn.className = 'flip-cam-btn';
-  btn.title = 'Flip camera';
-  btn.setAttribute('aria-label', 'Flip camera');
-  btn.innerHTML = ICON.flipCam;
-  btn.addEventListener('click', (e) => { e.stopPropagation(); flipCamera(); });
+  btn.className = 'mirror-cam-btn cam-tool-btn';
+  btn.title = 'Mirror camera';
+  btn.setAttribute('aria-label', 'Mirror camera');
+  btn.innerHTML = ICON.mirror;
+  btn.addEventListener('click', (e) => { e.stopPropagation(); toggleMirror(); });
   wrap.appendChild(btn);
 }
 
-async function flipCamera() {
-  // Demo has no LiveKit room/track — just mirror the local preview so the flip
-  // button is visible and does something you can see while checking the UI.
-  if (DEMO) {
-    if (!state.media.cameraOn) return;
-    state.media.flipCamFacing = state.media.flipCamFacing === 'environment' ? 'user' : 'environment';
-    const vid = document.querySelector(`.participant-card[data-sid="${CSS.escape(state.user.sessionId)}"] .p-video-wrap video`);
-    if (vid) vid.style.transform = state.media.flipCamFacing === 'environment' ? '' : (state.settings.mirrorSelf ? 'scaleX(-1)' : '');
-    navigator.vibrate?.(8);
-    return;
-  }
+function toggleMirror() {
+  state.settings.mirrorSelf = !state.settings.mirrorSelf;
+  _saveSettings();
+  const chk = document.getElementById('chk-mirror');
+  if (chk) chk.checked = state.settings.mirrorSelf;
+  const vid = document.querySelector(`.participant-card[data-sid="${CSS.escape(state.user.sessionId)}"] .p-video-wrap video`);
+  if (vid) vid.style.transform = (state.settings.mirrorSelf && state.media.flipCamFacing !== 'environment') ? 'scaleX(-1)' : '';
+  navigator.vibrate?.(8);
+}
+
+// Switch-camera button — cycles front/back and through every lens on the device.
+function addSwitchCamBtn(wrap) {
+  const btn = document.createElement('button');
+  btn.className = 'switch-cam-btn cam-tool-btn';
+  btn.title = 'Switch camera';
+  btn.setAttribute('aria-label', 'Switch camera');
+  btn.innerHTML = ICON.flipCam;
+  btn.addEventListener('click', (e) => { e.stopPropagation(); switchCamera(); });
+  wrap.appendChild(btn);
+}
+
+async function switchCamera() {
+  navigator.vibrate?.(8);
+  if (DEMO) { showLobbyBanner('demo has just one camera ~ this cycles lenses on a real device'); return; }
   if (!state._lkRoom || !state.media.cameraOn || !state._localCamTrack) return;
+
+  // Enumerate every camera and step to the next one (wraps around).
+  const devices = await navigator.mediaDevices.enumerateDevices().catch(() => []);
+  const cams = devices.filter(d => d.kind === 'videoinput');
+  let nextConstraint;
+  if (cams.length > 1) {
+    const curId = state.settings.cameraDeviceId;
+    const idx   = Math.max(0, cams.findIndex(c => c.deviceId === curId));
+    const next  = cams[(idx + 1) % cams.length];
+    state.settings.cameraDeviceId = next.deviceId;
+    _saveSettings();
+    nextConstraint = { deviceId: { exact: next.deviceId } };
+  } else {
+    // Only one enumerated device (or labels hidden) — fall back to front/back toggle.
+    state.media.flipCamFacing = state.media.flipCamFacing === 'environment' ? 'user' : 'environment';
+    nextConstraint = { facingMode: state.media.flipCamFacing };
+  }
+
   const { createLocalVideoTrack } = await ensureLk();
-  state.media.flipCamFacing = state.media.flipCamFacing === 'environment' ? 'user' : 'environment';
   const myCard = document.querySelector(`.participant-card[data-sid="${CSS.escape(state.user.sessionId)}"]`);
   myCard?.classList.add('cam-loading');
   const oldTrack = state._localCamTrack;
@@ -1268,7 +1310,7 @@ async function flipCamera() {
     await state._lkRoom.localParticipant.unpublishTrack(oldTrack);
     oldTrack.stop();
     state._localCamTrack = null;
-    const track = await createLocalVideoTrack({ facingMode: state.media.flipCamFacing });
+    const track = await createLocalVideoTrack(nextConstraint);
     const _encBitrate = state.settings.cameraResolution === '1080p' ? 4_000_000 : 2_500_000;
     await state._lkRoom.localParticipant.publishTrack(track, {
       videoEncoding: { maxBitrate: _encBitrate, maxFramerate: 30 },
@@ -1276,9 +1318,6 @@ async function flipCamera() {
     state._localCamTrack = track;
     showParticipantVideo(track, state.user.sessionId);
   } catch {
-    // Old track is already stopped — camera is now effectively off. Reset state so the
-    // user isn't stuck with a "camera on" dock button and no video.
-    state.media.flipCamFacing = state.media.flipCamFacing === 'environment' ? 'user' : 'environment';
     state.media.cameraOn = false;
     state._localCamTrack = null;
     hideParticipantVideo(state.user.sessionId);
@@ -1615,7 +1654,7 @@ function renderRoomCard(room) {
     ${room.is_streaming && !room.locked ? `<span class="card-live"><span class="card-live-word">live</span><span class="card-live-num">${room.member_count}</span></span>` : ''}
     ${thumbnailHtml}
     <div class="card-name">
-      ${title}${isYours ? ' <span class="yours-tag">(yours)</span>' : ''}${room.locked ? ` <span class="badge badge-locked">${ICON.lock} locked</span>` : ''}
+      ${title}${isYours ? ' <span class="yours-tag">(yours)</span>' : ''}${room.locked ? ` <span class="badge badge-locked">${ICON.lock} locked</span>` : ''}${room.audience && !room.locked ? ` <span class="badge badge-audience">${ICON.people} audience</span>` : ''}
     </div>
     ${room.locked && !isYours
         ? `<div class="card-ask">dont ask me</div>`
@@ -2562,7 +2601,7 @@ function updateDock() {
 function updateMicBtn() {
   const btn = document.getElementById('btn-mic');
   if (!btn) return;
-  const disconnected   = state.view === 'room' && !state._lkRoom;
+  const disconnected   = state.view === 'room' && !state._lkRoom && !DEMO;
   const audienceLocked = !!state.room?.audience && state.user.role !== 'host' && !disconnected;
   const serverBlocked  = state.view === 'room' && state.media.serverMuted && !state.media.micOn && !disconnected;
   btn.disabled = disconnected || audienceLocked || serverBlocked;
@@ -2677,6 +2716,44 @@ function closeModals() {
 
 function showOverlay() {
   document.getElementById('modal-overlay').hidden = false;
+}
+
+// Custom confirm dialog (replaces the native confirm()) — matches the app's
+// modal style. Returns a Promise<boolean>. Esc / overlay / cancel → false.
+function showConfirm({ title, body = '', confirmText = 'confirm', cancelText = 'cancel', danger = false } = {}) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay confirm-overlay';
+    const wrap = document.createElement('div');
+    wrap.className = 'modal confirm-modal';
+    wrap.setAttribute('role', 'alertdialog');
+    wrap.setAttribute('aria-modal', 'true');
+    wrap.innerHTML = `
+      <div class="modal-box confirm-box">
+        <h2 class="modal-title">${escHtml(title || 'are you sure?')}</h2>
+        ${body ? `<p class="modal-sub">${escHtml(body)}</p>` : ''}
+        <div class="confirm-actions">
+          <button type="button" class="btn-soft confirm-cancel">${escHtml(cancelText)}</button>
+          <button type="button" class="btn-primary${danger ? ' confirm-danger' : ''} confirm-ok">${escHtml(confirmText)}</button>
+        </div>
+      </div>`;
+    const close = (result) => {
+      document.removeEventListener('keydown', onKey);
+      overlay.remove(); wrap.remove();
+      resolve(result);
+    };
+    const onKey = (e) => {
+      if (e.key === 'Escape') close(false);
+      else if (e.key === 'Enter') close(true);
+    };
+    overlay.addEventListener('click', () => close(false));
+    wrap.querySelector('.confirm-cancel').addEventListener('click', () => close(false));
+    wrap.querySelector('.confirm-ok').addEventListener('click', () => close(true));
+    document.addEventListener('keydown', onKey);
+    document.body.appendChild(overlay);
+    document.body.appendChild(wrap);
+    wrap.querySelector('.confirm-ok').focus();
+  });
 }
 
 let _lobbyToast = null;
@@ -2809,6 +2886,12 @@ function micBanner() {
 
 function toggleMic() {
   navigator.vibrate?.(8);
+  if (DEMO) {                       // no LiveKit in demo — just flip the visual state
+    state.media.micOn = !state.media.micOn;
+    state.media.micReady = state.media.micOn;
+    updateMicBtn();
+    return;
+  }
   if (!state._lkRoom && state.view === 'room') {
     showBanner('Voice is still connecting.', '', null, 'warning');
     return;
@@ -2985,6 +3068,11 @@ async function toggleScreen() {
   navigator.vibrate?.(8);
   _screenToggling = true;
   try {
+    if (DEMO) {                     // demo: no real capture — just toggle the button state
+      state.media.screenOn = !state.media.screenOn;
+      updateDockBtnState('btn-screen', state.media.screenOn);
+      return;
+    }
     if (!state._lkRoom) {
       showBanner('Screen share is available after voice connects.', '', null, 'warning');
       updateDockBtnState('btn-screen', false);
@@ -4125,7 +4213,14 @@ async function init() {
   document.getElementById('btn-ghost').addEventListener('click', toggleGhost);
   document.getElementById('btn-admin-end')?.addEventListener('click', async () => {
     if (!state.room?.slug || !state.user.isAdmin) return;
-    if (!confirm('End this room for everyone?')) return;
+    const ok = await showConfirm({
+      title: 'end this room?',
+      body: 'this closes the room for everyone and can’t be undone.',
+      confirmText: 'end room',
+      cancelText: 'keep it open',
+      danger: true,
+    });
+    if (!ok) return;
     await sbEndRoom(state.room.slug, state.room.id);
     await doShowLobby();
   });
