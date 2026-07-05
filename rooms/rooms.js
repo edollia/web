@@ -2,8 +2,6 @@
 //  rooms.js — doll.gg /rooms — voice / video / chat rooms (LiveKit)
 // ════════════════════════════════════════════════════════════════
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-
 // LiveKit is loaded lazily when a user first enters a room so a CDN
 // hiccup never kills the lobby buttons.
 let _lk = null;
@@ -13,16 +11,24 @@ async function ensureLk() {
 }
 
 // ── § CONFIG ─────────────────────────────────────────────────────
-const VERSION        = '2026-07-05.34';
+const VERSION        = '2026-07-05.35';
 const SUPABASE_URL   = 'https://karogcjefsnnrvlxlgpf.supabase.co';
 const SUPABASE_ANON  = 'sb_publishable_z2jS9qvQUvkSXVspdi2U5w_dFGM_rG-';
 const LIVEKIT_WS_URL = 'wss://pawsweb-z0kamke4.livekit.cloud';
 const ROOM_SELECT    = 'id, slug, title, status, locked, audience_mode, host_nickname, host_accent, member_count, created_at, ended_at, participant_previews';
 const ADMIN_UID      = '9ea1a89e-5a00-4b91-b98c-d69a5e383df4';
 
-const sb = createClient(SUPABASE_URL, SUPABASE_ANON, {
-  realtime: { params: { eventsPerSecond: 10 } },
-});
+// Supabase is loaded lazily too (like LiveKit) so ?demo=1 — and the lobby's very
+// first paint — never block on a CDN fetch. In demo it's never loaded at all.
+let sb = null;
+async function ensureSb() {
+  if (sb) return sb;
+  const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
+  sb = createClient(SUPABASE_URL, SUPABASE_ANON, {
+    realtime: { params: { eventsPerSecond: 10 } },
+  });
+  return sb;
+}
 
 // 8 distinct pastel/muted colors + 5 vivid/shiny colors.
 // SHINY_COLORS are displayed with a glow effect in the picker.
@@ -214,15 +220,20 @@ async function loadIdentity() {
 
   // Admin detection: verify via Supabase Auth session (set when logged in at /admin/rooms/).
   // The localStorage flag only grants ghost mode; full admin powers require a real auth session.
-  try {
-    const { data: { user } } = await sb.auth.getUser();
-    if (user?.id === ADMIN_UID) state.user.isAdmin = true;
-  } catch { /* not logged in — not an error */ }
+  // Skipped entirely in demo so the demo needs no network / no CDN at all.
+  if (!DEMO) {
+    try {
+      await ensureSb();
+      const { data: { user } } = await sb.auth.getUser();
+      if (user?.id === ADMIN_UID) state.user.isAdmin = true;
+    } catch { /* not logged in / offline — not an error */ }
+  }
 }
 
 async function getAdminJwt() {
-  if (!state.user.isAdmin) return null;
+  if (DEMO || !state.user.isAdmin) return null;
   try {
+    await ensureSb();
     const { data: { session } } = await sb.auth.getSession();
     return session?.access_token || null;
   } catch { return null; }
@@ -4340,6 +4351,7 @@ async function init() {
 
   // ── Route ──
   if (DEMO) { startDemo(); return; }
+  await ensureSb();   // real mode needs the Supabase client before any lobby/room fetch
   const initialSlug = parseSlug();
   if (initialSlug) {
     history.replaceState({ view: 'lobby' }, '', location.pathname);
