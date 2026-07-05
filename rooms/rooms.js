@@ -11,7 +11,7 @@ async function ensureLk() {
 }
 
 // ── § CONFIG ─────────────────────────────────────────────────────
-const VERSION        = '2026-07-05.38';
+const VERSION        = '2026-07-05.39';
 const SUPABASE_URL   = 'https://karogcjefsnnrvlxlgpf.supabase.co';
 const SUPABASE_ANON  = 'sb_publishable_z2jS9qvQUvkSXVspdi2U5w_dFGM_rG-';
 const LIVEKIT_WS_URL = 'wss://pawsweb-z0kamke4.livekit.cloud';
@@ -4135,15 +4135,27 @@ function escHtml(str) {
 // button presses) are NOT blocked because we require the taps to be near the
 // same point, which a zoom double-tap always is.
 function preventDoubleTapZoom() {
-  let lastT = 0, lastX = 0, lastY = 0;
+  let startX = 0, startY = 0, moved = false;
+  let lastTapT = 0, lastTapX = 0, lastTapY = 0;
+  document.addEventListener('touchstart', (e) => {
+    const t = e.touches[0]; if (!t) return;
+    startX = t.clientX; startY = t.clientY; moved = false;
+  }, { passive: true });
+  document.addEventListener('touchmove', (e) => {
+    const t = e.touches[0]; if (!t) return;
+    if (Math.hypot(t.clientX - startX, t.clientY - startY) > 12) moved = true;  // it's a scroll, not a tap
+  }, { passive: true });
   document.addEventListener('touchend', (e) => {
     const t = e.changedTouches && e.changedTouches[0];
-    if (!t) return;
+    if (!t || moved) return;                 // ignore scroll flicks — only real stationary taps count
     const now = Date.now();
-    if (now - lastT <= 350 && Math.hypot(t.clientX - lastX, t.clientY - lastY) < 40) {
-      e.preventDefault();   // cancels the synthetic zoom; the click already fired on tap 1
+    // A second stationary tap within 350ms at ~the same spot = the double-tap
+    // zoom gesture. Cancel it; the click from tap 1 already fired, and pinch
+    // (two fingers) is untouched.
+    if (now - lastTapT <= 350 && Math.hypot(t.clientX - lastTapX, t.clientY - lastTapY) < 40) {
+      e.preventDefault();
     }
-    lastT = now; lastX = t.clientX; lastY = t.clientY;
+    lastTapT = now; lastTapX = t.clientX; lastTapY = t.clientY;
   }, { passive: false });
 }
 

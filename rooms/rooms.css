@@ -116,7 +116,11 @@ body {
   overscroll-behavior: none;
 }
 
-button { cursor: pointer; border: none; background: none; font-family: inherit; font-size: inherit; }
+button {
+  cursor: pointer; border: none; background: none;
+  font-family: inherit; font-size: inherit;
+  -webkit-appearance: none; appearance: none;   /* kill native iOS button chrome */
+}
 input, select { font-family: inherit; font-size: inherit; }
 a { color: inherit; text-decoration: none; }
 
@@ -125,9 +129,14 @@ a { color: inherit; text-decoration: none; }
 button, a, label, input, select, textarea, [role="button"], .room-card {
   -webkit-tap-highlight-color: transparent;
 }
-/* Default focus outline is a square that ignores border-radius — drop it for
-   pointer/touch focus, keep it for keyboard users (accessibility). */
-:focus:not(:focus-visible) { outline: none; }
+/* The default focus outline is a square that ignores border-radius. Remove it on
+   ALL pointer/touch focus (iOS Safari sets :focus but not :focus-visible on tap),
+   and re-add a rounded ring only for keyboard users. */
+button:focus, a:focus, [role="button"]:focus, .room-card:focus { outline: none; }
+button:focus-visible, a:focus-visible, [role="button"]:focus-visible, .room-card:focus-visible {
+  outline: 2px solid var(--v-pink);
+  outline-offset: 2px;
+}
 
 /* Ensure [hidden] always wins over any class-level display rule.
    UA [hidden]{display:none} has the same specificity as .btn-primary{display:inline-flex}
@@ -137,7 +146,11 @@ button, a, label, input, select, textarea, [role="button"], .room-card {
 /* ── Views ──────────────────────────────────────────────────────── */
 .view { display: flex; flex-direction: column; min-height: 100dvh; }
 .view[hidden] { display: none !important; }
-.view-lobby { overflow-y: auto; }
+/* Fixed-height column: header + footer stay put, the middle (.lobby-main) is the
+   scroll area. (Was overflow-y on the view with no height cap → it just grew to
+   content height and the body clipped the overflow, so the lobby couldn't
+   scroll once the post-it grid ran taller than the screen.) */
+.view-lobby { height: 100dvh; overflow: hidden; }
 .view-room { height: 100dvh; overflow: hidden; background: var(--v-bg-room); overscroll-behavior: none; }
 
 /* ── Buttons ────────────────────────────────────────────────────── */
@@ -646,7 +659,10 @@ button, a, label, input, select, textarea, [role="button"], .room-card {
 }
 
 .lobby-main {
-  flex: 1;
+  flex: 1 1 auto;
+  min-height: 0;                        /* allow the flex child to shrink so it scrolls */
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;    /* momentum scroll on iOS */
   padding: 0 32px 24px;
   max-width: 960px;
   width: 100%;
@@ -2409,14 +2425,26 @@ button, a, label, input, select, textarea, [role="button"], .room-card {
     padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
   }
   .dock-left { display: none; }
-  .dock-center { flex: 1 1 auto; min-width: 0; gap: clamp(2px, 1vw, 4px); justify-content: center; }
-  .dock-right  { flex-shrink: 0; gap: clamp(2px, 0.8vw, 3px); }
-  /* Buttons scale down with the viewport (clamp) so a zoomed-in Safari page —
-     which shrinks the usable CSS width — compresses the bar instead of letting
-     the fixed-width, flex-shrink:0 buttons overflow and overlap each other. */
-  .dock-btn  { width: clamp(30px, 9vw, 36px);   height: clamp(30px, 9vw, 36px); }
-  .dock-ctrl { width: clamp(25px, 7.4vw, 30px); height: clamp(25px, 7.4vw, 30px); }
-  .dock-leave { padding: 6px clamp(7px, 2.4vw, 12px); font-size: 11px; }
+  /* The centre cluster scrolls sideways when the icons don't fit (zoomed page,
+     tiny screen) instead of shrinking or overlapping. `safe center` keeps them
+     centred when they DO fit, but left-aligns + lets you scroll to the first one
+     when they don't (plain `center` would clip the start unreachably). */
+  .dock-center {
+    flex: 1 1 auto;
+    min-width: 0;
+    gap: 5px;
+    justify-content: safe center;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    padding: 2px 0;
+  }
+  .dock-center::-webkit-scrollbar { display: none; }
+  .dock-right  { flex-shrink: 0; gap: 3px; }
+  .dock-btn  { width: 36px; height: 36px; flex-shrink: 0; }
+  .dock-ctrl { width: 30px; height: 30px; flex-shrink: 0; }
+  .dock-leave { padding: 6px 12px; font-size: 11px; flex-shrink: 0; }
   .dock-leave .leave-label { display: inline; }
 
   /* Hide chat subtitle — saves space in the stacked layout */
