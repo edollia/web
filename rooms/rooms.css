@@ -94,6 +94,12 @@
 /* ── Base ───────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* Kill accidental double-tap-to-zoom (and the legacy 300ms tap delay) app-wide
+   while KEEPING pinch-to-zoom and scrolling. `manipulation` = pan + pinch-zoom
+   minus double-tap. Low specificity so elements that need a stricter value
+   (e.g. .chat-grabber { touch-action: none }) still override it. */
+* { touch-action: manipulation; }
+
 html {
   height: 100%;
   -webkit-text-size-adjust: 100%;
@@ -114,6 +120,15 @@ button { cursor: pointer; border: none; background: none; font-family: inherit; 
 input, select { font-family: inherit; font-size: inherit; }
 a { color: inherit; text-decoration: none; }
 
+/* Kill the grey/black square iOS shows on tap ("squared shade" on round
+   buttons like the back arrow), everywhere. */
+button, a, label, input, select, textarea, [role="button"], .room-card {
+  -webkit-tap-highlight-color: transparent;
+}
+/* Default focus outline is a square that ignores border-radius — drop it for
+   pointer/touch focus, keep it for keyboard users (accessibility). */
+:focus:not(:focus-visible) { outline: none; }
+
 /* Ensure [hidden] always wins over any class-level display rule.
    UA [hidden]{display:none} has the same specificity as .btn-primary{display:inline-flex}
    so class styles silently override it — !important fixes that globally. */
@@ -126,30 +141,35 @@ a { color: inherit; text-decoration: none; }
 .view-room { height: 100dvh; overflow: hidden; background: var(--v-bg-room); overscroll-behavior: none; }
 
 /* ── Buttons ────────────────────────────────────────────────────── */
+/* Top-lit candy fill (not the flat left→right gradient) with a soft inner
+   highlight + crisp pink rim, so the primary CTAs read hand-made, not stock. */
 .btn-primary {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
   padding: 10px 20px;
-  background: var(--v-grad-primary);
+  background: var(--v-fill-pink);
   color: #fff;
+  border: 1.5px solid var(--v-pink);
   border-radius: 999px;
-  font-weight: 600;
+  font-weight: 700;
   font-size: 13px;
   letter-spacing: 0.02em;
-  transition: background 0.15s, transform 0.1s, box-shadow 0.15s;
-  box-shadow: 0 4px 10px rgba(255, 145, 198, 0.28);
+  transition: background 0.15s, transform 0.1s, box-shadow 0.15s, border-color 0.15s;
+  box-shadow: 0 4px 11px rgba(255, 122, 184, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.55);
   white-space: nowrap;
 }
 .btn-primary:hover {
-  background: var(--v-grad-primary-h);
-  box-shadow: 0 8px 18px rgba(255, 145, 195, 0.36);
+  background: var(--v-fill-pink-h);
+  border-color: var(--v-pink-dark);
+  box-shadow: 0 8px 18px rgba(255, 122, 184, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.55);
   transform: translateY(-1px);
 }
-.btn-primary:active { transform: translateY(0); }
+.btn-primary:active { transform: translateY(1px) scale(0.98); box-shadow: inset 0 2px 6px rgba(150, 45, 95, 0.35); }
 .btn-primary:disabled {
   background: var(--v-surface-3);
+  border-color: transparent;
   color: var(--v-text-muted);
   box-shadow: none;
   cursor: not-allowed;
@@ -235,21 +255,25 @@ a { color: inherit; text-decoration: none; }
 .btn-danger:hover { background: #c44f69; transform: translateY(-1px); }
 .btn-danger:active { transform: translateY(0); }
 
+/* Same top-lit candy language as the dock buttons so it harmonises with the
+   bottom bar (raised white→pink fill, soft pink border, pink-dark glyph). */
 .btn-back {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
   border-radius: 50%;
-  background: var(--v-grad-soft);   /* soft-pink circle, always visible per mockup */
+  background: linear-gradient(180deg, #ffffff 0%, #ffeaf4 100%);
+  border: 1.5px solid var(--v-pink-light);
   color: var(--v-pink-dark);
-  font-size: 16px;
-  font-weight: 600;
-  transition: background 0.15s, color 0.15s;
+  box-shadow: 0 3px 7px rgba(255, 145, 195, 0.22);
+  transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.1s, box-shadow 0.15s;
   flex-shrink: 0;
 }
-.btn-back:hover { background: var(--v-grad-primary); color: #fff; }
+.btn-back svg { width: 17px; height: 17px; }
+.btn-back:hover { background: var(--v-fill-pink); border-color: var(--v-pink); color: #fff; transform: translateY(-1px); }
+.btn-back:active { transform: scale(0.9); box-shadow: inset 0 3px 6px rgba(180, 80, 130, 0.28); }
 
 .btn-danger.is-leaving, .btn-back.is-leaving {
   cursor: wait;
@@ -545,7 +569,9 @@ a { color: inherit; text-decoration: none; }
   text-transform: uppercase;
   color: var(--v-text-muted);
 }
-.color-row { display: flex; flex-wrap: wrap; gap: 7px; }
+.color-row { display: flex; flex-direction: column; gap: 8px; }
+.color-swatches { display: flex; flex-wrap: wrap; gap: 7px; }
+.color-swatches-shiny { margin-top: 2px; }
 .color-swatch {
   width: 24px;
   height: 24px;
@@ -640,27 +666,65 @@ a { color: inherit; text-decoration: none; }
 .lobby-nick-display {
   font-size: 12px;
   color: var(--v-text-muted);
-  flex: 1;
 }
 .lobby-nick-display::before { content: "you are "; }
-/* change-name / home rendered as tiny pill buttons */
-.lobby-footer .btn-text-sm {
-  font-size: 11px;
-  padding: 4px 11px;
+.lobby-footer-spacer { flex: 1; }
+
+/* Tappable profile chip (name + avatar + tiny edit pencil) */
+.profile-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px 5px 6px;
+  border: 1.5px solid var(--v-border);
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: var(--v-shadow-sm);
+  transition: border-color 0.15s, background 0.15s, transform 0.1s;
+}
+.profile-chip:hover { border-color: var(--v-pink-mid); background: #fff0f7; transform: translateY(-1px); }
+.profile-chip:active { transform: scale(0.97); }
+.profile-chip-you { font-size: 13px; color: var(--v-text); font-weight: 600; }
+.chip-edit-ic { width: 13px; height: 13px; color: var(--v-pink-dark); opacity: 0.75; flex-shrink: 0; }
+
+/* Design toggle + home = matching soft round/pill buttons */
+.lobby-design-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
   border: 1.5px solid var(--v-border);
   border-radius: 999px;
   background: #fff;
   color: var(--v-text-muted);
+  font-family: var(--v-font-hand);
+  font-size: 14px;
   box-shadow: var(--v-shadow-sm);
-  line-height: 1.4;
-  transition: color 0.15s, border-color 0.15s, background 0.15s;
+  transition: color 0.15s, border-color 0.15s, background 0.15s, transform 0.1s;
 }
-.lobby-footer .btn-text-sm:hover {
-  color: var(--v-pink-dark);
-  border-color: var(--v-pink-mid);
-  background: var(--v-pink-soft, #fff0f7);
+.lobby-design-toggle svg { width: 15px; height: 15px; }
+.lobby-design-toggle:hover { color: var(--v-pink-dark); border-color: var(--v-pink-mid); background: #fff0f7; }
+.lobby-design-toggle:active { transform: scale(0.95); }
+/* Desktop keeps the tilted grid only — the flip is a mobile affordance. */
+.lobby-design-toggle { display: none; }
+
+.lobby-home-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1.5px solid var(--v-border);
+  background: #fff;
+  color: var(--v-text-muted);
+  box-shadow: var(--v-shadow-sm);
+  transition: color 0.15s, border-color 0.15s, background 0.15s, transform 0.1s;
+  flex-shrink: 0;
 }
-.lobby-home-link { margin-left: 4px; text-decoration: none; }
+.lobby-home-link svg { width: 17px; height: 17px; }
+.lobby-home-link:hover { color: var(--v-pink-dark); border-color: var(--v-pink-mid); background: #fff0f7; transform: translateY(-1px); }
+.lobby-home-link:active { transform: scale(0.95); }
 
 /* ── Room grid ──────────────────────────────────────────────────── */
 .rooms-grid {
@@ -881,9 +945,10 @@ a { color: inherit; text-decoration: none; }
   margin-top: 2px;
 }
 .room-card:not(.locked):hover .card-join {
-  background: var(--v-grad-primary);
+  background: var(--v-fill-pink);
   border-color: var(--v-pink);
   color: #fff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5);
 }
 .room-card.locked .card-join { background: transparent; }
 .room-card.locked .card-join {
@@ -1091,6 +1156,7 @@ a { color: inherit; text-decoration: none; }
   text-transform: none;
   color: var(--v-hand);
   margin-bottom: 14px;
+  opacity: 0.5;   /* quiet label — shouldn't compete with the participants */
 }
 
 /* ── Participant grid ───────────────────────────────────────────────
@@ -1124,15 +1190,21 @@ a { color: inherit; text-decoration: none; }
 }
 /* scrapbook tilt (mockup) — a small, varied rotation per card so the grid reads
    as taped-down notes rather than a rigid table. */
-.participant-card { transform: rotate(-1.5deg); }
-.participant-card:nth-child(4n+2) { transform: rotate(1.2deg); }
-.participant-card:nth-child(4n+3) { transform: rotate(-0.5deg); }
-.participant-card:nth-child(4n+4) { transform: rotate(1.8deg); }
+.participant-card { --tilt: -1.5deg; transform: rotate(var(--tilt)); }
+.participant-card:nth-child(4n+2) { --tilt: 1.2deg; }
+.participant-card:nth-child(4n+3) { --tilt: -0.5deg; }
+.participant-card:nth-child(4n+4) { --tilt: 1.8deg; }
 .participant-card:not(.has-video) { justify-content: center; min-height: 140px; }
 .participant-card.is-you { border-color: var(--v-pink-mid); }
 .participant-card.speaking {
   border-color: var(--v-pink);
-  box-shadow: 0 0 0 3px rgba(255, 143, 196, 0.4), var(--v-shadow-sm);
+  animation: card-speak-pulse 1.3s ease-in-out infinite;
+}
+/* One clean cue: the card's own border glow breathes. (No second expanding
+   ring around the avatar — that read as two competing pulses.) */
+@keyframes card-speak-pulse {
+  0%, 100% { box-shadow: 0 0 0 2px rgba(255, 143, 196, 0.28), var(--v-shadow-sm); }
+  50%      { box-shadow: 0 0 0 4px rgba(255, 143, 196, 0.5),  var(--v-shadow-sm); }
 }
 
 /* Speaking equalizer pip (mockup) — a little white pill with 3 bouncing bars,
@@ -1336,23 +1408,9 @@ a { color: inherit; text-decoration: none; }
 .p-quality.lost  .p-quality-bar { opacity: 0.2; }
 .p-quality.unknown { opacity: 0; pointer-events: none; }
 
-/* Dynamic speaking wave — intensity driven by --speak-level */
-.participant-card.speaking .p-avatar {
-  animation: none;
-}
-.participant-card.speaking .p-avatar::after {
-  content: '';
-  position: absolute;
-  inset: -4px;
-  border-radius: 50%;
-  border: 2px solid rgba(255, 143, 196, 0.6);
-  animation: speak-wave 1s ease-out infinite;
-  transform: scale(calc(1 + var(--speak-level, 0.3) * 0.4));
-}
-@keyframes speak-wave {
-  0%   { opacity: 1; transform: scale(1); }
-  100% { opacity: 0; transform: scale(calc(1.1 + var(--speak-level, 0.3) * 0.5)); }
-}
+/* The speaking cue is the card border pulse (above) only — the avatar keeps
+   still so there's a single, calm indicator rather than two overlapping rings. */
+.participant-card.speaking .p-avatar { animation: none; }
 
 .room-hint {
   font-family: var(--v-font-hand);
@@ -1853,7 +1911,7 @@ a { color: inherit; text-decoration: none; }
   background: linear-gradient(180deg, #ffffff 0%, #ffeaf4 100%);
   border: 1.5px solid var(--v-pink-light);
   color: var(--v-pink-dark);
-  box-shadow: 0 3px 7px rgba(255, 145, 195, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  box-shadow: 0 3px 7px rgba(255, 145, 195, 0.22);
   transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.1s, box-shadow 0.15s;
   flex-shrink: 0;
   position: relative;
@@ -1994,17 +2052,27 @@ a { color: inherit; text-decoration: none; }
 }
 
 /* Leave = soft pink surface with pink-red ink (not a hard red button) per spec §3 */
+/* Same raised top-lit candy pill as the dock buttons, tinted rose so it still
+   reads as "leave" while harmonising with the rest of the bar. */
 .btn-danger.dock-leave {
   padding: 8px 15px;
   font-size: 12px;
-  background: var(--v-leave-bg);
+  font-weight: 700;
+  background: linear-gradient(180deg, #fff 0%, #ffe0ea 100%);
   color: var(--v-danger);
-  border: 1.5px solid rgba(216, 80, 120, 0.25);
-  box-shadow: 0 2px 8px rgba(255, 145, 195, 0.18);
+  border: 1.5px solid rgba(216, 80, 120, 0.3);
+  box-shadow: 0 3px 7px rgba(216, 80, 120, 0.18);
+  transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.1s, box-shadow 0.15s;
 }
 .btn-danger.dock-leave:hover {
-  background: rgba(255, 205, 226, 0.95);
-  color: var(--v-danger);
+  background: linear-gradient(180deg, #ff8fa8, #e85074);
+  color: #fff;
+  border-color: #d8456a;
+  transform: translateY(-1px);
+}
+.btn-danger.dock-leave:active {
+  transform: scale(0.9);
+  box-shadow: inset 0 3px 6px rgba(180, 50, 90, 0.3);
 }
 
 /* Host/admin controls are compact rounded-square icon toggles (ghost / lock / audience). */
@@ -2018,7 +2086,7 @@ a { color: inherit; text-decoration: none; }
   background: linear-gradient(180deg, #ffffff 0%, #ffeaf4 100%);
   border: 1.5px solid var(--v-pink-light);
   color: var(--v-pink-dark);
-  box-shadow: 0 3px 7px rgba(255, 145, 195, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  box-shadow: 0 3px 7px rgba(255, 145, 195, 0.22);
   transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.1s;
   flex-shrink: 0;
 }
@@ -2140,13 +2208,13 @@ a { color: inherit; text-decoration: none; }
 
 .settings-version { font-size: 10px; color: var(--v-text-muted); opacity: 0.5; text-align: right; padding-top: 6px; }
 
+/* Just the close button now (the redundant "settings" title was removed) — a
+   compact row aligned right, no divider/empty band above the first control. */
 .settings-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding-bottom: 10px;
-  margin-bottom: 2px;
-  border-bottom: 1px solid var(--v-border-soft);
+  justify-content: flex-end;
+  margin: -4px -4px -2px 0;
 }
 .settings-title {
   font-size: 11px;
@@ -2265,9 +2333,12 @@ a { color: inherit; text-decoration: none; }
   to   { opacity: 1; transform: translateX(-50%) scale(1) translateY(0); }
 }
 .participant-card.is-new { animation: card-in 0.2s ease; }
+/* Keep the per-card --tilt rotation inside both keyframes so the entrance
+   fades/scales *around* the final tilt — cards no longer appear straight and
+   then snap crooked ~0.2s later. */
 @keyframes card-in {
-  from { opacity: 0; transform: scale(0.94); }
-  to   { opacity: 1; transform: scale(1); }
+  from { opacity: 0; transform: rotate(var(--tilt, 0deg)) scale(0.94); }
+  to   { opacity: 1; transform: rotate(var(--tilt, 0deg)) scale(1); }
 }
 .chat-msg, .chat-msg-sys { animation: msg-in 0.15s ease; }
 @keyframes msg-in {
@@ -2338,11 +2409,15 @@ a { color: inherit; text-decoration: none; }
     padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
   }
   .dock-left { display: none; }
-  .dock-center { flex: 1; min-width: 0; gap: 4px; }
-  .dock-right  { flex-shrink: 0; gap: 3px; }
-  .dock-btn  { width: 36px; height: 36px; }
-  .dock-ctrl { width: 30px; height: 30px; }
-  .dock-leave { padding: 6px 12px; font-size: 11px; }
+  .dock-center { flex: 1 1 auto; min-width: 0; gap: clamp(2px, 1vw, 4px); justify-content: center; }
+  .dock-right  { flex-shrink: 0; gap: clamp(2px, 0.8vw, 3px); }
+  /* Buttons scale down with the viewport (clamp) so a zoomed-in Safari page —
+     which shrinks the usable CSS width — compresses the bar instead of letting
+     the fixed-width, flex-shrink:0 buttons overflow and overlap each other. */
+  .dock-btn  { width: clamp(30px, 9vw, 36px);   height: clamp(30px, 9vw, 36px); }
+  .dock-ctrl { width: clamp(25px, 7.4vw, 30px); height: clamp(25px, 7.4vw, 30px); }
+  .dock-leave { padding: 6px clamp(7px, 2.4vw, 12px); font-size: 11px; }
+  .dock-leave .leave-label { display: inline; }
 
   /* Hide chat subtitle — saves space in the stacked layout */
   .chat-header-bar { display: none; }
@@ -2355,12 +2430,24 @@ a { color: inherit; text-decoration: none; }
     white-space: normal;
   }
 
-  /* Topbar: hide audience/ghost badges on mobile to prevent wrap-overflow into content below.
-     The locked badge is kept — it's critical for guests. Dock buttons convey the other states. */
-  #topbar-audience-badge,
+  /* Topbar on mobile: keep the locked + audience badges (both are room states a
+     guest needs to see); only the admin-niche ghost badge is dropped. To stop
+     the badges wrapping into the content below, the left cluster stays on one
+     row and the room title truncates instead. */
+  .topbar-left { flex-wrap: nowrap; overflow: hidden; }
+  .topbar-host { max-width: 34vw; }
+  #topbar-locked-badge, #topbar-audience-badge { flex-shrink: 0; padding: 2px 7px; font-size: 11px; }
   #topbar-ghost-badge { display: none; }
 
   .participant-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+}
+
+/* Ultra-narrow / heavily zoomed: drop the leave label to an icon so the whole
+   control bar still fits on one row without collisions. */
+@media (max-width: 360px) {
+  .dock-leave .leave-label { display: none; }
+  .btn-danger.dock-leave { padding: 6px 9px; gap: 0; }
+  .room-dock { gap: 4px; padding: 6px 6px; }
 }
 
 /* ── Mobile landscape: side-by-side panels + compact dock ────────── */
@@ -2370,7 +2457,11 @@ a { color: inherit; text-decoration: none; }
    max-width: 767px rule). */
 @media (orientation: landscape) and (max-height: 500px) {
   .room-main { flex-direction: row !important; }
-  .panel-participants { flex: 1 1 56% !important; height: 100%; border-bottom: none; }
+  /* In landscape the notch/rounded corner is on the SIDE — pad the content in
+     from both edges so the topbar, panels and dock clear it. */
+  .room-topbar { padding-left: calc(10px + env(safe-area-inset-left, 0px)); padding-right: calc(14px + env(safe-area-inset-right, 0px)); }
+  .now-playing { padding-left: calc(14px + env(safe-area-inset-left, 0px)); padding-right: calc(14px + env(safe-area-inset-right, 0px)); }
+  .panel-participants { flex: 1 1 56% !important; height: 100%; border-bottom: none; padding-left: calc(14px + env(safe-area-inset-left, 0px)); }
   .panel-chat { flex: 0 0 44% !important; border-top: none !important; border-left: 1px solid var(--v-border); }
   /* Compact dock: height:auto prevents fixed 54 px from clipping 38 px buttons
      when safe-area-inset-bottom (~21 px on iPhones) is added as padding. */
@@ -2378,6 +2469,8 @@ a { color: inherit; text-decoration: none; }
     height: auto;
     min-height: 44px;
     padding: 4px 8px;
+    padding-left: calc(8px + env(safe-area-inset-left, 0px));
+    padding-right: calc(8px + env(safe-area-inset-right, 0px));
     padding-bottom: calc(4px + env(safe-area-inset-bottom, 0px));
     gap: 2px;
   }
@@ -2467,6 +2560,30 @@ a { color: inherit; text-decoration: none; }
   box-shadow: 0 0 0 2px var(--v-pink-dark), 0 0 8px 2px color-mix(in srgb, var(--sw) 70%, transparent);
 }
 
+/* ── Shiny accent glow ──────────────────────────────────────────────
+   A "special" (opt-in) colour makes the avatar ring + name shimmer in the
+   chosen hue, everywhere they render, so everyone in the room sees it. */
+.card-avatar.shiny-glow,
+.card-bubble.shiny-glow,
+.p-avatar.shiny-glow,
+.chip-avatar.shiny-glow,
+.setup-avatar.shiny-glow {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--c) 55%, #fff),
+              0 0 12px 2px color-mix(in srgb, var(--c) 70%, transparent);
+  animation: shiny-pulse 2.2s ease-in-out infinite;
+}
+.p-name.shiny-glow,
+.chat-msg-nick.shiny-glow,
+.profile-chip-you.shiny-glow {
+  color: var(--c);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--c) 60%, transparent);
+  font-weight: 700;
+}
+@keyframes shiny-pulse {
+  0%, 100% { box-shadow: 0 0 0 2px color-mix(in srgb, var(--c) 50%, #fff), 0 0 9px 1px  color-mix(in srgb, var(--c) 55%, transparent); }
+  50%      { box-shadow: 0 0 0 2px color-mix(in srgb, var(--c) 68%, #fff), 0 0 16px 3px color-mix(in srgb, var(--c) 82%, transparent); }
+}
+
 /* ── Admin end-room dock button ─────────────────────────────────── */
 .dock-ctrl-danger {
   color: var(--v-danger);
@@ -2492,25 +2609,49 @@ a { color: inherit; text-decoration: none; }
 /* ── view-room keyboard support ─────────────────────────────────── */
 .view-room { height: var(--vvh, 100dvh); }
 
-/* ── Lobby toast (temporary error/info strip) ───────────────────── */
+/* ── Lobby toast (temporary error/info strip) ───────────────────────
+   A soft frosted "sticky note" bubble with a little heart tail, tilted a hair
+   so it reads hand-placed — not the old heavy solid-rose pill. */
 .lobby-toast {
   position: fixed;
-  bottom: 24px;
+  bottom: 26px;
   left: 50%;
-  transform: translateX(-50%);
-  background: var(--v-danger);
-  color: #fff;
-  padding: 10px 22px;
-  border-radius: 999px;
-  font-size: 13px;
-  font-weight: 500;
-  box-shadow: var(--v-shadow);
+  transform: translateX(-50%) rotate(-1.2deg);
+  background: rgba(255, 251, 253, 0.96);
+  color: var(--v-hand);
+  padding: 11px 20px;
+  border-radius: 16px;
+  border: 1.5px solid var(--v-pink-mid);
+  font-family: var(--v-font-body);
+  font-size: 13.5px;
+  font-weight: 600;
+  box-shadow: 0 10px 26px rgba(255, 145, 195, 0.3);
+  backdrop-filter: blur(8px) saturate(1.1);
+  -webkit-backdrop-filter: blur(8px) saturate(1.1);
   z-index: 999;
-  animation: fade-in 0.15s ease;
+  animation: toast-pop 0.24s cubic-bezier(0.34, 1.56, 0.64, 1);
   max-width: calc(100vw - 32px);
   white-space: normal;
   text-align: center;
   pointer-events: none;
+}
+/* little pointer tail at the bottom-left, like a speech bubble */
+.lobby-toast::after {
+  content: '';
+  position: absolute;
+  left: 28px;
+  bottom: -6px;
+  width: 12px;
+  height: 12px;
+  background: inherit;
+  border-right: 1.5px solid var(--v-pink-mid);
+  border-bottom: 1.5px solid var(--v-pink-mid);
+  transform: rotate(45deg);
+  border-bottom-right-radius: 3px;
+}
+@keyframes toast-pop {
+  from { opacity: 0; transform: translateX(-50%) rotate(-1.2deg) translateY(8px) scale(0.96); }
+  to   { opacity: 1; transform: translateX(-50%) rotate(-1.2deg) translateY(0) scale(1); }
 }
 
 
@@ -2614,6 +2755,19 @@ a { color: inherit; text-decoration: none; }
 .p-video-wrap.fit-contain { background: #000 !important; }
 .p-video-wrap.fit-contain video { object-fit: contain; }
 
+/* Demo-only fake camera feed (so the sol tile reads as a person on cam, not an
+   empty labelled bubble). Soft pastel gradient with the initial floating in it. */
+.p-video-wrap.demo-cam {
+  background: radial-gradient(120% 90% at 50% 30%, #ffd9b0 0%, #ffb38a 45%, #ff8fb8 100%) !important;
+  display: flex; align-items: center; justify-content: center;
+}
+.demo-cam .demo-cam-face {
+  font-family: var(--v-font-head);
+  font-size: 40px; font-weight: 700; color: rgba(255, 255, 255, 0.9);
+  text-shadow: 0 2px 8px rgba(150, 60, 90, 0.35);
+  line-height: 1;
+}
+
 /* ── Participant card video ──────────────────────────────────────── */
 .p-video-wrap {
   width: 100%;
@@ -2690,19 +2844,36 @@ a { color: inherit; text-decoration: none; }
 
 /* ── Touch: neutralise stuck hover states ───────────────────────── */
 @media (hover: none) {
-  .btn-primary:hover { background: var(--v-grad-primary); box-shadow: 0 4px 10px rgba(255, 145, 198, 0.28); transform: none; }
+  /* Touch devices apply :hover on tap and it STICKS until you tap elsewhere, so
+     every hover style below is reset to its resting look — buttons return to
+     rest the instant you lift your finger (no "stuck pressed" state). Each reset
+     mirrors the element's base rule. */
+  .btn-primary:hover { background: var(--v-fill-pink); border-color: var(--v-pink); box-shadow: 0 4px 11px rgba(255, 122, 184, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.55); transform: none; }
   .btn-ghost:hover   { border-color: var(--v-border); color: var(--v-text-muted); background: transparent; }
   .btn-text:hover    { background: transparent; color: var(--v-text-muted); }
   .btn-text-sm:hover { color: var(--v-text-muted); }
   .btn-danger:hover  { background: var(--v-danger); transform: none; }
-  .btn-back:hover    { background: var(--v-grad-soft); color: var(--v-pink-dark); }
+  .btn-back:hover    { background: linear-gradient(180deg, #ffffff 0%, #ffeaf4 100%); border-color: var(--v-pink-light); color: var(--v-pink-dark); transform: none; }
 
   .room-card:hover { border-color: var(--v-border); box-shadow: var(--v-shadow); transform: rotate(var(--tilt)); }
-  .room-card:not(.locked):hover .card-join { background: var(--v-grad-soft); border-color: var(--v-border); color: var(--v-pink-dark); }
+  .room-card:not(.locked):hover .card-join { background: var(--v-grad-soft); border-color: var(--v-border); color: var(--v-pink-dark); box-shadow: none; }
 
   .participant-card.host-can-act:hover { background: var(--v-surface-2); }
   .p-mute-btn:hover { background: rgba(217, 95, 122, 0.12); }
   .p-dots-btn:hover { background: rgba(0,0,0,0.08); }
+
+  /* New footer + control buttons (were missing → they stuck pressed on tap). */
+  .profile-chip:hover        { border-color: var(--v-border); background: #fff; transform: none; }
+  .lobby-design-toggle:hover,
+  .lobby-home-link:hover     { color: var(--v-text-muted); border-color: var(--v-border); background: #fff; transform: none; }
+  .btn-danger.dock-leave:hover { background: linear-gradient(180deg, #fff 0%, #ffe0ea 100%); color: var(--v-danger); border-color: rgba(216, 80, 120, 0.3); transform: none; }
+  .np-btn:hover              { background: #fff; color: var(--v-pink-dark); border-color: var(--v-border); }
+  .np-restore-btn:hover      { background: var(--v-grad-soft); border-color: var(--v-pink-light); }
+  .np-restore-btn:hover .np-restore-eq i { background: var(--v-pink); }
+  .chat-icon-btn:hover       { background: transparent; color: var(--v-pink-dark); border-color: var(--v-border); }
+  .settings-close-btn:hover  { background: transparent; color: var(--v-text-muted); }
+  .btn-soft:hover            { background: var(--v-surface-3); color: var(--v-text-muted); }
+  .color-swatch:hover        { transform: none; }
 
   /* Keep the restyled idle look on touch (don't fire the pink hover fill); leave
      the pressed/ON deep-pink state alone so on/off contrast survives on mobile. */
@@ -2710,7 +2881,7 @@ a { color: inherit; text-decoration: none; }
     background: linear-gradient(180deg, #ffffff 0%, #ffeaf4 100%);
     border-color: var(--v-pink-light);
     transform: none;
-    box-shadow: 0 3px 7px rgba(255, 145, 195, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+    box-shadow: 0 3px 7px rgba(255, 145, 195, 0.22);
     color: var(--v-pink-dark);
   }
   .dock-btn[aria-pressed="true"]:hover { transform: translateY(1px); }
@@ -2787,19 +2958,23 @@ a { color: inherit; text-decoration: none; }
   position: relative;
   border-radius: 50%;
   flex-shrink: 0;
-  background: repeating-radial-gradient(circle at 50% 50%, #4a3540 0 1.6px, #5a414c 1.6px 2.8px);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
-  animation: vinyl-spin 7s linear infinite;   /* the disc spins while playing (mockup) */
+  /* Real-vinyl look: dark plum-black grooves + a soft rotating sheen highlight. */
+  background:
+    conic-gradient(from 215deg, rgba(255,255,255,0.18) 0deg, transparent 45deg, transparent 315deg, rgba(255,255,255,0.16) 360deg),
+    repeating-radial-gradient(circle at 50% 50%, #241a20 0 1.1px, #362730 1.1px 2.3px);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1), 0 2px 6px rgba(120, 50, 80, 0.3);
+  animation: vinyl-spin 4.5s linear infinite;   /* the disc spins while playing (mockup) */
 }
-.np-art { width: 30px; height: 30px; }
+.np-art { width: 32px; height: 32px; }
 .pinned-art { width: 64px; height: 64px; }
+/* Pink centre label with a white spindle hole punched through the middle. */
 .np-art::after, .pinned-art::after {
   content: '';
   position: absolute;
-  inset: 38%;
+  inset: 33%;
   border-radius: 50%;
-  background: var(--v-pink);
-  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.5);
+  background: radial-gradient(circle, #fff 0 16%, var(--v-pink) 16% 100%);
+  box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.55);
 }
 .np-art .np-vinyl, .pinned-art .np-vinyl { display: none; }
 .np-art .np-film { display: none; }
@@ -2830,8 +3005,9 @@ a { color: inherit; text-decoration: none; }
   align-items: center;
   gap: 10px;
   padding: 8px 14px;
-  background: var(--v-grad-soft);
+  background: linear-gradient(180deg, #fff7fb 0%, #ffe9f4 100%);
   border-bottom: 1px solid var(--v-border);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
   flex-shrink: 0;
   color: var(--v-text);
   font-size: 13px;
@@ -2951,8 +3127,9 @@ a { color: inherit; text-decoration: none; }
   color: var(--v-pink-dark);
 }
 .rfom-icon svg { width: 20px; height: 20px; }
-.rfom-title { font-family: var(--v-font-head); font-size: 14px; color: var(--v-text); }
-.rfom-sub { font-family: var(--v-font-hand); font-size: 15px; color: var(--v-hand); }
+.rfom-title { font-family: var(--v-font-head); font-size: 14px; color: var(--v-text); opacity: 0.62; }
+.rfom-sub { font-family: var(--v-font-hand); font-size: 15px; color: var(--v-hand); opacity: 0.6; }
+.room-for-one-more .rfom-icon { opacity: 0.7; }
 
 /* ════════════════════════════════════════════════════════════════════
    Phase 3 — chrome for the newly-rendered output (live tag, "hanging out"
@@ -2996,6 +3173,32 @@ a { color: inherit; text-decoration: none; }
 /* now-playing pause button pressed */
 .np-btn.is-paused { background: var(--v-grad-primary); color: #fff; border-color: var(--v-pink); }
 
+/* Topbar "reopen now-playing" chip — a mini bouncing equalizer in a soft pill,
+   shown only after the banner has been dismissed. */
+.np-restore-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 28px; height: 26px;
+  border-radius: 999px;
+  background: var(--v-grad-soft);
+  border: 1.5px solid var(--v-pink-light);
+  color: var(--v-pink-dark);
+  box-shadow: 0 2px 6px rgba(255, 145, 195, 0.18);
+  flex-shrink: 0;
+  transition: background 0.15s, transform 0.1s;
+}
+.np-restore-btn[hidden] { display: none; }
+.np-restore-btn:hover { background: var(--v-fill-pink); border-color: var(--v-pink); }
+.np-restore-btn:hover .np-restore-eq i { background: #fff; }
+.np-restore-btn:active { transform: scale(0.9); }
+.np-restore-eq { display: inline-flex; align-items: flex-end; gap: 2px; height: 12px; }
+.np-restore-eq i {
+  width: 2.5px; border-radius: 1px; background: var(--v-pink);
+  transform-origin: bottom; animation: np-eq 0.8s ease-in-out infinite;
+}
+.np-restore-eq i:nth-child(1) { height: 6px;  animation-delay: 0s; }
+.np-restore-eq i:nth-child(2) { height: 11px; animation-delay: 0.15s; }
+.np-restore-eq i:nth-child(3) { height: 8px;  animation-delay: 0.3s; }
+
 /* ════════════════════════════════════════════════════════════════════
    Phase 4 — parity pass (lobby tag, profile chip, settings toggles, state
    polish) + full mobile 1:1 rewrite (list lobby, sheet chat, dock chat btn).
@@ -3015,20 +3218,7 @@ a { color: inherit; text-decoration: none; }
 }
 .lobby-open-tag[hidden] { display: none; }
 
-/* profile chip pill in the footer */
-.profile-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  margin-right: auto;             /* pushes change-name / home to the right */
-  padding: 4px 5px 4px 12px;
-  background: #fff;
-  border: 1.5px solid var(--v-border);
-  border-radius: 999px;
-  box-shadow: var(--v-shadow-sm);
-}
-.profile-chip .ic-heart { width: 14px; height: 14px; color: var(--v-pink); flex-shrink: 0; }
-.profile-chip-you { font-size: 13px; color: var(--v-text); font-weight: 600; }
+/* profile chip pill lives in the .lobby-footer block above (single definition) */
 .chip-avatar {
   width: 26px; height: 26px;
   border-radius: 50%;
@@ -3105,6 +3295,7 @@ a { color: inherit; text-decoration: none; }
   font-size: 15px;
   color: var(--v-hand);
   margin-top: 2px;
+  opacity: 0.45;   /* "dont ask me" is a soft aside, not a loud label */
 }
 
 /* empty-state icon sits in a soft pink disc (mockup) */
@@ -3142,9 +3333,17 @@ a { color: inherit; text-decoration: none; }
 
 /* ── MOBILE 1:1 (≤ 767px) ─────────────────────────────────────────── */
 @media (max-width: 767px) {
-  /* Lobby cards become a vertical list of horizontal rows (no tape/tilt). */
-  .rooms-grid { grid-template-columns: 1fr; gap: 10px; padding-top: 0; }
-  .room-card {
+  /* DEFAULT mobile lobby = the same tilted post-it card grid as desktop, two up.
+     (The old horizontal-row list is now opt-in via body.lobby-list-mode, toggled
+     from the footer button.) */
+  .rooms-grid { grid-template-columns: repeat(2, 1fr); gap: 16px 12px; padding-top: 8px; }
+
+  /* Reveal the layout-flip button on mobile only. */
+  .lobby-design-toggle { display: inline-flex; }
+
+  /* ── List mode (opt-in): compact vertical rows, no tape/tilt ───────── */
+  body.lobby-list-mode .rooms-grid { grid-template-columns: 1fr; gap: 10px; padding-top: 0; }
+  body.lobby-list-mode .room-card {
     display: grid;
     grid-template-columns: auto 1fr auto;
     grid-template-areas: "bub name live";
@@ -3155,23 +3354,22 @@ a { color: inherit; text-decoration: none; }
     text-align: left;
     box-shadow: var(--v-shadow-sm);
   }
-  .room-card::after { display: none; }
-  .room-card:hover { transform: none !important; box-shadow: var(--v-shadow-sm); }
-  .card-bubbles { grid-area: bub; height: auto; }
-  .card-avatar { width: 44px; height: 44px; font-size: 18px; }
-  .card-bubble { width: 34px; height: 34px; font-size: 13px; }
-  /* Single row now (locked tag flows inline with the name) — the old two-row
-     grid left a tall empty gap above the name on locked cards. */
-  .room-card .card-name {
+  body.lobby-list-mode .room-card::after { display: none; }
+  body.lobby-list-mode .room-card:hover { transform: none !important; box-shadow: var(--v-shadow-sm); }
+  body.lobby-list-mode .card-bubbles { grid-area: bub; height: auto; }
+  body.lobby-list-mode .card-avatar { width: 44px; height: 44px; font-size: 18px; }
+  body.lobby-list-mode .card-bubble { width: 34px; height: 34px; font-size: 13px; }
+  /* Single row (locked tag flows inline with the name). */
+  body.lobby-list-mode .room-card .card-name {
     grid-area: name; text-align: left; align-self: center;
     display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px;
   }
-  .card-live { grid-area: live; position: static; align-self: center; }
-  .card-live-word { display: none; }
-  .card-live-num { display: inline; }
-  .room-card .card-join { display: none; }
+  body.lobby-list-mode .card-live { grid-area: live; position: static; align-self: center; }
+  body.lobby-list-mode .card-live-word { display: none; }
+  body.lobby-list-mode .card-live-num { display: inline; }
+  body.lobby-list-mode .room-card .card-join { display: none; }
   /* locked card: "dont ask me" sits in the right column, vertically centered. */
-  .room-card .card-ask { grid-area: live; align-self: center; justify-self: end; text-align: right; }
+  body.lobby-list-mode .room-card .card-ask { grid-area: live; align-self: center; justify-self: end; text-align: right; }
 
   /* compact pinned banner */
   .pinned-banner { gap: 12px; padding: 12px 14px; margin-bottom: 16px; }
@@ -3230,7 +3428,9 @@ a { color: inherit; text-decoration: none; }
 
   /* Chat sheet resize feel: snap smoothly when the drag ends, but track the
      finger 1:1 mid-drag (transition suppressed via .chat-dragging). */
-  .panel-chat { transition: height 0.22s cubic-bezier(0.4, 0, 0.2, 1), transform 0.22s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.22s ease; }
+  /* Ultra-smooth decelerating snap (easeOutQuint) so the sheet glides to rest
+     with weight after a drag/fling rather than stopping abruptly. */
+  .panel-chat { transition: height 0.32s cubic-bezier(0.22, 1, 0.36, 1), transform 0.3s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.26s ease; }
   .room-main.chat-dragging .panel-chat { transition: none; }
   /* Pulled all the way up → chat fills the room (participants tucked away). */
   .room-main.chat-full .panel-participants { display: none; }
@@ -3259,12 +3459,14 @@ a { color: inherit; text-decoration: none; }
    to reliably override all of them, including future additions. */
 @media (prefers-reduced-motion: reduce) {
   .lk-signal.lk-connecting, .lk-signal.lk-reconnecting,
-  .participant-card.speaking .p-avatar::after,
+  .participant-card.speaking,
   .participant-card.cam-loading .p-avatar,
   .dock-btn.screen-loading,
   .room-card.joining .card-join,
   .btn-loading-dot,
   .participant-card.is-new,
+  .card-avatar.shiny-glow, .card-bubble.shiny-glow, .p-avatar.shiny-glow,
+  .chip-avatar.shiny-glow, .setup-avatar.shiny-glow,
   .chat-msg, .chat-msg-sys,
   .card-live::before,
   .np-eq i,

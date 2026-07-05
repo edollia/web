@@ -16,7 +16,7 @@
   <meta property="og:title" content="rooms · doll.gg">
   <meta property="og:description" content="join a room">
   <meta property="og:url" content="https://doll.gg/rooms/">
-  <link rel="stylesheet" href="rooms.css?v=46">
+  <link rel="stylesheet" href="rooms.css?v=48">
 </head>
 <body>
 
@@ -110,14 +110,24 @@
   </main>
 
   <footer class="lobby-footer">
-    <span class="profile-chip">
-      <svg class="ic-heart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 20.3l-1.3-1.2C6 14.8 3 12 3 8.7 3 6.2 5 4.2 7.5 4.2c1.5 0 2.9.7 3.8 1.9l.7.9.7-.9c.9-1.2 2.3-1.9 3.8-1.9C19 4.2 21 6.2 21 8.7c0 3.3-3 6.1-7.7 10.4L12 20.3z"/></svg>
-      <span class="profile-chip-you">you</span>
+    <!-- The whole chip is tappable now → opens your profile (name / photo /
+         colour). No separate "change name" button. -->
+    <button type="button" id="btn-profile-chip" class="profile-chip" aria-label="Edit your name, photo and colour">
       <span id="lobby-avatar" class="chip-avatar" aria-hidden="true"></span>
-    </span>
+      <span class="profile-chip-you">you</span>
+      <svg class="chip-edit-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
+    </button>
     <span class="lobby-nick-display" id="lobby-nick-display" hidden></span>
-    <button id="btn-change-nick" class="btn-text-sm">change name</button>
-    <a href="/" class="btn-text-sm lobby-home-link">← home</a>
+    <span class="lobby-footer-spacer"></span>
+    <!-- Mobile-only: flip lobby card layout between the tilted post-it grid and
+         the compact list. Hidden on desktop (grid is the only layout there). -->
+    <button type="button" id="btn-lobby-design" class="lobby-design-toggle" aria-label="Switch lobby layout">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="7" height="7" rx="1.5"/><rect x="14" y="4" width="7" height="7" rx="1.5"/><rect x="3" y="15" width="7" height="5" rx="1.5"/><rect x="14" y="15" width="7" height="5" rx="1.5"/></svg>
+      <span class="lobby-design-label">cards</span>
+    </button>
+    <a href="/" class="lobby-home-link" aria-label="Back to doll.gg home" title="Home">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-8 9 8"/><path d="M5 10v9a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1v-9"/></svg>
+    </a>
   </footer>
 
 </div>
@@ -129,7 +139,9 @@
   <!-- Top bar -->
   <div class="room-topbar">
     <div class="topbar-left">
-      <button id="btn-back" class="btn-back" aria-label="Back to lobby" title="Back to lobby">←</button>
+      <button id="btn-back" class="btn-back" aria-label="Back to lobby" title="Back to lobby">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
+      </button>
       <span id="lk-signal" class="lk-signal lk-connecting" title="Connecting…" aria-label="Connection">
         <i></i><i></i><i></i>
       </span>
@@ -145,6 +157,11 @@
       </span>
     </div>
     <div class="topbar-right">
+      <!-- Reopens the now-playing bar after it's been dismissed. Hidden unless
+           there's media to restore. -->
+      <button id="btn-np-restore" class="np-restore-btn" hidden aria-label="Show now playing" title="Show what's playing">
+        <span class="np-restore-eq" aria-hidden="true"><i></i><i></i><i></i></span>
+      </button>
       <span id="topbar-count" class="topbar-count"></span>
       <button id="btn-copy-link" class="btn-ghost btn-sm" hidden>copy link</button>
       <!-- Chat is either shown or hidden — one toggle (desktop). On mobile the
@@ -316,7 +333,10 @@
         <span class="dock-icon dock-icon-audience"></span>
         <span class="ctrl-label">audience</span>
       </button>
-      <button id="btn-leave"    class="btn-danger dock-leave">leave</button>
+      <button id="btn-leave"    class="btn-danger dock-leave" aria-label="Leave room">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-2M10 12h10m0 0-3-3m3 3-3 3"/></svg>
+        <span class="leave-label">leave</span>
+      </button>
     </div>
 
   </div><!-- .room-dock -->
@@ -325,7 +345,6 @@
   <div id="settings-panel" class="settings-panel" hidden>
     <div class="settings-inner">
       <div class="settings-header">
-        <span class="settings-title">settings<svg class="ic-heart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 20.3l-1.3-1.2C6 14.8 3 12 3 8.7 3 6.2 5 4.2 7.5 4.2c1.5 0 2.9.7 3.8 1.9l.7.9.7-.9c.9-1.2 2.3-1.9 3.8-1.9C19 4.2 21 6.2 21 8.7c0 3.3-3 6.1-7.7 10.4L12 20.3z"/></svg></span>
         <button id="btn-close-settings" class="settings-close-btn" aria-label="Close settings">
           <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
         </button>
@@ -405,6 +424,6 @@
   </div>
 </div>
 
-<script type="module" src="rooms.js?v=46"></script>
+<script type="module" src="rooms.js?v=48"></script>
 </body>
 </html>

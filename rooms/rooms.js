@@ -11,7 +11,7 @@ async function ensureLk() {
 }
 
 // ── § CONFIG ─────────────────────────────────────────────────────
-const VERSION        = '2026-07-05.36';
+const VERSION        = '2026-07-05.38';
 const SUPABASE_URL   = 'https://karogcjefsnnrvlxlgpf.supabase.co';
 const SUPABASE_ANON  = 'sb_publishable_z2jS9qvQUvkSXVspdi2U5w_dFGM_rG-';
 const LIVEKIT_WS_URL = 'wss://pawsweb-z0kamke4.livekit.cloud';
@@ -30,24 +30,39 @@ async function ensureSb() {
   return sb;
 }
 
-// 8 distinct pastel/muted colors + 5 vivid/shiny colors.
-// SHINY_COLORS are displayed with a glow effect in the picker.
-// Cohesive cozy palette (pink / lilac / peach / blue / teal family) — matches
-// the doll.gg mockup; the old rainbow read as generic. Rendered as gradients.
-const NORMAL_COLORS = [
+// Name-colour palette, grouped for the picker:
+//   • LOVED  — the 4 signature crowd-pleasers (pink / lilac / peach / blue)
+//   • MORE   — 4 more cozy options (teal / rose / periwinkle / apricot)
+//   • SHINY  — 5 special "highlight" colours that make your avatar + name GLOW
+//              for everyone (opt-in only; auto-assigned colours never use these).
+// No colour repeats across the three groups.
+const LOVED_COLORS = [
   '#ff8fc4', // pink
   '#c9a0e8', // lilac
   '#ffb38a', // peach
   '#8ec5e8', // blue
+];
+const MORE_COLORS = [
   '#7fd6c0', // teal
   '#ffa6d0', // rose
   '#b0a6ec', // periwinkle
   '#ffc48a', // apricot
 ];
+const NORMAL_COLORS = [...LOVED_COLORS, ...MORE_COLORS];
 const SHINY_COLORS = [
-  '#ff5fa0', '#b57bff', '#ff9e6b', '#5fc8f0', '#4fd6b0',
+  '#ff4f93', // hot pink
+  '#a95cff', // electric violet
+  '#ff8a3d', // tangerine
+  '#37c6f4', // aqua
+  '#2fd6a6', // spring green
 ];
 const ACCENT_COLORS = [...NORMAL_COLORS, ...SHINY_COLORS];
+
+// A "shiny" accent gets the glow treatment wherever the avatar/name renders.
+function isShinyColor(hex) { return SHINY_COLORS.includes(String(hex || '').trim().toLowerCase()); }
+// Convenience: the extra class + a --c var so CSS can paint a glow in the accent
+// colour. Returns '' for normal colours (no glow, no cost).
+function glowAttrs(accent) { return isShinyColor(accent) ? ' shiny-glow' : ''; }
 
 function safeAccent(value, fallback = ACCENT_COLORS[0]) {
   const s = String(value || '').trim().toLowerCase();
@@ -297,7 +312,9 @@ function saveIdentity({ nick, avatar, color }) {
 function accentForNick(nick) {
   let h = 0;
   for (let i = 0; i < nick.length; i++) h = (h * 31 + nick.charCodeAt(i)) >>> 0;
-  return ACCENT_COLORS[h % ACCENT_COLORS.length];
+  // Auto-assigned colours only ever pick from the calm set — the shiny glow
+  // colours stay a deliberate, opt-in choice.
+  return NORMAL_COLORS[h % NORMAL_COLORS.length];
 }
 
 // My display color: chosen color wins, else a stable hash of the name.
@@ -1525,8 +1542,10 @@ function demoEnterRoom(slug) {
     const solCard = document.querySelector('.participant-card[data-sid="d-p-sol"]');
     if (solCard && !solCard.querySelector('.p-video-wrap')) {
       const wrap = document.createElement('div');
-      wrap.className = 'p-video-wrap';       // full-bleed via .has-video CSS
-      wrap.innerHTML = `<div class="p-video-name">${ICON.cam}<span>sol</span></div>`;
+      wrap.className = 'p-video-wrap demo-cam';   // full-bleed via .has-video CSS
+      // A soft gradient "feed" with sol's initial centered so the demo camera
+      // tile reads as a real person sharing their camera, not an empty bubble.
+      wrap.innerHTML = `<span class="demo-cam-face" style="--c:#ffb38a">s</span><div class="p-video-name">${ICON.cam}<span>sol</span></div>`;
       (solCard.querySelector('.p-avatar') || solCard).after(wrap);
       solCard.classList.add('has-video');
     }
@@ -1600,12 +1619,17 @@ function renderLobby() {
   if (state.user.nickname && nickEl) nickEl.textContent = state.user.nickname;
   // The chip shows the person's actual name (not the literal word "you").
   const chipName = document.querySelector('.profile-chip-you');
-  if (chipName) chipName.textContent = state.user.nickname || 'set a name';
+  if (chipName) {
+    chipName.textContent = state.user.nickname || 'set a name';
+    chipName.style.setProperty('--c', myAccent());
+    chipName.classList.toggle('shiny-glow', isShinyColor(myAccent()));
+  }
 
   // Profile-chip avatar (photo or initial, tinted with the user's accent)
   const av = document.getElementById('lobby-avatar');
   if (av) {
     av.style.setProperty('--c', myAccent());
+    av.classList.toggle('shiny-glow', isShinyColor(myAccent()));
     av.innerHTML = avatarInner(state.user.nickname, state.user.color, state.user.avatar);
   }
 
@@ -1661,14 +1685,14 @@ function renderRoomCard(room) {
     thumbnailHtml = `<div class="card-avatar card-lock">${ICON.lock}</div>`;
   } else if (shown.length > 0) {
     const bubbles = shown.map((p, i) =>
-      `<div class="card-bubble" style="--c:${escHtml(p.a)};z-index:${shown.length - i}">${avatarInner(p.n, p.a, '')}</div>`
+      `<div class="card-bubble${glowAttrs(p.a)}" style="--c:${escHtml(p.a)};z-index:${shown.length - i}">${avatarInner(p.n, p.a, '')}</div>`
     ).join('');
     const moreHtml = overflow > 0
       ? `<div class="card-bubble card-bubble-more">+${overflow}</div>`
       : '';
     thumbnailHtml = `<div class="card-bubbles">${bubbles}${moreHtml}</div>`;
   } else {
-    thumbnailHtml = `<div class="card-avatar" style="--c:${escHtml(room.hostAccent)}">${avatarInner(room.host, room.hostAccent, '')}</div>`;
+    thumbnailHtml = `<div class="card-avatar${glowAttrs(room.hostAccent)}" style="--c:${escHtml(room.hostAccent)}">${avatarInner(room.host, room.hostAccent, '')}</div>`;
   }
 
   return `<div class="room-card${room.locked ? ' locked' : ''}${isYours ? ' yours' : ''}"
@@ -1678,7 +1702,7 @@ function renderRoomCard(room) {
     ${room.is_streaming && !room.locked ? `<span class="card-live"><span class="card-live-word">live</span><span class="card-live-num">${room.member_count}</span></span>` : ''}
     ${thumbnailHtml}
     <div class="card-name">
-      ${title}${isYours ? ' <span class="yours-tag">(yours)</span>' : ''}${room.locked ? ` <span class="badge badge-locked">${ICON.lock} locked</span>` : ''}${room.audience && !room.locked ? ` <span class="badge badge-audience">${ICON.people} audience</span>` : ''}
+      ${title}${isYours ? ' <span class="yours-tag">(yours)</span>' : ''}${room.locked ? ` <span class="badge badge-locked">${ICON.lock} locked</span>` : ''}
     </div>
     ${room.locked && !isYours
         ? `<div class="card-ask">dont ask me</div>`
@@ -2218,9 +2242,11 @@ function initChatResize() {
   const RESERVE  = 132;   // px always kept for participants: the *applied* sheet
                           // height is capped at (room − RESERVE) so it can never
                           // overflow room-main and slide under/over the dock.
+  const FLING = 0.55;     // px/ms — a flick faster than this commits in its direction
   const partialMax = () => Math.max(MIN, main.clientHeight - RESERVE);
 
   let dragging = false, startY = 0, startH = 0, live = 0, raw = 0;
+  let lastY = 0, lastT = 0, vel = 0;   // velocity tracking for fling gestures
 
   const apply = (h) => {
     raw = h;                                    // true finger target (for thresholds)
@@ -2242,10 +2268,22 @@ function initChatResize() {
     }
   };
   const resetSlide = () => { chat.style.transform = ''; chat.style.opacity = ''; };
+  const goFull = () => {
+    resetSlide();
+    // Pin --chat-h to the full pixel height BEFORE flipping to fullscreen so the
+    // snap animates px→px (no px↔% discontinuity that made the input bar jump).
+    main.style.setProperty('--chat-h', main.clientHeight + 'px');
+    main.classList.add('chat-full');
+    _chatSheetH = Math.round(partialMax() * 0.7);   // where it returns to on the next drag
+  };
   const onMove = (e) => {
     if (!dragging) return;
     const y = e.touches ? e.touches[0].clientY : e.clientY;
-    apply(startH + (startY - y));   // drag up → taller
+    const now = performance.now();
+    const dt = now - lastT;
+    if (dt > 0) vel = (lastY - y) / dt;   // +ve = moving up (expanding)
+    lastY = y; lastT = now;
+    apply(startH + (startY - y));         // drag up → taller
     e.preventDefault();
   };
   const onUp = () => {
@@ -2255,16 +2293,18 @@ function initChatResize() {
     main.classList.remove('chat-dragging');   // re-enable the snap transition
     document.removeEventListener('pointermove', onMove);
     document.removeEventListener('pointerup', onUp);
-    if (raw <= CLOSE_AT) {                            // pulled all the way down → hide
+    // A fast flick commits in its own direction regardless of where it stopped,
+    // so the sheet feels weighted — flick up = fullscreen, flick down = dismiss.
+    const flungUp   = vel >  FLING;
+    const flungDown = vel < -FLING;
+    if (flungDown || (raw <= CLOSE_AT && !flungUp)) {   // dismiss
       main.classList.remove('chat-full');
-      resetSlide();                                   // clear transform before it's hidden
-      setChatView('hidden');
-    } else if (raw >= main.clientHeight - FULL_GAP) { // pulled all the way up → fullscreen
       resetSlide();
-      main.classList.add('chat-full');                // (CSS fills the room; dock stays put)
-      _chatSheetH = Math.round(partialMax() * 0.7);   // where it returns to on the next drag
-    } else {                                          // settle at the dragged split
-      resetSlide();                                   // animates back up if it was mid-slide
+      setChatView('hidden');
+    } else if (flungUp || raw >= main.clientHeight - FULL_GAP) { // fullscreen
+      goFull();
+    } else {                                            // settle at the dragged split
+      resetSlide();
       main.classList.remove('chat-full');
       _chatSheetH = Math.max(MIN, live);
       main.style.setProperty('--chat-h', _chatSheetH + 'px');
@@ -2279,6 +2319,7 @@ function initChatResize() {
     startY = e.touches ? e.touches[0].clientY : e.clientY;
     startH = chat.getBoundingClientRect().height;
     live = startH; raw = startH;
+    lastY = startY; lastT = performance.now(); vel = 0;
     document.addEventListener('pointermove', onMove, { passive: false });
     document.addEventListener('pointerup', onUp);
     e.preventDefault();
@@ -2358,10 +2399,22 @@ function toggleNpMute() {
 const NP_ART_MUSIC = '<svg class="np-vinyl" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 13.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"/></svg>';
 const NP_ART_MOVIE = '<svg class="np-film" viewBox="0 0 24 24" fill="currentColor"><path d="M18 4l2 4h-3l-2-4h-2l2 4h-3l-2-4H8l2 4H7L5 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V4h-4z"/></svg>';
 
+// Remembers the current media so a dismissed banner can be reopened from the
+// topbar restore button.
+let _lastNowPlaying = null;
+function updateNpRestoreBtn() {
+  const btn = document.getElementById('btn-np-restore');
+  const banner = document.getElementById('now-playing');
+  if (!btn) return;
+  // Show the little restore chip only when there IS media but the banner is hidden.
+  btn.hidden = !(_lastNowPlaying && banner && banner.hidden);
+}
+
 function setNowPlaying(info) {
   const banner = document.getElementById('now-playing');
   if (!banner) return;
-  if (!info || !info.title) { banner.hidden = true; return; }
+  if (!info || !info.title) { _lastNowPlaying = null; banner.hidden = true; updateNpRestoreBtn(); return; }
+  _lastNowPlaying = info;
   const kind = info.kind === 'movie' ? 'movie' : 'music';
   banner.classList.toggle('np-movie', kind === 'movie');
   const label = document.getElementById('np-label');
@@ -2383,6 +2436,7 @@ function setNowPlaying(info) {
     applyNpVolume(_npVolume, false);
   }
   banner.hidden = false;
+  updateNpRestoreBtn();
 }
 
 function renderParticipants() {
@@ -2546,13 +2600,13 @@ function renderParticipantCard(p, isHost) {
                data-sid="${escHtml(p.sessionId || '')}"${speakLevelStyle}>
     ${canAct ? `<button class="p-mute-btn${p.serverMuted ? ' is-muted' : ''}" data-nick="${escHtml(p.nickname)}" title="${p.serverMuted ? 'Unmute' : 'Mute'}" aria-label="${p.serverMuted ? 'Unmute' : 'Mute'} ${escHtml(p.nickname)}">${p.serverMuted ? ICON.micOff : ICON.mic}</button>` : ''}
     ${canAct ? `<button class="p-dots-btn" title="Options" aria-label="Options for ${escHtml(p.nickname)}">${ICON.dots}</button>` : ''}
-    <div class="p-avatar${p.avatar ? ' has-photo' : ''}" style="--c:${escHtml(p.accent)}">
+    <div class="p-avatar${p.avatar ? ' has-photo' : ''}${glowAttrs(p.accent)}" style="--c:${escHtml(p.accent)}">
       ${avatarInner(p.nickname, p.accent, p.avatar)}
       ${p.muted || p.serverMuted ? '<div class="p-mic-off" title="Muted"></div>' : ''}
       ${qualityHtml}
     </div>
     <span class="p-eq" aria-hidden="true"><i></i><i></i><i></i></span>
-    <div class="p-name">
+    <div class="p-name${glowAttrs(p.accent)}" style="--c:${escHtml(p.accent)}">
       ${escHtml(p.nickname)}${p.role === 'host' ? ` <span class="p-host-tag"><svg class="ic-heart" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 20.3l-1.3-1.2C6 14.8 3 12 3 8.7 3 6.2 5 4.2 7.5 4.2c1.5 0 2.9.7 3.8 1.9l.7.9.7-.9c.9-1.2 2.3-1.9 3.8-1.9C19 4.2 21 6.2 21 8.7c0 3.3-3 6.1-7.7 10.4L12 20.3z"/></svg>host</span>` : ''}${isYou ? ' <span class="you-tag">(you)</span>' : ''}
     </div>
     ${badgeHtml ? `<div class="p-badges">${badgeHtml}</div>` : ''}
@@ -2696,10 +2750,12 @@ function buildColorSwatches() {
        style="--sw:${bg}" title="${label}" aria-label="${label} color"></button>`;
   const _typedName = document.getElementById('input-nickname')?.value || state.user.nickname || 'a';
   const autoBg = accentForNick(_typedName);
-  let html = swatch('', autoBg, 'auto', !_setupColor);
-  html += NORMAL_COLORS.map(c => swatch(c, c, c, _setupColor === c)).join('');
-  html += SHINY_COLORS.map(c => swatch(c, c, c, _setupColor === c, ' shiny')).join('');
-  wrap.innerHTML = html;
+  const loved = LOVED_COLORS.map(c => swatch(c, c, c, _setupColor === c)).join('');
+  const more  = MORE_COLORS.map(c => swatch(c, c, c, _setupColor === c)).join('');
+  const shiny = SHINY_COLORS.map(c => swatch(c, c, c, _setupColor === c, ' shiny')).join('');
+  wrap.innerHTML =
+    `<div class="color-swatches">${swatch('', autoBg, 'auto', !_setupColor)}${loved}${more}</div>` +
+    `<div class="color-swatches color-swatches-shiny">${shiny}</div>`;
   wrap.querySelectorAll('.color-swatch').forEach(btn => {
     btn.addEventListener('click', () => {
       _setupColor = btn.dataset.color;
@@ -2720,6 +2776,7 @@ function renderSetupAvatar() {
   const accent = _setupColor || accentForNick(name);
   el.style.setProperty('--c', accent);
   el.classList.toggle('has-photo', !!_setupAvatar);
+  el.classList.toggle('shiny-glow', isShinyColor(accent));
 
   let img = el.querySelector('.setup-avatar-img');
   if (_setupAvatar) {
@@ -2980,6 +3037,14 @@ let _demoCamStream = null;
 async function toggleDemoCamera() {
   const sel = `.participant-card[data-sid="${CSS.escape(state.user.sessionId)}"]`;
   if (!state.media.cameraOn) {
+    // getUserMedia only exists in a secure context (https:// or localhost). Over
+    // a plain http:// LAN IP the browser hides mediaDevices entirely, so explain
+    // that instead of throwing a vague "could not start camera".
+    if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+      showBanner('Camera needs a secure page (https). On your phone, open the demo through an https link — a plain http:// address blocks the camera.', 'OK', hideBanner, 'warning');
+      updateDockBtnState('btn-camera', false);
+      return;
+    }
     document.querySelector(sel)?.classList.add('cam-loading');
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
@@ -3709,7 +3774,8 @@ function appendMessage(nick, body, time, isNewMsg, { msgId, dbId, sessionId, rep
   if (dbId)  div.dataset.msgDbId = dbId;
   const isYou = sessionId ? sessionId === state.user.sessionId : nick === state.user.nickname;
   const color = nickColor(nick, sessionId);
-  const styleAttr = color ? ` style="color:${escHtml(color)}"` : '';
+  const styleAttr = color ? ` style="color:${escHtml(color)};--c:${escHtml(color)}"` : '';
+  const nickGlow = glowAttrs(color);
   // Prefer the shared DB id as the key so reactions/replies match across clients;
   // fall back to sender+time for optimistic/ephemeral messages.
   const key = dbId ? 'm' + dbId : msgKey(sessionId, time, nick);
@@ -3718,7 +3784,7 @@ function appendMessage(nick, body, time, isNewMsg, { msgId, dbId, sessionId, rep
   if (reactions) seedReactions(key, reactions);
   div.innerHTML = `
     <div class="chat-msg-header">
-      <span class="chat-msg-nick${isYou ? ' is-you' : ''}"${styleAttr}>${escHtml(nick)}</span>
+      <span class="chat-msg-nick${isYou ? ' is-you' : ''}${nickGlow}"${styleAttr}>${escHtml(nick)}</span>
       <span class="chat-msg-time">${formatTime(time)}</span>
     </div>
     <div class="chat-msg-body">${replyRefHtml(replyTo)}<span class="chat-msg-text">${escHtml(body)}</span></div>
@@ -3765,13 +3831,14 @@ function appendImageMessage(nick, thumb, full, time, sessionId, { replyTo } = {}
   div.className = 'chat-msg';
   const isYou = sessionId ? sessionId === state.user.sessionId : nick === state.user.nickname;
   const color = nickColor(nick, sessionId);
-  const styleAttr = color ? ` style="color:${escHtml(color)}"` : '';
+  const styleAttr = color ? ` style="color:${escHtml(color)};--c:${escHtml(color)}"` : '';
+  const nickGlow = glowAttrs(color);
   const key = msgKey(sessionId, time, nick);
   div.dataset.key = key;
   replyTo = replyTo || _replyMeta.get(key);
   div.innerHTML = `
     <div class="chat-msg-header">
-      <span class="chat-msg-nick${isYou ? ' is-you' : ''}"${styleAttr}>${escHtml(nick)}</span>
+      <span class="chat-msg-nick${isYou ? ' is-you' : ''}${nickGlow}"${styleAttr}>${escHtml(nick)}</span>
       <span class="chat-msg-time">${formatTime(time)}</span>
     </div>
     ${replyTo ? `<div class="chat-msg-body chat-msg-body--img">${replyRefHtml(replyTo)}</div>` : ''}
@@ -4061,7 +4128,27 @@ function escHtml(str) {
 }
 
 // ── § INIT ────────────────────────────────────────────────────────
+// Block accidental double-tap-to-zoom (a fast second tap on ~the same spot)
+// while leaving normal taps, scrolling, and pinch-zoom untouched. `touch-action`
+// helps for taps on controls, but iOS still double-tap-zooms on plain text /
+// empty areas — this closes that gap. Two different quick taps (e.g. rapid
+// button presses) are NOT blocked because we require the taps to be near the
+// same point, which a zoom double-tap always is.
+function preventDoubleTapZoom() {
+  let lastT = 0, lastX = 0, lastY = 0;
+  document.addEventListener('touchend', (e) => {
+    const t = e.changedTouches && e.changedTouches[0];
+    if (!t) return;
+    const now = Date.now();
+    if (now - lastT <= 350 && Math.hypot(t.clientX - lastX, t.clientY - lastY) < 40) {
+      e.preventDefault();   // cancels the synthetic zoom; the click already fired on tap 1
+    }
+    lastT = now; lastX = t.clientX; lastY = t.clientY;
+  }, { passive: false });
+}
+
 async function init() {
+  preventDoubleTapZoom();
   await loadIdentity();
   _loadSettings();
   // Clamp must come AFTER _loadSettings restores the saved resolution from localStorage.
@@ -4099,9 +4186,23 @@ async function init() {
   document.getElementById('btn-create-empty')?.addEventListener('click', () => {
     requireNickname(() => createRoom());
   });
-  document.getElementById('btn-change-nick')?.addEventListener('click', () => {
+  // Tap your profile chip to edit name / photo / colour.
+  document.getElementById('btn-profile-chip')?.addEventListener('click', () => {
     showSetupModal(null);
   });
+  // Mobile lobby layout toggle: post-it card grid ⇄ compact list. Persisted.
+  const applyLobbyDesign = () => {
+    const list = localStorage.getItem('dg_rooms_lobby_list') === '1';
+    document.body.classList.toggle('lobby-list-mode', list);
+    const lbl = document.querySelector('#btn-lobby-design .lobby-design-label');
+    if (lbl) lbl.textContent = list ? 'list' : 'cards';
+  };
+  document.getElementById('btn-lobby-design')?.addEventListener('click', () => {
+    const list = localStorage.getItem('dg_rooms_lobby_list') === '1';
+    localStorage.setItem('dg_rooms_lobby_list', list ? '0' : '1');
+    applyLobbyDesign();
+  });
+  applyLobbyDesign();
 
   // ── Setup modal (name + photo + color) ──
   const avatarInput = document.getElementById('setup-avatar-input');
@@ -4206,6 +4307,11 @@ async function init() {
   // the banner stays absent until setNowPlaying() is called with real data.
   document.getElementById('btn-np-toggle')?.addEventListener('click', () => {
     document.getElementById('now-playing')?.setAttribute('hidden', '');
+    updateNpRestoreBtn();   // reveal the topbar restore chip
+  });
+  // Restore chip: reopen the last-known now-playing banner.
+  document.getElementById('btn-np-restore')?.addEventListener('click', () => {
+    if (_lastNowPlaying) setNowPlaying(_lastNowPlaying);
   });
   document.getElementById('btn-np-pause')?.addEventListener('click', e => {
     e.currentTarget.classList.toggle('is-paused');
