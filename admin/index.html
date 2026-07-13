@@ -6,7 +6,7 @@
     <meta name="robots" content="noindex, nofollow">
     <meta name="referrer" content="strict-origin-when-cross-origin">
     <title>Lia Admin</title>
-    <link rel="stylesheet" href="../admin.css?v=3.9">
+    <link rel="stylesheet" href="../admin.css?v=4.4">
 </head>
 <body>
     <main class="admin-shell">
@@ -551,9 +551,35 @@
                                     <span>wishlist URL</span>
                                     <input id="throne-url" type="url" inputmode="url" placeholder="https://throne.com/name">
                                 </label>
+                                <label class="admin-url-field">
+                                    <span>checkout style</span>
+                                    <select id="throne-checkout-mode">
+                                        <option value="mockup">cute mockup grid (new)</option>
+                                        <option value="widget">classic iframe widget</option>
+                                    </select>
+                                </label>
                             </div>
                         </details>
                     </div>
+
+                    <div class="admin-panel-intro">
+                        <div>
+                            <p class="admin-kicker">wishlist</p>
+                            <h2>mockup grid items</h2>
+                            <p>Auto-synced from your live Throne wishlist. Toggle "feature" to choose what shows on doll.gg — sold-out items drop off the site automatically.</p>
+                        </div>
+                    </div>
+
+                    <div class="admin-bulk-bar">
+                        <span id="wishlist-sync-status">last synced: —</span>
+                        <button class="soft" type="button" id="wishlist-sync-now">sync now</button>
+                        <button class="soft" type="button" id="wishlist-feature-all">feature all</button>
+                        <button class="soft" type="button" id="wishlist-unfeature-all">unfeature all</button>
+                        <input type="search" id="wishlist-search" placeholder="search items...">
+                    </div>
+                    <p class="admin-tool-note" id="wishlist-featured-warning"></p>
+
+                    <div class="admin-list admin-wishlist-list" id="wishlist-items-list"></div>
                 </section>
 
                 <section class="admin-panel" id="search-panel">
@@ -625,7 +651,7 @@
     </main>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="../admin-rooms.js?v=3.9"></script>
-    <script src="../admin.js?v=3.9"></script>
+    <script src="../admin-rooms.js?v=4.4"></script>
+    <script src="../admin.js?v=4.4"></script>
 </body>
 </html>

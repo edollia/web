@@ -1,0 +1,1338 @@
+(function() {
+    const panelId = 'doll-wishlist-panel';
+    const styleId = 'doll-wishlist-style';
+    const SUPABASE_URL = 'https://zvqdodzkhmcptwkjlfeu.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp2cWRvZHpraG1jcHR3a2psZmV1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg3NjM1NjAsImV4cCI6MjA2NDMzOTU2MH0.i1xbRIhPHVkDIrnDlQFP0ebNklrx8WVQcQo8Iuo9zG8';
+    const FETCH_TIMEOUT_MS = 6000;
+    const MAX_FEATURED = 12;
+    const NAME_MAX = 60;
+    const CARD_GAP = 10;
+    const PAGE_SIZE = 4;
+    const FULL_WISHLIST_URL = 'https://throne.com/edoll';
+
+    const ICON_CART = '<svg class="dwl-cart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9.4" cy="20" r="1.4" fill="currentColor" stroke="none"/><circle cx="17.6" cy="20" r="1.4" fill="currentColor" stroke="none"/><path d="M2.8 3.6h2l2.15 11a1.7 1.7 0 0 0 1.68 1.4h7.9a1.7 1.7 0 0 0 1.67-1.33L21.2 8.2H6.2"/></svg>';
+    const ICON_CHECK = '<svg class="dwl-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 12.5l5 5 10-11"/></svg>';
+
+    let panel = null;
+    let items = [];
+    let selectedIds = new Set();
+    let loadState = 'idle'; // idle | loading | ready | failed
+    let checkoutInFlight = false;
+    let checkoutStatusMessage = '';
+    let scrollRaf = 0;
+    let resizeRaf = 0;
+    let panelResizeObserver = null;
+    let panelMutationObserver = null;
+    let conflictObserver = null;
+    let conflictClickGuardReady = false;
+    let throneFooterLink = null;
+
+    function formatPrice(cents) {
+        if (typeof cents !== 'number' || !cents) return '';
+        return `$${(cents / 100).toFixed(2)}`;
+    }
+
+    function capName(name) {
+        const clean = String(name || '').trim();
+        if (clean.length <= NAME_MAX) return clean;
+        return clean.slice(0, NAME_MAX - 1).trimEnd() + '…';
+    }
+
+    function playSound(type) {
+        if (typeof window.dollPlayUiSound === 'function') {
+            window.dollPlayUiSound(type);
+        }
+    }
+
+    function escapeHtml(value) {
+        return String(value ?? '').replace(/[&<>"']/g, ch => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        }[ch]));
+    }
+
+    function getWishlistButton() {
+        return document.getElementById('support-menu-button');
+    }
+
+    function fallbackToLegacy() {
+        closeThroneMockup();
+        if (typeof window.openThroneOverlay === 'function') {
+            window.openThroneOverlay();
+            return;
+        }
+        const url = window.dollThroneUrl || 'https://throne.com/edoll';
+        window.open(url, '_blank', 'noopener,noreferrer');
+    }
+
+    function withTimeout(promise, ms) {
+        let timer;
+        const timeout = new Promise((_, reject) => {
+            timer = setTimeout(() => reject(new Error('timeout')), ms);
+        });
+        return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+    }
+
+    function injectStyles() {
+        if (document.getElementById(styleId)) return;
+
+        const style = document.createElement('style');
+        style.id = styleId;
+        style.textContent = `
+            .doll-wishlist-panel {
+                --dwl-sans: "Arial Rounded MT Bold", "Trebuchet MS", system-ui, sans-serif;
+                --dwl-cute: "Chalkboard SE", "Comic Sans MS", "Segoe Print", cursive;
+                --dwl-ink: #663b4b;
+                --dwl-pink: #f47fad;
+                --dwl-line: rgba(239, 183, 204, 0.72);
+                position: absolute;
+                top: 0;
+                left: 50%;
+                width: min(88vw, 324px);
+                transform: translateX(-50%) translateY(-7px) scale(0.988);
+                opacity: 0;
+                pointer-events: none;
+                transition: opacity 0.3s ease, transform 0.42s cubic-bezier(0.2, 0.9, 0.25, 1);
+                z-index: 9;
+            }
+
+            .doll-wishlist-panel.active {
+                opacity: 1;
+                pointer-events: auto;
+                transform: translateX(-50%) translateY(0) scale(1);
+            }
+
+            body.has-wishlist-panel-open {
+                overflow-x: hidden;
+                overflow-y: auto;
+            }
+
+            body.has-wishlist-panel-open .toggle-container {
+                min-height: var(--dwl-wishlist-height, 220px);
+                transition: min-height 0.22s ease;
+            }
+
+            body.has-wishlist-panel-open .site-brand-footer {
+                margin-top: 28px;
+            }
+
+            body.has-wishlist-panel-open .button-group {
+                margin-bottom: 3px;
+            }
+
+            .doll-wishlist-throne-footer-link {
+                display: none !important;
+            }
+            body.has-wishlist-panel-open #site-brand-button {
+                display: none !important;
+            }
+            body.has-wishlist-panel-open .site-brand-footer .doll-wishlist-throne-footer-link {
+                display: inline-flex !important;
+            }
+            .doll-wishlist-throne-footer-link .site-brand-gg {
+                margin-left: 3px;
+                white-space: nowrap;
+            }
+
+            .doll-wishlist-body {
+                position: relative;
+            }
+
+            .doll-wishlist-scroll {
+                display: flex;
+                gap: ${CARD_GAP}px;
+                overflow-x: auto;
+                overflow-y: hidden;
+                scroll-snap-type: x mandatory;
+                scroll-padding-inline: 1px;
+                overscroll-behavior-x: contain;
+                -webkit-overflow-scrolling: touch;
+                padding: 5px 1px 15px;
+                margin: 0 -1px;
+                scrollbar-width: none;
+            }
+            .doll-wishlist-scroll::-webkit-scrollbar { display: none; }
+
+            .doll-wishlist-page {
+                flex: 0 0 100%;
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                grid-template-rows: repeat(2, auto);
+                align-items: stretch;
+                align-self: flex-start;
+                gap: ${CARD_GAP}px;
+                min-width: 0;
+                padding: 1px;
+                scroll-snap-align: start;
+                scroll-snap-stop: always;
+            }
+
+            /* If a page ends up with an odd tile count (only possible on the
+               final page), its last tile would otherwise sit alone with a
+               blank cell beside it — span the full row instead. */
+            .doll-wishlist-page > :last-child:nth-child(odd) {
+                grid-column: 1 / -1;
+            }
+
+            .doll-wishlist-item {
+                position: relative;
+                display: flex;
+                flex-direction: column;
+                width: 100%;
+                min-width: 0;
+                overflow: hidden;
+                padding: 3px;
+                background: linear-gradient(180deg, #fffefe 0%, #fff9fb 70%, #fff6fa 100%);
+                border: 1px solid var(--dwl-line);
+                border-radius: 18px;
+                box-shadow:
+                    inset 0 0 0 2px rgba(255, 255, 255, 0.92),
+                    0 5px 12px rgba(177, 92, 124, 0.08),
+                    0 1px 2px rgba(142, 76, 99, 0.06);
+                transform: translateZ(0);
+                transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+                -webkit-tap-highlight-color: transparent;
+            }
+
+            .doll-wishlist-panel.active .doll-wishlist-item:not(.doll-wishlist-skeleton) {
+                animation: dollWishlistCardIn 0.22s ease backwards;
+            }
+
+            @keyframes dollWishlistCardIn {
+                from { opacity: 0; }
+                to { opacity: 1; }
+            }
+
+            .doll-wishlist-item.selected {
+                border-color: rgba(235, 107, 157, 0.84);
+                box-shadow:
+                    inset 0 0 0 2px rgba(255, 255, 255, 0.96),
+                    0 0 0 2px rgba(255, 167, 201, 0.38),
+                    0 8px 17px rgba(198, 75, 124, 0.17);
+                transform: translateY(-2px);
+            }
+
+            .doll-wishlist-media {
+                position: relative;
+                width: 100%;
+                aspect-ratio: 11 / 8;
+                overflow: hidden;
+                border-radius: 14px 14px 8px 8px;
+                background:
+                    radial-gradient(circle at 48% 38%, rgba(255, 255, 255, 0.9), transparent 48%),
+                    #fce8f0;
+                box-shadow: inset 0 0 0 1px rgba(245, 205, 220, 0.5);
+            }
+            .doll-wishlist-media::after {
+                content: "";
+                position: absolute;
+                inset: 0;
+                pointer-events: none;
+                background:
+                    linear-gradient(145deg, rgba(255, 255, 255, 0.18), transparent 34%),
+                    linear-gradient(0deg, rgba(98, 35, 58, 0.055), transparent 28%);
+                box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.34);
+            }
+            .doll-wishlist-media img {
+                width: 100%;
+                height: 100%;
+                object-fit: cover;
+                object-position: center;
+                display: block;
+                transition: transform 0.36s cubic-bezier(0.2, 0.82, 0.24, 1), filter 0.3s ease;
+            }
+
+            .doll-wishlist-name {
+                min-width: 0;
+                margin: 7px 7px 0 7px;
+                font-family: var(--dwl-cute);
+                font-size: 11.25px;
+                font-weight: 500;
+                color: var(--dwl-ink);
+                line-height: 1.2;
+                letter-spacing: 0.01em;
+                text-align: left;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+
+            .doll-wishlist-foot-row {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 6px;
+                min-height: 16px;
+                margin: 3px 7px 7px;
+                text-align: left;
+            }
+
+            .doll-wishlist-price {
+                min-width: 0;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+                font-family: var(--dwl-sans);
+                font-size: 12px;
+                font-weight: 700;
+                color: #7b304a;
+                line-height: 1;
+                letter-spacing: -0.01em;
+            }
+
+            .doll-wishlist-cart-btn {
+                flex: 0 0 auto;
+                width: 28px;
+                height: 28px;
+                display: grid;
+                place-items: center;
+                border-radius: 50%;
+                border: 1px solid rgba(245, 185, 208, 0.82);
+                background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), #ffedf4);
+                color: #ef6d9f;
+                box-shadow:
+                    0 3px 8px rgba(210, 88, 136, 0.1),
+                    inset 0 1px 0 #fff;
+                cursor: pointer;
+                padding: 0;
+                -webkit-tap-highlight-color: transparent;
+                transition: transform 0.16s cubic-bezier(0.2, 0.8, 0.25, 1.25), background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, color 0.18s ease;
+            }
+            .doll-wishlist-cart-btn:active { transform: scale(0.88); }
+            .doll-wishlist-cart-btn:focus-visible {
+                outline: 2px solid rgba(220, 77, 132, 0.68);
+                outline-offset: 2px;
+            }
+            .doll-wishlist-cart-btn svg { width: 15px; height: 15px; display: block; }
+            .doll-wishlist-cart-btn .dwl-check { display: none; }
+            .doll-wishlist-item.selected .doll-wishlist-cart-btn {
+                border-color: rgba(228, 82, 139, 0.78);
+                background: linear-gradient(180deg, #ff9fc2, #ec699c);
+                color: #fff;
+                box-shadow:
+                    0 5px 11px rgba(202, 70, 123, 0.26),
+                    inset 0 1px 0 rgba(255, 255, 255, 0.55);
+            }
+            .doll-wishlist-item.selected .dwl-cart { display: none; }
+            .doll-wishlist-item.selected .dwl-check {
+                display: block;
+                animation: dollWishlistCheckIn 0.24s cubic-bezier(0.2, 0.85, 0.25, 1.35);
+            }
+
+            @keyframes dollWishlistCheckIn {
+                from { opacity: 0; transform: scale(0.55) rotate(-8deg); }
+                to { opacity: 1; transform: scale(1) rotate(0); }
+            }
+
+            @media (hover: hover) and (pointer: fine) {
+                .doll-wishlist-item:not(.selected):hover {
+                    border-color: rgba(232, 151, 182, 0.82);
+                    box-shadow:
+                        inset 0 0 0 2px rgba(255, 255, 255, 0.94),
+                        0 9px 18px rgba(174, 75, 113, 0.13);
+                    transform: translateY(-3px);
+                }
+                .doll-wishlist-item:hover .doll-wishlist-media img {
+                    transform: scale(1.028);
+                    filter: saturate(1.025) brightness(1.015);
+                }
+                .doll-wishlist-cart-btn:hover {
+                    color: #e9518b;
+                    border-color: rgba(237, 139, 176, 0.92);
+                    transform: translateY(-1px) scale(1.035);
+                    box-shadow: 0 5px 10px rgba(205, 76, 126, 0.16), inset 0 1px 0 #fff;
+                }
+            }
+
+            .doll-wishlist-dots {
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                gap: 4px;
+                width: max-content;
+                min-height: 13px;
+                margin: -5px auto 0;
+                padding: 3px 6px;
+                border: 1px solid rgba(242, 199, 216, 0.5);
+                border-radius: 999px;
+                background: rgba(255, 252, 253, 0.72);
+                box-shadow: 0 3px 9px rgba(191, 107, 138, 0.06);
+            }
+            .doll-wishlist-dots:empty { display: none; }
+            .doll-wishlist-dot {
+                width: 4px;
+                height: 4px;
+                padding: 0;
+                border: none;
+                border-radius: 999px;
+                background: rgba(224, 143, 174, 0.34);
+                cursor: pointer;
+                transition: background 0.2s ease, width 0.22s ease, transform 0.2s ease;
+                -webkit-tap-highlight-color: transparent;
+            }
+            .doll-wishlist-dot.active {
+                width: 13px;
+                background: rgba(233, 104, 154, 0.76);
+            }
+            .doll-wishlist-dot:focus-visible {
+                outline: 2px solid rgba(220, 77, 132, 0.55);
+                outline-offset: 2px;
+            }
+
+            .doll-wishlist-more-card:focus-visible {
+                outline: 2px solid rgba(216, 69, 125, 0.58);
+                outline-offset: 2px;
+            }
+
+            .doll-wishlist-more-card {
+                position: relative;
+                isolation: isolate;
+                display: flex;
+                flex-direction: column;
+                justify-content: space-between;
+                min-width: 0;
+                min-height: clamp(150px, 45vw, 164px);
+                overflow: hidden;
+                padding: 15px 13px 13px 17px;
+                color: #754055;
+                text-decoration: none;
+                background:
+                    linear-gradient(90deg, rgba(232, 117, 161, 0.12) 0 1px, transparent 1px) 11px 0 / 1px 100% no-repeat,
+                    repeating-linear-gradient(0deg, transparent 0 20px, rgba(230, 151, 182, 0.13) 20px 21px),
+                    linear-gradient(145deg, #fffdfd 0%, #fff4f8 58%, #ffe8f1 100%);
+                border: 1px solid rgba(230, 153, 183, 0.72);
+                border-radius: 7px;
+                box-shadow: 5px 6px 0 rgba(239, 188, 208, 0.34), 0 8px 16px rgba(174, 75, 113, 0.09);
+                clip-path: polygon(0 0, calc(100% - 9px) 0, 100% 9px, 100% 100%, 9px 100%, 0 calc(100% - 9px));
+                -webkit-tap-highlight-color: transparent;
+                transition: transform 0.19s ease, box-shadow 0.19s ease, border-color 0.19s ease;
+            }
+            .doll-wishlist-more-card::before {
+                content: "";
+                position: absolute;
+                z-index: -1;
+                top: 0;
+                right: 0;
+                width: 32px;
+                height: 32px;
+                background:
+                    linear-gradient(135deg, transparent 49%, rgba(235, 159, 188, 0.42) 50% 52%, rgba(255, 255, 255, 0.75) 53%);
+            }
+            .dwl-more-kicker {
+                display: inline-flex;
+                align-self: flex-start;
+                padding: 3px 7px;
+                background: rgba(244, 162, 195, 0.22);
+                color: rgba(139, 68, 96, 0.68);
+                font-family: var(--dwl-sans);
+                font-size: 7px;
+                font-weight: 800;
+                line-height: 1;
+                letter-spacing: 0.11em;
+                text-transform: uppercase;
+                transform: rotate(-2deg);
+            }
+            .dwl-more-label {
+                display: block;
+                margin: auto 0;
+                font-family: var(--dwl-cute);
+                font-size: clamp(20px, 6vw, 25px);
+                font-weight: 600;
+                line-height: 0.86;
+                letter-spacing: -0.04em;
+                text-align: left;
+                transform: rotate(-2deg);
+            }
+            .dwl-more-destination {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 6px;
+                padding-top: 7px;
+                border-top: 1px dashed rgba(218, 120, 158, 0.46);
+                font-family: var(--dwl-sans);
+                font-size: 8.5px;
+                font-weight: 700;
+                line-height: 1;
+                color: rgba(116, 65, 84, 0.62);
+                text-align: left;
+            }
+            .dwl-more-arrow {
+                color: #db5f90;
+                font-family: system-ui, sans-serif;
+                font-size: 13px;
+                line-height: 1;
+                transition: transform 0.18s ease;
+            }
+
+            .doll-wishlist-state {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                min-height: 142px;
+                margin: 10px 4px;
+                padding: 26px 16px;
+                border: 1px solid rgba(240, 192, 210, 0.62);
+                border-radius: 18px;
+                background: rgba(255, 252, 253, 0.86);
+                box-shadow: 0 6px 15px rgba(177, 92, 124, 0.07);
+                text-align: center;
+                color: rgba(111, 60, 79, 0.76);
+                font-family: var(--dwl-cute);
+                font-size: 12px;
+                line-height: 1.5;
+            }
+
+            .doll-wishlist-skeleton {
+                pointer-events: none;
+            }
+            .doll-wishlist-skeleton .doll-wishlist-media,
+            .doll-wishlist-skeleton .dwl-sk-line {
+                background: linear-gradient(100deg, #fff2f7 25%, #ffdae9 48%, #fff2f7 72%);
+                background-size: 220% 100%;
+                animation: dollWishlistShimmer 1.3s ease-in-out infinite;
+            }
+            .doll-wishlist-skeleton .doll-wishlist-media::after { display: none; }
+            .doll-wishlist-skeleton .dwl-sk-line {
+                height: 8px;
+                border-radius: 999px;
+                margin: 8px 7px 0;
+                width: 68%;
+            }
+            .doll-wishlist-skeleton .dwl-sk-line.short {
+                width: 38%;
+                margin-top: 6px;
+                margin-bottom: 8px;
+            }
+
+            @keyframes dollWishlistShimmer {
+                0% { background-position: 200% 0; }
+                100% { background-position: -200% 0; }
+            }
+
+            .doll-wishlist-status {
+                margin: 8px 4px 0;
+                font-size: 10.5px;
+                color: rgba(176, 59, 92, 0.9);
+                text-align: center;
+                line-height: 1.35;
+                font-family: var(--dwl-sans);
+            }
+            .doll-wishlist-status:empty { display: none; margin: 0; }
+
+            .doll-wishlist-foot {
+                display: none;
+                align-items: center;
+                justify-content: space-between;
+                gap: 12px;
+                width: min(calc(100% - 8px), 420px);
+                margin: 9px auto 0;
+                padding: 7px 8px 7px 11px;
+                border: 1px solid rgba(237, 173, 198, 0.74);
+                border-radius: 18px;
+                background: rgba(255, 251, 253, 0.96);
+                box-shadow:
+                    0 8px 19px rgba(183, 82, 121, 0.12),
+                    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+                backdrop-filter: blur(8px);
+                -webkit-backdrop-filter: blur(8px);
+            }
+            .doll-wishlist-panel.has-selection .doll-wishlist-foot {
+                display: flex;
+                animation: dollWishlistFootIn 0.3s cubic-bezier(0.2, 0.84, 0.24, 1);
+            }
+            @keyframes dollWishlistFootIn {
+                from { opacity: 0; transform: translateY(6px) scale(0.985); }
+                to { opacity: 1; transform: translateY(0) scale(1); }
+            }
+
+            .doll-wishlist-count {
+                position: relative;
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                min-height: 30px;
+                padding-left: 27px;
+                line-height: 1.15;
+                text-align: left;
+            }
+            .doll-wishlist-count::before {
+                content: "✓";
+                position: absolute;
+                left: 0;
+                top: 50%;
+                width: 20px;
+                height: 20px;
+                display: grid;
+                place-items: center;
+                border: 1px solid rgba(239, 174, 199, 0.72);
+                border-radius: 7px;
+                background: linear-gradient(180deg, #fff7fa, #ffe9f2);
+                color: #db638f;
+                font-family: system-ui, sans-serif;
+                font-size: 10px;
+                font-weight: 800;
+                transform: translateY(-50%);
+                box-shadow: inset 0 1px 0 #fff;
+            }
+            .doll-wishlist-count b {
+                font-family: var(--dwl-cute);
+                font-size: 11.5px;
+                font-weight: 600;
+                color: #713b50;
+            }
+            .doll-wishlist-count small {
+                margin-top: 2px;
+                font-family: var(--dwl-sans);
+                font-size: 8.5px;
+                font-weight: 500;
+                color: rgba(113, 59, 80, 0.52);
+            }
+
+            .doll-wishlist-checkout {
+                flex: 0 0 auto;
+                min-height: 36px;
+                padding: 0 17px;
+                border: 1px solid rgba(220, 84, 135, 0.24);
+                border-radius: 999px;
+                background: linear-gradient(180deg, #fa9ec1 0%, #ec6f9f 100%);
+                color: #fff;
+                font-family: var(--dwl-cute);
+                font-size: 11.5px;
+                font-weight: 700;
+                text-shadow: 0 1px 2px rgba(145, 44, 82, 0.18);
+                box-shadow:
+                    0 6px 13px rgba(202, 70, 122, 0.22),
+                    inset 0 1px 0 rgba(255, 255, 255, 0.48);
+                cursor: pointer;
+                transition: transform 0.16s ease, box-shadow 0.16s ease, filter 0.16s ease, opacity 0.16s ease;
+            }
+            .doll-wishlist-checkout:not(:disabled):hover {
+                transform: translateY(-1px);
+                filter: saturate(1.04);
+                box-shadow: 0 8px 16px rgba(202, 70, 122, 0.27), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+            }
+            .doll-wishlist-checkout:not(:disabled):active { transform: scale(0.97); }
+            .doll-wishlist-checkout:focus-visible {
+                outline: 2px solid rgba(216, 69, 125, 0.62);
+                outline-offset: 2px;
+            }
+            .doll-wishlist-checkout:disabled { opacity: 0.55; cursor: default; }
+
+            @media (max-width: 560px) {
+                .doll-wishlist-panel {
+                    width: min(88vw, 324px);
+                }
+
+                .doll-wishlist-foot {
+                    width: calc(100% - 8px);
+                }
+            }
+
+            @media (prefers-reduced-motion: reduce) {
+                .doll-wishlist-panel,
+                .doll-wishlist-item,
+                .doll-wishlist-media img,
+                .doll-wishlist-name > span,
+                .doll-wishlist-more-card,
+                .doll-wishlist-cart-btn,
+                .doll-wishlist-checkout {
+                    animation: none !important;
+                    transition-duration: 0.01ms !important;
+                }
+                .doll-wishlist-name {
+                    text-overflow: ellipsis;
+                }
+            }
+
+            /* The global glitter cycle also uses ::before/::after. Fully
+               isolate the open state so the close glyph can never merge with
+               the pulsing heart, sparkles, or their expanding shadow. */
+            #support-menu-button.dwl-open,
+            #support-menu-button.dwl-open.show-glitter {
+                overflow: hidden !important;
+                animation: none !important;
+                background: linear-gradient(145deg, rgba(255, 252, 254, 0.98), rgba(255, 226, 239, 0.9));
+                box-shadow:
+                    0 5px 13px rgba(211, 92, 140, 0.15),
+                    inset 0 1px 0 rgba(255, 255, 255, 0.94);
+                outline: none;
+            }
+            #support-menu-button.dwl-open:hover {
+                transform: translateY(-1px) scale(1.035);
+            }
+            #support-menu-button.dwl-open:focus-visible {
+                outline: 2px solid rgba(216, 69, 125, 0.56);
+                outline-offset: 2px;
+            }
+            #support-menu-button.dwl-open > .menu-main-icon {
+                opacity: 0 !important;
+                visibility: hidden !important;
+                animation: none !important;
+                transform: none !important;
+            }
+            #support-menu-button.dwl-open::before,
+            #support-menu-button.dwl-open.show-glitter::before {
+                content: none !important;
+                display: none !important;
+                opacity: 0 !important;
+                animation: none !important;
+                background: none !important;
+                box-shadow: none !important;
+                filter: none !important;
+                -webkit-mask-image: none !important;
+                mask-image: none !important;
+            }
+            #support-menu-button.dwl-open::after {
+                content: "×" !important;
+                position: absolute !important;
+                inset: 0 !important;
+                top: 0 !important;
+                left: 0 !important;
+                width: auto !important;
+                height: auto !important;
+                display: grid !important;
+                place-items: center !important;
+                border: 0 !important;
+                border-radius: 0 !important;
+                background: none !important;
+                box-shadow: none !important;
+                filter: none !important;
+                opacity: 1 !important;
+                transform: none !important;
+                animation: none !important;
+                -webkit-mask-image: none !important;
+                mask-image: none !important;
+                font-family: ui-rounded, "Arial Rounded MT Bold", system-ui, sans-serif !important;
+                font-size: 22px !important;
+                font-weight: 400 !important;
+                line-height: 1 !important;
+                color: rgba(184, 74, 117, 0.88) !important;
+                pointer-events: none !important;
+                z-index: 3 !important;
+            }
+
+            @media (hover: hover) and (pointer: fine) {
+                .doll-wishlist-more-card:hover {
+                    transform: translate(-1px, -2px) rotate(-0.35deg);
+                    border-color: rgba(219, 112, 154, 0.78);
+                    box-shadow: 7px 8px 0 rgba(239, 188, 208, 0.3), 0 10px 18px rgba(174, 75, 113, 0.12);
+                }
+                .doll-wishlist-more-card:hover .dwl-more-arrow {
+                    transform: translate(1px, -1px);
+                }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+
+    function ensureThroneFooterLink() {
+        if (throneFooterLink && document.body.contains(throneFooterLink)) return throneFooterLink;
+        const footer = document.querySelector('.site-brand-footer');
+        if (!footer) return null;
+
+        throneFooterLink = document.createElement('a');
+        throneFooterLink.className = 'doll-wishlist-throne-footer-link';
+        throneFooterLink.href = FULL_WISHLIST_URL;
+        throneFooterLink.target = '_blank';
+        throneFooterLink.rel = 'noopener noreferrer';
+        throneFooterLink.setAttribute('aria-label', 'View the full wishlist on Throne');
+        throneFooterLink.innerHTML = `
+            <span class="site-brand-name">throne</span><span class="site-brand-dot">.</span><span class="site-brand-gg">com ↗</span>
+        `;
+        throneFooterLink.addEventListener('click', () => playSound('link'));
+        footer.appendChild(throneFooterLink);
+        return throneFooterLink;
+    }
+
+    function buildPanel() {
+        const contentArea = document.querySelector('.content-area');
+        if (!contentArea) return null;
+
+        injectStyles();
+        ensureThroneFooterLink();
+
+        panel = document.createElement('div');
+        panel.id = panelId;
+        panel.className = 'doll-wishlist-panel';
+        panel.setAttribute('aria-hidden', 'true');
+        panel.innerHTML = `
+            <div class="doll-wishlist-body"></div>
+            <nav class="doll-wishlist-dots" aria-label="wishlist pages"></nav>
+            <p class="doll-wishlist-status"></p>
+            <div class="doll-wishlist-foot">
+                <span class="doll-wishlist-count"><b>0 items selected</b><small>+ fees at checkout</small></span>
+                <button type="button" class="doll-wishlist-checkout" disabled>checkout</button>
+            </div>
+        `;
+
+        contentArea.appendChild(panel);
+
+        if (typeof window.ResizeObserver === 'function') {
+            panelResizeObserver?.disconnect();
+            panelResizeObserver = new ResizeObserver(() => syncReservedHeight());
+            panelResizeObserver.observe(panel);
+        }
+        if (typeof window.MutationObserver === 'function') {
+            panelMutationObserver?.disconnect();
+            panelMutationObserver = new MutationObserver(() => syncReservedHeight());
+            panelMutationObserver.observe(panel, {
+                subtree: true,
+                childList: true,
+                characterData: true,
+            });
+        }
+
+        panel.querySelector('.doll-wishlist-checkout').addEventListener('click', startCheckout);
+        setupConflictGuards();
+
+        return panel;
+    }
+
+    function ensurePanel() {
+        if (panel && document.body.contains(panel)) return panel;
+        return buildPanel();
+    }
+
+    function closeOtherContentPanels() {
+        const drawingWidget = document.querySelector('.drawing-widget');
+        const pencilButton = document.getElementById('toggle-button');
+        if (drawingWidget?.classList.contains('active')) {
+            drawingWidget.classList.remove('active');
+            pencilButton?.classList.remove('drawing-open');
+            if (pencilButton) pencilButton.textContent = '✎';
+        }
+
+        const askForm = document.getElementById('ask-form-container');
+        const askButton = document.getElementById('ask-button');
+        if (askForm && askForm.style.display === 'block') {
+            askForm.style.display = 'none';
+            if (askButton) askButton.textContent = '?';
+        }
+
+        const postsPopup = document.getElementById('posts-popup');
+        const postsButton = document.getElementById('posts-button');
+        if (postsPopup?.classList.contains('active')) {
+            postsPopup.classList.remove('active');
+            if (postsButton) postsButton.textContent = ':3';
+        }
+    }
+
+    function hideNoteImage() {
+        document.getElementById('note-peel-target')?.classList.add('hidden');
+        document.querySelector('.note-image')?.classList.add('hidden');
+    }
+
+    function showNoteImage() {
+        document.getElementById('note-peel-target')?.classList.remove('hidden');
+        document.querySelector('.note-image')?.classList.remove('hidden');
+    }
+
+    function entryPopupIsVisible() {
+        const popup = document.getElementById('popup');
+        if (!popup) return false;
+        const styles = window.getComputedStyle(popup);
+        return styles.display !== 'none'
+            && styles.visibility !== 'hidden'
+            && Number.parseFloat(styles.opacity || '1') > 0.05;
+    }
+
+    function hasConflictingLayer() {
+        if (document.body.classList.contains('site-maintenance-active')
+            || document.body.classList.contains('first-visit-tour-active')) {
+            return true;
+        }
+
+        return entryPopupIsVisible() || Boolean(document.querySelector([
+            '.submit-popup.show',
+            '.admin-gate.show',
+            '.doll-throne-overlay.show',
+            '[data-kofi-open="true"]',
+        ].join(',')));
+    }
+
+    function setupConflictGuards() {
+        if (!conflictClickGuardReady) {
+            conflictClickGuardReady = true;
+            document.addEventListener('click', event => {
+                if (!panel?.classList.contains('active')) return;
+                const target = event.target instanceof Element ? event.target : null;
+                if (!target?.closest([
+                    '#socials-button',
+                    '#action-menu-button',
+                    '#toggle-button',
+                    '#ask-button',
+                    '#posts-button',
+                    '#donate-option',
+                    '#site-brand-button',
+                    '#latest-note-toggle',
+                ].join(','))) return;
+
+                // Let the clicked control continue normally; collapse the
+                // wishlist first so the two surfaces never share the screen.
+                closeThroneMockup(true);
+            }, true);
+        }
+
+        if (typeof window.MutationObserver !== 'function' || conflictObserver || !document.body) return;
+        conflictObserver = new MutationObserver(() => {
+            if (panel?.classList.contains('active') && hasConflictingLayer()) {
+                closeThroneMockup(true);
+            }
+        });
+        conflictObserver.observe(document.body, {
+            subtree: true,
+            childList: true,
+            attributes: true,
+            attributeFilter: ['class', 'style', 'data-kofi-open'],
+        });
+    }
+
+    function syncReservedHeight() {
+        if (!panel?.classList.contains('active')) return;
+        const host = panel.closest('.toggle-container');
+        if (!host) return;
+        const panelRect = panel.getBoundingClientRect();
+        const hostRect = host.getBoundingClientRect();
+        const neededHeight = Math.max(60, Math.ceil(panelRect.bottom - hostRect.top + 12));
+        host.style.setProperty('--dwl-wishlist-height', `${neededHeight}px`);
+    }
+
+    function renderDots() {
+        if (!panel) return;
+        syncReservedHeight();
+        const dotsEl = panel.querySelector('.doll-wishlist-dots');
+        const scroll = panel.querySelector('.doll-wishlist-scroll');
+        const pages = scroll ? Array.from(scroll.querySelectorAll('.doll-wishlist-page')) : [];
+        if (loadState !== 'ready' || !scroll || !pages.length) {
+            dotsEl.innerHTML = '';
+            return;
+        }
+        const pageCount = pages.length;
+        if (pageCount < 2) {
+            dotsEl.innerHTML = '';
+            return;
+        }
+        const firstOffset = pages[0].offsetLeft;
+        const activeIndex = pages.reduce((best, page, index) => {
+            const distance = Math.abs(scroll.scrollLeft - (page.offsetLeft - firstOffset));
+            return distance < best.distance ? { index, distance } : best;
+        }, { index: 0, distance: Infinity }).index;
+        dotsEl.innerHTML = Array.from({ length: pageCount }, (_, i) =>
+            `<button type="button" class="doll-wishlist-dot${i === activeIndex ? ' active' : ''}" data-dot="${i}" aria-label="Show wishlist page ${i + 1}"></button>`
+        ).join('');
+        dotsEl.querySelectorAll('.doll-wishlist-dot').forEach(dot => {
+            dot.addEventListener('click', () => {
+                const page = pages[Number(dot.dataset.dot)];
+                if (!page) return;
+                scroll.scrollTo({ left: page.offsetLeft - firstOffset, behavior: 'smooth' });
+            });
+        });
+    }
+
+    function updateActiveDot() {
+        if (!panel) return;
+        const scroll = panel.querySelector('.doll-wishlist-scroll');
+        const dots = panel.querySelectorAll('.doll-wishlist-dot');
+        const pages = scroll ? Array.from(scroll.querySelectorAll('.doll-wishlist-page')) : [];
+        if (!scroll || !dots.length || !pages.length) return;
+        const firstOffset = pages[0].offsetLeft;
+        const idx = pages.reduce((best, page, index) => {
+            const distance = Math.abs(scroll.scrollLeft - (page.offsetLeft - firstOffset));
+            return distance < best.distance ? { index, distance } : best;
+        }, { index: 0, distance: Infinity }).index;
+        dots.forEach((dot, i) => dot.classList.toggle('active', i === idx));
+    }
+
+    function onScroll() {
+        if (scrollRaf) return;
+        scrollRaf = window.requestAnimationFrame(() => {
+            scrollRaf = 0;
+            updateActiveDot();
+            restartTitleCycle(520);
+        });
+    }
+
+    function renderSkeleton() {
+        return `<div class="doll-wishlist-scroll"><div class="doll-wishlist-page">${Array.from({ length: PAGE_SIZE }).map(() => `
+                <div class="doll-wishlist-item doll-wishlist-skeleton">
+                    <div class="doll-wishlist-media"></div>
+                    <span class="dwl-sk-line"></span>
+                    <span class="dwl-sk-line short"></span>
+                </div>
+            `).join('')}</div></div>`;
+    }
+
+    function pagesMarkup(list) {
+        // The full-list link rides along as one extra virtual slot at the
+        // end, then everything is chunked into pages together. Only the
+        // final page can ever come up short (every earlier page is a full
+        // PAGE_SIZE); if it lands on an odd count, CSS makes its last tile
+        // span the full row instead of leaving a blank cell beside it.
+        const slots = [...list, null];
+        const pageItems = [];
+        for (let index = 0; index < slots.length; index += PAGE_SIZE) {
+            pageItems.push(slots.slice(index, index + PAGE_SIZE));
+        }
+
+        return pageItems.map(page => `
+            <div class="doll-wishlist-page">
+                ${page.map(item => item ? cardMarkup(item) : seeMoreMarkup()).join('')}
+            </div>
+        `).join('');
+    }
+
+    function seeMoreMarkup() {
+        return `
+        <a class="doll-wishlist-more-card" href="${FULL_WISHLIST_URL}" target="_blank" rel="noopener noreferrer" aria-label="See the full wishlist on Throne">
+            <span class="dwl-more-kicker">the rest is here</span>
+            <span class="dwl-more-label">see<br>more</span>
+            <span class="dwl-more-destination"><span>throne.com</span><span class="dwl-more-arrow" aria-hidden="true">↗</span></span>
+        </a>`;
+    }
+
+    function cardMarkup(item) {
+        const selected = selectedIds.has(item.throne_item_id);
+        const fullLabel = String(item.name || '').trim() || 'wishlist item';
+        const label = capName(fullLabel);
+        return `
+        <article class="doll-wishlist-item${selected ? ' selected' : ''}" data-item-id="${escapeHtml(item.throne_item_id)}">
+            <div class="doll-wishlist-media">
+                <img src="${escapeHtml(item.image_url)}" alt="" loading="lazy" onerror="this.onerror=null;this.removeAttribute('src');this.parentNode.style.background='rgba(255,214,235,0.6)';">
+            </div>
+            <p class="doll-wishlist-name" title="${escapeHtml(fullLabel)}"><span>${escapeHtml(label)}</span></p>
+            <div class="doll-wishlist-foot-row">
+                <span class="doll-wishlist-price">${escapeHtml(formatPrice(item.price_cents))}</span>
+                <button type="button" class="doll-wishlist-cart-btn" data-item-id="${escapeHtml(item.throne_item_id)}" aria-label="${selected ? 'Remove ' : 'Add '}${escapeHtml(fullLabel)}" aria-pressed="${selected}">
+                    ${ICON_CART}${ICON_CHECK}
+                </button>
+            </div>
+        </article>`;
+    }
+
+    function clearTitleCycle() {
+        window.clearTimeout(titleCycleTimer);
+        window.clearTimeout(titleCycleRestartTimer);
+        titleCycleTimer = 0;
+        titleCycleRestartTimer = 0;
+        panel?.querySelectorAll('.doll-wishlist-name.is-scrolling')
+            .forEach(name => name.classList.remove('is-scrolling'));
+    }
+
+    function getVisibleOverflowingTitles() {
+        const scroll = panel?.querySelector('.doll-wishlist-scroll');
+        const pages = scroll ? Array.from(scroll.querySelectorAll('.doll-wishlist-page')) : [];
+        if (!scroll || !pages.length) return [];
+        const firstOffset = pages[0].offsetLeft;
+        const page = pages.reduce((best, candidate) => {
+            const distance = Math.abs(scroll.scrollLeft - (candidate.offsetLeft - firstOffset));
+            return distance < best.distance ? { page: candidate, distance } : best;
+        }, { page: pages[0], distance: Infinity }).page;
+        return Array.from(page.querySelectorAll('.doll-wishlist-name.is-overflowing'));
+    }
+
+    function runNextTitleCycle(resetIndex = false) {
+        window.clearTimeout(titleCycleTimer);
+        panel?.querySelectorAll('.doll-wishlist-name.is-scrolling')
+            .forEach(name => name.classList.remove('is-scrolling'));
+        if (!panel?.classList.contains('active')) return;
+        if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+
+        const titles = getVisibleOverflowingTitles();
+        if (!titles.length) return;
+        if (resetIndex) titleCycleIndex = 0;
+        const title = titles[titleCycleIndex % titles.length];
+        titleCycleIndex = (titleCycleIndex + 1) % titles.length;
+
+        // Restart this one finite animation cleanly. Other titles remain still.
+        void title.offsetWidth;
+        title.classList.add('is-scrolling');
+        const durationMs = Number(title.dataset.marqueeDurationMs) || 7000;
+        titleCycleTimer = window.setTimeout(() => {
+            title.classList.remove('is-scrolling');
+            titleCycleTimer = window.setTimeout(() => runNextTitleCycle(false), 1100);
+        }, durationMs);
+    }
+
+    function restartTitleCycle(delay = 850) {
+        clearTitleCycle();
+        titleCycleIndex = 0;
+        if (!panel?.classList.contains('active')) return;
+        titleCycleRestartTimer = window.setTimeout(() => {
+            titleCycleRestartTimer = 0;
+            runNextTitleCycle(true);
+        }, delay);
+    }
+
+    function syncTitleMarquees(root = panel) {
+        root?.querySelectorAll('.doll-wishlist-name').forEach(name => {
+            const text = name.querySelector('span');
+            if (!text) return;
+            name.classList.remove('is-overflowing', 'is-scrolling');
+            name.style.removeProperty('--dwl-title-shift');
+            name.style.removeProperty('--dwl-title-duration');
+            delete name.dataset.marqueeDurationMs;
+
+            const overflow = Math.ceil(text.scrollWidth - name.clientWidth);
+            if (overflow <= 2) return;
+            const duration = Math.min(11.8, Math.max(6.8, 6.2 + overflow / 55));
+            name.style.setProperty('--dwl-title-shift', `${-(overflow + 3)}px`);
+            name.style.setProperty('--dwl-title-duration', `${duration.toFixed(2)}s`);
+            name.dataset.marqueeDurationMs = String(Math.round(duration * 1000));
+            name.classList.add('is-overflowing');
+        });
+        restartTitleCycle();
+    }
+
+    function renderBody() {
+        if (!panel) return;
+        clearTitleCycle();
+        const body = panel.querySelector('.doll-wishlist-body');
+        if (loadState === 'loading') {
+            body.innerHTML = renderSkeleton();
+            renderDots();
+            return;
+        }
+        if (loadState === 'failed') {
+            body.innerHTML = `<div class="doll-wishlist-state">couldn't load the wishlist here.<br>opening the full site instead…</div>`;
+            renderDots();
+            return;
+        }
+        if (loadState === 'ready' && !items.length) {
+            body.innerHTML = `<div class="doll-wishlist-state">nothing featured yet.<br>opening the full site instead…</div>`;
+            renderDots();
+            return;
+        }
+
+        body.innerHTML = `<div class="doll-wishlist-scroll">${pagesMarkup(items)}</div>`;
+
+        const scroll = body.querySelector('.doll-wishlist-scroll');
+        scroll.addEventListener('scroll', onScroll, { passive: true });
+        body.querySelectorAll('.doll-wishlist-cart-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                toggleItem(btn.dataset.itemId);
+            });
+        });
+        body.querySelector('.doll-wishlist-more-card')?.addEventListener('click', () => playSound('link'));
+        window.requestAnimationFrame(() => syncTitleMarquees(body));
+        renderDots();
+    }
+
+    function renderFoot() {
+        if (!panel) return;
+        const count = selectedIds.size;
+        panel.classList.toggle('has-selection', count > 0);
+        document.body.classList.toggle(
+            'has-wishlist-selection',
+            count > 0 && panel.classList.contains('active')
+        );
+        panel.querySelector('.doll-wishlist-count b').textContent = count === 1 ? '1 item selected' : `${count} items selected`;
+        const checkoutBtn = panel.querySelector('.doll-wishlist-checkout');
+        checkoutBtn.disabled = count === 0 || checkoutInFlight;
+        checkoutBtn.textContent = checkoutInFlight ? 'opening…' : 'checkout';
+        const statusEl = panel.querySelector('.doll-wishlist-status');
+        if (statusEl) statusEl.textContent = checkoutStatusMessage;
+        syncReservedHeight();
+    }
+
+    function toggleItem(id) {
+        if (!id) return;
+        playSound('tap');
+        if (selectedIds.has(id)) selectedIds.delete(id);
+        else selectedIds.add(id);
+
+        // Update just the one card in place so the carousel keeps its scroll
+        // position instead of snapping back to the start on every tap.
+        const card = panel?.querySelector(`.doll-wishlist-item[data-item-id="${CSS.escape(id)}"]`);
+        if (card) {
+            const selected = selectedIds.has(id);
+            card.classList.toggle('selected', selected);
+            const btn = card.querySelector('.doll-wishlist-cart-btn');
+            if (btn) {
+                btn.setAttribute('aria-pressed', String(selected));
+                const nameEl = card.querySelector('.doll-wishlist-name');
+                const label = nameEl?.getAttribute('title') || nameEl?.textContent || '';
+                btn.setAttribute('aria-label', `${selected ? 'Remove ' : 'Add '}${label}`);
+            }
+        } else {
+            renderBody();
+        }
+        renderFoot();
+    }
+
+    async function waitForSupabaseClient(maxAttempts) {
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+            const client = window.supabase;
+            if (client && typeof client.from === 'function') return client;
+            await new Promise(resolve => window.setTimeout(resolve, 100));
+        }
+        return null;
+    }
+
+    async function loadItems() {
+        loadState = 'loading';
+        renderBody();
+
+        // script.js lazy-loads the Supabase client after first paint, so it
+        // may not exist yet if the widget is opened right away — wait a bit
+        // rather than treating "not ready yet" as a hard failure.
+        const client = await waitForSupabaseClient(30);
+        if (!client) {
+            loadState = 'failed';
+            renderBody();
+            window.setTimeout(fallbackToLegacy, 900);
+            return;
+        }
+
+        try {
+            const { data, error } = await withTimeout(
+                client.from('wishlist_items')
+                    .select('*')
+                    .eq('featured', true)
+                    .eq('is_available', true)
+                    .order('position')
+                    .limit(MAX_FEATURED),
+                FETCH_TIMEOUT_MS
+            );
+            if (error) throw error;
+            items = Array.isArray(data) ? data : [];
+            loadState = 'ready';
+            renderBody();
+            renderFoot();
+            if (!items.length) {
+                window.setTimeout(fallbackToLegacy, 900);
+            }
+        } catch (err) {
+            loadState = 'failed';
+            renderBody();
+            window.setTimeout(fallbackToLegacy, 900);
+        }
+    }
+
+    function triggerBackgroundSync() {
+        // Fire-and-forget: safe to call on every open because the function
+        // itself throttles real Throne calls server-side. Never blocks
+        // rendering and never surfaces errors to the visitor.
+        fetch(`${SUPABASE_URL}/functions/v1/throne-wishlist-sync`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
+        }).catch(() => {});
+    }
+
+    async function startCheckout() {
+        if (checkoutInFlight || !selectedIds.size) return;
+        checkoutInFlight = true;
+        checkoutStatusMessage = '';
+        playSound('link');
+        renderFoot();
+
+        try {
+            const res = await withTimeout(
+                fetch(`${SUPABASE_URL}/functions/v1/throne-cart`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+                    },
+                    body: JSON.stringify({ itemIds: Array.from(selectedIds) }),
+                }),
+                FETCH_TIMEOUT_MS
+            );
+            const body = await res.json().catch(() => ({}));
+
+            if (res.status === 409) {
+                // Something the visitor picked sold out / got unfeatured
+                // between selecting and checking out. Never silently ship a
+                // smaller cart — refresh what's actually still available and
+                // let them retry with an honest selection.
+                checkoutStatusMessage = 'sorry, something you picked just sold out — pick again?';
+                checkoutInFlight = false;
+                await loadItems();
+                const stillValid = new Set(items.map(item => item.throne_item_id));
+                selectedIds = new Set(Array.from(selectedIds).filter(id => stillValid.has(id)));
+                renderBody();
+                renderFoot();
+                return;
+            }
+
+            if (!res.ok || !body.checkoutUrl) {
+                throw new Error(body.error || `throne-cart ${res.status}`);
+            }
+            window.open(body.checkoutUrl, '_blank', 'noopener,noreferrer');
+            closeThroneMockup();
+        } catch (err) {
+            fallbackToLegacy();
+        } finally {
+            checkoutInFlight = false;
+            if (panel) renderFoot();
+        }
+    }
+
+    function openThroneMockup() {
+        const el = ensurePanel();
+        if (!el) return;
+        if (hasConflictingLayer()) return;
+
+        closeOtherContentPanels();
+        hideNoteImage();
+        document.body.classList.add('has-wishlist-panel-open');
+        const wishlistButton = getWishlistButton();
+        wishlistButton?.classList.remove('show-glitter');
+        wishlistButton?.classList.add('dwl-open');
+        wishlistButton?.setAttribute('aria-expanded', 'true');
+        wishlistButton?.setAttribute('aria-label', 'Close wishlist');
+        document.querySelector('.site-brand-footer')?.setAttribute('aria-label', 'Full wishlist on Throne');
+
+        selectedIds = new Set();
+        checkoutStatusMessage = '';
+        el.classList.remove('has-selection');
+        el.classList.add('active');
+        el.setAttribute('aria-hidden', 'false');
+        renderFoot();
+
+        loadItems();
+        triggerBackgroundSync();
+    }
+
+    function closeThroneMockup(silent = false) {
+        document.body.classList.remove('has-wishlist-panel-open', 'has-wishlist-selection');
+        clearTitleCycle();
+        const wishlistButton = getWishlistButton();
+        wishlistButton?.classList.remove('dwl-open', 'show-glitter');
+        wishlistButton?.setAttribute('aria-expanded', 'false');
+        wishlistButton?.setAttribute('aria-label', 'Open wishlist');
+        document.querySelector('.site-brand-footer')?.setAttribute('aria-label', 'Site home');
+        panel?.closest('.toggle-container')?.style.removeProperty('--dwl-wishlist-height');
+        if (!panel || !panel.classList.contains('active')) return;
+        if (!silent) playSound('tap');
+        panel.classList.remove('active');
+        panel.setAttribute('aria-hidden', 'true');
+        showNoteImage();
+    }
+
+    document.addEventListener('keydown', event => {
+        if (event.key === 'Escape' && panel?.classList.contains('active')) {
+            closeThroneMockup();
+        }
+    });
+
+    window.addEventListener('resize', () => {
+        if (resizeRaf || loadState !== 'ready') return;
+        resizeRaf = window.requestAnimationFrame(() => {
+            resizeRaf = 0;
+            renderDots();
+            updateActiveDot();
+            syncTitleMarquees();
+        });
+    }, { passive: true });
+
+    window.openThroneMockup = openThroneMockup;
+    window.closeThroneMockup = closeThroneMockup;
+
+    if (document.querySelector('.content-area')) {
+        buildPanel();
+    } else {
+        document.addEventListener('DOMContentLoaded', buildPanel, { once: true });
+    }
+}());

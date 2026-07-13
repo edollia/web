@@ -16,6 +16,7 @@ const DEFAULT_LINK_SETTINGS = {
     kofi_enabled: true,
     throne_url: 'https://throne.com/edoll',
     throne_enabled: true,
+    throne_checkout_mode: 'mockup',
     latest_note_enabled: false,
     latest_note_title: 'latest note',
     latest_note_body: '',
@@ -71,6 +72,10 @@ const state = {
     questions: [],
     streamMessages: [],
     streamBans: [],
+    wishlistItems: [],
+    wishlistItemsAvailable: true,
+    wishlistSyncedAt: null,
+    wishlistSearch: '',
     linkSettings: { ...DEFAULT_LINK_SETTINGS },
     linkSettingsAvailable: true,
     chatSettings: {
@@ -131,6 +136,14 @@ const els = {
     throneEnabled: document.getElementById('throne-enabled'),
     throneUrl: document.getElementById('throne-url'),
     throneState: document.getElementById('throne-state'),
+    throneCheckoutMode: document.getElementById('throne-checkout-mode'),
+    wishlistItemsList: document.getElementById('wishlist-items-list'),
+    wishlistSyncStatus: document.getElementById('wishlist-sync-status'),
+    wishlistSyncNow: document.getElementById('wishlist-sync-now'),
+    wishlistFeatureAll: document.getElementById('wishlist-feature-all'),
+    wishlistUnfeatureAll: document.getElementById('wishlist-unfeature-all'),
+    wishlistSearch: document.getElementById('wishlist-search'),
+    wishlistFeaturedWarning: document.getElementById('wishlist-featured-warning'),
     latestNoteEnabled: document.getElementById('latest-note-enabled'),
     latestNoteTitle: document.getElementById('latest-note-title'),
     latestNoteBody: document.getElementById('latest-note-body-input'),
@@ -421,6 +434,7 @@ function normalizeLinkSettings(value) {
         kofi_enabled: settings.kofi_enabled !== false,
         throne_url: String(settings.throne_url || DEFAULT_LINK_SETTINGS.throne_url),
         throne_enabled: settings.throne_enabled !== false,
+        throne_checkout_mode: settings.throne_checkout_mode === 'widget' ? 'widget' : 'mockup',
         latest_note_enabled: settings.latest_note_enabled === true,
         latest_note_title: String(settings.latest_note_title || DEFAULT_LINK_SETTINGS.latest_note_title),
         latest_note_body: String(settings.latest_note_body || ''),
@@ -466,6 +480,7 @@ function renderLinkSettings({ preserveDraft = false } = {}) {
     if (els.throneEnabled) els.throneEnabled.checked = settings.throne_enabled !== false;
     if (els.throneUrl) els.throneUrl.value = settings.throne_url || '';
     if (els.throneState) els.throneState.textContent = settings.throne_enabled !== false ? 'visible' : 'hidden';
+    if (els.throneCheckoutMode) els.throneCheckoutMode.value = settings.throne_checkout_mode === 'widget' ? 'widget' : 'mockup';
     if (els.latestNoteEnabled) els.latestNoteEnabled.checked = settings.latest_note_enabled === true;
     if (els.latestNoteTitle) els.latestNoteTitle.value = settings.latest_note_title || '';
     if (els.latestNoteBody) els.latestNoteBody.value = settings.latest_note_body || '';
@@ -505,6 +520,7 @@ function getDraftLinkSettings() {
         kofi_enabled: els.kofiEnabled?.checked !== false,
         throne_url: els.throneUrl?.value.trim() || state.linkSettings.throne_url || DEFAULT_LINK_SETTINGS.throne_url,
         throne_enabled: els.throneEnabled?.checked !== false,
+        throne_checkout_mode: els.throneCheckoutMode?.value === 'widget' ? 'widget' : 'mockup',
         latest_note_enabled: els.latestNoteEnabled?.checked === true,
         latest_note_title: els.latestNoteTitle?.value.trim() || DEFAULT_LINK_SETTINGS.latest_note_title,
         latest_note_body: els.latestNoteBody?.value.trim() || '',
@@ -675,7 +691,174 @@ function renderAll({ preserveDrafts = false } = {}) {
     renderChatSettings({ preserveDraft: preserveDrafts });
     renderBans();
     renderLinkSettings({ preserveDraft: preserveDrafts });
+    renderWishlistItems();
 }
+
+const WISHLIST_FEATURED_CAP = 12;
+const WISHLIST_NEW_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+function formatWishlistPrice(cents) {
+    const value = Number(cents);
+    return Number.isFinite(value) && value > 0 ? `$${(value / 100).toFixed(2)}` : '';
+}
+
+function timeAgo(isoString) {
+    if (!isoString) return 'never';
+    const ms = Date.now() - new Date(isoString).getTime();
+    if (ms < 0 || Number.isNaN(ms)) return 'just now';
+    const minutes = Math.floor(ms / 60000);
+    if (minutes < 1) return 'just now';
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    return `${Math.floor(hours / 24)}d ago`;
+}
+
+function renderWishlistSyncStatus() {
+    if (els.wishlistSyncStatus) {
+        els.wishlistSyncStatus.textContent = `last synced: ${timeAgo(state.wishlistSyncedAt)}`;
+    }
+}
+
+function getVisibleWishlistItems() {
+    const query = state.wishlistSearch.trim().toLowerCase();
+    return query
+        ? state.wishlistItems.filter(item => (item.name || '').toLowerCase().includes(query))
+        : state.wishlistItems;
+}
+
+function renderWishlistItems() {
+    const container = els.wishlistItemsList;
+    if (!container) return;
+
+    renderWishlistSyncStatus();
+
+    if (!state.wishlistItemsAvailable) {
+        container.innerHTML = emptyMessage('wishlist_items table not set up yet');
+        return;
+    }
+    if (!state.wishlistItems.length) {
+        container.innerHTML = emptyMessage('nothing synced yet — hit "sync now"');
+        return;
+    }
+
+    const featuredCount = state.wishlistItems.filter(item => item.featured).length;
+    if (els.wishlistFeaturedWarning) {
+        els.wishlistFeaturedWarning.textContent = featuredCount > WISHLIST_FEATURED_CAP
+            ? `${featuredCount} items featured — only the first ${WISHLIST_FEATURED_CAP} by position show on the site.`
+            : '';
+    }
+
+    const visible = getVisibleWishlistItems();
+
+    if (!visible.length) {
+        container.innerHTML = emptyMessage('no items match your search');
+        return;
+    }
+
+    const featuredIds = state.wishlistItems.filter(item => item.featured).map(item => item.throne_item_id);
+
+    container.innerHTML = visible.map(item => {
+        const featuredIndex = featuredIds.indexOf(item.throne_item_id);
+        const isNew = item.first_synced_at && (Date.now() - new Date(item.first_synced_at).getTime()) < WISHLIST_NEW_WINDOW_MS;
+        return `
+        <article class="admin-card${item.featured ? ' is-featured' : ''}${item.is_available ? '' : ' is-unavailable'}" data-id="${escapeHtml(item.throne_item_id)}">
+            <img src="${escapeHtml(item.image_url || '')}" alt="">
+            <div class="admin-card-body">
+                <div class="admin-card-title-row">
+                    <strong>${escapeHtml(item.name || '')}</strong>
+                    <span>${escapeHtml(formatWishlistPrice(item.price_cents))}</span>
+                </div>
+                <p class="admin-tool-note">
+                    ${item.is_available ? 'available' : 'sold out / removed'} · qty ${escapeHtml(String(item.quantity ?? 0))}${isNew ? ' · new' : ''}
+                </p>
+            </div>
+            <div class="admin-actions">
+                ${item.featured ? `
+                    <button data-action="move-wishlist-item-up" ${featuredIndex <= 0 ? 'disabled' : ''} aria-label="move up">&uarr;</button>
+                    <button data-action="move-wishlist-item-down" ${featuredIndex === featuredIds.length - 1 ? 'disabled' : ''} aria-label="move down">&darr;</button>
+                ` : ''}
+                <button data-action="${item.featured ? 'unfeature-wishlist-item' : 'feature-wishlist-item'}">${item.featured ? 'unfeature' : 'feature'}</button>
+            </div>
+        </article>
+    `; }).join('');
+}
+
+async function syncWishlistNow() {
+    if (!els.wishlistSyncNow) return;
+    els.wishlistSyncNow.disabled = true;
+    setStatus(els.adminStatus, 'syncing wishlist...');
+
+    try {
+        const { data: { session } } = await adminClient.auth.getSession();
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/throne-wishlist-sync`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${session?.access_token || SUPABASE_ANON_KEY}` },
+        });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(body.error || `sync ${res.status}`);
+        setStatus(els.adminStatus, body.synced === false
+            ? 'sync already ran recently'
+            : `synced ${body.count ?? 0} items (${body.markedUnavailable ?? 0} newly unavailable)`);
+        await loadAdminData();
+    } catch (error) {
+        setStatus(els.adminStatus, `sync failed: ${error.message}`);
+    } finally {
+        els.wishlistSyncNow.disabled = false;
+    }
+}
+
+async function featureAllWishlistItems() {
+    if (!els.wishlistFeatureAll) return;
+    const targets = getVisibleWishlistItems().filter(item => !item.featured);
+    if (!targets.length) {
+        setStatus(els.adminStatus, 'nothing to feature');
+        return;
+    }
+    if (!window.confirm(`Feature ${targets.length} item${targets.length === 1 ? '' : 's'}? They'll go live on the site (only the first ${WISHLIST_FEATURED_CAP} by position show).`)) return;
+
+    els.wishlistFeatureAll.disabled = true;
+    setStatus(els.adminStatus, 'featuring...');
+    try {
+        let nextPosition = state.wishlistItems.reduce((max, item) => item.featured ? Math.max(max, item.position ?? 0) : max, -1) + 1;
+        const results = await Promise.all(targets.map(item =>
+            adminClient.from('wishlist_items').update({ featured: true, position: nextPosition++ }).eq('throne_item_id', item.throne_item_id)
+        ));
+        const failed = results.find(result => result.error);
+        if (failed) throw failed.error;
+        await loadAdminData();
+    } catch (error) {
+        setStatus(els.adminStatus, error.message || 'could not feature items');
+    } finally {
+        els.wishlistFeatureAll.disabled = false;
+    }
+}
+
+async function unfeatureAllWishlistItems() {
+    if (!els.wishlistUnfeatureAll) return;
+    const targets = getVisibleWishlistItems().filter(item => item.featured);
+    if (!targets.length) {
+        setStatus(els.adminStatus, 'nothing to unfeature');
+        return;
+    }
+    if (!window.confirm(`Unfeature ${targets.length} item${targets.length === 1 ? '' : 's'}? They'll disappear from the site grid immediately.`)) return;
+
+    els.wishlistUnfeatureAll.disabled = true;
+    setStatus(els.adminStatus, 'unfeaturing...');
+    try {
+        const results = await Promise.all(targets.map(item =>
+            adminClient.from('wishlist_items').update({ featured: false }).eq('throne_item_id', item.throne_item_id)
+        ));
+        const failed = results.find(result => result.error);
+        if (failed) throw failed.error;
+        await loadAdminData();
+    } catch (error) {
+        setStatus(els.adminStatus, error.message || 'could not unfeature items');
+    } finally {
+        els.wishlistUnfeatureAll.disabled = false;
+    }
+}
+
 
 async function ensureAdminSession() {
     const { data, error } = await adminClient.auth.getUser();
@@ -692,13 +875,15 @@ async function ensureAdminSession() {
 async function loadAdminData({ preserveDrafts = true } = {}) {
     setStatus(els.adminStatus, 'loading...');
 
-    const [drawingsResult, questionsResult, chatResult, bansResult, settingsResult, linkSettingsResult] = await Promise.all([
+    const [drawingsResult, questionsResult, chatResult, bansResult, settingsResult, linkSettingsResult, wishlistItemsResult, wishlistSyncResult] = await Promise.all([
         adminClient.from('drawings').select('*').order('created_at', { ascending: false }),
         adminClient.from('questions').select('*').order('created_at', { ascending: false }),
         adminClient.from('stream_messages').select('*').order('created_at', { ascending: false }).limit(120),
         adminClient.from('stream_chat_bans').select('*').eq('is_active', true).order('created_at', { ascending: false }),
         adminClient.from('stream_chat_settings').select('*').eq('id', true).maybeSingle(),
-        adminClient.from('site_settings').select('value').eq('id', 'links').maybeSingle()
+        adminClient.from('site_settings').select('value').eq('id', 'links').maybeSingle(),
+        adminClient.from('wishlist_items').select('*').order('featured', { ascending: false }).order('position').order('name'),
+        adminClient.from('wishlist_sync_state').select('last_synced_at').eq('id', true).maybeSingle()
     ]);
 
     if (drawingsResult.error) throw drawingsResult.error;
@@ -707,11 +892,15 @@ async function loadAdminData({ preserveDrafts = true } = {}) {
     if (bansResult.error && bansResult.error.code !== '42P01') throw bansResult.error;
     if (settingsResult.error && settingsResult.error.code !== '42P01' && settingsResult.error.code !== 'PGRST116') throw settingsResult.error;
     if (linkSettingsResult.error && linkSettingsResult.error.code !== '42P01' && linkSettingsResult.error.code !== 'PGRST116') throw linkSettingsResult.error;
+    if (wishlistItemsResult.error && wishlistItemsResult.error.code !== '42P01') throw wishlistItemsResult.error;
 
     state.drawings = drawingsResult.data || [];
     state.questions = questionsResult.data || [];
     state.streamMessages = chatResult.data || [];
     state.streamBans = bansResult.data || [];
+    state.wishlistItemsAvailable = !wishlistItemsResult.error;
+    state.wishlistItems = wishlistItemsResult.data || [];
+    state.wishlistSyncedAt = wishlistSyncResult.data?.last_synced_at || null;
     if (settingsResult.data) {
         state.chatSettings = {
             chat_enabled: settingsResult.data.chat_enabled !== false,
@@ -900,6 +1089,30 @@ async function runAction(button) {
             await addChatBan('ip', item?.ip_address, `${item?.nickname || 'unknown'} from message ${id}`);
         }
 
+        if (action === 'feature-wishlist-item' || action === 'unfeature-wishlist-item') {
+            const featured = action === 'feature-wishlist-item';
+            const update = { featured };
+            if (featured) {
+                update.position = state.wishlistItems.reduce((max, item) => item.featured ? Math.max(max, item.position ?? 0) : max, -1) + 1;
+            }
+            const { error } = await adminClient.from('wishlist_items').update(update).eq('throne_item_id', id);
+            if (error) throw error;
+        }
+
+        if (action === 'move-wishlist-item-up' || action === 'move-wishlist-item-down') {
+            const featuredItems = state.wishlistItems.filter(item => item.featured);
+            const index = featuredItems.findIndex(item => item.throne_item_id === id);
+            const neighborIndex = action === 'move-wishlist-item-up' ? index - 1 : index + 1;
+            const current = featuredItems[index];
+            const neighbor = featuredItems[neighborIndex];
+            if (current && neighbor) {
+                const { error: err1 } = await adminClient.from('wishlist_items').update({ position: neighbor.position }).eq('throne_item_id', current.throne_item_id);
+                if (err1) throw err1;
+                const { error: err2 } = await adminClient.from('wishlist_items').update({ position: current.position }).eq('throne_item_id', neighbor.throne_item_id);
+                if (err2) throw err2;
+            }
+        }
+
         await loadAdminData();
     } catch (error) {
         setStatus(els.adminStatus, error.message || 'Could not save.');
@@ -1036,6 +1249,7 @@ async function saveLinkSettingsNow() {
             kofi_enabled: els.kofiEnabled?.checked !== false,
             throne_url: cleanUrl(els.throneUrl?.value || state.linkSettings.throne_url, 'Throne'),
             throne_enabled: els.throneEnabled?.checked !== false,
+            throne_checkout_mode: els.throneCheckoutMode?.value === 'widget' ? 'widget' : 'mockup',
             latest_note_enabled: els.latestNoteEnabled?.checked === true,
             latest_note_title: els.latestNoteTitle?.value.trim() || DEFAULT_LINK_SETTINGS.latest_note_title,
             latest_note_body: els.latestNoteBody?.value.trim() || '',
@@ -1371,6 +1585,13 @@ async function init() {
     els.chatFilter?.addEventListener('input', renderChatMessages);
     els.chatVisibilityFilter?.addEventListener('change', renderChatMessages);
     els.chatBanForm?.addEventListener('submit', saveChatBan);
+    els.wishlistSyncNow?.addEventListener('click', syncWishlistNow);
+    els.wishlistFeatureAll?.addEventListener('click', featureAllWishlistItems);
+    els.wishlistUnfeatureAll?.addEventListener('click', unfeatureAllWishlistItems);
+    els.wishlistSearch?.addEventListener('input', () => {
+        state.wishlistSearch = els.wishlistSearch.value || '';
+        renderWishlistItems();
+    });
     els.linkSettingsForm?.addEventListener('submit', e => e.preventDefault());
     els.linkSettingsReset?.addEventListener('click', resetLinkSettings);
     els.runHealthCheck?.addEventListener('click', runSiteHealthCheck);
@@ -1396,6 +1617,7 @@ async function init() {
         els.instagramUrl,
         els.kofiUrl,
         els.throneUrl,
+        els.throneCheckoutMode,
         els.latestNoteTitle,
         els.latestNoteBody,
         els.maintenanceTitle,

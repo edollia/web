@@ -8,6 +8,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         kofi_enabled: true,
         throne_url: 'https://throne.com/edoll',
         throne_enabled: true,
+        throne_checkout_mode: 'mockup',
         latest_note_enabled: false,
         latest_note_title: 'latest note',
         latest_note_body: '',
@@ -683,6 +684,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             kofi_enabled: settings.kofi_enabled !== false,
             throne_url: String(settings.throne_url || DEFAULT_LINK_SETTINGS.throne_url),
             throne_enabled: settings.throne_enabled !== false,
+            throne_checkout_mode: settings.throne_checkout_mode === 'widget' ? 'widget' : 'mockup',
             latest_note_enabled: settings.latest_note_enabled === true,
             latest_note_title: String(settings.latest_note_title || DEFAULT_LINK_SETTINGS.latest_note_title),
             latest_note_body: String(settings.latest_note_body || ''),
@@ -978,6 +980,37 @@ document.addEventListener("DOMContentLoaded", async function() {
     const drawingWidget = document.querySelector('.drawing-widget');
     const postsPanel = document.getElementById('posts-popup');
     const postsButton = document.getElementById('posts-button');
+    let postsPanelResizeObserver = null;
+
+    function syncPostsPanelSpace() {
+        if (!postsPanel?.classList.contains('active')) return;
+        const host = postsPanel.closest('.toggle-container');
+        const card = postsPanel.querySelector('.popup-content');
+        if (!host || !card) return;
+        const cardRect = card.getBoundingClientRect();
+        const hostRect = host.getBoundingClientRect();
+        const neededHeight = Math.max(350, Math.ceil(cardRect.bottom - hostRect.top + 14));
+        host.style.setProperty('--posts-panel-height', `${neededHeight}px`);
+    }
+
+    function setPostsPanelLayoutOpen(open) {
+        document.body.classList.toggle('has-posts-panel-open', open);
+        const host = postsPanel?.closest('.toggle-container');
+        if (!open) {
+            host?.style.removeProperty('--posts-panel-height');
+            postsPanelResizeObserver?.disconnect();
+            postsPanelResizeObserver = null;
+            return;
+        }
+
+        window.requestAnimationFrame(syncPostsPanelSpace);
+        const card = postsPanel?.querySelector('.popup-content');
+        if (card && typeof window.ResizeObserver === 'function') {
+            postsPanelResizeObserver?.disconnect();
+            postsPanelResizeObserver = new ResizeObserver(syncPostsPanelSpace);
+            postsPanelResizeObserver.observe(card);
+        }
+    }
 
     function closeDrawingWidget() {
         if (!toggleButton || !noteImage || !drawingWidget) return;
@@ -997,6 +1030,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     }
 
     function closePostsPanel() {
+        setPostsPanelLayoutOpen(false);
         if (!postsPanel || !postsButton) return;
         postsPanel.classList.remove('active');
         postsButton.textContent = ':3';
@@ -1039,6 +1073,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             } else {
                 closeQuestionForm();
                 closePostsPanel();
+                if (typeof window.closeThroneMockup === 'function') window.closeThroneMockup();
                 hideNoteImage();
                 drawingWidget.classList.add('active');
                 toggleButton.classList.add('drawing-open');
@@ -1341,6 +1376,9 @@ document.addEventListener("DOMContentLoaded", async function() {
         if (typeof window.closeThroneOverlay === 'function') {
             window.closeThroneOverlay();
         }
+        if (typeof window.closeThroneMockup === 'function') {
+            window.closeThroneMockup();
+        }
     }
 
     function closeActionMenu() {
@@ -1630,8 +1668,17 @@ document.addEventListener("DOMContentLoaded", async function() {
         closeSocialsMenu();
         closeActionMenu();
         if (!isPublicLinkEnabled('throne')) return;
+        const useMockup = siteLinkSettings.throne_checkout_mode !== 'widget';
+        // Second press while the mockup panel is open toggles it closed.
+        const wishlistPanel = document.getElementById('doll-wishlist-panel');
+        if (useMockup && wishlistPanel?.classList.contains('active')) {
+            window.closeThroneMockup();
+            return;
+        }
         playUiSound('link');
-        if (typeof window.openThroneOverlay === 'function') {
+        if (useMockup && typeof window.openThroneMockup === 'function') {
+            window.openThroneMockup();
+        } else if (typeof window.openThroneOverlay === 'function') {
             window.openThroneOverlay();
         } else {
             window.open(getPublicLink('throne'), '_blank', 'noopener,noreferrer');
@@ -2038,6 +2085,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                 if (!open) {
                     closeDrawingWidget();
                     closePostsPanel();
+                    if (typeof window.closeThroneMockup === 'function') window.closeThroneMockup();
                     hideNoteImage();
                 } else {
                     notePeelTarget?.classList.remove('hidden');
@@ -2154,10 +2202,13 @@ document.addEventListener("DOMContentLoaded", async function() {
                 } else {
                     closeDrawingWidget();
                     closeQuestionForm();
+                    if (typeof window.closeThroneMockup === 'function') window.closeThroneMockup();
                     hideNoteImage();
                     postsPopup?.classList.add('active');
+                    setPostsPanelLayoutOpen(true);
                     postsButton.textContent = '×';
                     await renderSubmissions();
+                    syncPostsPanelSpace();
                 }
             });
 

@@ -601,6 +601,19 @@ button {
     width: min(94vw, 360px);
 }
 
+body.has-posts-panel-open {
+    overflow-x: hidden;
+    overflow-y: auto;
+}
+
+body.has-posts-panel-open .toggle-container {
+    min-height: var(--posts-panel-height, 350px);
+}
+
+body.has-posts-panel-open .site-brand-footer {
+    margin-top: 28px;
+}
+
 .content-area {
     position: relative;
     width: 100%;
