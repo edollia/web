@@ -54,6 +54,16 @@
         return document.getElementById('support-menu-button');
     }
 
+    function openInNewTab(event) {
+        // Belt-and-suspenders: always force a real new tab/window via JS
+        // rather than trusting the anchor's target="_blank" alone, since
+        // that can silently get swallowed depending on how the tap reaches
+        // the element (e.g. through the site's other click handling).
+        event.preventDefault();
+        playSound('link');
+        window.open(FULL_WISHLIST_URL, '_blank', 'noopener,noreferrer');
+    }
+
     function fallbackToLegacy() {
         closeThroneMockup();
         if (typeof window.openThroneOverlay === 'function') {
@@ -91,7 +101,11 @@
                 transform: translateX(-50%) translateY(-7px) scale(0.988);
                 opacity: 0;
                 pointer-events: none;
-                transition: opacity 0.3s ease, transform 0.42s cubic-bezier(0.2, 0.9, 0.25, 1);
+                /* Matches .note-peel-target's own hide/show timing (0.46s
+                   opacity / 0.42s transform) so the note and this panel
+                   cross-fade in lockstep instead of at mismatched speeds
+                   (which reads as a glitch/double-image when swapping). */
+                transition: opacity 0.46s ease, transform 0.42s cubic-bezier(0.2, 0.9, 0.25, 1);
                 z-index: 9;
             }
 
@@ -111,8 +125,13 @@
                 transition: min-height 0.22s ease;
             }
 
+            /* !important because a short-viewport rule in styles.css
+               (@media max-height:720px) also sets .site-brand-footer's
+               margin-top, and this needs to win unconditionally so the
+               throne.com pill always sits tight under the panel, never
+               inheriting that rule's much larger gap. */
             body.has-wishlist-panel-open .site-brand-footer {
-                margin-top: 28px;
+                margin-top: 10px !important;
             }
 
             body.has-wishlist-panel-open .button-group {
@@ -254,6 +273,35 @@
                 white-space: nowrap;
                 overflow: hidden;
                 text-overflow: ellipsis;
+            }
+
+            /* Long titles get a single always-on CSS marquee (no JS timers,
+               no per-card cycling/turn-taking) — every overflowing title
+               animates independently and simultaneously, so nothing ever
+               "misses its turn" or drifts out of sync with its own duration. */
+            .doll-wishlist-name.dwl-marquee {
+                -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 8px, #000 calc(100% - 8px), transparent 100%);
+                mask-image: linear-gradient(90deg, transparent 0, #000 8px, #000 calc(100% - 8px), transparent 100%);
+            }
+            .doll-wishlist-name.dwl-marquee > span {
+                display: inline-block;
+                animation: dollWishlistMarquee var(--dwl-duration, 8s) ease-in-out infinite;
+                will-change: transform;
+            }
+            @keyframes dollWishlistMarquee {
+                0%, 12% { transform: translateX(0); }
+                45%, 60% { transform: translateX(var(--dwl-shift, 0)); }
+                93%, 100% { transform: translateX(0); }
+            }
+            @media (prefers-reduced-motion: reduce) {
+                .doll-wishlist-name.dwl-marquee {
+                    -webkit-mask-image: none;
+                    mask-image: none;
+                }
+                .doll-wishlist-name.dwl-marquee > span {
+                    animation: none;
+                    display: inline;
+                }
             }
 
             .doll-wishlist-foot-row {
@@ -677,9 +725,9 @@
         throneFooterLink.rel = 'noopener noreferrer';
         throneFooterLink.setAttribute('aria-label', 'View the full wishlist on Throne');
         throneFooterLink.innerHTML = `
-            <span class="site-brand-name">throne</span><span class="site-brand-dot">.</span><span class="site-brand-gg">com ↗</span>
+            <span class="site-brand-name">throne</span><span class="site-brand-dot">.</span><span class="site-brand-gg">com</span>
         `;
-        throneFooterLink.addEventListener('click', () => playSound('link'));
+        throneFooterLink.addEventListener('click', openInNewTab);
         footer.appendChild(throneFooterLink);
         return throneFooterLink;
     }
@@ -833,7 +881,7 @@
         if (!host) return;
         const panelRect = panel.getBoundingClientRect();
         const hostRect = host.getBoundingClientRect();
-        const neededHeight = Math.max(60, Math.ceil(panelRect.bottom - hostRect.top + 12));
+        const neededHeight = Math.max(60, Math.ceil(panelRect.bottom - hostRect.top + 4));
         host.style.setProperty('--dwl-wishlist-height', `${neededHeight}px`);
     }
 
@@ -977,8 +1025,33 @@
                 toggleItem(btn.dataset.itemId);
             });
         });
-        body.querySelector('.doll-wishlist-more-card')?.addEventListener('click', () => playSound('link'));
+        body.querySelector('.doll-wishlist-more-card')?.addEventListener('click', openInNewTab);
+        window.requestAnimationFrame(() => syncTitleMarquees(body));
         renderDots();
+    }
+
+    function syncTitleMarquees(root = panel) {
+        if (!root) return;
+        const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+        root.querySelectorAll('.doll-wishlist-name').forEach(name => {
+            name.classList.remove('dwl-marquee');
+            name.style.removeProperty('--dwl-shift');
+            name.style.removeProperty('--dwl-duration');
+            const label = name.textContent;
+            name.textContent = label;
+            if (reduceMotion) return;
+
+            const overflow = Math.ceil(name.scrollWidth - name.clientWidth);
+            if (overflow <= 2) return;
+
+            // Consistent px/s speed regardless of title length, so a long
+            // title doesn't scroll noticeably faster/slower than a short one.
+            const duration = Math.min(14, Math.max(6.5, 6 + overflow / 42));
+            name.style.setProperty('--dwl-shift', `${-(overflow + 4)}px`);
+            name.style.setProperty('--dwl-duration', `${duration.toFixed(2)}s`);
+            name.innerHTML = `<span>${escapeHtml(label)}</span>`;
+            name.classList.add('dwl-marquee');
+        });
     }
 
     function renderFoot() {
@@ -1184,6 +1257,7 @@
             resizeRaf = 0;
             renderDots();
             updateActiveDot();
+            syncTitleMarquees();
         });
     }, { passive: true });
 
