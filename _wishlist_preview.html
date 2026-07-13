@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<link rel="stylesheet" href="styles.css">
+<style>body{padding:26px 0;}</style>
+</head>
+<body class="site-links-ready">
+<div class="main-screen note-ready ui-ready" id="main-screen" style="display:block;">
+    <div class="toggle-container">
+        <div class="button-group">
+            <a id="support-menu-button" class="email-button support-menu-button wishlist-direct-button" href="#">
+                <img src="wishlist.png" alt="Wishlist" class="menu-main-icon" width="491" height="508">
+                <span class="menu-close-icon" aria-hidden="true">&times;</span>
+            </a>
+        </div>
+        <div class="content-area">
+            <div class="note-peel-target active-content" id="note-peel-target">
+                <img src="notee.jpg" alt="Note" class="note-image" width="736" height="1039">
+            </div>
+            <div id="ask-form-container" class="ask-form-container"></div>
+            <div class="drawing-widget"></div>
+            <div class="posts-popup posts-panel" id="posts-popup"></div>
+        </div>
+    </div>
+    <footer class="site-brand-footer" aria-label="Site home">
+        <a id="site-brand-button" href="https://doll.gg/" rel="home">
+            <span class="site-brand-name">doll</span><span class="site-brand-dot">.</span><span class="site-brand-gg">gg</span>
+        </a>
+    </footer>
+</div>
+<script src="throne-mockup-widget.js"></script>
+<script>
+    function photo(w, h, bg, obj) {
+        return 'data:image/svg+xml;utf8,' + encodeURIComponent(
+            `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><rect width="${w}" height="${h}" fill="${bg}"/><circle cx="${w/2}" cy="${h/2}" r="${Math.min(w,h)*0.28}" fill="${obj}"/></svg>`
+        );
+    }
+    const N = Number(new URLSearchParams(location.search).get('n')) || 7;
+    const DELAY = Number(new URLSearchParams(location.search).get('delay')) || 0;
+    const base = [
+        ['floppy bunny plush', 2800, '#ffd0e4','#ff9dc7'],
+        ['cat paw mousepad', 1600, '#ffdaeb','#ffa9cf'],
+        ['bunny sticker set', 650, '#ffe0ef','#ffb3d6'],
+        ['pawswirl star charm keychain super extra long name that goes on and on', 1200, '#ffd6e8','#ff9ecb'],
+        ['moon plush pillow', 3400, '#ffd0e4','#ff9dc7'],
+        ['ribbon hair clip set', 900, '#ffdaeb','#ffa9cf'],
+        ['strawberry mug', 1800, '#ffe0ef','#ffb3d6'],
+        ['plush keychain', 1100, '#ffd0e4','#ff9dc7'],
+        ['pink hoodie', 4200, '#ffdaeb','#ffa9cf'],
+        ['glitter pen set', 750, '#ffe0ef','#ffb3d6'],
+        ['bow hair tie', 500, '#ffd6e8','#ff9ecb'],
+        ['plush blanket', 3900, '#ffd0e4','#ff9dc7'],
+    ];
+    const fakeItems = Array.from({length: Math.min(N, base.length)}, (_, i) => ({
+        throne_item_id: String(i+1), name: base[i][0], price_cents: base[i][1],
+        image_url: photo(320+((i%3)*40), 320+((i%2)*140), base[i][2], base[i][3]),
+    }));
+
+    window.supabase = {
+        from() {
+            const chain = {
+                select: () => chain, eq: () => chain, order: () => chain,
+                limit: () => new Promise(resolve => setTimeout(() => resolve({ data: fakeItems, error: null }), DELAY)),
+            };
+            return chain;
+        }
+    };
+
+    window.openThroneMockup();
+    const params = new URLSearchParams(location.search);
+    const SELECT = params.get('sel') === '1';
+    setTimeout(() => {
+        if (SELECT) {
+            const panel = document.getElementById('doll-wishlist-panel');
+            panel.querySelectorAll('.doll-wishlist-cart-btn')[0]?.click();
+        }
+    }, DELAY + 400);
+</script>
+</body>
+</html>

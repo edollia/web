@@ -385,79 +385,40 @@
 
             .doll-wishlist-more-card {
                 position: relative;
-                isolation: isolate;
                 display: flex;
                 flex-direction: column;
-                justify-content: space-between;
+                align-items: center;
+                justify-content: center;
+                gap: 7px;
                 min-width: 0;
-                min-height: clamp(150px, 45vw, 164px);
-                overflow: hidden;
-                padding: 15px 13px 13px 17px;
-                color: #754055;
+                padding: 12px;
+                color: var(--dwl-ink);
                 text-decoration: none;
-                background:
-                    linear-gradient(90deg, rgba(232, 117, 161, 0.12) 0 1px, transparent 1px) 11px 0 / 1px 100% no-repeat,
-                    repeating-linear-gradient(0deg, transparent 0 20px, rgba(230, 151, 182, 0.13) 20px 21px),
-                    linear-gradient(145deg, #fffdfd 0%, #fff4f8 58%, #ffe8f1 100%);
-                border: 1px solid rgba(230, 153, 183, 0.72);
-                border-radius: 7px;
-                box-shadow: 5px 6px 0 rgba(239, 188, 208, 0.34), 0 8px 16px rgba(174, 75, 113, 0.09);
-                clip-path: polygon(0 0, calc(100% - 9px) 0, 100% 9px, 100% 100%, 9px 100%, 0 calc(100% - 9px));
+                background: linear-gradient(180deg, #fffefe 0%, #fff9fb 70%, #fff6fa 100%);
+                border: 1px solid var(--dwl-line);
+                border-radius: 18px;
+                box-shadow:
+                    inset 0 0 0 2px rgba(255, 255, 255, 0.92),
+                    0 5px 12px rgba(177, 92, 124, 0.08),
+                    0 1px 2px rgba(142, 76, 99, 0.06);
                 -webkit-tap-highlight-color: transparent;
-                transition: transform 0.19s ease, box-shadow 0.19s ease, border-color 0.19s ease;
-            }
-            .doll-wishlist-more-card::before {
-                content: "";
-                position: absolute;
-                z-index: -1;
-                top: 0;
-                right: 0;
-                width: 32px;
-                height: 32px;
-                background:
-                    linear-gradient(135deg, transparent 49%, rgba(235, 159, 188, 0.42) 50% 52%, rgba(255, 255, 255, 0.75) 53%);
-            }
-            .dwl-more-kicker {
-                display: inline-flex;
-                align-self: flex-start;
-                padding: 3px 7px;
-                background: rgba(244, 162, 195, 0.22);
-                color: rgba(139, 68, 96, 0.68);
-                font-family: var(--dwl-sans);
-                font-size: 7px;
-                font-weight: 800;
-                line-height: 1;
-                letter-spacing: 0.11em;
-                text-transform: uppercase;
-                transform: rotate(-2deg);
+                transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
             }
             .dwl-more-label {
-                display: block;
-                margin: auto 0;
                 font-family: var(--dwl-cute);
-                font-size: clamp(20px, 6vw, 25px);
+                font-size: 12px;
                 font-weight: 600;
-                line-height: 0.86;
-                letter-spacing: -0.04em;
-                text-align: left;
-                transform: rotate(-2deg);
-            }
-            .dwl-more-destination {
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-                gap: 6px;
-                padding-top: 7px;
-                border-top: 1px dashed rgba(218, 120, 158, 0.46);
-                font-family: var(--dwl-sans);
-                font-size: 8.5px;
-                font-weight: 700;
                 line-height: 1;
-                color: rgba(116, 65, 84, 0.62);
-                text-align: left;
             }
             .dwl-more-arrow {
-                color: #db5f90;
+                display: grid;
+                place-items: center;
+                width: 30px;
+                height: 30px;
+                border-radius: 50%;
+                border: 1px solid rgba(245, 185, 208, 0.82);
+                background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), #ffedf4);
+                color: #ef6d9f;
                 font-family: system-ui, sans-serif;
                 font-size: 13px;
                 line-height: 1;
@@ -632,25 +593,39 @@
                 .doll-wishlist-panel,
                 .doll-wishlist-item,
                 .doll-wishlist-media img,
-                .doll-wishlist-name > span,
                 .doll-wishlist-more-card,
                 .doll-wishlist-cart-btn,
                 .doll-wishlist-checkout {
                     animation: none !important;
                     transition-duration: 0.01ms !important;
                 }
-                .doll-wishlist-name {
-                    text-overflow: ellipsis;
-                }
             }
 
-            /* The global glitter cycle also uses ::before/::after. Fully
-               isolate the open state so the close glyph can never merge with
-               the pulsing heart, sparkles, or their expanding shadow. */
-            #support-menu-button.dwl-open,
-            #support-menu-button.dwl-open.show-glitter {
-                overflow: hidden !important;
-                animation: none !important;
+            /* Close icon: same swap mechanism the socials/action buttons
+               already use for their own open state (plain menu-main-icon
+               <-> alternate glyph show/hide), instead of a bespoke overlay.
+               The ID selector already outweighs .email-button/.show-glitter,
+               so no !important is needed anywhere here. */
+            .menu-close-icon {
+                display: none;
+                align-items: center;
+                justify-content: center;
+                width: 20px;
+                height: 20px;
+                flex: 0 0 auto;
+                color: rgba(184, 74, 117, 0.88);
+                font-family: ui-rounded, "Arial Rounded MT Bold", system-ui, sans-serif;
+                font-size: 20px;
+                font-weight: 400;
+                line-height: 1;
+            }
+            #support-menu-button.dwl-open > .menu-main-icon {
+                display: none;
+            }
+            #support-menu-button.dwl-open > .menu-close-icon {
+                display: inline-flex;
+            }
+            #support-menu-button.dwl-open {
                 background: linear-gradient(145deg, rgba(255, 252, 254, 0.98), rgba(255, 226, 239, 0.9));
                 box-shadow:
                     0 5px 13px rgba(211, 92, 140, 0.15),
@@ -664,61 +639,26 @@
                 outline: 2px solid rgba(216, 69, 125, 0.56);
                 outline-offset: 2px;
             }
-            #support-menu-button.dwl-open > .menu-main-icon {
-                opacity: 0 !important;
-                visibility: hidden !important;
-                animation: none !important;
-                transform: none !important;
-            }
+            /* The independent glitter cycle in script.js re-adds
+               .show-glitter every ~10s with no awareness of dwl-open — keep
+               its heart/sparkle pseudo-elements neutralized whenever open. */
             #support-menu-button.dwl-open::before,
-            #support-menu-button.dwl-open.show-glitter::before {
-                content: none !important;
-                display: none !important;
-                opacity: 0 !important;
-                animation: none !important;
-                background: none !important;
-                box-shadow: none !important;
-                filter: none !important;
-                -webkit-mask-image: none !important;
-                mask-image: none !important;
-            }
             #support-menu-button.dwl-open::after {
-                content: "×" !important;
-                position: absolute !important;
-                inset: 0 !important;
-                top: 0 !important;
-                left: 0 !important;
-                width: auto !important;
-                height: auto !important;
-                display: grid !important;
-                place-items: center !important;
-                border: 0 !important;
-                border-radius: 0 !important;
-                background: none !important;
-                box-shadow: none !important;
-                filter: none !important;
-                opacity: 1 !important;
-                transform: none !important;
-                animation: none !important;
-                -webkit-mask-image: none !important;
-                mask-image: none !important;
-                font-family: ui-rounded, "Arial Rounded MT Bold", system-ui, sans-serif !important;
-                font-size: 22px !important;
-                font-weight: 400 !important;
-                line-height: 1 !important;
-                color: rgba(184, 74, 117, 0.88) !important;
-                pointer-events: none !important;
-                z-index: 3 !important;
+                content: none;
+                animation: none;
             }
 
             @media (hover: hover) and (pointer: fine) {
                 .doll-wishlist-more-card:hover {
-                    transform: translate(-1px, -2px) rotate(-0.35deg);
-                    border-color: rgba(219, 112, 154, 0.78);
-                    box-shadow: 7px 8px 0 rgba(239, 188, 208, 0.3), 0 10px 18px rgba(174, 75, 113, 0.12);
+                    border-color: rgba(232, 151, 182, 0.82);
+                    box-shadow:
+                        inset 0 0 0 2px rgba(255, 255, 255, 0.94),
+                        0 9px 18px rgba(174, 75, 113, 0.13);
+                    transform: translateY(-3px);
                 }
                 .doll-wishlist-more-card:hover .dwl-more-arrow {
-                    transform: translate(1px, -1px);
+                    color: #e9518b;
+                    border-color: rgba(237, 139, 176, 0.92);
                 }
             }
         `;
@@ -948,7 +888,6 @@
         scrollRaf = window.requestAnimationFrame(() => {
             scrollRaf = 0;
             updateActiveDot();
-            restartTitleCycle(520);
         });
     }
 
@@ -984,9 +923,8 @@
     function seeMoreMarkup() {
         return `
         <a class="doll-wishlist-more-card" href="${FULL_WISHLIST_URL}" target="_blank" rel="noopener noreferrer" aria-label="See the full wishlist on Throne">
-            <span class="dwl-more-kicker">the rest is here</span>
-            <span class="dwl-more-label">see<br>more</span>
-            <span class="dwl-more-destination"><span>throne.com</span><span class="dwl-more-arrow" aria-hidden="true">↗</span></span>
+            <span class="dwl-more-arrow" aria-hidden="true">↗</span>
+            <span class="dwl-more-label">see all</span>
         </a>`;
     }
 
@@ -999,7 +937,7 @@
             <div class="doll-wishlist-media">
                 <img src="${escapeHtml(item.image_url)}" alt="" loading="lazy" onerror="this.onerror=null;this.removeAttribute('src');this.parentNode.style.background='rgba(255,214,235,0.6)';">
             </div>
-            <p class="doll-wishlist-name" title="${escapeHtml(fullLabel)}"><span>${escapeHtml(label)}</span></p>
+            <p class="doll-wishlist-name" title="${escapeHtml(fullLabel)}">${escapeHtml(label)}</p>
             <div class="doll-wishlist-foot-row">
                 <span class="doll-wishlist-price">${escapeHtml(formatPrice(item.price_cents))}</span>
                 <button type="button" class="doll-wishlist-cart-btn" data-item-id="${escapeHtml(item.throne_item_id)}" aria-label="${selected ? 'Remove ' : 'Add '}${escapeHtml(fullLabel)}" aria-pressed="${selected}">
@@ -1009,83 +947,8 @@
         </article>`;
     }
 
-    function clearTitleCycle() {
-        window.clearTimeout(titleCycleTimer);
-        window.clearTimeout(titleCycleRestartTimer);
-        titleCycleTimer = 0;
-        titleCycleRestartTimer = 0;
-        panel?.querySelectorAll('.doll-wishlist-name.is-scrolling')
-            .forEach(name => name.classList.remove('is-scrolling'));
-    }
-
-    function getVisibleOverflowingTitles() {
-        const scroll = panel?.querySelector('.doll-wishlist-scroll');
-        const pages = scroll ? Array.from(scroll.querySelectorAll('.doll-wishlist-page')) : [];
-        if (!scroll || !pages.length) return [];
-        const firstOffset = pages[0].offsetLeft;
-        const page = pages.reduce((best, candidate) => {
-            const distance = Math.abs(scroll.scrollLeft - (candidate.offsetLeft - firstOffset));
-            return distance < best.distance ? { page: candidate, distance } : best;
-        }, { page: pages[0], distance: Infinity }).page;
-        return Array.from(page.querySelectorAll('.doll-wishlist-name.is-overflowing'));
-    }
-
-    function runNextTitleCycle(resetIndex = false) {
-        window.clearTimeout(titleCycleTimer);
-        panel?.querySelectorAll('.doll-wishlist-name.is-scrolling')
-            .forEach(name => name.classList.remove('is-scrolling'));
-        if (!panel?.classList.contains('active')) return;
-        if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
-
-        const titles = getVisibleOverflowingTitles();
-        if (!titles.length) return;
-        if (resetIndex) titleCycleIndex = 0;
-        const title = titles[titleCycleIndex % titles.length];
-        titleCycleIndex = (titleCycleIndex + 1) % titles.length;
-
-        // Restart this one finite animation cleanly. Other titles remain still.
-        void title.offsetWidth;
-        title.classList.add('is-scrolling');
-        const durationMs = Number(title.dataset.marqueeDurationMs) || 7000;
-        titleCycleTimer = window.setTimeout(() => {
-            title.classList.remove('is-scrolling');
-            titleCycleTimer = window.setTimeout(() => runNextTitleCycle(false), 1100);
-        }, durationMs);
-    }
-
-    function restartTitleCycle(delay = 850) {
-        clearTitleCycle();
-        titleCycleIndex = 0;
-        if (!panel?.classList.contains('active')) return;
-        titleCycleRestartTimer = window.setTimeout(() => {
-            titleCycleRestartTimer = 0;
-            runNextTitleCycle(true);
-        }, delay);
-    }
-
-    function syncTitleMarquees(root = panel) {
-        root?.querySelectorAll('.doll-wishlist-name').forEach(name => {
-            const text = name.querySelector('span');
-            if (!text) return;
-            name.classList.remove('is-overflowing', 'is-scrolling');
-            name.style.removeProperty('--dwl-title-shift');
-            name.style.removeProperty('--dwl-title-duration');
-            delete name.dataset.marqueeDurationMs;
-
-            const overflow = Math.ceil(text.scrollWidth - name.clientWidth);
-            if (overflow <= 2) return;
-            const duration = Math.min(11.8, Math.max(6.8, 6.2 + overflow / 55));
-            name.style.setProperty('--dwl-title-shift', `${-(overflow + 3)}px`);
-            name.style.setProperty('--dwl-title-duration', `${duration.toFixed(2)}s`);
-            name.dataset.marqueeDurationMs = String(Math.round(duration * 1000));
-            name.classList.add('is-overflowing');
-        });
-        restartTitleCycle();
-    }
-
     function renderBody() {
         if (!panel) return;
-        clearTitleCycle();
         const body = panel.querySelector('.doll-wishlist-body');
         if (loadState === 'loading') {
             body.innerHTML = renderSkeleton();
@@ -1115,7 +978,6 @@
             });
         });
         body.querySelector('.doll-wishlist-more-card')?.addEventListener('click', () => playSound('link'));
-        window.requestAnimationFrame(() => syncTitleMarquees(body));
         renderDots();
     }
 
@@ -1297,7 +1159,6 @@
 
     function closeThroneMockup(silent = false) {
         document.body.classList.remove('has-wishlist-panel-open', 'has-wishlist-selection');
-        clearTitleCycle();
         const wishlistButton = getWishlistButton();
         wishlistButton?.classList.remove('dwl-open', 'show-glitter');
         wishlistButton?.setAttribute('aria-expanded', 'false');
@@ -1323,7 +1184,6 @@
             resizeRaf = 0;
             renderDots();
             updateActiveDot();
-            syncTitleMarquees();
         });
     }, { passive: true });
 
