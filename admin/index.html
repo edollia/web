@@ -6,7 +6,7 @@
     <meta name="robots" content="noindex, nofollow">
     <meta name="referrer" content="strict-origin-when-cross-origin">
     <title>Lia Admin</title>
-    <link rel="stylesheet" href="../admin.css?v=4.6">
+    <link rel="stylesheet" href="../admin.css?v=5.0">
 </head>
 <body>
     <main class="admin-shell">
@@ -47,8 +47,10 @@
                 </div>
             </header>
 
-            <p id="lockdown-banner" class="hidden">lockdown is ON — only the admin can create or join rooms.</p>
-            <p id="rooms-disabled-banner" class="hidden">rooms are OFF — the note pull and public Rooms page are disabled.</p>
+            <div class="admin-alerts" aria-live="polite">
+                <p id="lockdown-banner" class="hidden">lockdown is ON — only the admin can create or join rooms.</p>
+                <p id="rooms-disabled-banner" class="hidden">rooms are OFF — the note pull and public Rooms page are disabled.</p>
+            </div>
 
             <section class="admin-stats" id="admin-stats"></section>
 
@@ -57,6 +59,7 @@
                 <button data-panel="published-panel"><span>published <b id="published-tab-count">0</b></span></button>
                 <button data-panel="site-panel"><span>site</span></button>
                 <button data-panel="links-panel"><span>links <b id="links-tab-count">0/4</b></span></button>
+                <button data-panel="wishlist-panel"><span>wishlist</span></button>
                 <button data-panel="search-panel"><span>search</span></button>
                 <button data-panel="rooms-panel"><span>rooms</span></button>
             </nav>
@@ -70,24 +73,30 @@
                         <h2>waiting room</h2>
                     </div>
                 </div>
-                <div class="admin-section-heading">
-                    <h2>waiting doods</h2>
-                    <div class="admin-bulk-bar compact">
-                        <button class="soft" data-bulk-action="select" data-list="pending-drawings-list">select all</button>
-                        <button data-bulk-action="approve" data-list="pending-drawings-list">approve</button>
-                        <button class="danger" data-bulk-action="delete" data-list="pending-drawings-list">delete</button>
-                        <button class="danger emergency" data-bulk-action="delete-all-pending-drawings" data-list="pending-drawings-list">clear waiting</button>
-                    </div>
-                </div>
-                <div class="admin-list admin-doods-list" id="pending-drawings-list"></div>
+                <div class="admin-review-grid">
+                    <section class="admin-review-lane">
+                        <div class="admin-section-heading">
+                            <h2>waiting doods</h2>
+                            <div class="admin-bulk-bar compact">
+                                <button class="soft" data-bulk-action="select" data-list="pending-drawings-list">select all</button>
+                                <button data-bulk-action="approve" data-list="pending-drawings-list">approve</button>
+                                <button class="danger" data-bulk-action="delete" data-list="pending-drawings-list">delete</button>
+                                <button class="danger emergency" data-bulk-action="delete-all-pending-drawings" data-list="pending-drawings-list">clear waiting</button>
+                            </div>
+                        </div>
+                        <div class="admin-list admin-doods-list" id="pending-drawings-list"></div>
+                    </section>
 
-                <div class="admin-section-heading">
-                    <h2>waiting asks</h2>
-                    <div class="admin-bulk-bar compact">
-                        <button class="danger emergency" data-bulk-action="delete-all-pending-questions" data-list="pending-questions-list">clear waiting</button>
-                    </div>
+                    <section class="admin-review-lane">
+                        <div class="admin-section-heading">
+                            <h2>waiting asks</h2>
+                            <div class="admin-bulk-bar compact">
+                                <button class="danger emergency" data-bulk-action="delete-all-pending-questions" data-list="pending-questions-list">clear waiting</button>
+                            </div>
+                        </div>
+                        <div class="admin-list admin-text-list" id="pending-questions-list"></div>
+                    </section>
                 </div>
-                <div class="admin-list admin-text-list" id="pending-questions-list"></div>
             </section>
 
             <section class="admin-panel" id="published-panel">
@@ -499,10 +508,13 @@
                         </details>
                     </div>
 
+                </section>
+
+                <section class="admin-panel" id="wishlist-panel">
                     <div class="admin-panel-intro">
                         <div>
                             <p class="admin-kicker">wishlist</p>
-                            <h2>mockup grid items</h2>
+                            <h2>featured items</h2>
                             <p>Auto-synced from your live Throne wishlist. Toggle "feature" to choose what shows on doll.gg — sold-out items drop off the site automatically.</p>
                         </div>
                     </div>

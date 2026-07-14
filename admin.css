@@ -1786,3 +1786,606 @@ button.danger {
     border-top: 1px solid var(--admin-line-soft);
     font-size: 13px;
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   Control center layout — desktop rail + mobile tab strip
+   This intentionally has no public Pawswirl banner. Admin keeps the
+   same palette, but uses a quieter and more operational hierarchy.
+   ═══════════════════════════════════════════════════════════════════ */
+
+body {
+    background:
+        radial-gradient(circle at 12% 8%, rgba(255, 220, 237, 0.48), transparent 28rem),
+        radial-gradient(circle at 92% 90%, rgba(244, 225, 242, 0.42), transparent 30rem),
+        #fdf8fb;
+}
+
+.admin-shell {
+    max-width: 1480px;
+    padding: 18px clamp(14px, 2.2vw, 32px) 36px;
+}
+
+.admin-dashboard {
+    display: grid;
+    grid-template-columns: 190px minmax(0, 1fr);
+    grid-template-areas:
+        "header header"
+        "alerts alerts"
+        "stats stats"
+        "nav status"
+        "nav content";
+    column-gap: 18px;
+    row-gap: 12px;
+    align-items: start;
+    min-height: calc(100vh - 36px);
+    padding: 0 0 32px;
+}
+
+.admin-header {
+    grid-area: header;
+    margin: 0;
+    padding: 12px 14px;
+    border-color: rgba(232, 190, 211, 0.56);
+    border-radius: 18px;
+    background: rgba(255, 253, 254, 0.94);
+    box-shadow: 0 10px 28px rgba(130, 78, 103, 0.08);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+}
+
+.admin-title-block::before {
+    content: "doll.gg admin";
+    display: block;
+    margin-bottom: 2px;
+    color: rgba(174, 85, 130, 0.62);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.admin-header h1 {
+    color: rgba(103, 67, 82, 0.94);
+    font-size: 23px;
+    line-height: 1;
+}
+
+.admin-header-actions > * {
+    min-height: 38px;
+}
+
+.admin-header-actions #logout-admin {
+    border: 1px solid rgba(217, 91, 122, 0.3);
+    background: rgba(255, 245, 248, 0.92);
+    color: rgba(177, 66, 98, 0.82);
+    box-shadow: none;
+}
+
+.admin-alerts {
+    grid-area: alerts;
+    display: grid;
+    gap: 7px;
+}
+
+.admin-alerts:not(:has(p:not(.hidden))) {
+    display: none;
+}
+
+#lockdown-banner,
+#rooms-disabled-banner {
+    margin: 0;
+    padding: 10px 13px;
+    border: 1px solid rgba(199, 141, 74, 0.32);
+    border-radius: 13px;
+    background: rgba(255, 247, 229, 0.94);
+    color: rgba(136, 87, 38, 0.9);
+    box-shadow: none;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+#rooms-disabled-banner {
+    border-color: rgba(208, 87, 120, 0.28);
+    background: rgba(255, 239, 245, 0.94);
+    color: rgba(160, 63, 92, 0.9);
+}
+
+.admin-stats {
+    grid-area: stats;
+    grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+    gap: 9px;
+    margin: 0;
+}
+
+.admin-stat {
+    min-height: 68px;
+    padding: 12px 13px;
+    border-color: rgba(232, 190, 211, 0.5);
+    border-radius: 16px;
+    background: rgba(255, 253, 254, 0.9);
+    box-shadow: 0 8px 22px rgba(130, 78, 103, 0.07);
+}
+
+.admin-stat strong {
+    margin-bottom: 5px;
+    font-size: 21px;
+}
+
+.admin-tabs {
+    grid-area: nav;
+    position: sticky;
+    top: 84px;
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    margin: 0;
+    padding: 9px;
+    border-color: rgba(232, 190, 211, 0.52);
+    border-radius: 18px;
+    background: rgba(255, 253, 254, 0.9);
+    box-shadow: 0 10px 28px rgba(130, 78, 103, 0.07);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+}
+
+.admin-tabs::before {
+    content: "control center";
+    padding: 7px 9px 8px;
+    color: rgba(122, 76, 92, 0.5);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    text-align: left;
+    text-transform: uppercase;
+}
+
+.admin-tabs button {
+    position: relative;
+    display: flex;
+    justify-content: flex-start;
+    width: 100%;
+    min-height: 43px;
+    padding: 0 10px 0 43px;
+    overflow: hidden;
+    border-color: transparent;
+    border-radius: 12px;
+    background: transparent;
+    color: rgba(103, 67, 82, 0.74);
+    box-shadow: none;
+    text-align: left;
+}
+
+.admin-tabs button::before {
+    content: "";
+    position: absolute;
+    left: 9px;
+    top: 50%;
+    width: 25px;
+    height: 25px;
+    display: grid;
+    place-items: center;
+    border: 1px solid rgba(232, 190, 211, 0.62);
+    border-radius: 9px;
+    background: rgba(255, 246, 250, 0.88);
+    color: rgba(174, 85, 130, 0.7);
+    font-family: "Comic Sans MS", "Trebuchet MS", cursive;
+    font-size: 11px;
+    transform: translateY(-50%);
+}
+
+.admin-tabs button[data-panel="review-panel"]::before { content: "R"; }
+.admin-tabs button[data-panel="published-panel"]::before { content: "P"; }
+.admin-tabs button[data-panel="site-panel"]::before { content: "S"; }
+.admin-tabs button[data-panel="links-panel"]::before { content: "L"; }
+.admin-tabs button[data-panel="wishlist-panel"]::before { content: "W"; }
+.admin-tabs button[data-panel="search-panel"]::before { content: "⌕"; }
+.admin-tabs button[data-panel="rooms-panel"]::before { content: "●"; }
+
+.admin-tabs button:hover {
+    background: rgba(255, 240, 247, 0.7);
+    box-shadow: none;
+    transform: none;
+}
+
+.admin-tabs button.active {
+    border-color: rgba(255, 161, 203, 0.44);
+    background: rgba(255, 226, 240, 0.88);
+    color: rgba(128, 67, 94, 0.96);
+    box-shadow: inset 3px 0 0 rgba(255, 132, 187, 0.9);
+}
+
+.admin-tabs button.active::before {
+    border-color: rgba(255, 132, 187, 0.64);
+    background: rgba(255, 255, 255, 0.88);
+    color: rgba(174, 63, 118, 0.9);
+}
+
+.admin-tabs button.active b {
+    background: rgba(255, 255, 255, 0.72);
+    color: rgba(174, 63, 118, 0.9);
+}
+
+#admin-status {
+    grid-area: status;
+    min-height: 0;
+    margin: 0;
+    padding: 0 4px;
+    text-align: left;
+}
+
+#admin-status:empty {
+    display: none;
+}
+
+.admin-settings-form {
+    display: block;
+    grid-area: content;
+    min-width: 0;
+    margin: 0;
+}
+
+.admin-settings-form:not(:has(> .admin-panel.active)) {
+    display: none;
+}
+
+.admin-settings-form > .admin-panel {
+    grid-area: auto;
+}
+
+.admin-panel {
+    grid-area: content;
+    min-width: 0;
+    padding: clamp(14px, 1.7vw, 22px);
+    border: 1px solid rgba(232, 190, 211, 0.5);
+    border-radius: 20px;
+    background: rgba(255, 253, 254, 0.92);
+    box-shadow: 0 12px 34px rgba(130, 78, 103, 0.08);
+}
+
+.admin-panel-intro {
+    margin: 0 0 14px;
+    padding: 0 0 12px;
+    border-color: rgba(232, 190, 211, 0.46);
+}
+
+.admin-panel-intro h2 {
+    color: rgba(103, 67, 82, 0.92);
+    font-size: 21px;
+}
+
+.admin-section-heading {
+    margin-top: 18px;
+}
+
+.admin-card,
+.admin-tool-card,
+.admin-link-card,
+.admin-chat-command,
+.admin-bulk-bar {
+    background: rgba(255, 255, 255, 0.76);
+    box-shadow: 0 6px 18px rgba(130, 78, 103, 0.06);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+.admin-link-card,
+.admin-card,
+.admin-tool-card {
+    border-color: rgba(232, 190, 211, 0.52);
+}
+
+.admin-link-grid,
+.admin-control-grid {
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 12px;
+}
+
+.admin-link-card summary {
+    min-height: 60px;
+}
+
+.admin-link-icon {
+    border-radius: 10px;
+    background: rgba(255, 239, 247, 0.88);
+    box-shadow: none;
+}
+
+.admin-review-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(300px, 0.65fr);
+    gap: 14px;
+    align-items: start;
+}
+
+.admin-review-lane {
+    min-width: 0;
+    padding: 12px;
+    border: 1px solid rgba(232, 190, 211, 0.46);
+    border-radius: 16px;
+    background: rgba(255, 250, 253, 0.62);
+}
+
+.admin-review-lane .admin-section-heading {
+    margin-top: 0;
+}
+
+.admin-review-lane .admin-text-list {
+    grid-template-columns: 1fr;
+}
+
+.admin-doods-list {
+    grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+}
+
+.admin-text-list {
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+}
+
+.admin-wishlist-list .admin-card {
+    border-radius: 12px;
+    box-shadow: none;
+}
+
+@media (max-width: 860px) {
+    body {
+        background: #fdf8fb;
+    }
+
+    .admin-shell {
+        padding: 0 0 max(24px, env(safe-area-inset-bottom));
+    }
+
+    .admin-dashboard {
+        display: block;
+        min-height: 100vh;
+        padding: 0;
+    }
+
+    .admin-header {
+        top: 0;
+        z-index: 40;
+        flex-direction: row;
+        align-items: center;
+        margin: 0;
+        padding: max(10px, env(safe-area-inset-top)) 12px 10px;
+        border-width: 0 0 1px;
+        border-radius: 0;
+        box-shadow: 0 8px 22px rgba(130, 78, 103, 0.08);
+    }
+
+    .admin-title-block::before {
+        font-size: 8px;
+    }
+
+    .admin-header h1 {
+        font-size: 19px;
+    }
+
+    .admin-header-actions {
+        width: auto;
+        flex-wrap: nowrap;
+        gap: 5px;
+    }
+
+    .admin-header-actions > * {
+        flex: 0 0 auto;
+        min-height: 40px;
+        padding: 0 10px;
+        font-size: 11px;
+    }
+
+    .admin-alerts {
+        margin: 10px 10px 0;
+    }
+
+    .admin-stats {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+        margin: 10px;
+    }
+
+    .admin-stat {
+        min-height: 64px;
+        padding: 10px 11px;
+    }
+
+    .admin-tabs {
+        position: sticky;
+        top: 61px;
+        z-index: 35;
+        display: flex;
+        flex-direction: row;
+        gap: 6px;
+        margin: 0;
+        padding: 8px 10px;
+        overflow-x: auto;
+        border-width: 1px 0;
+        border-radius: 0;
+        background: rgba(253, 248, 251, 0.94);
+        box-shadow: 0 7px 18px rgba(130, 78, 103, 0.06);
+        scroll-padding-inline: 10px;
+        scroll-snap-type: x proximity;
+        scrollbar-width: none;
+    }
+
+    .admin-tabs::-webkit-scrollbar {
+        display: none;
+    }
+
+    .admin-tabs::before {
+        display: none;
+    }
+
+    .admin-tabs button {
+        flex: 0 0 auto;
+        width: auto;
+        min-width: 112px;
+        min-height: 44px;
+        padding: 0 12px 0 40px;
+        border-color: rgba(232, 190, 211, 0.45);
+        background: rgba(255, 255, 255, 0.72);
+        scroll-snap-align: start;
+    }
+
+    .admin-tabs button::before {
+        left: 8px;
+    }
+
+    #admin-status {
+        margin: 8px 12px 0;
+    }
+
+    .admin-panel {
+        margin: 10px;
+        padding: 14px;
+        border-radius: 17px;
+        box-shadow: 0 8px 24px rgba(130, 78, 103, 0.07);
+    }
+
+    .admin-panel-intro {
+        flex-direction: row;
+        align-items: flex-start;
+    }
+
+    .admin-panel-intro p:last-child {
+        max-width: 100%;
+        text-align: left;
+    }
+
+    .admin-link-grid,
+    .admin-control-grid,
+    .admin-search-layout,
+    .admin-review-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .admin-link-card summary {
+        min-height: 62px;
+    }
+
+    .admin-section-heading {
+        gap: 8px;
+    }
+
+    .admin-bulk-bar.compact {
+        width: 100%;
+        overflow-x: auto;
+        flex-wrap: nowrap;
+        justify-content: flex-start;
+        scrollbar-width: none;
+    }
+
+    .admin-bulk-bar.compact::-webkit-scrollbar {
+        display: none;
+    }
+
+    .admin-bulk-bar.compact button {
+        flex: 0 0 auto;
+        min-height: 36px;
+    }
+
+    .admin-doods-list {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .admin-text-list {
+        grid-template-columns: 1fr;
+    }
+
+    #table-wrap,
+    #bans-table-wrap {
+        margin-inline: -4px;
+        padding-bottom: 4px;
+    }
+}
+
+@media (max-width: 480px) {
+    .admin-header-actions #refresh-admin {
+        display: none;
+    }
+
+    .admin-back-home {
+        padding-inline: 9px;
+    }
+
+    .admin-stats {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .admin-stat strong {
+        font-size: 19px;
+    }
+
+    .admin-panel {
+        margin: 8px;
+        padding: 12px;
+    }
+
+    .admin-panel-intro {
+        flex-direction: column;
+    }
+
+    .admin-panel-intro h2 {
+        font-size: 19px;
+    }
+
+    .admin-link-grid,
+    .admin-control-grid {
+        gap: 9px;
+    }
+
+    .admin-link-card summary {
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 8px;
+        padding: 9px;
+    }
+
+    .admin-link-card-title strong {
+        font-size: 13px;
+    }
+
+    .admin-link-card-actions {
+        gap: 5px;
+    }
+
+    .admin-link-open {
+        display: none;
+    }
+
+    .admin-switch,
+    .admin-switch span {
+        width: 46px;
+    }
+
+    .admin-switch input:checked + span::before {
+        transform: translateX(16px);
+    }
+
+    .admin-doods-list {
+        gap: 8px;
+    }
+
+    .admin-wishlist-list .admin-card {
+        display: grid;
+        grid-template-columns: 46px minmax(0, 1fr);
+        gap: 7px 9px;
+    }
+
+    .admin-wishlist-list .admin-card img {
+        width: 46px;
+        height: 46px;
+        max-height: 46px;
+        min-width: 46px;
+    }
+
+    .admin-wishlist-list .admin-actions {
+        grid-column: 1 / -1;
+        justify-content: flex-start;
+    }
+
+    #rooms-panel .bans-form > * {
+        flex: 1 1 100%;
+        min-height: 40px;
+    }
+}

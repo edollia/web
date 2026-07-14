@@ -129,25 +129,34 @@
         <!-- Interactive Content Area -->
         <div class="toggle-container">
             <div class="button-group">
-                <div class="icon-container">
-                    <div id="socials-button" class="email-button support-menu-button socials-button" role="button" tabindex="0" aria-label="Open socials" aria-expanded="false" aria-controls="social-links-panel">
-                        <span class="socials-menu-label menu-main-icon">꩜</span>
-                        <span class="socials-close-icon" aria-hidden="true">&times;</span>
+                <div class="dwl-icons-row">
+                    <div class="icon-container">
+                        <div id="socials-button" class="email-button support-menu-button socials-button" role="button" tabindex="0" aria-label="Open socials" aria-expanded="false" aria-controls="social-links-panel">
+                            <span class="socials-menu-label menu-main-icon">꩜</span>
+                            <span class="socials-close-icon" aria-hidden="true">&times;</span>
+                        </div>
+                    </div>
+                    <a id="support-menu-button" class="email-button support-menu-button wishlist-direct-button" href="https://throne.com/edoll" target="_blank" rel="noopener noreferrer" aria-label="Open wishlist">
+                        <img src="wishlist.png" alt="Wishlist" class="menu-main-icon" width="491" height="508">
+                        <span class="menu-close-icon" aria-hidden="true">&times;</span>
+                    </a>
+                    <div id="action-menu-button" class="next-button support-menu-button action-menu-button" role="button" tabindex="0" aria-label="Open actions" aria-expanded="false">
+                        <span class="action-menu-label menu-main-icon">𓏲ּ𝄢</span>
+                        <span class="menu-back-arrow" aria-hidden="true">↢</span>
+                        <span class="support-options action-options" aria-hidden="true">
+                            <span id="toggle-button" class="support-option action-option pencil-option" role="button" tabindex="-1" aria-label="Doodle">✎</span>
+                            <span id="ask-button" class="support-option action-option question-option" role="button" tabindex="-1" aria-label="Ask">?</span>
+                            <span id="posts-button" class="support-option action-option" role="button" tabindex="-1">:3</span>
+                        </span>
                     </div>
                 </div>
-                <a id="support-menu-button" class="email-button support-menu-button wishlist-direct-button" href="https://throne.com/edoll" target="_blank" rel="noopener noreferrer" aria-label="Open wishlist">
-                    <img src="wishlist.png" alt="Wishlist" class="menu-main-icon" width="491" height="508">
-                    <span class="menu-close-icon" aria-hidden="true">&times;</span>
-                </a>
-                <div id="action-menu-button" class="next-button support-menu-button action-menu-button" role="button" tabindex="0" aria-label="Open actions" aria-expanded="false">
-                    <span class="action-menu-label menu-main-icon">𓏲ּ𝄢</span>
-                    <span class="menu-back-arrow" aria-hidden="true">↢</span>
-                    <span class="support-options action-options" aria-hidden="true">
-                        <span id="toggle-button" class="support-option action-option pencil-option" role="button" tabindex="-1" aria-label="Doodle">✎</span>
-                        <span id="ask-button" class="support-option action-option question-option" role="button" tabindex="-1" aria-label="Ask">?</span>
-                        <span id="posts-button" class="support-option action-option" role="button" tabindex="-1">:3</span>
+                <button type="button" id="dwl-icons-pill" class="dwl-icons-pill" aria-label="Show menu icons" tabindex="-1">
+                    <span class="pill-mesh" aria-hidden="true">
+                        <span class="pill-mini">꩜</span>
+                        <span class="pill-mini"><img src="wishlist.png" alt="" width="491" height="508"></span>
+                        <span class="pill-mini">𓏲ּ𝄢</span>
                     </span>
-                </div>
+                </button>
             </div>
             <!-- Content Area -->
             <div class="content-area">
@@ -161,7 +170,7 @@
                 <nav id="social-links-panel" class="social-links-panel" aria-label="Social links" aria-hidden="true">
                     <a id="snapchat-option" class="social-link-card" href="https://www.snapchat.com/add/dumidoll" target="_blank" rel="noopener noreferrer" tabindex="-1" aria-label="Open Snapchat: dumidoll">
                         <span class="social-link-icon" aria-hidden="true">
-                            <img src="snap-v2-1.png" alt="" width="1254" height="1254">
+                            <img src="snap-v2-1.png" alt="" width="1254" height="1254" decoding="async">
                         </span>
                         <span class="social-link-copy">
                             <strong>snapchat</strong>
@@ -175,7 +184,7 @@
                     </a>
                     <a id="instagram-option" class="social-link-card" href="https://www.instagram.com/pawswirl" target="_blank" rel="noopener noreferrer" tabindex="-1" aria-label="Open Instagram: pawswirl">
                         <span class="social-link-icon" aria-hidden="true">
-                            <img src="insta-v2-1.png" alt="" width="1254" height="1254">
+                            <img src="insta-v2-1.png" alt="" width="1254" height="1254" decoding="async">
                         </span>
                         <span class="social-link-copy">
                             <strong>instagram</strong>
@@ -189,7 +198,7 @@
                     </a>
                     <a id="donate-option" class="social-link-card" href="https://ko-fi.com/edoll" target="_blank" rel="noopener noreferrer" tabindex="-1" aria-label="Open Ko-fi: edoll">
                         <span class="social-link-icon social-link-kofi-icon" aria-hidden="true">
-                            <img src="kofi-v2.png" alt="" width="1254" height="1254">
+                            <img src="kofi-v2.png" alt="" width="1254" height="1254" decoding="async">
                         </span>
                         <span class="social-link-copy">
                             <strong>kofi</strong>
@@ -332,7 +341,7 @@
       }
     </script>
     <script src="throne-overlay-widget.js?v=3.7"></script>
-    <script src="throne-mockup-widget.js?v=17"></script>
+    <script src="throne-mockup-widget.js?v=18"></script>
     <script src="script.js?v=10.2"></script>
     
     <!-- GoatCounter Analytics -->

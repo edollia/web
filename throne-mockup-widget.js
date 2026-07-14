@@ -42,6 +42,8 @@
     let checkoutStatusMessage = '';
     let scrollRaf = 0;
     let resizeRaf = 0;
+    let panelOpenRaf = 0;
+    let panelOpening = false;
     let swipeHintTimer = 0;
     let swipeHintSequenceStarted = false;
     let swipeHintDismissed = false;
@@ -116,9 +118,16 @@
         const style = document.createElement('style');
         style.id = styleId;
         style.textContent = `
-            .doll-wishlist-panel {
+            :root {
+                /* Declared at :root, not on .doll-wishlist-panel, because the
+                   preview lightbox overlay is appended as a document.body
+                   sibling of the panel (not a descendant) — a panel-scoped
+                   custom property would never reach it, silently falling
+                   back to a mismatched cursive font on old iOS. */
                 --dwl-sans: "Arial Rounded MT Bold", "Trebuchet MS", system-ui, sans-serif;
                 --dwl-cute: "Chalkboard SE", "Comic Sans MS", "Segoe Print", cursive;
+            }
+            .doll-wishlist-panel {
                 --dwl-ink: #663b4b;
                 --dwl-pink: #f47fad;
                 --dwl-line: rgba(239, 183, 204, 0.72);
@@ -127,6 +136,7 @@
                 left: 50%;
                 width: min(88vw, 324px);
                 transform: translateX(-50%) translateY(-7px) scale(0.988);
+                transform-origin: 50% 0;
                 opacity: 0;
                 pointer-events: none;
                 /* Matches .note-peel-target's own hide/show timing (0.46s
@@ -134,6 +144,7 @@
                    cross-fade in lockstep instead of at mismatched speeds
                    (which reads as a glitch/double-image when swapping). */
                 transition: opacity 0.46s ease, transform 0.42s cubic-bezier(0.2, 0.9, 0.25, 1);
+                will-change: opacity, transform;
                 z-index: 9;
             }
 
@@ -143,6 +154,11 @@
                 transform: translateX(-50%) translateY(0) scale(1);
             }
 
+            .doll-wishlist-panel.dwl-measure-open {
+                transform: translateX(-50%) translateY(0) scale(1);
+                transition: none;
+            }
+
             body.has-wishlist-panel-open {
                 overflow-x: hidden;
                 overflow-y: auto;
@@ -150,7 +166,7 @@
 
             body.has-wishlist-panel-open .toggle-container {
                 min-height: var(--dwl-wishlist-height, 220px);
-                transition: min-height 0.22s ease;
+                transition: min-height 0.42s cubic-bezier(0.2, 0.9, 0.25, 1);
             }
 
             /* !important because a short-viewport rule in styles.css
@@ -163,7 +179,14 @@
             }
 
             body.has-wishlist-panel-open .button-group {
-                margin-bottom: 3px;
+                /* Restates the *expanded* baseline only — .button-group's own
+                   calc() (styles.css) is still what actually sets
+                   margin-bottom, so this can't fight it the way a direct
+                   margin-bottom override used to (equal specificity, this
+                   file loads later, so it silently won outright and the
+                   scroll-collapse's margin change never applied while the
+                   wishlist was open). */
+                --dwl-collapse-base-margin: 3px;
             }
 
             .doll-wishlist-throne-footer-link {
@@ -574,7 +597,7 @@
                 border-radius: 999px;
                 padding: 8px 18px;
                 color: #7b304a;
-                font-family: var(--dwl-sans);
+                font-family: var(--dwl-sans, "Arial Rounded MT Bold", "Trebuchet MS", system-ui, sans-serif);
                 font-size: 13.5px;
                 font-weight: 800;
                 letter-spacing: -0.01em;
@@ -953,6 +976,23 @@
                 margin-top: -15px;
             }
 
+            /* Masonry skeletons get .dwl-pin too (tilt, pin-head dot,
+               break-inside spacing all come along for free), but with fixed
+               varied heights instead of .dwl-pin's own aspect-ratio:auto —
+               there's no real <img> yet to size against, so auto would
+               collapse the media box to 0. These heights stay at/under the
+               loaded-card cap (230px) so skeletons never look taller than a
+               real pinned card could be. Placed after the .dwl-pin block
+               above so source order wins at equal specificity. */
+            .doll-wishlist-skeleton.dwl-pin .doll-wishlist-media {
+                aspect-ratio: auto;
+                height: 190px;
+            }
+            .doll-wishlist-masonry .doll-wishlist-skeleton.dwl-pin:nth-child(4n+1) .doll-wishlist-media { height: 210px; }
+            .doll-wishlist-masonry .doll-wishlist-skeleton.dwl-pin:nth-child(4n+2) .doll-wishlist-media { height: 160px; }
+            .doll-wishlist-masonry .doll-wishlist-skeleton.dwl-pin:nth-child(4n+3) .doll-wishlist-media { height: 230px; }
+            .doll-wishlist-masonry .doll-wishlist-skeleton.dwl-pin:nth-child(4n+4) .doll-wishlist-media { height: 180px; }
+
             @keyframes dollWishlistShimmer {
                 0% { background-position: 200% 0; }
                 100% { background-position: -200% 0; }
@@ -992,6 +1032,16 @@
             @keyframes dollWishlistFootIn {
                 from { opacity: 0; transform: translateY(6px) scale(0.985); }
                 to { opacity: 1; transform: translateY(0) scale(1); }
+            }
+            /* List/masonry: the foot is relocated inside .dwl-scroll-body
+               (see renderBody()), so position:sticky pins it to the bottom
+               of the visible scrolled area as the user scrolls the card
+               list, instead of the bottom of the whole panel — its existing
+               backdrop-filter blur above already gives the floating look. */
+            .doll-wishlist-body.dwl-scroll-body .doll-wishlist-foot {
+                position: sticky;
+                bottom: 0;
+                z-index: 4;
             }
 
             .doll-wishlist-count {
@@ -1498,11 +1548,23 @@
         return buildPanel();
     }
 
+    // Skips the panel's own multi-hundred-ms close transition so it can't
+    // still be visibly fading out underneath the wishlist panel's incoming
+    // fade-in (closeOtherContentPanels() wants these gone immediately, not
+    // gradually).
+    function forceInstantClose(el) {
+        if (!el) return;
+        el.style.transition = 'none';
+        el.classList.remove('active');
+        void el.offsetWidth;
+        el.style.transition = '';
+    }
+
     function closeOtherContentPanels() {
         const drawingWidget = document.querySelector('.drawing-widget');
         const pencilButton = document.getElementById('toggle-button');
         if (drawingWidget?.classList.contains('active')) {
-            drawingWidget.classList.remove('active');
+            forceInstantClose(drawingWidget);
             pencilButton?.classList.remove('drawing-open');
             if (pencilButton) pencilButton.textContent = '✎';
         }
@@ -1517,7 +1579,7 @@
         const postsPopup = document.getElementById('posts-popup');
         const postsButton = document.getElementById('posts-button');
         if (postsPopup?.classList.contains('active')) {
-            postsPopup.classList.remove('active');
+            forceInstantClose(postsPopup);
             if (postsButton) postsButton.textContent = ':3';
         }
     }
@@ -1528,7 +1590,9 @@
     }
 
     function showNoteImage() {
-        document.getElementById('note-peel-target')?.classList.remove('hidden');
+        const noteTarget = document.getElementById('note-peel-target');
+        noteTarget?.classList.remove('hidden');
+        noteTarget?.classList.remove('dwl-note-locking');
         document.querySelector('.note-image')?.classList.remove('hidden');
     }
 
@@ -1592,8 +1656,9 @@
         });
     }
 
-    function syncReservedHeight() {
-        if (!panel?.classList.contains('active')) return;
+    function syncReservedHeight(force = false) {
+        if (!panel) return;
+        if (!force && !panel?.classList.contains('active')) return;
         const host = panel.closest('.toggle-container');
         if (!host) return;
         const panelRect = panel.getBoundingClientRect();
@@ -1753,8 +1818,42 @@
         });
     }
 
+    const SCROLL_FADE_PX = 22;
+    // A static top+bottom fade would lie about the scroll state — fading the
+    // top even when already at the very top (nothing above to hint at), and
+    // the bottom even at the end of the list. Instead this interpolates the
+    // alpha of each edge's mask stop continuously over the same
+    // SCROLL_FADE_PX zone the fade itself uses, so it grows in smoothly
+    // approaching an edge rather than snapping on/off. Cached per-element so
+    // the (identical) middle-of-list case is a no-op instead of rewriting
+    // the same gradient every frame. mask-image, not filter — can't collide
+    // with the mask+filter bug already fixed on the loading paw.
+    function updateScrollEdgeFade(el) {
+        const topT = Math.min(1, Math.max(0, el.scrollTop) / SCROLL_FADE_PX);
+        const distanceFromBottom = el.scrollHeight - el.clientHeight - el.scrollTop;
+        const bottomT = Math.min(1, Math.max(0, distanceFromBottom) / SCROLL_FADE_PX);
+        const key = `${topT.toFixed(2)}|${bottomT.toFixed(2)}`;
+        if (el.dataset.dwlFadeKey === key) return;
+        el.dataset.dwlFadeKey = key;
+        const mask = `linear-gradient(to bottom, rgba(0,0,0,${(1 - topT).toFixed(2)}) 0, black ${SCROLL_FADE_PX}px, black calc(100% - ${SCROLL_FADE_PX}px), rgba(0,0,0,${(1 - bottomT).toFixed(2)}) 100%)`;
+        el.style.maskImage = mask;
+        el.style.webkitMaskImage = mask;
+    }
+
+    let bodyScrollRaf = 0;
+    function onWishlistBodyScroll(event) {
+        const body = event.currentTarget;
+        if (!body.classList.contains('dwl-scroll-body')) return;
+        if (bodyScrollRaf) return;
+        bodyScrollRaf = window.requestAnimationFrame(() => {
+            bodyScrollRaf = 0;
+            window.dollSetIconsScrollProgress?.(body.scrollTop);
+            updateScrollEdgeFade(body);
+        });
+    }
+
     function renderSkeleton(mode = wishlistViewMode) {
-        const modeClass = mode === 'list' ? ' dwl-row' : '';
+        const modeClass = mode === 'list' ? ' dwl-row' : mode === 'masonry' ? ' dwl-pin' : '';
         const tile = `
                 <div class="doll-wishlist-item doll-wishlist-skeleton${modeClass}">
                     <div class="doll-wishlist-media"></div>
@@ -1768,10 +1867,12 @@
             return `<div class="doll-wishlist-list">${Array.from({ length: PAGE_SIZE }).map(() => tile).join('')}</div>`;
         }
         if (mode === 'masonry') {
-            // Skeleton tiles stay the default aspect ratio here (not
-            // .dwl-pin, which switches media to aspect-ratio:auto — with no
-            // real <img> yet that would collapse to zero height). Real
-            // cards get their natural varied heights once loaded.
+            // .dwl-pin gives skeleton tiles the same tilt/pin-head/spacing as
+            // real pinned cards (see the .doll-wishlist-skeleton.dwl-pin
+            // fixed-height overrides above, which stand in for .dwl-pin's own
+            // aspect-ratio:auto since there's no real <img> yet to size
+            // against) — so the loading state actually previews the masonry
+            // look instead of a flat, untilted placeholder grid.
             return `<div class="doll-wishlist-masonry">${Array.from({ length: PAGE_SIZE }).map(() => tile).join('')}</div>`;
         }
         return `<div class="doll-wishlist-scroll"><div class="doll-wishlist-page">${Array.from({ length: PAGE_SIZE }).map(() => tile).join('')}</div></div>`;
@@ -1844,6 +1945,19 @@
         if (!panel) return;
         const body = panel.querySelector('.doll-wishlist-body');
         body.classList.toggle('dwl-scroll-body', wishlistViewMode === 'list' || wishlistViewMode === 'masonry');
+        if (!body.dataset.dwlBodyScrollBound) {
+            body.dataset.dwlBodyScrollBound = '1';
+            body.addEventListener('scroll', onWishlistBodyScroll, { passive: true });
+        }
+        // Park the foot back on the panel (its original position) before any
+        // body.innerHTML assignment below — innerHTML destroys existing
+        // children, and if the foot was left sitting inside body from a
+        // prior render (list/masonry mode, see the bottom of this function)
+        // it would be destroyed along with its attached click listener.
+        const foot = panel.querySelector('.doll-wishlist-foot');
+        if (foot && foot.parentElement !== panel) {
+            panel.appendChild(foot);
+        }
         if (loadState === 'loading') {
             pauseSwipeHintSequence();
             body.innerHTML = renderSkeleton();
@@ -1892,9 +2006,22 @@
             });
         });
         body.querySelector('.doll-wishlist-more-card')?.addEventListener('click', openInNewTab);
+        // List/masonry: move the foot inside the scroll container so
+        // position:sticky pins it to the bottom of the visible scrolled
+        // area (see .doll-wishlist-body.dwl-scroll-body .doll-wishlist-foot)
+        // instead of the bottom of the whole panel, which could sit below
+        // the fold on a long list/small screen. Grid mode keeps it at the
+        // panel level, where it already reads fine.
+        if (foot && (wishlistViewMode === 'list' || wishlistViewMode === 'masonry')) {
+            body.appendChild(foot);
+        } else {
+            body.style.maskImage = '';
+            body.style.webkitMaskImage = '';
+        }
         window.requestAnimationFrame(() => {
             syncTitleMarquees(body);
             scheduleSwipeHint();
+            if (body.classList.contains('dwl-scroll-body')) updateScrollEdgeFade(body);
         });
         renderDots();
     }
@@ -2096,9 +2223,9 @@
         }
     }
 
-    async function loadItems() {
+    async function loadItems({ bodyPrepared = false } = {}) {
         loadState = 'loading';
-        renderBody();
+        if (!bodyPrepared) renderBody();
 
         // script.js lazy-loads the Supabase client after first paint, so it
         // may not exist yet if the widget is opened right away — wait a bit
@@ -2203,10 +2330,17 @@
         const el = ensurePanel();
         if (!el) return;
         if (hasConflictingLayer()) return;
+        if (el.classList.contains('active') || panelOpening) return;
 
+        panelOpening = true;
         closeOtherContentPanels();
-        hideNoteImage();
-        document.body.classList.add('has-wishlist-panel-open');
+        // Lock the note's interactivity now, but defer its actual hide
+        // transition to the same rAF that adds .active below — starting
+        // both transitions in the same frame instead of racing the
+        // synchronous renderBody()/syncReservedHeight() work in between is
+        // what stops the note from visibly "swapping upward" ahead of the
+        // panel's own entrance.
+        document.getElementById('note-peel-target')?.classList.add('dwl-note-locking');
         const wishlistButton = getWishlistButton();
         wishlistButton?.classList.remove('show-glitter');
         wishlistButton?.classList.add('dwl-open');
@@ -2218,26 +2352,55 @@
         checkoutStatusMessage = '';
         previewOpenCount = 0;
         el.classList.remove('has-selection');
-        el.classList.add('active');
-        el.setAttribute('aria-hidden', 'false');
-        resetSwipeHintSequence();
-        renderFoot();
 
-        loadItems();
-        triggerBackgroundSync();
+        // Build the loading state and reserve its final space before the
+        // panel becomes visible. Previously the host first collapsed to its
+        // fallback height, then expanded again after the skeleton rendered,
+        // which made the opening transition visibly jump.
+        loadState = 'loading';
+        renderBody();
+        renderFoot();
+        el.classList.add('dwl-measure-open');
+        syncReservedHeight(true);
+        el.classList.remove('dwl-measure-open');
+        document.body.classList.add('has-wishlist-panel-open');
+
+        // Commit the hidden starting state before adding .active. This keeps
+        // repeat opens reliable and gives opacity/transform one clean start.
+        void el.offsetWidth;
+        panelOpenRaf = window.requestAnimationFrame(() => {
+            panelOpenRaf = 0;
+            if (!panelOpening) return;
+            panelOpening = false;
+            hideNoteImage();
+            el.classList.add('active');
+            el.setAttribute('aria-hidden', 'false');
+            resetSwipeHintSequence();
+
+            loadItems({ bodyPrepared: true });
+            triggerBackgroundSync();
+        });
     }
 
     function closeThroneMockup(silent = false) {
+        const wasOpening = panelOpening;
+        const wasOpen = Boolean(panel?.classList.contains('active'));
+        if (panelOpenRaf) {
+            window.cancelAnimationFrame(panelOpenRaf);
+            panelOpenRaf = 0;
+        }
+        panelOpening = false;
         closePreview();
         cancelSwipeHintSequence();
         document.body.classList.remove('has-wishlist-panel-open', 'has-wishlist-selection');
+        window.dollSetIconsScrollProgress?.(0);
         const wishlistButton = getWishlistButton();
         wishlistButton?.classList.remove('dwl-open', 'show-glitter');
         wishlistButton?.setAttribute('aria-expanded', 'false');
         wishlistButton?.setAttribute('aria-label', 'Open wishlist');
         document.querySelector('.site-brand-footer')?.setAttribute('aria-label', 'Site home');
         panel?.closest('.toggle-container')?.style.removeProperty('--dwl-wishlist-height');
-        if (!panel || !panel.classList.contains('active')) return;
+        if (!panel || (!wasOpen && !wasOpening)) return;
         if (!silent) playSound('tap');
         panel.classList.remove('active');
         panel.setAttribute('aria-hidden', 'true');

@@ -1050,6 +1050,109 @@ document.addEventListener("DOMContentLoaded", async function() {
         }, 420);
     });
 
+    // ===== TOP ICON ROW COLLAPSE (shared by wishlist + :3 panel scrolling) =====
+    // Scrolling either the wishlist card list or the :3 panel's posts list
+    // shrinks the three top icons down to one small pill (see
+    // .dwl-icons-row/.dwl-icons-pill in styles.css) so .content-area — which
+    // sits right after .button-group in normal flow — actually gets to move
+    // up and reclaim that space, instead of the icons just looking smaller
+    // in the same footprint.
+    //
+    // This tracks scroll continuously via a single 0–1 --dwl-collapse custom
+    // property (styles.css does the rest with calc()) instead of toggling a
+    // class at a fixed threshold. A binary on/off state is exactly what read
+    // as "jumpy": any small momentum wobble near the threshold flipped the
+    // whole layout back and forth. Tracking the exact scroll position with
+    // no CSS transition means it moves 1:1 with the finger and simply can't
+    // flap — there's no threshold left to flap around.
+    //
+    // Exposed on window since throne-mockup-widget.js (loaded before this
+    // file, but only calls this from event handlers that fire well after
+    // both scripts have finished loading) needs it too.
+    const ICON_COLLAPSE_RANGE = 48; // px of scroll to go from fully shown to fully collapsed
+    let iconCollapseTweenRaf = 0;
+
+    function setIconCollapseProgress(progress) {
+        const clamped = Math.max(0, Math.min(1, progress));
+        const group = document.querySelector('.button-group');
+        if (!group) return;
+        group.style.setProperty('--dwl-collapse', clamped.toFixed(3));
+        const pill = document.getElementById('dwl-icons-pill');
+        if (pill) {
+            const interactive = clamped > 0.6;
+            pill.style.pointerEvents = interactive ? 'auto' : 'none';
+            pill.tabIndex = interactive ? 0 : -1;
+        }
+    }
+
+    function cancelIconCollapseTween() {
+        if (!iconCollapseTweenRaf) return;
+        window.cancelAnimationFrame(iconCollapseTweenRaf);
+        iconCollapseTweenRaf = 0;
+    }
+
+    // The only place motion is actually animated: tapping the pill to
+    // restore the icons even though scrollTop hasn't changed. Everything
+    // else is direct scroll tracking (see setIconsScrollProgress).
+    function animateIconCollapseTo(target, duration = 280) {
+        cancelIconCollapseTween();
+        const group = document.querySelector('.button-group');
+        if (!group) return;
+        const start = parseFloat(getComputedStyle(group).getPropertyValue('--dwl-collapse')) || 0;
+        const startTime = performance.now();
+        function tick(now) {
+            const t = Math.min(1, (now - startTime) / duration);
+            const eased = 1 - Math.pow(1 - t, 3);
+            setIconCollapseProgress(start + (target - start) * eased);
+            iconCollapseTweenRaf = t < 1 ? window.requestAnimationFrame(tick) : 0;
+        }
+        iconCollapseTweenRaf = window.requestAnimationFrame(tick);
+    }
+
+    // A genuine new scroll always takes over immediately from any
+    // in-progress tap-to-expand tween, rather than fighting it.
+    function setIconsScrollProgress(scrollTop) {
+        cancelIconCollapseTween();
+        setIconCollapseProgress(scrollTop / ICON_COLLAPSE_RANGE);
+    }
+    window.dollSetIconsScrollProgress = setIconsScrollProgress;
+    document.getElementById('dwl-icons-pill')?.addEventListener('click', () => animateIconCollapseTo(0));
+
+    // A static top+bottom fade would lie about the scroll state — fading the
+    // top even when already at the very top (nothing above to hint at), and
+    // the bottom even at the end of the list. Instead this interpolates the
+    // alpha of each edge's mask stop continuously over the same
+    // SCROLL_FADE_PX zone the visual fade itself uses, so the fade grows in
+    // smoothly as you approach an edge rather than snapping on/off. Values
+    // are rounded and cached per-element so the (identical) middle-of-list
+    // case is a no-op instead of rewriting the same gradient every frame.
+    // mask-image, not filter — can't collide with the mask+filter bug
+    // already fixed on the loading paw.
+    const SCROLL_FADE_PX = 22;
+    function updateScrollEdgeFade(el) {
+        const topT = Math.min(1, Math.max(0, el.scrollTop) / SCROLL_FADE_PX);
+        const distanceFromBottom = el.scrollHeight - el.clientHeight - el.scrollTop;
+        const bottomT = Math.min(1, Math.max(0, distanceFromBottom) / SCROLL_FADE_PX);
+        const key = `${topT.toFixed(2)}|${bottomT.toFixed(2)}`;
+        if (el.dataset.dwlFadeKey === key) return;
+        el.dataset.dwlFadeKey = key;
+        const mask = `linear-gradient(to bottom, rgba(0,0,0,${(1 - topT).toFixed(2)}) 0, black ${SCROLL_FADE_PX}px, black calc(100% - ${SCROLL_FADE_PX}px), rgba(0,0,0,${(1 - bottomT).toFixed(2)}) 100%)`;
+        el.style.maskImage = mask;
+        el.style.webkitMaskImage = mask;
+    }
+
+    let postsScrollRaf = 0;
+    const postsContentEl = document.querySelector('.posts-content');
+    postsContentEl?.addEventListener('scroll', (event) => {
+        const el = event.currentTarget;
+        if (postsScrollRaf) return;
+        postsScrollRaf = window.requestAnimationFrame(() => {
+            postsScrollRaf = 0;
+            setIconsScrollProgress(el.scrollTop);
+            updateScrollEdgeFade(el);
+        });
+    }, { passive: true });
+
     // ===== TOGGLE NOTE & DRAWING WIDGET =====
     const toggleButton = document.getElementById('toggle-button');
     const noteImage = document.querySelector('.note-image');
@@ -1068,6 +1171,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         const hostRect = host.getBoundingClientRect();
         const neededHeight = Math.max(310, Math.ceil(cardRect.bottom - hostRect.top + 14));
         host.style.setProperty('--posts-panel-height', `${neededHeight}px`);
+        if (postsContentEl) updateScrollEdgeFade(postsContentEl);
     }
 
     function setPostsPanelLayoutOpen(open) {
@@ -1108,6 +1212,7 @@ document.addEventListener("DOMContentLoaded", async function() {
 
     function closePostsPanel() {
         setPostsPanelLayoutOpen(false);
+        setIconsScrollProgress(0);
         if (!postsPanel || !postsButton) return;
         postsPanel.classList.remove('active');
         postsButton.textContent = ':3';
@@ -1638,7 +1743,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             if (hasSeenFirstVisitTour()) return;
             markFirstVisitTourSeen();
         }
-        window.setTimeout(startFirstVisitTour, 2000);
+        window.setTimeout(startFirstVisitTour, 1250);
     }
 
     function startFirstVisitTour() {
@@ -1670,8 +1775,8 @@ document.addEventListener("DOMContentLoaded", async function() {
         let index = 0;
         let stepTimer = null;
         let tourFinished = false;
-        const tourStepDuration = 2050;
-        const finalTourHoldDuration = 3100;
+        const tourStepDuration = 1281;
+        const finalTourHoldDuration = 1938;
         const veilLayer = overlay.querySelector('.tour-veil-layer');
         const stepLayer = overlay.querySelector('.tour-step-layer');
 
@@ -1684,7 +1789,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                 }
                 const turn = letterTurns[letterIndex % letterTurns.length];
                 const lift = letterLifts[letterIndex % letterLifts.length];
-                const delay = letterIndex * 0.045;
+                const delay = letterIndex * 0.028125;
                 return `<span class="tour-label-letter" style="--tour-letter-turn:${turn}deg;--tour-letter-lift:${lift}px;--tour-letter-delay:${delay}s">${letter}</span>`;
             }).join('');
         }
@@ -1706,7 +1811,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             overlay.classList.add('leaving');
             document.body.classList.remove('first-visit-tour-active');
             steps.forEach(step => step.element.classList.remove('tour-highlight-target'));
-            window.setTimeout(() => overlay.remove(), 360);
+            window.setTimeout(() => overlay.remove(), 225);
         }
 
         function handleTourKeydown(event) {
