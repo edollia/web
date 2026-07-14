@@ -424,9 +424,29 @@
                 transition: transform 0.36s cubic-bezier(0.2, 0.82, 0.24, 1), filter 0.3s ease;
             }
 
+            /* Title and price are a plain, tight text stack — two lines,
+               one small consistent gap between them — completely decoupled
+               from the heart button's size (see .doll-wishlist-cart-btn
+               below, which is absolutely positioned in the corner instead
+               of sharing a flex row with either line). Every earlier
+               version of this put the heart IN a flex row alongside a much
+               shorter text line, and no matter how that row's alignment was
+               tuned, the row's own height still had to equal the heart's
+               height — which always left some awkward dead space around
+               the shorter sibling. Taking the heart out of the flow
+               entirely removes that whole category of bug: the text stack
+               can be as tight as the text itself needs, and the heart can
+               be any size without stretching or repositioning anything. */
+            .doll-wishlist-info {
+                display: flex;
+                flex-direction: column;
+                gap: 3px;
+                margin: 5px 7px 7px 7px;
+                padding-right: 34px;
+            }
             .doll-wishlist-name {
                 min-width: 0;
-                margin: 4px 7px 0 7px;
+                margin: 0;
                 font-family: var(--dwl-cute);
                 font-size: 11.25px;
                 font-weight: 500;
@@ -473,23 +493,16 @@
                 }
             }
 
-            .doll-wishlist-foot-row {
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-                gap: 6px;
-                min-height: 12px;
-                margin: 2px 7px 4px;
-                text-align: left;
-            }
-
             /* Plain price text on the grid card — selecting an item is the
                heart button's job alone; the price is just informational
                here. The dashed tag-shaped button below (.doll-wishlist-price-tag)
                is only used in the preview lightbox, as its own clickable
-               control there. */
+               control there. Just the second line of .doll-wishlist-info
+               now, no wrapper row of its own needed. */
             .doll-wishlist-price {
+                display: block;
                 min-width: 0;
+                text-align: left;
                 overflow: hidden;
                 text-overflow: ellipsis;
                 white-space: nowrap;
@@ -549,9 +562,12 @@
             }
 
             .doll-wishlist-cart-btn {
-                flex: 0 0 auto;
-                width: 20px;
-                height: 20px;
+                position: absolute;
+                right: 7px;
+                bottom: 7px;
+                z-index: 4;
+                width: 30px;
+                height: 30px;
                 display: grid;
                 place-items: center;
                 border-radius: 50%;
@@ -571,7 +587,7 @@
                 outline: 2px solid rgba(220, 77, 132, 0.68);
                 outline-offset: 2px;
             }
-            .doll-wishlist-cart-btn svg { width: 12px; height: 12px; display: block; }
+            .doll-wishlist-cart-btn svg { width: 16px; height: 16px; display: block; }
             .doll-wishlist-cart-btn .dwl-heart-filled { display: none; }
             .doll-wishlist-item.selected .doll-wishlist-cart-btn {
                 border-color: rgba(228, 82, 139, 0.78);
@@ -748,17 +764,15 @@
                 line-height: 1.5;
             }
 
-            /* The skeleton reuses the real .doll-wishlist-name and
-               .doll-wishlist-foot-row containers (same markup classes, just
-               with shimmer placeholders instead of real content) rather than
-               inventing separate skeleton-only dimensions — that guarantees
-               the loading state is exactly as tall as the loaded state. The
-               foot row's height is driven by the round cart button, not the
-               price text, so .dwl-sk-circle is kept in sync with
-               .doll-wishlist-cart-btn's own width/height by hand (it's a
-               separate placeholder element, not the real button, so it can't
-               inherit that size automatically the way the name/foot-row
-               containers do). */
+            /* The skeleton reuses the real .doll-wishlist-info text-stack
+               container (same markup class, just with shimmer placeholders
+               instead of real content) rather than inventing separate
+               skeleton-only dimensions — that guarantees the loading state
+               is exactly as tall as the loaded state. .dwl-sk-circle mirrors
+               .doll-wishlist-cart-btn's absolute corner position and size by
+               hand (it's a separate placeholder element, not the real
+               button, so it can't inherit those automatically the way the
+               info container does). */
             .doll-wishlist-skeleton {
                 pointer-events: none;
             }
@@ -781,9 +795,11 @@
                 width: 34%;
             }
             .doll-wishlist-skeleton .dwl-sk-circle {
-                flex: 0 0 auto;
-                width: 20px;
-                height: 20px;
+                position: absolute;
+                right: 7px;
+                bottom: 7px;
+                width: 30px;
+                height: 30px;
                 border-radius: 50%;
             }
 
@@ -1587,11 +1603,11 @@
         return `<div class="doll-wishlist-scroll"><div class="doll-wishlist-page">${Array.from({ length: PAGE_SIZE }).map(() => `
                 <div class="doll-wishlist-item doll-wishlist-skeleton">
                     <div class="doll-wishlist-media"></div>
-                    <p class="doll-wishlist-name"><span class="dwl-sk-line"></span></p>
-                    <div class="doll-wishlist-foot-row">
+                    <div class="doll-wishlist-info">
+                        <p class="doll-wishlist-name"><span class="dwl-sk-line"></span></p>
                         <span class="dwl-sk-line dwl-sk-price"></span>
-                        <span class="dwl-sk-circle"></span>
                     </div>
+                    <span class="dwl-sk-circle"></span>
                 </div>
             `).join('')}</div></div>`;
     }
@@ -1634,13 +1650,13 @@
             <div class="doll-wishlist-media">
                 <img src="${escapeHtml(item.image_url)}" alt="" loading="lazy" onerror="this.onerror=null;this.removeAttribute('src');this.parentNode.style.background='rgba(255,214,235,0.6)';">
             </div>
-            <p class="doll-wishlist-name" title="${escapeHtml(fullLabel)}">${escapeHtml(label)}</p>
-            <div class="doll-wishlist-foot-row">
+            <div class="doll-wishlist-info">
+                <p class="doll-wishlist-name" title="${escapeHtml(fullLabel)}">${escapeHtml(label)}</p>
                 <span class="doll-wishlist-price">${escapeHtml(formatPrice(item.price_cents))}</span>
-                <button type="button" class="doll-wishlist-cart-btn" data-item-id="${escapeHtml(item.throne_item_id)}" aria-label="${selected ? 'Remove ' : 'Add '}${escapeHtml(fullLabel)}" aria-pressed="${selected}">
-                    ${ICON_HEART}${ICON_HEART_FILLED}
-                </button>
             </div>
+            <button type="button" class="doll-wishlist-cart-btn" data-item-id="${escapeHtml(item.throne_item_id)}" aria-label="${selected ? 'Remove ' : 'Add '}${escapeHtml(fullLabel)}" aria-pressed="${selected}">
+                ${ICON_HEART}${ICON_HEART_FILLED}
+            </button>
         </article>`;
     }
 

@@ -1366,9 +1366,9 @@ body.has-posts-panel-open .site-brand-footer {
     position: relative;
     isolation: isolate;
     display: grid;
-    grid-template-columns: 40px minmax(0, 1fr) 18px;
+    grid-template-columns: 44px minmax(0, 1fr) 16px;
     align-items: center;
-    min-height: 68px;
+    min-height: 74px;
     gap: 10px;
     padding: 7px 12px 7px 10px;
     overflow: hidden;
@@ -1417,21 +1417,33 @@ body.has-posts-panel-open .site-brand-footer {
 .social-link-icon {
     display: grid;
     place-items: center;
-    width: 40px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
+    overflow: hidden;
 }
 
 .social-link-icon img {
     display: block;
-    width: 36px;
-    height: 36px;
+    width: 40px;
+    height: 40px;
     object-fit: contain;
-    filter: none;
+    filter: saturate(0.92) brightness(1.015) contrast(0.98);
+    transform-origin: center;
 }
 
 .social-link-kofi-icon img {
-    width: 29px;
-    height: 29px;
+    width: 48px;
+    height: 48px;
+    max-width: none;
+    object-fit: contain;
+}
+
+#snapchat-option .social-link-icon img {
+    transform: scale(0.96) translateY(0.5px);
+}
+
+#instagram-option .social-link-icon img {
+    transform: scale(0.94);
 }
 
 .social-link-copy {
@@ -1468,11 +1480,28 @@ body.has-posts-panel-open .site-brand-footer {
 }
 
 .social-link-arrow {
+    display: grid;
+    place-items: center;
+    width: 16px;
+    height: 16px;
     color: rgba(174, 85, 130, 0.44);
-    font-family: "Trebuchet MS", Arial, sans-serif;
-    font-size: 14px;
-    line-height: 1;
-    transform: translateY(-1px);
+    transform: translateY(-0.5px) rotate(-1deg);
+}
+
+.social-link-arrow svg {
+    display: block;
+    width: 15px;
+    height: 15px;
+    overflow: visible;
+}
+
+.social-link-arrow path {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.65;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    vector-effect: non-scaling-stroke;
 }
 
 @media (hover: hover) and (pointer: fine) {
