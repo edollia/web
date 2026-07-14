@@ -533,10 +533,16 @@ document.addEventListener("DOMContentLoaded", async function() {
     const loadingScreen = document.getElementById("loading-screen");
     const loadingBarContainer = document.getElementById("loading-bar-container");
     const loadingBarFill = document.getElementById("loading-bar-fill");
+    const loadingProgressElement = loadingBarFill?.closest('[role="progressbar"]');
+    const loadingPawPrints = Array.from(document.querySelectorAll('.loading-paw-print'));
+    const prefersReducedLoadingMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     const minLoadingTime = 2000;
     const submissionsPreloadTimeout = 10000;
     let loadingBarShown = false;
     let loadingProgress = 0;
+    let displayedLoadingProgress = 0;
+    let loadingVisualFrame = null;
+    let loadingVisualFrameTime = null;
     const preloadedSubmissions = {
         drawings: [],
         questions: [],
@@ -552,10 +558,71 @@ document.addEventListener("DOMContentLoaded", async function() {
     // Mobile detection
     const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 
+    function renderLoadingPaws(progress) {
+        loadingPawPrints.forEach((pawPrint, index) => {
+            const stampAt = loadingPawPrints.length === 1
+                ? 100
+                : 8 + (index / (loadingPawPrints.length - 1)) * 92;
+            pawPrint.classList.toggle('is-stamped', progress >= stampAt);
+        });
+    }
+
+    function animateLoadingPaws(timestamp) {
+        if (loadingVisualFrameTime === null) loadingVisualFrameTime = timestamp;
+        const elapsed = Math.min(64, timestamp - loadingVisualFrameTime);
+        loadingVisualFrameTime = timestamp;
+
+        // Pace the trail independently so cached resources cannot stamp every paw at once.
+        displayedLoadingProgress = Math.min(
+            loadingProgress,
+            displayedLoadingProgress + elapsed * 0.05
+        );
+        renderLoadingPaws(displayedLoadingProgress);
+
+        if (displayedLoadingProgress + 0.01 < loadingProgress) {
+            loadingVisualFrame = window.requestAnimationFrame(animateLoadingPaws);
+            return;
+        }
+
+        loadingVisualFrame = null;
+        loadingVisualFrameTime = null;
+    }
+
+    function scheduleLoadingPaws() {
+        if (prefersReducedLoadingMotion) {
+            displayedLoadingProgress = loadingProgress;
+            renderLoadingPaws(displayedLoadingProgress);
+            return;
+        }
+
+        if (loadingVisualFrame === null) {
+            loadingVisualFrame = window.requestAnimationFrame(animateLoadingPaws);
+        }
+    }
+
+    function waitForLoadingPawTrail() {
+        if (!loadingPawPrints.length || displayedLoadingProgress >= 100) {
+            return Promise.resolve();
+        }
+
+        return new Promise(resolve => {
+            const checkProgress = () => {
+                if (displayedLoadingProgress >= 100) {
+                    resolve();
+                    return;
+                }
+                window.requestAnimationFrame(checkProgress);
+            };
+            window.requestAnimationFrame(checkProgress);
+        });
+    }
+
     function setLoadingProgress(progress) {
         if (!loadingBarFill) return;
         loadingProgress = Math.max(loadingProgress, Math.max(0, Math.min(100, progress)));
         loadingBarFill.style.width = `${loadingProgress}%`;
+        loadingProgressElement?.setAttribute('aria-valuenow', String(Math.round(loadingProgress)));
+        scheduleLoadingPaws();
 
         if (loadingBarContainer && !loadingBarShown) {
             loadingBarShown = true;
@@ -899,8 +966,9 @@ document.addEventListener("DOMContentLoaded", async function() {
         clearInterval(progressTick);
         setLoadingProgress(100);
 
-        // Final check - ensure everything is ready
-        await wait(250);
+        // Let the far-right paw finish pressing in before revealing the site.
+        await waitForLoadingPawTrail();
+        await wait(prefersReducedLoadingMotion ? 80 : 360);
         loadingScreen.style.opacity = 0;
         setTimeout(() => {
             loadingScreen.style.display = "none";
@@ -989,7 +1057,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         if (!host || !card) return;
         const cardRect = card.getBoundingClientRect();
         const hostRect = host.getBoundingClientRect();
-        const neededHeight = Math.max(350, Math.ceil(cardRect.bottom - hostRect.top + 14));
+        const neededHeight = Math.max(310, Math.ceil(cardRect.bottom - hostRect.top + 14));
         host.style.setProperty('--posts-panel-height', `${neededHeight}px`);
     }
 

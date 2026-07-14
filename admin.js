@@ -696,6 +696,18 @@ function renderAll({ preserveDrafts = false } = {}) {
 
 const WISHLIST_FEATURED_CAP = 12;
 const WISHLIST_NEW_WINDOW_MS = 24 * 60 * 60 * 1000;
+const WISHLIST_POSITION_ACTIONS = new Set([
+    'feature-wishlist-item', 'unfeature-wishlist-item',
+    'move-wishlist-item-up', 'move-wishlist-item-down',
+]);
+// feature/unfeature/move all compute their next `position` from the
+// in-memory state.wishlistItems snapshot, then write it and reload. Without
+// this lock, clicking a second wishlist action before the first one's reload
+// lands reads the same stale positions twice, so both writes can land on the
+// same position — the second one silently overwrites/collides with the
+// first instead of appending after it, which reads as "featuring stopped
+// doing anything" even though nothing errored.
+let wishlistActionBusy = false;
 
 function formatWishlistPrice(cents) {
     const value = Number(cents);
@@ -816,6 +828,8 @@ async function featureAllWishlistItems() {
         return;
     }
     if (!window.confirm(`Feature ${targets.length} item${targets.length === 1 ? '' : 's'}? They'll go live on the site (only the first ${WISHLIST_FEATURED_CAP} by position show).`)) return;
+    if (wishlistActionBusy) return;
+    wishlistActionBusy = true;
 
     els.wishlistFeatureAll.disabled = true;
     setStatus(els.adminStatus, 'featuring...');
@@ -831,6 +845,7 @@ async function featureAllWishlistItems() {
         setStatus(els.adminStatus, error.message || 'could not feature items');
     } finally {
         els.wishlistFeatureAll.disabled = false;
+        wishlistActionBusy = false;
     }
 }
 
@@ -842,6 +857,8 @@ async function unfeatureAllWishlistItems() {
         return;
     }
     if (!window.confirm(`Unfeature ${targets.length} item${targets.length === 1 ? '' : 's'}? They'll disappear from the site grid immediately.`)) return;
+    if (wishlistActionBusy) return;
+    wishlistActionBusy = true;
 
     els.wishlistUnfeatureAll.disabled = true;
     setStatus(els.adminStatus, 'unfeaturing...');
@@ -856,6 +873,7 @@ async function unfeatureAllWishlistItems() {
         setStatus(els.adminStatus, error.message || 'could not unfeature items');
     } finally {
         els.wishlistUnfeatureAll.disabled = false;
+        wishlistActionBusy = false;
     }
 }
 
@@ -1046,6 +1064,12 @@ async function runAction(button) {
     const action = button.dataset.action;
     if (!id || !action) return;
 
+    const isWishlistPositionAction = WISHLIST_POSITION_ACTIONS.has(action);
+    if (isWishlistPositionAction) {
+        if (wishlistActionBusy) return;
+        wishlistActionBusy = true;
+    }
+
     button.disabled = true;
     setStatus(els.adminStatus, 'saving...');
 
@@ -1118,6 +1142,7 @@ async function runAction(button) {
         setStatus(els.adminStatus, error.message || 'Could not save.');
     } finally {
         button.disabled = false;
+        if (isWishlistPositionAction) wishlistActionBusy = false;
     }
 }
 

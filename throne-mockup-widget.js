@@ -10,11 +10,15 @@
     const NAME_MAX = 60;
     const CARD_GAP = 10;
     const PAGE_SIZE = 4;
+    const SWIPE_HINT_DELAY_MS = 3000;
     const FULL_WISHLIST_URL = 'https://throne.com/edoll';
 
     const HEART_PATH = 'M12 20.3s-7.6-4.5-9.9-9C.6 7.7 2.3 4.3 5.9 4c2.2-.2 4.2 1 6.1 3.4C13.9 5 15.9 3.8 18.1 4c3.6.3 5.3 3.7 3.8 7.3-2.3 4.5-9.9 9-9.9 9z';
     const ICON_HEART = `<svg class="dwl-heart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${HEART_PATH}"/></svg>`;
     const ICON_HEART_FILLED = `<svg class="dwl-heart-filled" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true"><path d="${HEART_PATH}"/></svg>`;
+
+    const TAG_PATH = 'M20.59 13.41 13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z';
+    const ICON_TAG = `<svg class="dwl-tag-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${TAG_PATH}"/><circle cx="7" cy="7" r="1.15" fill="currentColor" stroke="none"/></svg>`;
 
     let panel = null;
     let items = [];
@@ -24,6 +28,7 @@
     let checkoutStatusMessage = '';
     let scrollRaf = 0;
     let resizeRaf = 0;
+    let swipeHintTimer = 0;
     let panelResizeObserver = null;
     let panelMutationObserver = null;
     let conflictObserver = null;
@@ -31,6 +36,7 @@
     let throneFooterLink = null;
     let previewOverlay = null;
     let previewOpenCount = 0;
+    let previewItemId = null;
     let marqueeRuleCounter = 0;
 
     function formatPrice(cents) {
@@ -101,7 +107,7 @@
                 --dwl-pink: #f47fad;
                 --dwl-line: rgba(239, 183, 204, 0.72);
                 position: absolute;
-                top: 0;
+                top: -8px;
                 left: 50%;
                 width: min(88vw, 324px);
                 transform: translateX(-50%) translateY(-7px) scale(0.988);
@@ -236,62 +242,95 @@
                 transform: translateY(-2px);
             }
 
-            /* The glow lives on its own pseudo-element rather than animating
-               the card's own box-shadow/animation — that way it can never
-               collide with the card's entrance-fade animation (both would
-               otherwise fight over the same "animation" property). */
-            .doll-wishlist-item::after {
-                content: "";
+            /* The glow is a real child element (not a pseudo-element, and
+               NOT an outward-blooming ring past the card's own edge — both
+               earlier approaches here were wrong). It's sized to exactly
+               match the card (same inset:0, same 18px radius as the card
+               itself — no enlarged/offset radius to get subtly wrong), so a
+               background on it is clipped to that exact rounded shape by
+               the browser natively, with zero approximation: browsers clip
+               background to border-radius exactly, unlike a blurred
+               box-shadow (which Gaussian-diffuses the corner and visibly
+               flattens it at small radii — that was the real cause of the
+               "squarish" look before). It sits above the photo (z-index: 2,
+               below the burst's z-index: 3) so the glow is genuinely visible
+               across the whole card face, but its radial-gradient is
+               transparent through the middle so it reads as a glow hugging
+               the rounded edge, not a haze over the photo. A crisp inset
+               ring (also naturally exact to the same border-radius) adds a
+               defined edge on top of the soft wash. It fades in timed to the
+               heart-burst (below) reaching the edge, plays one bright
+               "ignite" flare, then settles into a steady pulse. */
+            .dwl-glow {
                 position: absolute;
-                inset: -4px;
-                border-radius: 22px;
+                inset: 0;
+                z-index: 2;
+                border-radius: 18px;
                 opacity: 0;
                 pointer-events: none;
-                box-shadow: 0 0 0 3px rgba(255, 179, 209, 0.3), 0 0 14px 2px rgba(255, 141, 193, 0.24);
+                background: radial-gradient(ellipse at center, transparent 58%, rgba(255, 141, 193, 0.32) 100%);
+                box-shadow: inset 0 0 0 1.5px rgba(255, 179, 209, 0.55);
                 transition: opacity 0.22s ease;
             }
-            .doll-wishlist-item.selected::after {
-                opacity: 1;
-                animation: dollWishlistGlowPulse 2.6s ease-in-out 0.35s infinite;
+            .doll-wishlist-item.selected .dwl-glow {
+                animation:
+                    dollWishlistGlowIgnite 0.3s ease-out 0.27s both,
+                    dollWishlistGlowPulse 3.6s ease-in-out 0.57s infinite;
+            }
+            @keyframes dollWishlistGlowIgnite {
+                0%   { opacity: 0; }
+                55%  { opacity: 0.7; }
+                100% { opacity: 0.4; }
             }
             @keyframes dollWishlistGlowPulse {
-                0%, 100% { box-shadow: 0 0 0 3px rgba(255, 179, 209, 0.3), 0 0 14px 2px rgba(255, 141, 193, 0.24); }
-                50% { box-shadow: 0 0 0 3px rgba(255, 179, 209, 0.5), 0 0 26px 6px rgba(255, 141, 193, 0.4); }
+                0%, 100% { opacity: 0.4; }
+                50%      { opacity: 0.62; }
             }
 
-            /* A quick burst from the heart button sweeps across the card the
-               instant it's picked, timed to fade out right as the border
-               glow (above) finishes fading in — the light "reaches" the
-               edge and that's what ignites the glow. */
-            .doll-wishlist-item::before {
-                content: "";
+            /* A quick heart-shaped burst sweeps out from the heart button the
+               instant an item is picked. It lives on a real child element
+               (not a pseudo — pseudos can't host an SVG path fill) wrapped in
+               its own card-shaped clipping layer, so it can never spill past
+               the card's rounded corners the way an unclipped circle used
+               to. A single ease-out keyframe pair drives both its growth and
+               its fade, so it expands fast and dissipates gradually across
+               the whole animation rather than staying solid until the very
+               end. */
+            .dwl-burst-clip {
                 position: absolute;
-                right: 13px;
-                bottom: 12px;
-                width: 10px;
-                height: 10px;
-                border-radius: 50%;
-                background: radial-gradient(circle, rgba(255, 255, 255, 0.95) 0%, rgba(255, 158, 205, 0.85) 32%, rgba(255, 158, 205, 0) 70%);
-                opacity: 0;
+                inset: 0;
+                border-radius: 18px;
+                overflow: hidden;
                 pointer-events: none;
-                transform: scale(0);
-                z-index: 2;
+                z-index: 3;
             }
-            .doll-wishlist-item.selected::before {
-                animation: dollWishlistBurst 0.5s cubic-bezier(0.15, 0.7, 0.3, 1) both;
+            .dwl-burst {
+                position: absolute;
+                right: 9px;
+                bottom: 8px;
+                width: 16px;
+                height: 16px;
+                opacity: 0;
+                transform: scale(0);
+                transform-origin: 82% 82%;
+                fill: rgba(255, 158, 205, 0.92);
+                pointer-events: none;
+            }
+            .doll-wishlist-item.selected .dwl-burst {
+                animation: dollWishlistBurst 0.34s cubic-bezier(0.1, 0.7, 0.25, 1) both;
             }
             @keyframes dollWishlistBurst {
-                0% { opacity: 0.9; transform: scale(0); }
-                65% { opacity: 0.45; transform: scale(17); }
-                100% { opacity: 0; transform: scale(20); }
+                0%   { opacity: 0.95; transform: scale(0); }
+                100% { opacity: 0; transform: scale(15); }
             }
 
             @media (prefers-reduced-motion: reduce) {
-                .doll-wishlist-item.selected::after {
+                .doll-wishlist-item.selected .dwl-glow {
                     animation: none;
-                    box-shadow: 0 0 0 3px rgba(255, 179, 209, 0.42), 0 0 18px 3px rgba(255, 141, 193, 0.3);
+                    transition: opacity 0.15s ease;
+                    opacity: 0.75;
                 }
-                .doll-wishlist-item.selected::before {
+                .doll-wishlist-item.selected .dwl-burst {
                     animation: none;
                     opacity: 0;
                 }
@@ -356,22 +395,26 @@
                title needs a different scroll-to-pause ratio to keep the
                pause a real, fixed ~1s regardless of how long the scroll is;
                this rule just supplies the shared, non-title-specific parts. */
-            .doll-wishlist-name.dwl-marquee {
+            .doll-wishlist-name.dwl-marquee,
+            .doll-wishlist-preview-name.dwl-marquee {
                 -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 8px, #000 calc(100% - 8px), transparent 100%);
                 mask-image: linear-gradient(90deg, transparent 0, #000 8px, #000 calc(100% - 8px), transparent 100%);
             }
-            .doll-wishlist-name.dwl-marquee > span {
+            .doll-wishlist-name.dwl-marquee > span,
+            .doll-wishlist-preview-name.dwl-marquee > span {
                 display: inline-block;
                 animation-timing-function: linear;
                 animation-iteration-count: infinite;
                 will-change: transform, opacity;
             }
             @media (prefers-reduced-motion: reduce) {
-                .doll-wishlist-name.dwl-marquee {
+                .doll-wishlist-name.dwl-marquee,
+                .doll-wishlist-preview-name.dwl-marquee {
                     -webkit-mask-image: none;
                     mask-image: none;
                 }
-                .doll-wishlist-name.dwl-marquee > span {
+                .doll-wishlist-name.dwl-marquee > span,
+                .doll-wishlist-preview-name.dwl-marquee > span {
                     animation: none;
                     display: inline;
                 }
@@ -387,6 +430,11 @@
                 text-align: left;
             }
 
+            /* Plain price text on the grid card — selecting an item is the
+               heart button's job alone; the price is just informational
+               here. The dashed tag-shaped button below (.doll-wishlist-price-tag)
+               is only used in the preview lightbox, as its own clickable
+               control there. */
             .doll-wishlist-price {
                 min-width: 0;
                 overflow: hidden;
@@ -398,6 +446,68 @@
                 color: #7b304a;
                 line-height: 1;
                 letter-spacing: -0.01em;
+            }
+
+            /* A tilted dashed-pill tag button, used only in the preview
+               lightbox (see .doll-wishlist-preview-price-tag) as its own
+               clickable control — tapping it toggles selection exactly like
+               the heart button. It has no .doll-wishlist-item ancestor there,
+               so its selected look is driven by an explicit .is-selected
+               class rather than a parent rule. */
+            .doll-wishlist-price-tag {
+                position: relative;
+                flex: 1 1 auto;
+                min-width: 0;
+                max-width: max-content;
+                display: inline-flex;
+                align-items: center;
+                gap: 4px;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+                padding: 5px 12px 5px 10px;
+                border: 1.5px dashed rgba(235, 107, 157, 0.55);
+                border-radius: 999px;
+                cursor: pointer;
+                background: linear-gradient(180deg, #fff6fa, #ffe3ee);
+                color: #a3486e;
+                font-family: var(--dwl-cute, "Comic Sans MS", cursive);
+                font-size: 11.5px;
+                font-weight: 600;
+                letter-spacing: 0.01em;
+                line-height: 1;
+                transform: rotate(-3deg);
+                box-shadow: 0 3px 7px rgba(210, 88, 136, 0.14);
+                transition: transform 0.18s cubic-bezier(0.2, 0.8, 0.25, 1.25), box-shadow 0.18s ease, background 0.18s ease, color 0.18s ease, border-color 0.18s ease;
+                -webkit-tap-highlight-color: transparent;
+            }
+            .doll-wishlist-price-tag .dwl-tag-icon {
+                width: 12px;
+                height: 12px;
+                flex: 0 0 auto;
+                display: block;
+                transform: rotate(-8deg);
+            }
+            .doll-wishlist-price-tag:active {
+                transform: rotate(-3deg) scale(0.92);
+            }
+            .doll-wishlist-price-tag.is-selected {
+                background: linear-gradient(180deg, #ff9fc2, #ec699c);
+                border-color: rgba(255, 255, 255, 0.72);
+                color: #fff;
+                animation: dollWishlistTagPop 0.32s cubic-bezier(0.2, 0.85, 0.25, 1.35);
+            }
+            @keyframes dollWishlistTagPop {
+                0%   { transform: rotate(-3deg) scale(0.85); }
+                55%  { transform: rotate(-3deg) scale(1.08); }
+                100% { transform: rotate(-3deg) scale(1); }
+            }
+            @media (hover: hover) and (pointer: fine) {
+                .doll-wishlist-price-tag:hover {
+                    transform: rotate(-6deg) scale(1.06);
+                    box-shadow: 0 5px 11px rgba(205, 76, 126, 0.2);
+                    border-color: rgba(235, 107, 157, 0.85);
+                }
             }
 
             .doll-wishlist-cart-btn {
@@ -466,7 +576,7 @@
             }
 
             .doll-wishlist-dots {
-                display: flex;
+                display: none;
                 justify-content: center;
                 align-items: center;
                 gap: 4px;
@@ -506,6 +616,60 @@
             .doll-wishlist-dot:focus-visible {
                 outline: 2px solid rgba(220, 77, 132, 0.55);
                 outline-offset: 2px;
+            }
+
+            .doll-wishlist-swipe-hint {
+                position: absolute;
+                z-index: 7;
+                top: 50%;
+                right: -5px;
+                width: 48px;
+                height: 31px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                border: 1px solid rgba(242, 164, 195, 0.42);
+                border-radius: 999px;
+                background: rgba(255, 249, 252, 0.7);
+                box-shadow:
+                    0 4px 11px rgba(178, 82, 120, 0.1),
+                    inset 0 1px 0 rgba(255, 255, 255, 0.88);
+                backdrop-filter: blur(5px);
+                -webkit-backdrop-filter: blur(5px);
+                opacity: 0;
+                pointer-events: none;
+                transform: translate(9px, -50%) scale(0.96);
+                transition: opacity 0.24s ease, transform 0.3s cubic-bezier(0.2, 0.84, 0.24, 1);
+            }
+            .doll-wishlist-swipe-hint.show {
+                opacity: 0.82;
+                transform: translate(0, -50%) scale(1);
+            }
+            .doll-wishlist-swipe-hint span {
+                position: relative;
+                display: block;
+                margin-left: -2px;
+                color: rgba(220, 77, 132, 0.76);
+                font-family: var(--dwl-cute);
+                font-size: 22px;
+                font-weight: 700;
+                letter-spacing: -5px;
+                line-height: 1;
+                text-shadow: 0 1px 0 rgba(255, 255, 255, 0.78);
+                animation: dollWishlistSwipeNudge 1.15s ease-in-out infinite;
+            }
+            .doll-wishlist-swipe-hint span::after {
+                content: "✧";
+                position: absolute;
+                top: -7px;
+                right: -8px;
+                color: rgba(239, 109, 159, 0.68);
+                font-size: 9px;
+                line-height: 1;
+            }
+            @keyframes dollWishlistSwipeNudge {
+                0%, 100% { transform: translateX(0); }
+                50% { transform: translateX(3px); }
             }
 
             .doll-wishlist-more-card:focus-visible {
@@ -638,7 +802,7 @@
                 justify-content: space-between;
                 gap: 12px;
                 width: min(calc(100% - 8px), 420px);
-                margin: 9px auto 0;
+                margin: 18px auto 0;
                 padding: 7px 8px 7px 11px;
                 border: 1px solid rgba(237, 173, 198, 0.74);
                 border-radius: 18px;
@@ -681,16 +845,26 @@
                 color: rgba(113, 59, 80, 0.52);
             }
 
+            .doll-wishlist-checkout-wrap {
+                position: relative;
+                flex: 0 0 112px;
+                width: 112px;
+                height: 42px;
+                isolation: isolate;
+            }
+
             .doll-wishlist-checkout {
-                flex: 0 0 auto;
-                min-height: 36px;
-                padding: 0 17px;
+                position: relative;
+                z-index: 1;
+                width: 100%;
+                height: 100%;
+                padding: 0 16px;
                 border: 1px solid rgba(220, 84, 135, 0.24);
                 border-radius: 999px;
                 background: linear-gradient(180deg, #fa9ec1 0%, #ec6f9f 100%);
                 color: #fff;
                 font-family: var(--dwl-cute);
-                font-size: 11.5px;
+                font-size: 13.5px;
                 font-weight: 700;
                 text-shadow: 0 1px 2px rgba(145, 44, 82, 0.18);
                 box-shadow:
@@ -711,6 +885,46 @@
             }
             .doll-wishlist-checkout:disabled { opacity: 0.55; cursor: default; }
 
+            .doll-wishlist-checkout-art {
+                position: absolute;
+                z-index: 2;
+                left: 50%;
+                bottom: 12px;
+                width: 74px;
+                max-width: none;
+                height: auto;
+                pointer-events: none;
+                user-select: none;
+                -webkit-user-drag: none;
+                transform: translateX(-50%);
+                transform-origin: 50% 72%;
+                filter: drop-shadow(0 3px 3px rgba(177, 92, 124, 0.14));
+                transition: transform 0.22s cubic-bezier(0.2, 0.84, 0.24, 1), filter 0.22s ease, opacity 0.16s ease;
+            }
+            .doll-wishlist-panel.has-selection .doll-wishlist-checkout-art {
+                animation: dollWishlistCheckoutArtIn 0.42s cubic-bezier(0.2, 0.84, 0.24, 1.12);
+            }
+            @keyframes dollWishlistCheckoutArtIn {
+                from {
+                    opacity: 0;
+                    transform: translateX(-50%) translateY(6px) rotate(-2deg) scale(0.88);
+                }
+                to {
+                    opacity: 1;
+                    transform: translateX(-50%) translateY(0) rotate(0) scale(1);
+                }
+            }
+            .doll-wishlist-checkout:not(:disabled):hover + .doll-wishlist-checkout-art {
+                transform: translateX(-50%) translateY(-1px) rotate(-1deg) scale(1.015);
+                filter: drop-shadow(0 4px 4px rgba(177, 92, 124, 0.18));
+            }
+            .doll-wishlist-checkout:not(:disabled):active + .doll-wishlist-checkout-art {
+                transform: translateX(-50%) translateY(1px) scale(0.985);
+            }
+            .doll-wishlist-checkout:disabled + .doll-wishlist-checkout-art {
+                opacity: 0.82;
+            }
+
             @media (max-width: 560px) {
                 .doll-wishlist-panel {
                     width: min(88vw, 324px);
@@ -727,7 +941,10 @@
                 .doll-wishlist-media img,
                 .doll-wishlist-more-card,
                 .doll-wishlist-cart-btn,
-                .doll-wishlist-checkout {
+                .doll-wishlist-checkout,
+                .doll-wishlist-checkout-art,
+                .doll-wishlist-swipe-hint,
+                .doll-wishlist-swipe-hint span {
                     animation: none !important;
                     transition-duration: 0.01ms !important;
                 }
@@ -835,6 +1052,12 @@
             .doll-wishlist-preview-overlay.active .doll-wishlist-preview-card {
                 transform: scale(1) translateY(0);
             }
+            .doll-wishlist-preview-media {
+                position: relative;
+                width: 100%;
+                display: flex;
+                justify-content: center;
+            }
             .doll-wishlist-preview-img {
                 display: block;
                 width: 100%;
@@ -865,24 +1088,48 @@
                 font-weight: 600;
                 color: #663b4b;
             }
+            /* Floats as a soft toast above the photo (never overlapping it),
+               anchored to the top edge of .doll-wishlist-preview-media, and
+               rises into place with a gentle fade so it reads as popping up,
+               not just appearing. Toggled via .show in JS rather than :empty
+               so it can replay the same entrance every time it's triggered. */
             .doll-wishlist-preview-hint {
-                margin: 10px 0 0;
-                padding: 6px 16px;
+                position: absolute;
+                left: 50%;
+                bottom: 100%;
+                margin: 0 0 10px;
+                padding: 7px 16px;
+                max-width: calc(100% - 32px);
                 border-radius: 999px;
-                background: rgba(255, 255, 255, 0.86);
+                background: rgba(255, 255, 255, 0.72);
+                backdrop-filter: blur(6px) saturate(1.2);
+                -webkit-backdrop-filter: blur(6px) saturate(1.2);
+                box-shadow: 0 8px 20px rgba(80, 20, 45, 0.22), inset 0 0 0 1px rgba(255, 255, 255, 0.55);
                 color: #a3486e;
                 font-family: var(--dwl-cute, "Comic Sans MS", cursive);
                 font-size: 11.5px;
                 font-weight: 600;
                 text-align: center;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                opacity: 0;
+                pointer-events: none;
+                transform: translate(-50%, 8px);
+                transition: opacity 0.3s ease, transform 0.32s cubic-bezier(0.2, 0.85, 0.25, 1.2);
             }
-            .doll-wishlist-preview-hint:empty { display: none; }
-            .doll-wishlist-preview-price {
+            .doll-wishlist-preview-hint.show {
+                opacity: 1;
+                transform: translate(-50%, 0);
+            }
+            .doll-wishlist-preview-price-tag {
                 flex: 0 0 auto;
-                font-family: var(--dwl-sans, "Trebuchet MS", sans-serif);
-                font-weight: 700;
                 font-size: 13px;
-                color: #ef6d9f;
+                padding: 6px 14px 6px 12px;
+            }
+            .doll-wishlist-preview-price-tag .dwl-tag-icon {
+                width: 13px;
+                height: 13px;
             }
             .doll-wishlist-preview-close {
                 position: absolute;
@@ -943,12 +1190,14 @@
         previewOverlay.innerHTML = `
             <button type="button" class="doll-wishlist-preview-close" aria-label="Close preview">&times;</button>
             <figure class="doll-wishlist-preview-card">
-                <img class="doll-wishlist-preview-img" src="" alt="">
+                <div class="doll-wishlist-preview-media">
+                    <img class="doll-wishlist-preview-img" src="" alt="">
+                    <p class="doll-wishlist-preview-hint"></p>
+                </div>
                 <figcaption class="doll-wishlist-preview-caption">
                     <span class="doll-wishlist-preview-name"></span>
-                    <span class="doll-wishlist-preview-price"></span>
+                    <button type="button" class="doll-wishlist-price-tag doll-wishlist-preview-price-tag"></button>
                 </figcaption>
-                <p class="doll-wishlist-preview-hint"></p>
             </figure>
         `;
         // Tapping the dark backdrop closes it; tapping the card itself must
@@ -956,6 +1205,10 @@
         previewOverlay.addEventListener('click', closePreview);
         previewOverlay.querySelector('.doll-wishlist-preview-card').addEventListener('click', e => e.stopPropagation());
         previewOverlay.querySelector('.doll-wishlist-preview-close').addEventListener('click', closePreview);
+        previewOverlay.querySelector('.doll-wishlist-preview-price-tag').addEventListener('click', e => {
+            e.stopPropagation();
+            if (previewItemId) toggleItem(previewItemId, 'tag');
+        });
         document.body.appendChild(previewOverlay);
         return previewOverlay;
     }
@@ -963,9 +1216,20 @@
     function openPreview(item) {
         if (!item) return;
         const overlay = ensurePreviewOverlay();
+        previewItemId = item.throne_item_id;
+        const fullLabel = String(item.name || '').trim() || 'wishlist item';
         overlay.querySelector('.doll-wishlist-preview-img').src = item.image_url || '';
-        overlay.querySelector('.doll-wishlist-preview-name').textContent = String(item.name || '').trim() || 'wishlist item';
-        overlay.querySelector('.doll-wishlist-preview-price').textContent = formatPrice(item.price_cents);
+        overlay.querySelector('.doll-wishlist-preview-name').textContent = fullLabel;
+        window.requestAnimationFrame(() => syncPreviewTitleMarquee(overlay.querySelector('.doll-wishlist-preview-name')));
+
+        const selected = selectedIds.has(item.throne_item_id);
+        const previewTag = overlay.querySelector('.doll-wishlist-preview-price-tag');
+        if (previewTag) {
+            previewTag.innerHTML = `${ICON_TAG}<span>${escapeHtml(formatPrice(item.price_cents))}</span>`;
+            previewTag.classList.toggle('is-selected', selected);
+            previewTag.setAttribute('aria-pressed', String(selected));
+            previewTag.setAttribute('aria-label', `${selected ? 'Remove ' : 'Add '}${fullLabel}`);
+        }
 
         // A gentle nudge the second time (and after) someone previews a
         // photo without having picked anything yet — never on the very
@@ -973,9 +1237,15 @@
         previewOpenCount += 1;
         const hint = overlay.querySelector('.doll-wishlist-preview-hint');
         if (hint) {
-            hint.textContent = previewOpenCount >= 2 && !selectedIds.size
-                ? "don't forget to heart your favorites! ♡"
-                : '';
+            hint.classList.remove('show');
+            const shouldShow = previewOpenCount >= 2 && !selectedIds.size;
+            hint.textContent = shouldShow ? "don't forget to heart your favorites! ♡" : '';
+            if (shouldShow) {
+                // Force a reflow so the rise-in transition replays even if
+                // this same hint element already showed (and hid) earlier.
+                void hint.offsetWidth;
+                window.requestAnimationFrame(() => hint.classList.add('show'));
+            }
         }
 
         overlay.classList.add('active');
@@ -987,6 +1257,7 @@
         if (!previewOverlay || !previewOverlay.classList.contains('active')) return;
         previewOverlay.classList.remove('active');
         previewOverlay.setAttribute('aria-hidden', 'true');
+        previewItemId = null;
     }
 
     function buildPanel() {
@@ -1006,7 +1277,10 @@
             <p class="doll-wishlist-status"></p>
             <div class="doll-wishlist-foot">
                 <span class="doll-wishlist-count"><b>0 items</b><small>+ fees at checkout</small></span>
-                <button type="button" class="doll-wishlist-checkout" disabled>checkout</button>
+                <span class="doll-wishlist-checkout-wrap">
+                    <button type="button" class="doll-wishlist-checkout" disabled>checkout</button>
+                    <img src="checkout.png" class="doll-wishlist-checkout-art" alt="" aria-hidden="true" draggable="false" decoding="async">
+                </span>
             </div>
         `;
 
@@ -1142,6 +1416,42 @@
         host.style.setProperty('--dwl-wishlist-height', `${neededHeight}px`);
     }
 
+    function getActivePageIndex(scroll) {
+        const pages = scroll ? Array.from(scroll.querySelectorAll('.doll-wishlist-page')) : [];
+        if (!scroll || !pages.length) return -1;
+        const firstOffset = pages[0].offsetLeft;
+        return pages.reduce((best, page, index) => {
+            const distance = Math.abs(scroll.scrollLeft - (page.offsetLeft - firstOffset));
+            return distance < best.distance ? { index, distance } : best;
+        }, { index: 0, distance: Infinity }).index;
+    }
+
+    function clearSwipeHint() {
+        if (swipeHintTimer) {
+            window.clearTimeout(swipeHintTimer);
+            swipeHintTimer = 0;
+        }
+        panel?.querySelector('.doll-wishlist-swipe-hint')?.classList.remove('show');
+    }
+
+    function scheduleSwipeHint() {
+        clearSwipeHint();
+        if (loadState !== 'ready' || !panel?.classList.contains('active')) return;
+
+        const scroll = panel.querySelector('.doll-wishlist-scroll');
+        const pageCount = scroll?.querySelectorAll('.doll-wishlist-page').length || 0;
+        if (pageCount < 2 || getActivePageIndex(scroll) !== 0) return;
+
+        swipeHintTimer = window.setTimeout(() => {
+            swipeHintTimer = 0;
+            const currentScroll = panel?.querySelector('.doll-wishlist-scroll');
+            if (loadState !== 'ready'
+                || !panel?.classList.contains('active')
+                || getActivePageIndex(currentScroll) !== 0) return;
+            panel.querySelector('.doll-wishlist-swipe-hint')?.classList.add('show');
+        }, SWIPE_HINT_DELAY_MS);
+    }
+
     function renderDots() {
         if (!panel) return;
         syncReservedHeight();
@@ -1179,20 +1489,18 @@
         const scroll = panel.querySelector('.doll-wishlist-scroll');
         const dots = panel.querySelectorAll('.doll-wishlist-dot');
         const pages = scroll ? Array.from(scroll.querySelectorAll('.doll-wishlist-page')) : [];
-        if (!scroll || !dots.length || !pages.length) return;
-        const firstOffset = pages[0].offsetLeft;
-        const idx = pages.reduce((best, page, index) => {
-            const distance = Math.abs(scroll.scrollLeft - (page.offsetLeft - firstOffset));
-            return distance < best.distance ? { index, distance } : best;
-        }, { index: 0, distance: Infinity }).index;
+        if (!scroll || !pages.length) return;
+        const idx = getActivePageIndex(scroll);
         dots.forEach((dot, i) => dot.classList.toggle('active', i === idx));
     }
 
     function onScroll() {
+        clearSwipeHint();
         if (scrollRaf) return;
         scrollRaf = window.requestAnimationFrame(() => {
             scrollRaf = 0;
             updateActiveDot();
+            scheduleSwipeHint();
         });
     }
 
@@ -1239,6 +1547,8 @@
         const label = capName(fullLabel);
         return `
         <article class="doll-wishlist-item${selected ? ' selected' : ''}" data-item-id="${escapeHtml(item.throne_item_id)}">
+            <div class="dwl-glow" aria-hidden="true"></div>
+            <div class="dwl-burst-clip" aria-hidden="true"><svg class="dwl-burst" viewBox="0 0 24 24"><path d="${HEART_PATH}"/></svg></div>
             <div class="doll-wishlist-media">
                 <img src="${escapeHtml(item.image_url)}" alt="" loading="lazy" onerror="this.onerror=null;this.removeAttribute('src');this.parentNode.style.background='rgba(255,214,235,0.6)';">
             </div>
@@ -1256,25 +1566,39 @@
         if (!panel) return;
         const body = panel.querySelector('.doll-wishlist-body');
         if (loadState === 'loading') {
+            clearSwipeHint();
             body.innerHTML = renderSkeleton();
             renderDots();
             return;
         }
         if (loadState === 'failed') {
+            clearSwipeHint();
             body.innerHTML = `<div class="doll-wishlist-state">couldn't load the wishlist here.<br>opening the full site instead…</div>`;
             renderDots();
             return;
         }
         if (loadState === 'ready' && !items.length) {
+            clearSwipeHint();
             body.innerHTML = `<div class="doll-wishlist-state">nothing featured yet.<br>opening the full site instead…</div>`;
             renderDots();
             return;
         }
 
-        body.innerHTML = `<div class="doll-wishlist-scroll">${pagesMarkup(items)}</div>`;
+        body.innerHTML = `
+            <div class="doll-wishlist-scroll">${pagesMarkup(items)}</div>
+            <div class="doll-wishlist-swipe-hint" aria-hidden="true">
+                <span>››</span>
+            </div>
+        `;
 
         const scroll = body.querySelector('.doll-wishlist-scroll');
         scroll.addEventListener('scroll', onScroll, { passive: true });
+        scroll.addEventListener('pointerdown', clearSwipeHint, { passive: true });
+        scroll.addEventListener('pointerup', scheduleSwipeHint, { passive: true });
+        scroll.addEventListener('pointercancel', scheduleSwipeHint, { passive: true });
+        scroll.addEventListener('touchstart', clearSwipeHint, { passive: true });
+        scroll.addEventListener('touchend', scheduleSwipeHint, { passive: true });
+        scroll.addEventListener('wheel', clearSwipeHint, { passive: true });
         body.querySelectorAll('.doll-wishlist-cart-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 e.preventDefault();
@@ -1290,7 +1614,10 @@
             });
         });
         body.querySelector('.doll-wishlist-more-card')?.addEventListener('click', openInNewTab);
-        window.requestAnimationFrame(() => syncTitleMarquees(body));
+        window.requestAnimationFrame(() => {
+            syncTitleMarquees(body);
+            scheduleSwipeHint();
+        });
         renderDots();
     }
 
@@ -1312,9 +1639,13 @@
     // quick opacity dip masks an instant snap back to the start -> loop.
     // No JS timers are involved once this is built; the browser just runs
     // the animation natively and forever.
-    function buildMarqueeKeyframes(overflow) {
+    function buildMarqueeKeyframes(overflow, explicitName) {
         const shift = -(overflow + 4);
-        const scrollDuration = Math.min(9, Math.max(2.4, overflow / 55));
+        // No upper cap on scrollDuration: capping it while overflow keeps
+        // growing (as happens with the preview title, which — unlike the
+        // grid titles — isn't length-limited by capName) breaks the "one
+        // constant speed" design and makes long titles visibly speed up.
+        const scrollDuration = Math.max(2.4, overflow / 55);
         const startHold = 0.5;
         const pause = 1;
         const snapOut = 0.15;
@@ -1328,7 +1659,7 @@
         const p4 = pct(startHold + scrollDuration + pause + snapOut);
         const p5 = Math.min(99.99, Number(p4) + 0.01).toFixed(3);
 
-        const name = `dwlMarquee${marqueeRuleCounter++}`;
+        const name = explicitName || `dwlMarquee${marqueeRuleCounter++}`;
         const css = `@keyframes ${name} {
             0% { opacity: 1; transform: translateX(0); }
             ${p1}% { opacity: 1; transform: translateX(0); }
@@ -1369,6 +1700,39 @@
         });
     }
 
+    // The preview lightbox only ever shows one title at a time, so it gets
+    // its own fixed keyframe name in the shared marquee stylesheet rather
+    // than sharing syncTitleMarquees' rule-clearing pass — that pass wipes
+    // and rebuilds the *whole* sheet, which would kill every grid card's
+    // still-running marquee the instant a preview is opened.
+    const PREVIEW_MARQUEE_NAME = 'dwlPreviewMarquee';
+    function syncPreviewTitleMarquee(nameEl) {
+        if (!nameEl) return;
+        const sheet = getMarqueeStyleSheet();
+        for (let i = sheet.cssRules.length - 1; i >= 0; i--) {
+            if (sheet.cssRules[i].name === PREVIEW_MARQUEE_NAME) sheet.deleteRule(i);
+        }
+        nameEl.classList.remove('dwl-marquee');
+        const label = nameEl.textContent;
+        nameEl.textContent = label;
+
+        const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+        if (reduceMotion) return;
+
+        const overflow = Math.ceil(nameEl.scrollWidth - nameEl.clientWidth);
+        if (overflow <= 2) return;
+
+        const { css, duration } = buildMarqueeKeyframes(overflow, PREVIEW_MARQUEE_NAME);
+        try {
+            sheet.insertRule(css, sheet.cssRules.length);
+        } catch (err) {
+            return;
+        }
+
+        nameEl.innerHTML = `<span style="animation-name:${PREVIEW_MARQUEE_NAME};animation-duration:${duration.toFixed(2)}s;">${escapeHtml(label)}</span>`;
+        nameEl.classList.add('dwl-marquee');
+    }
+
     function renderFoot() {
         if (!panel) return;
         const count = selectedIds.size;
@@ -1386,27 +1750,45 @@
         syncReservedHeight();
     }
 
-    function toggleItem(id) {
+    function toggleItem(id, origin = 'heart') {
         if (!id) return;
         playSound('tap');
         if (selectedIds.has(id)) selectedIds.delete(id);
         else selectedIds.add(id);
+        const selected = selectedIds.has(id);
 
         // Update just the one card in place so the carousel keeps its scroll
         // position instead of snapping back to the start on every tap.
         const card = panel?.querySelector(`.doll-wishlist-item[data-item-id="${CSS.escape(id)}"]`);
+        let label = items.find(candidate => candidate.throne_item_id === id)?.name || '';
         if (card) {
-            const selected = selectedIds.has(id);
+            // The burst-origin modifier must be set before .selected so the
+            // heart-shaped burst animates from whichever control (heart or
+            // price tag) actually triggered the selection.
+            card.classList.toggle('dwl-burst-from-tag', selected && origin === 'tag');
             card.classList.toggle('selected', selected);
-            const btn = card.querySelector('.doll-wishlist-cart-btn');
-            if (btn) {
+            const nameEl = card.querySelector('.doll-wishlist-name');
+            label = nameEl?.getAttribute('title') || nameEl?.textContent || label;
+            card.querySelectorAll('.doll-wishlist-cart-btn, .doll-wishlist-price-tag').forEach(btn => {
+                btn.classList.toggle('is-selected', selected);
                 btn.setAttribute('aria-pressed', String(selected));
-                const nameEl = card.querySelector('.doll-wishlist-name');
-                const label = nameEl?.getAttribute('title') || nameEl?.textContent || '';
                 btn.setAttribute('aria-label', `${selected ? 'Remove ' : 'Add '}${label}`);
-            }
+            });
         } else {
             renderBody();
+        }
+
+        // The preview lightbox's own price tag lives outside the card, so it
+        // needs its selected state mirrored explicitly when it's showing the
+        // item that was just toggled (including when the tag itself, inside
+        // the preview, is what triggered this toggle).
+        if (previewItemId === id) {
+            const previewTag = previewOverlay?.querySelector('.doll-wishlist-preview-price-tag');
+            if (previewTag) {
+                previewTag.classList.toggle('is-selected', selected);
+                previewTag.setAttribute('aria-pressed', String(selected));
+                previewTag.setAttribute('aria-label', `${selected ? 'Remove ' : 'Add '}${label}`);
+            }
         }
         renderFoot();
     }
@@ -1548,6 +1930,7 @@
 
     function closeThroneMockup(silent = false) {
         closePreview();
+        clearSwipeHint();
         document.body.classList.remove('has-wishlist-panel-open', 'has-wishlist-selection');
         const wishlistButton = getWishlistButton();
         wishlistButton?.classList.remove('dwl-open', 'show-glitter');

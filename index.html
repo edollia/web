@@ -91,7 +91,7 @@
     }
     </script>
 
-    <link rel="stylesheet" href="styles.css?v=10.6">
+    <link rel="stylesheet" href="styles.css?v=10.8">
 </head>
 <body>
     <!-- Loading Screen -->
@@ -101,8 +101,20 @@
             <p>𝘎𝘪𝘷𝘦 𝘮𝘦 𝘰𝘯𝘦 𝘧𝘳𝘪𝘤𝘬𝘪𝘯𝘨 𝘴𝘦𝘤𝘰𝘯𝘥..</p> 
             <img src="loading.gif" alt="Loading animation" class="loading-gif" width="510" height="960">
             <div class="loading-bar-container" id="loading-bar-container">
-                <div class="loading-bar">
-                    <div class="loading-bar-fill" id="loading-bar-fill"></div>
+                <div class="loading-bar" role="progressbar" aria-label="Loading" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                    <div class="loading-bar-fill" id="loading-bar-fill">
+                        <div class="loading-paw-track" aria-hidden="true">
+                            <span class="loading-paw-print"></span>
+                            <span class="loading-paw-print"></span>
+                            <span class="loading-paw-print"></span>
+                            <span class="loading-paw-print"></span>
+                            <span class="loading-paw-print"></span>
+                            <span class="loading-paw-print"></span>
+                            <span class="loading-paw-print"></span>
+                            <span class="loading-paw-print"></span>
+                            <span class="loading-paw-print"></span>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -282,8 +294,8 @@
       }
     </script>
     <script src="throne-overlay-widget.js?v=3.7"></script>
-    <script src="throne-mockup-widget.js?v=10"></script>
-    <script src="script.js?v=9.5"></script>
+    <script src="throne-mockup-widget.js?v=15"></script>
+    <script src="script.js?v=9.8"></script>
     
     <!-- GoatCounter Analytics -->
     <script data-goatcounter="https://dollia.goatcounter.com/count"
