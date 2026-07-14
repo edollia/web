@@ -1060,23 +1060,27 @@ document.addEventListener("DOMContentLoaded", async function() {
     //
     // This tracks scroll continuously via a single 0–1 --dwl-collapse custom
     // property (styles.css does the rest with calc()) instead of toggling a
-    // class at a fixed threshold. A binary on/off state is exactly what read
-    // as "jumpy": any small momentum wobble near the threshold flipped the
-    // whole layout back and forth. Tracking the exact scroll position with
-    // no CSS transition means it moves 1:1 with the finger and simply can't
-    // flap — there's no threshold left to flap around.
+    // class at a fixed threshold. A tiny rAF damper below absorbs momentum
+    // jitter and iOS rubber-band noise without changing the final state.
     //
     // Exposed on window since throne-mockup-widget.js (loaded before this
     // file, but only calls this from event handlers that fire well after
     // both scripts have finished loading) needs it too.
     const ICON_COLLAPSE_RANGE = 48; // px of scroll to go from fully shown to fully collapsed
     let iconCollapseTweenRaf = 0;
+    let iconCollapseScrollRaf = 0;
+    let iconCollapseTarget = 0;
+    let iconCollapseDisplayed = 0;
 
     function setIconCollapseProgress(progress) {
         const clamped = Math.max(0, Math.min(1, progress));
+        iconCollapseDisplayed = clamped;
         const group = document.querySelector('.button-group');
         if (!group) return;
         group.style.setProperty('--dwl-collapse', clamped.toFixed(3));
+        // Only clip the row while it is genuinely collapsing. Clipping at
+        // progress 0 cut a shared horizontal slice off all three round icons.
+        group.classList.toggle('icons-collapsing', clamped > 0.001);
         const pill = document.getElementById('dwl-icons-pill');
         if (pill) {
             const interactive = clamped > 0.6;
@@ -1091,11 +1095,18 @@ document.addEventListener("DOMContentLoaded", async function() {
         iconCollapseTweenRaf = 0;
     }
 
+    function cancelIconScrollSmoothing() {
+        if (!iconCollapseScrollRaf) return;
+        window.cancelAnimationFrame(iconCollapseScrollRaf);
+        iconCollapseScrollRaf = 0;
+    }
+
     // The only place motion is actually animated: tapping the pill to
     // restore the icons even though scrollTop hasn't changed. Everything
     // else is direct scroll tracking (see setIconsScrollProgress).
     function animateIconCollapseTo(target, duration = 280) {
         cancelIconCollapseTween();
+        cancelIconScrollSmoothing();
         const group = document.querySelector('.button-group');
         if (!group) return;
         const start = parseFloat(getComputedStyle(group).getPropertyValue('--dwl-collapse')) || 0;
@@ -1109,13 +1120,37 @@ document.addEventListener("DOMContentLoaded", async function() {
         iconCollapseTweenRaf = window.requestAnimationFrame(tick);
     }
 
-    // A genuine new scroll always takes over immediately from any
-    // in-progress tap-to-expand tween, rather than fighting it.
+    // Smooth the scroll-linked conversion instead of feeding every tiny
+    // momentum/bounce delta directly into layout. The small dead zone keeps
+    // iOS top-edge rubber-banding from repeatedly clipping/unclipping the row.
     function setIconsScrollProgress(scrollTop) {
         cancelIconCollapseTween();
-        setIconCollapseProgress(scrollTop / ICON_COLLAPSE_RANGE);
+        const rawTarget = Math.max(0, Math.min(1, scrollTop / ICON_COLLAPSE_RANGE));
+        iconCollapseTarget = rawTarget < 0.055 ? 0 : rawTarget;
+        if (iconCollapseScrollRaf) return;
+
+        function tick() {
+            const delta = iconCollapseTarget - iconCollapseDisplayed;
+            if (Math.abs(delta) <= 0.002) {
+                setIconCollapseProgress(iconCollapseTarget);
+                iconCollapseScrollRaf = 0;
+                return;
+            }
+            setIconCollapseProgress(iconCollapseDisplayed + (delta * 0.26));
+            iconCollapseScrollRaf = window.requestAnimationFrame(tick);
+        }
+
+        iconCollapseScrollRaf = window.requestAnimationFrame(tick);
+    }
+
+    function resetIconsCollapse() {
+        cancelIconCollapseTween();
+        cancelIconScrollSmoothing();
+        iconCollapseTarget = 0;
+        setIconCollapseProgress(0);
     }
     window.dollSetIconsScrollProgress = setIconsScrollProgress;
+    window.dollResetIconsCollapse = resetIconsCollapse;
     document.getElementById('dwl-icons-pill')?.addEventListener('click', () => animateIconCollapseTo(0));
 
     // A static top+bottom fade would lie about the scroll state — fading the

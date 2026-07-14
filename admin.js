@@ -5,7 +5,7 @@ const ADMIN_PASSCODE_HASH = 'ce157a63c5af6bc69d076f5cc7acd1c18a8b44933f907e682f2
 const SOCIAL_CARD_VIDEO_BUCKET = 'social-card-videos';
 const SOCIAL_CARD_VIDEO_KEYS = ['snapchat', 'instagram', 'kofi'];
 const MAX_SOCIAL_CARD_VIDEO_BYTES = 20 * 1024 * 1024;
-const SOCIAL_CARD_VIDEO_TYPES = new Set(['video/mp4', 'video/webm']);
+const SOCIAL_CARD_VIDEO_TYPES = new Set(['video/mp4', 'video/webm', 'video/x-m4v']);
 const socialVideoObjectUrls = new Map();
 const socialVideoSelectedFiles = new Map();
 
@@ -488,9 +488,12 @@ function getSocialVideoSettingKey(key, suffix) {
     return `${key}_card_video_${suffix}`;
 }
 
-function setSocialVideoStatus(key, message) {
+function setSocialVideoStatus(key, message, tone = '') {
     const status = getSocialVideoControl(key)?.querySelector('[data-video-status]');
-    if (status) status.textContent = message;
+    if (!status) return;
+    status.textContent = message;
+    status.classList.toggle('is-error', tone === 'error');
+    status.classList.toggle('is-ready', tone === 'ready');
 }
 
 function revokeSocialVideoObjectUrl(key) {
@@ -507,6 +510,10 @@ function formatUploadSize(bytes) {
 function getSocialVideoFileExtension(file) {
     const namedExtension = String(file?.name || '').split('.').pop().toLowerCase();
     if (namedExtension === 'mp4' || namedExtension === 'webm') return namedExtension;
+    // M4V is the same MPEG-4 family and is a common iPhone export. Store it
+    // with an .mp4 extension/content type so the public video element gets
+    // the broadly-supported MIME type it expects.
+    if (namedExtension === 'm4v' || file?.type === 'video/x-m4v') return 'mp4';
     if (file?.type === 'video/webm') return 'webm';
     if (file?.type === 'video/mp4') return 'mp4';
     return '';
@@ -516,8 +523,15 @@ function validateSocialVideoFile(file) {
     if (!file) throw new Error('Choose a video first.');
     const extension = getSocialVideoFileExtension(file);
     const supportedType = SOCIAL_CARD_VIDEO_TYPES.has(file.type) || Boolean(extension);
-    if (!supportedType) throw new Error('Use an MP4 or WebM video.');
-    if (file.size > MAX_SOCIAL_CARD_VIDEO_BYTES) throw new Error('Video must be 20 MB or smaller.');
+    const name = String(file.name || '').toLowerCase();
+    const isQuickTime = file.type === 'video/quicktime' || name.endsWith('.mov');
+    if (!supportedType && isQuickTime) {
+        throw new Error('iPhone selected a MOV. Export it as MP4 or M4V first so it plays for everyone.');
+    }
+    if (!supportedType) throw new Error('Use an MP4, M4V, or WebM video.');
+    if (file.size > MAX_SOCIAL_CARD_VIDEO_BYTES) {
+        throw new Error(`${formatUploadSize(file.size)} is too large — use a video 20 MB or smaller.`);
+    }
     return extension;
 }
 
@@ -593,23 +607,36 @@ function handleSocialVideoSelection(key) {
         socialVideoSelectedFiles.delete(key);
         fileInput.value = '';
         renderSocialVideoControl(key);
-        setSocialVideoStatus(key, error.message || 'Video cannot be used.');
+        const pickerLabel = control?.querySelector('.admin-video-picker > span');
+        if (pickerLabel) pickerLabel.textContent = 'choose another';
+        setSocialVideoStatus(key, error.message || 'Video cannot be used.', 'error');
         return;
     }
 
+    // Commit the valid selection to the UI before asking Safari to build a
+    // local video preview. Some iPhone/iCloud files cannot preview locally
+    // even though the file itself is perfectly uploadable.
     socialVideoSelectedFiles.set(key, file);
-    const objectUrl = URL.createObjectURL(file);
-    socialVideoObjectUrls.set(key, objectUrl);
-    if (preview) {
-        preview.pause();
-        preview.dataset.source = objectUrl;
-        preview.src = objectUrl;
-        preview.hidden = false;
-        preview.load();
-    }
-    setSocialVideoStatus(key, `${file.name} · ${formatUploadSize(file.size)} ready — tap upload`);
     const uploadButton = control?.querySelector('[data-video-upload]');
     if (uploadButton) uploadButton.disabled = false;
+    const pickerLabel = control?.querySelector('.admin-video-picker > span');
+    if (pickerLabel) pickerLabel.textContent = 'choose another';
+    setSocialVideoStatus(key, `${file.name || 'video'} · ${formatUploadSize(file.size)} ready — tap upload`, 'ready');
+
+    try {
+        const objectUrl = URL.createObjectURL(file);
+        socialVideoObjectUrls.set(key, objectUrl);
+        if (preview) {
+            preview.pause();
+            preview.dataset.source = objectUrl;
+            preview.src = objectUrl;
+            preview.hidden = false;
+            preview.load();
+        }
+    } catch (error) {
+        // Selection and upload stay available; only the optional local
+        // preview failed.
+    }
 }
 
 function socialVideoStorageError(error) {
@@ -629,7 +656,7 @@ async function uploadSocialCardVideo(key) {
     try {
         extension = validateSocialVideoFile(file);
     } catch (error) {
-        setSocialVideoStatus(key, error.message || 'Video cannot be used.');
+        setSocialVideoStatus(key, error.message || 'Video cannot be used.', 'error');
         return;
     }
 
@@ -678,7 +705,7 @@ async function uploadSocialCardVideo(key) {
         renderSocialVideoControl(key);
         setSocialVideoStatus(key, 'video live ✓');
     } catch (error) {
-        setSocialVideoStatus(key, socialVideoStorageError(error));
+        setSocialVideoStatus(key, socialVideoStorageError(error), 'error');
     } finally {
         setSocialVideoBusy(key, false);
     }
@@ -718,7 +745,7 @@ async function removeSocialCardVideo(key) {
         renderSocialVideoControl(key);
         setSocialVideoStatus(key, 'removed ✓');
     } catch (error) {
-        setSocialVideoStatus(key, socialVideoStorageError(error));
+        setSocialVideoStatus(key, socialVideoStorageError(error), 'error');
     } finally {
         setSocialVideoBusy(key, false);
     }

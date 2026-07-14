@@ -1063,6 +1063,7 @@ h1 {
 
 .admin-card-video-heading {
     display: flex;
+    flex-wrap: wrap;
     justify-content: space-between;
     gap: 10px;
     align-items: center;
@@ -1080,6 +1081,31 @@ h1 {
     text-align: right;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+.admin-card-video-heading small.is-error,
+.admin-card-video-heading small.is-ready {
+    flex: 1 0 100%;
+    max-width: none;
+    padding: 7px 9px;
+    border-radius: 9px;
+    line-height: 1.35;
+    overflow: visible;
+    text-align: left;
+    text-overflow: clip;
+    white-space: normal;
+}
+
+.admin-card-video-heading small.is-error {
+    border: 1px solid rgba(200, 104, 130, 0.28);
+    background: rgba(255, 225, 235, 0.68);
+    color: rgba(155, 60, 91, 0.9);
+}
+
+.admin-card-video-heading small.is-ready {
+    border: 1px solid rgba(122, 167, 133, 0.24);
+    background: rgba(231, 248, 235, 0.7);
+    color: rgba(68, 124, 82, 0.9);
 }
 
 .admin-card-video-control video {
