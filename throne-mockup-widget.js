@@ -205,7 +205,7 @@
                    file loads later, so it silently won outright and the
                    scroll-collapse's margin change never applied while the
                    wishlist was open). */
-                --dwl-collapse-base-margin: 3px;
+                --dwl-collapse-base-margin: 9px;
             }
 
             .doll-wishlist-throne-footer-link {
@@ -221,14 +221,41 @@
                 margin-left: 3px;
                 white-space: nowrap;
             }
-            .doll-wishlist-throne-footer-link.is-swipe-hint {
-                gap: 7px;
-                min-width: 118px;
+            .doll-wishlist-throne-footer-link {
+                position: relative;
+                width: 78px;
                 justify-content: center;
+                overflow: hidden;
+                transition: width 0.26s cubic-bezier(0.2, 0.84, 0.24, 1), color 0.2s ease;
+            }
+            .doll-wishlist-footer-brand,
+            .doll-wishlist-footer-hint {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                transition: opacity 0.18s ease, transform 0.24s cubic-bezier(0.2, 0.84, 0.24, 1);
+            }
+            .doll-wishlist-footer-hint {
+                position: absolute;
+                inset: 0;
+                gap: 7px;
+                opacity: 0;
+                pointer-events: none;
+                transform: translateY(4px);
+            }
+            .doll-wishlist-throne-footer-link.is-swipe-hint {
+                width: 118px;
                 padding-inline: 9px 7px;
                 color: rgba(153, 73, 105, 0.88);
                 cursor: default;
-                animation: dollWishlistFooterHintIn 0.28s cubic-bezier(0.2, 0.84, 0.24, 1) both;
+            }
+            .doll-wishlist-throne-footer-link.is-swipe-hint .doll-wishlist-footer-brand {
+                opacity: 0;
+                transform: translateY(-4px);
+            }
+            .doll-wishlist-throne-footer-link.is-swipe-hint .doll-wishlist-footer-hint {
+                opacity: 1;
+                transform: translateY(0);
             }
             .doll-wishlist-footer-swipe-copy {
                 white-space: nowrap;
@@ -248,11 +275,6 @@
                 box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.58);
                 animation: dollWishlistSwipeNudge 1.15s ease-in-out infinite;
             }
-            @keyframes dollWishlistFooterHintIn {
-                from { opacity: 0; transform: translateY(3px) scale(0.97); }
-                to { opacity: 1; transform: translateY(0) scale(1); }
-            }
-
             .doll-wishlist-body {
                 position: relative;
             }
@@ -346,7 +368,7 @@
             .doll-wishlist-masonry {
                 columns: 2;
                 column-gap: ${CARD_GAP}px;
-                padding: 5px 8px 15px;
+                padding: 9px 8px 15px;
             }
 
             .doll-wishlist-item {
@@ -797,7 +819,7 @@
             .doll-wishlist-item.dwl-pin::after {
                 content: '';
                 position: absolute;
-                top: -7px;
+                top: 3px;
                 left: 50%;
                 transform: translateX(-50%);
                 width: 11px;
@@ -814,15 +836,28 @@
             .doll-wishlist-masonry .doll-wishlist-item.dwl-pin:nth-child(4n+4) { --dwl-tilt: -1.1deg; }
             .doll-wishlist-more-card.dwl-pin {
                 break-inside: avoid;
+                margin-bottom: 16px;
+            }
+            .doll-wishlist-more-card.dwl-pin.dwl-more-banner {
                 column-span: all;
                 flex-direction: row;
                 min-height: 70px;
                 margin: 3px 2px 16px;
             }
+            .doll-wishlist-more-card.dwl-pin.dwl-more-tile {
+                flex-direction: column;
+                justify-content: center;
+                gap: 8px;
+                min-height: 148px;
+            }
+            .doll-wishlist-more-card.dwl-pin.dwl-more-tile .dwl-more-copy {
+                flex: 0 0 auto;
+                text-align: center;
+            }
             .doll-wishlist-more-card.dwl-pin::after {
                 content: '';
                 position: absolute;
-                top: -7px;
+                top: 3px;
                 left: 50%;
                 width: 11px;
                 height: 11px;
@@ -969,21 +1004,16 @@
                 white-space: nowrap;
             }
             .dwl-more-arrow {
-                display: grid;
-                place-items: center;
-                flex: 0 0 27px;
-                width: 27px;
-                height: 27px;
-                border-radius: 50%;
-                border: 1px solid rgba(245, 185, 208, 0.82);
-                background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), #ffedf4);
+                display: inline-block;
+                flex: 0 0 23px;
+                width: 23px;
                 color: #ef6d9f;
+                font-family: var(--dwl-cute);
+                font-size: 19px;
+                line-height: 1;
+                text-align: center;
+                transform: rotate(-5deg);
                 transition: transform 0.18s ease;
-            }
-            .dwl-more-arrow svg {
-                display: block;
-                width: 14px;
-                height: 14px;
             }
 
             .doll-wishlist-state {
@@ -1367,7 +1397,7 @@
                 }
                 .doll-wishlist-more-card:hover .dwl-more-arrow {
                     color: #e9518b;
-                    border-color: rgba(237, 139, 176, 0.92);
+                    transform: translateX(2px) rotate(-5deg);
                 }
             }
         `;
@@ -1532,7 +1562,13 @@
         throneFooterLink.setAttribute('aria-label', 'View the full wishlist on Throne');
         throneFooterLink.setAttribute('aria-live', 'polite');
         throneFooterLink.innerHTML = `
-            <span class="site-brand-name">throne</span><span class="site-brand-dot">.</span><span class="site-brand-gg">com</span>
+            <span class="doll-wishlist-footer-brand">
+                <span class="site-brand-name">throne</span><span class="site-brand-dot">.</span><span class="site-brand-gg">com</span>
+            </span>
+            <span class="doll-wishlist-footer-hint" aria-hidden="true">
+                <span class="doll-wishlist-footer-swipe-copy">swipe for more</span>
+                <span class="doll-wishlist-footer-swipe-arrow">→</span>
+            </span>
         `;
         throneFooterLink.addEventListener('click', event => {
             if (throneFooterLink.classList.contains('is-swipe-hint')) {
@@ -1819,15 +1855,13 @@
         const link = ensureThroneFooterLink();
         if (!link) return;
 
-        link.classList.toggle('is-swipe-hint', show);
-        link.tabIndex = show ? -1 : 0;
+        const shouldShow = Boolean(show && canShowSwipeHint());
+        link.classList.toggle('is-swipe-hint', shouldShow);
+        link.tabIndex = shouldShow ? -1 : 0;
         link.setAttribute(
             'aria-label',
-            show ? 'Swipe the wishlist for more items' : 'View the full wishlist on Throne'
+            shouldShow ? 'Swipe the wishlist for more items' : 'View the full wishlist on Throne'
         );
-        link.innerHTML = show
-            ? `<span class="doll-wishlist-footer-swipe-copy">swipe for more</span><span class="doll-wishlist-footer-swipe-arrow" aria-hidden="true">→</span>`
-            : `<span class="site-brand-name">throne</span><span class="site-brand-dot">.</span><span class="site-brand-gg">com</span>`;
     }
 
     function clearSwipeHintTimer() {
@@ -2043,22 +2077,21 @@
     }
 
     function masonryMarkup(list) {
-        return `<div class="doll-wishlist-masonry">${list.map(item => cardMarkup(item, 'masonry')).join('')}${seeMoreMarkup('masonry')}</div>`;
+        return `<div class="doll-wishlist-masonry">${list.map(item => cardMarkup(item, 'masonry')).join('')}${seeMoreMarkup('masonry', list.length)}</div>`;
     }
 
-    function seeMoreMarkup(mode = wishlistViewMode) {
+    function seeMoreMarkup(mode = wishlistViewMode, featuredCount = items.length) {
         const modeClass = mode === 'list' ? ' dwl-row' : mode === 'masonry' ? ' dwl-pin' : '';
+        const countClass = mode === 'masonry'
+            ? (featuredCount % 2 === 0 ? ' dwl-more-banner' : ' dwl-more-tile')
+            : '';
         return `
-        <a class="doll-wishlist-more-card${modeClass}" href="${FULL_WISHLIST_URL}" target="_blank" rel="noopener noreferrer" aria-label="See the full wishlist on Throne">
+        <a class="doll-wishlist-more-card${modeClass}${countClass}" href="${FULL_WISHLIST_URL}" target="_blank" rel="noopener noreferrer" aria-label="See the full wishlist on Throne">
             <span class="dwl-more-copy">
                 <span class="dwl-more-kicker">more little dreams…</span>
                 <span class="dwl-more-label">see all wishes</span>
             </span>
-            <span class="dwl-more-arrow" aria-hidden="true">
-                <svg viewBox="0 0 18 18" fill="none">
-                    <path d="M4.5 13.5L13 5M7.2 5H13V10.8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-            </span>
+            <span class="dwl-more-arrow" aria-hidden="true">→</span>
         </a>`;
     }
 

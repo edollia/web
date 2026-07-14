@@ -1158,7 +1158,7 @@ body.has-posts-panel-open .site-brand-footer {
     --dwl-collapse: 0;
     --dwl-collapse-base-margin: 17px;
     position: relative;
-    top: -7px;
+    top: -8px;
     display: flex;
     align-items: center;
     gap: 16px;
