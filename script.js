@@ -1109,6 +1109,17 @@ document.addEventListener("DOMContentLoaded", async function() {
             pill.style.pointerEvents = interactive ? 'auto' : 'none';
             pill.tabIndex = interactive ? 0 : -1;
         }
+        // .button-group's own box height changes every tick (margin/padding
+        // calc()'d from --dwl-collapse), which shifts the wishlist panel's
+        // position without changing the panel's own size — so the panel's
+        // ResizeObserver never notices, and the throne.com pill footer below
+        // it (reserved via --dwl-wishlist-height) drifts out of sync until
+        // something else forces a recompute. Keep it live here instead.
+        window.dollSyncWishlistReservedHeight?.();
+        // Same issue, same fix, for the :3 panel's own reserved-height system
+        // (syncPostsPanelSpace/--posts-panel-height) — it's a no-op while
+        // that panel isn't open.
+        syncPostsPanelSpace();
     }
 
     function cancelIconCollapseTween() {
@@ -1269,7 +1280,16 @@ document.addEventListener("DOMContentLoaded", async function() {
 
     function closePostsPanel() {
         setPostsPanelLayoutOpen(false);
-        setIconsScrollProgress(0);
+        // Match the wishlist's own close behavior exactly: snap the icons back
+        // instantly (resetIconsCollapse), not the eased scroll-tracking path
+        // (setIconsScrollProgress), and reset the scrolled content itself so
+        // reopening doesn't show a scrolled-down list underneath icons that
+        // have already reset to their expanded state.
+        resetIconsCollapse();
+        if (postsContentEl) {
+            postsContentEl.scrollTop = 0;
+            updateScrollEdgeFade(postsContentEl);
+        }
         if (!postsPanel || !postsButton) return;
         postsPanel.classList.remove('active');
         postsButton.textContent = ':3';

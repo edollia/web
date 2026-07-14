@@ -1211,6 +1211,41 @@
                 bottom: 0;
                 z-index: 4;
             }
+            /* .dwl-scroll-body's own mask-image (below) fades its bottom edge
+               to hint "more items below" — but mask-image composites the
+               WHOLE subtree, so with the foot relocated inside this same
+               masked container, that fade swept across the sticky foot bar
+               itself too, making checkout look semi-transparent/glitchy any
+               time the list wasn't scrolled all the way down (i.e. nearly
+               always while shopping). Selection mode gets its own deliberate
+               transition instead (the ::before scrim below), so turn the
+               automatic edge fade off here rather than let the two fight. */
+            .doll-wishlist-panel.has-selection .doll-wishlist-body.dwl-scroll-body.dwl-has-content-below {
+                --dwl-edge-bottom: 1;
+            }
+            /* Softens the hard line where the sticky pill sits on top of
+               scrolled cards: a blurred gradient right above it so the last
+               row dissolves into the bar instead of being cut off sharply.
+               Overshoots the pill's own narrow centered width with a large
+               fixed offset instead of trying to match the scroll body's
+               exact width — .dwl-scroll-body already clips overflow-x, so
+               this still reads as edge-to-edge without needing to know the
+               container's size. No mask-image here (unlike the fade above) —
+               keep it to a plain gradient+blur so it can't reintroduce the
+               old-iOS mask+filter square-edge bug fixed elsewhere in this
+               project. */
+            .doll-wishlist-body.dwl-scroll-body .doll-wishlist-foot::before {
+                content: '';
+                position: absolute;
+                left: -600px;
+                right: -600px;
+                bottom: 100%;
+                height: 44px;
+                pointer-events: none;
+                background: linear-gradient(to bottom, rgba(255, 251, 253, 0), rgba(255, 251, 253, 0.92));
+                -webkit-backdrop-filter: blur(6px);
+                backdrop-filter: blur(6px);
+            }
 
             .doll-wishlist-count {
                 position: relative;
@@ -1840,6 +1875,18 @@
         const neededHeight = Math.max(60, Math.ceil(panelRect.bottom - hostRect.top + 4));
         host.style.setProperty('--dwl-wishlist-height', `${neededHeight}px`);
     }
+    // The icon row (.button-group) sits in the same .toggle-container as the
+    // panel, but as a SIBLING, not a descendant — so neither panelResizeObserver
+    // nor panelMutationObserver above (both scoped to the panel itself) ever
+    // fire when scrolling shrinks/grows it. That let .toggle-container's
+    // reserved height go stale mid-scroll: the panel visually slides up as
+    // the icon row collapses, but the reserved space beneath it doesn't
+    // shrink to match until some unrelated mutation inside the panel forces
+    // a recompute — which is exactly what read as the throne.com pill
+    // "glitching"/jumping position. Exposed so script.js's collapse tick
+    // (the single place that drives .button-group's height, for both the
+    // wishlist and the :3 panel) can keep this in sync every frame.
+    window.dollSyncWishlistReservedHeight = () => syncReservedHeight();
 
     function getActivePageIndex(scroll) {
         const pages = scroll ? Array.from(scroll.querySelectorAll('.doll-wishlist-page')) : [];
