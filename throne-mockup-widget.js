@@ -1,6 +1,8 @@
 (function() {
     const panelId = 'doll-wishlist-panel';
     const styleId = 'doll-wishlist-style';
+    const previewStyleId = 'doll-wishlist-preview-style';
+    const marqueeStyleId = 'doll-wishlist-marquee-keyframes';
     const SUPABASE_URL = 'https://zvqdodzkhmcptwkjlfeu.supabase.co';
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp2cWRvZHpraG1jcHR3a2psZmV1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg3NjM1NjAsImV4cCI6MjA2NDMzOTU2MH0.i1xbRIhPHVkDIrnDlQFP0ebNklrx8WVQcQo8Iuo9zG8';
     const FETCH_TIMEOUT_MS = 6000;
@@ -10,8 +12,9 @@
     const PAGE_SIZE = 4;
     const FULL_WISHLIST_URL = 'https://throne.com/edoll';
 
-    const ICON_CART = '<svg class="dwl-cart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9.4" cy="20" r="1.4" fill="currentColor" stroke="none"/><circle cx="17.6" cy="20" r="1.4" fill="currentColor" stroke="none"/><path d="M2.8 3.6h2l2.15 11a1.7 1.7 0 0 0 1.68 1.4h7.9a1.7 1.7 0 0 0 1.67-1.33L21.2 8.2H6.2"/></svg>';
-    const ICON_CHECK = '<svg class="dwl-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 12.5l5 5 10-11"/></svg>';
+    const HEART_PATH = 'M12 20.3s-7.6-4.5-9.9-9C.6 7.7 2.3 4.3 5.9 4c2.2-.2 4.2 1 6.1 3.4C13.9 5 15.9 3.8 18.1 4c3.6.3 5.3 3.7 3.8 7.3-2.3 4.5-9.9 9-9.9 9z';
+    const ICON_HEART = `<svg class="dwl-heart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${HEART_PATH}"/></svg>`;
+    const ICON_HEART_FILLED = `<svg class="dwl-heart-filled" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true"><path d="${HEART_PATH}"/></svg>`;
 
     let panel = null;
     let items = [];
@@ -26,6 +29,9 @@
     let conflictObserver = null;
     let conflictClickGuardReady = false;
     let throneFooterLink = null;
+    let previewOverlay = null;
+    let previewOpenCount = 0;
+    let marqueeRuleCounter = 0;
 
     function formatPrice(cents) {
         if (typeof cents !== 'number' || !cents) return '';
@@ -198,7 +204,6 @@
                 flex-direction: column;
                 width: 100%;
                 min-width: 0;
-                overflow: hidden;
                 padding: 3px;
                 background: linear-gradient(180deg, #fffefe 0%, #fff9fb 70%, #fff6fa 100%);
                 border: 1px solid var(--dwl-line);
@@ -208,9 +213,14 @@
                     0 5px 12px rgba(177, 92, 124, 0.08),
                     0 1px 2px rgba(142, 76, 99, 0.06);
                 transform: translateZ(0);
-                transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+                transition: border-color 0.2s ease, transform 0.2s ease;
                 -webkit-tap-highlight-color: transparent;
             }
+            /* .doll-wishlist-media already clips the photo itself (it has
+               its own overflow:hidden + rounded corners below), so the card
+               no longer needs overflow:hidden of its own — freeing it up
+               lets the selected-glow ring bloom outward past the border
+               instead of being clipped flush against it. */
 
             .doll-wishlist-panel.active .doll-wishlist-item:not(.doll-wishlist-skeleton) {
                 animation: dollWishlistCardIn 0.22s ease backwards;
@@ -222,12 +232,69 @@
             }
 
             .doll-wishlist-item.selected {
-                border-color: rgba(235, 107, 157, 0.84);
-                box-shadow:
-                    inset 0 0 0 2px rgba(255, 255, 255, 0.96),
-                    0 0 0 2px rgba(255, 167, 201, 0.38),
-                    0 8px 17px rgba(198, 75, 124, 0.17);
+                border-color: rgba(235, 107, 157, 0.86);
                 transform: translateY(-2px);
+            }
+
+            /* The glow lives on its own pseudo-element rather than animating
+               the card's own box-shadow/animation — that way it can never
+               collide with the card's entrance-fade animation (both would
+               otherwise fight over the same "animation" property). */
+            .doll-wishlist-item::after {
+                content: "";
+                position: absolute;
+                inset: -4px;
+                border-radius: 22px;
+                opacity: 0;
+                pointer-events: none;
+                box-shadow: 0 0 0 3px rgba(255, 179, 209, 0.3), 0 0 14px 2px rgba(255, 141, 193, 0.24);
+                transition: opacity 0.22s ease;
+            }
+            .doll-wishlist-item.selected::after {
+                opacity: 1;
+                animation: dollWishlistGlowPulse 2.6s ease-in-out 0.35s infinite;
+            }
+            @keyframes dollWishlistGlowPulse {
+                0%, 100% { box-shadow: 0 0 0 3px rgba(255, 179, 209, 0.3), 0 0 14px 2px rgba(255, 141, 193, 0.24); }
+                50% { box-shadow: 0 0 0 3px rgba(255, 179, 209, 0.5), 0 0 26px 6px rgba(255, 141, 193, 0.4); }
+            }
+
+            /* A quick burst from the heart button sweeps across the card the
+               instant it's picked, timed to fade out right as the border
+               glow (above) finishes fading in — the light "reaches" the
+               edge and that's what ignites the glow. */
+            .doll-wishlist-item::before {
+                content: "";
+                position: absolute;
+                right: 13px;
+                bottom: 12px;
+                width: 10px;
+                height: 10px;
+                border-radius: 50%;
+                background: radial-gradient(circle, rgba(255, 255, 255, 0.95) 0%, rgba(255, 158, 205, 0.85) 32%, rgba(255, 158, 205, 0) 70%);
+                opacity: 0;
+                pointer-events: none;
+                transform: scale(0);
+                z-index: 2;
+            }
+            .doll-wishlist-item.selected::before {
+                animation: dollWishlistBurst 0.5s cubic-bezier(0.15, 0.7, 0.3, 1) both;
+            }
+            @keyframes dollWishlistBurst {
+                0% { opacity: 0.9; transform: scale(0); }
+                65% { opacity: 0.45; transform: scale(17); }
+                100% { opacity: 0; transform: scale(20); }
+            }
+
+            @media (prefers-reduced-motion: reduce) {
+                .doll-wishlist-item.selected::after {
+                    animation: none;
+                    box-shadow: 0 0 0 3px rgba(255, 179, 209, 0.42), 0 0 18px 3px rgba(255, 141, 193, 0.3);
+                }
+                .doll-wishlist-item.selected::before {
+                    animation: none;
+                    opacity: 0;
+                }
             }
 
             .doll-wishlist-media {
@@ -240,6 +307,11 @@
                     radial-gradient(circle at 48% 38%, rgba(255, 255, 255, 0.9), transparent 48%),
                     #fce8f0;
                 box-shadow: inset 0 0 0 1px rgba(245, 205, 220, 0.5);
+                cursor: pointer;
+                -webkit-tap-highlight-color: transparent;
+            }
+            .doll-wishlist-media:active img {
+                transform: scale(1.04);
             }
             .doll-wishlist-media::after {
                 content: "";
@@ -275,23 +347,24 @@
                 text-overflow: ellipsis;
             }
 
-            /* Long titles get a single always-on CSS marquee (no JS timers,
-               no per-card cycling/turn-taking) — every overflowing title
-               animates independently and simultaneously, so nothing ever
-               "misses its turn" or drifts out of sync with its own duration. */
+            /* Long titles get a one-way scrolling loop: hold at the start,
+               scroll left at a constant speed to reveal the end, pause a
+               beat, then fade out, snap back to the start while invisible,
+               and fade back in — reads as a seamless loop instead of a
+               back-and-forth bounce. The exact keyframe percentages are
+               generated per-title in JS (see syncTitleMarquees) since each
+               title needs a different scroll-to-pause ratio to keep the
+               pause a real, fixed ~1s regardless of how long the scroll is;
+               this rule just supplies the shared, non-title-specific parts. */
             .doll-wishlist-name.dwl-marquee {
                 -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 8px, #000 calc(100% - 8px), transparent 100%);
                 mask-image: linear-gradient(90deg, transparent 0, #000 8px, #000 calc(100% - 8px), transparent 100%);
             }
             .doll-wishlist-name.dwl-marquee > span {
                 display: inline-block;
-                animation: dollWishlistMarquee var(--dwl-duration, 8s) ease-in-out infinite;
-                will-change: transform;
-            }
-            @keyframes dollWishlistMarquee {
-                0%, 12% { transform: translateX(0); }
-                45%, 60% { transform: translateX(var(--dwl-shift, 0)); }
-                93%, 100% { transform: translateX(0); }
+                animation-timing-function: linear;
+                animation-iteration-count: infinite;
+                will-change: transform, opacity;
             }
             @media (prefers-reduced-motion: reduce) {
                 .doll-wishlist-name.dwl-marquee {
@@ -350,8 +423,8 @@
                 outline: 2px solid rgba(220, 77, 132, 0.68);
                 outline-offset: 2px;
             }
-            .doll-wishlist-cart-btn svg { width: 15px; height: 15px; display: block; }
-            .doll-wishlist-cart-btn .dwl-check { display: none; }
+            .doll-wishlist-cart-btn svg { width: 16px; height: 16px; display: block; }
+            .doll-wishlist-cart-btn .dwl-heart-filled { display: none; }
             .doll-wishlist-item.selected .doll-wishlist-cart-btn {
                 border-color: rgba(228, 82, 139, 0.78);
                 background: linear-gradient(180deg, #ff9fc2, #ec699c);
@@ -360,15 +433,16 @@
                     0 5px 11px rgba(202, 70, 123, 0.26),
                     inset 0 1px 0 rgba(255, 255, 255, 0.55);
             }
-            .doll-wishlist-item.selected .dwl-cart { display: none; }
-            .doll-wishlist-item.selected .dwl-check {
+            .doll-wishlist-item.selected .dwl-heart { display: none; }
+            .doll-wishlist-item.selected .dwl-heart-filled {
                 display: block;
-                animation: dollWishlistCheckIn 0.24s cubic-bezier(0.2, 0.85, 0.25, 1.35);
+                animation: dollWishlistHeartIn 0.32s cubic-bezier(0.2, 0.85, 0.25, 1.35);
             }
 
-            @keyframes dollWishlistCheckIn {
-                from { opacity: 0; transform: scale(0.55) rotate(-8deg); }
-                to { opacity: 1; transform: scale(1) rotate(0); }
+            @keyframes dollWishlistHeartIn {
+                0% { opacity: 0; transform: scale(0.4); }
+                55% { opacity: 1; transform: scale(1.22); }
+                100% { opacity: 1; transform: scale(1); }
             }
 
             @media (hover: hover) and (pointer: fine) {
@@ -399,11 +473,19 @@
                 width: max-content;
                 min-height: 13px;
                 margin: -5px auto 0;
-                padding: 3px 6px;
+                padding: 3px 8px;
                 border: 1px solid rgba(242, 199, 216, 0.5);
                 border-radius: 999px;
                 background: rgba(255, 252, 253, 0.72);
                 box-shadow: 0 3px 9px rgba(191, 107, 138, 0.06);
+            }
+            .doll-wishlist-dots::before {
+                content: "✧";
+                margin-right: 1px;
+                color: rgba(244, 127, 173, 0.6);
+                font-family: var(--dwl-cute);
+                font-size: 10px;
+                line-height: 1;
             }
             .doll-wishlist-dots:empty { display: none; }
             .doll-wishlist-dot {
@@ -452,6 +534,17 @@
                 -webkit-tap-highlight-color: transparent;
                 transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
             }
+            /* A hand-drawn dashed inset, echoing the ask-form note's own
+               ::before treatment — a small nod to the site's paper/doodle
+               language instead of a plain flat card. */
+            .doll-wishlist-more-card::before {
+                content: "";
+                position: absolute;
+                inset: 5px;
+                border: 1.5px dashed rgba(255, 180, 212, 0.58);
+                border-radius: 13px;
+                pointer-events: none;
+            }
             .dwl-more-label {
                 font-family: var(--dwl-cute);
                 font-size: 12px;
@@ -459,6 +552,7 @@
                 line-height: 1;
             }
             .dwl-more-arrow {
+                position: relative;
                 display: grid;
                 place-items: center;
                 width: 30px;
@@ -471,6 +565,16 @@
                 font-size: 13px;
                 line-height: 1;
                 transition: transform 0.18s ease;
+            }
+            .dwl-more-arrow::after {
+                content: "✧";
+                position: absolute;
+                top: -6px;
+                right: -5px;
+                font-family: var(--dwl-cute);
+                font-size: 11px;
+                line-height: 1;
+                color: rgba(244, 127, 173, 0.9);
             }
 
             .doll-wishlist-state {
@@ -560,28 +664,8 @@
                 flex-direction: column;
                 justify-content: center;
                 min-height: 30px;
-                padding-left: 27px;
                 line-height: 1.15;
                 text-align: left;
-            }
-            .doll-wishlist-count::before {
-                content: "✓";
-                position: absolute;
-                left: 0;
-                top: 50%;
-                width: 20px;
-                height: 20px;
-                display: grid;
-                place-items: center;
-                border: 1px solid rgba(239, 174, 199, 0.72);
-                border-radius: 7px;
-                background: linear-gradient(180deg, #fff7fa, #ffe9f2);
-                color: #db638f;
-                font-family: system-ui, sans-serif;
-                font-size: 10px;
-                font-weight: 800;
-                transform: translateY(-50%);
-                box-shadow: inset 0 1px 0 #fff;
             }
             .doll-wishlist-count b {
                 font-family: var(--dwl-cute);
@@ -711,6 +795,124 @@
             }
         `;
         document.head.appendChild(style);
+        injectPreviewStyles();
+    }
+
+    function injectPreviewStyles() {
+        if (document.getElementById(previewStyleId)) return;
+        const style = document.createElement('style');
+        style.id = previewStyleId;
+        style.textContent = `
+            .doll-wishlist-preview-overlay {
+                position: fixed;
+                inset: 0;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                background: rgba(35, 12, 22, 0.58);
+                backdrop-filter: blur(10px) saturate(1.1);
+                -webkit-backdrop-filter: blur(10px) saturate(1.1);
+                opacity: 0;
+                pointer-events: none;
+                transition: opacity 0.28s ease;
+                z-index: 99999;
+                padding: 28px;
+            }
+            .doll-wishlist-preview-overlay.active {
+                opacity: 1;
+                pointer-events: auto;
+            }
+            .doll-wishlist-preview-card {
+                position: relative;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                max-width: min(86vw, 360px);
+                margin: 0;
+                transform: scale(0.92) translateY(10px);
+                transition: transform 0.28s cubic-bezier(0.2, 0.85, 0.25, 1.15);
+            }
+            .doll-wishlist-preview-overlay.active .doll-wishlist-preview-card {
+                transform: scale(1) translateY(0);
+            }
+            .doll-wishlist-preview-img {
+                display: block;
+                width: 100%;
+                max-height: 60vh;
+                object-fit: contain;
+                border-radius: 20px;
+                background: #fff;
+                box-shadow: 0 20px 45px rgba(0, 0, 0, 0.35), 0 0 0 4px rgba(255, 255, 255, 0.85);
+            }
+            .doll-wishlist-preview-caption {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                max-width: 100%;
+                margin: 14px 0 0;
+                padding: 8px 18px;
+                border-radius: 999px;
+                background: rgba(255, 255, 255, 0.94);
+                box-shadow: 0 8px 18px rgba(0, 0, 0, 0.18);
+                font-family: var(--dwl-cute, "Comic Sans MS", cursive);
+            }
+            .doll-wishlist-preview-name {
+                max-width: 210px;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+                font-size: 13px;
+                font-weight: 600;
+                color: #663b4b;
+            }
+            .doll-wishlist-preview-hint {
+                margin: 10px 0 0;
+                padding: 6px 16px;
+                border-radius: 999px;
+                background: rgba(255, 255, 255, 0.86);
+                color: #a3486e;
+                font-family: var(--dwl-cute, "Comic Sans MS", cursive);
+                font-size: 11.5px;
+                font-weight: 600;
+                text-align: center;
+            }
+            .doll-wishlist-preview-hint:empty { display: none; }
+            .doll-wishlist-preview-price {
+                flex: 0 0 auto;
+                font-family: var(--dwl-sans, "Trebuchet MS", sans-serif);
+                font-weight: 700;
+                font-size: 13px;
+                color: #ef6d9f;
+            }
+            .doll-wishlist-preview-close {
+                position: absolute;
+                top: 18px;
+                right: 18px;
+                width: 38px;
+                height: 38px;
+                display: grid;
+                place-items: center;
+                border: none;
+                border-radius: 50%;
+                background: rgba(255, 255, 255, 0.94);
+                color: #a3486e;
+                font-family: ui-rounded, system-ui, sans-serif;
+                font-size: 20px;
+                line-height: 1;
+                cursor: pointer;
+                box-shadow: 0 6px 16px rgba(0, 0, 0, 0.22);
+                -webkit-tap-highlight-color: transparent;
+                transition: transform 0.16s ease;
+            }
+            .doll-wishlist-preview-close:active { transform: scale(0.9); }
+            @media (prefers-reduced-motion: reduce) {
+                .doll-wishlist-preview-overlay,
+                .doll-wishlist-preview-card {
+                    transition-duration: 0.01ms !important;
+                }
+            }
+        `;
+        document.head.appendChild(style);
     }
 
     function ensureThroneFooterLink() {
@@ -732,6 +934,61 @@
         return throneFooterLink;
     }
 
+    function ensurePreviewOverlay() {
+        if (previewOverlay && document.body.contains(previewOverlay)) return previewOverlay;
+
+        previewOverlay = document.createElement('div');
+        previewOverlay.className = 'doll-wishlist-preview-overlay';
+        previewOverlay.setAttribute('aria-hidden', 'true');
+        previewOverlay.innerHTML = `
+            <button type="button" class="doll-wishlist-preview-close" aria-label="Close preview">&times;</button>
+            <figure class="doll-wishlist-preview-card">
+                <img class="doll-wishlist-preview-img" src="" alt="">
+                <figcaption class="doll-wishlist-preview-caption">
+                    <span class="doll-wishlist-preview-name"></span>
+                    <span class="doll-wishlist-preview-price"></span>
+                </figcaption>
+                <p class="doll-wishlist-preview-hint"></p>
+            </figure>
+        `;
+        // Tapping the dark backdrop closes it; tapping the card itself must
+        // not, so the card swallows its own clicks before they can bubble up.
+        previewOverlay.addEventListener('click', closePreview);
+        previewOverlay.querySelector('.doll-wishlist-preview-card').addEventListener('click', e => e.stopPropagation());
+        previewOverlay.querySelector('.doll-wishlist-preview-close').addEventListener('click', closePreview);
+        document.body.appendChild(previewOverlay);
+        return previewOverlay;
+    }
+
+    function openPreview(item) {
+        if (!item) return;
+        const overlay = ensurePreviewOverlay();
+        overlay.querySelector('.doll-wishlist-preview-img').src = item.image_url || '';
+        overlay.querySelector('.doll-wishlist-preview-name').textContent = String(item.name || '').trim() || 'wishlist item';
+        overlay.querySelector('.doll-wishlist-preview-price').textContent = formatPrice(item.price_cents);
+
+        // A gentle nudge the second time (and after) someone previews a
+        // photo without having picked anything yet — never on the very
+        // first look, and it stops the moment they heart something.
+        previewOpenCount += 1;
+        const hint = overlay.querySelector('.doll-wishlist-preview-hint');
+        if (hint) {
+            hint.textContent = previewOpenCount >= 2 && !selectedIds.size
+                ? "don't forget to heart your favorites! ♡"
+                : '';
+        }
+
+        overlay.classList.add('active');
+        overlay.setAttribute('aria-hidden', 'false');
+        playSound('tap');
+    }
+
+    function closePreview() {
+        if (!previewOverlay || !previewOverlay.classList.contains('active')) return;
+        previewOverlay.classList.remove('active');
+        previewOverlay.setAttribute('aria-hidden', 'true');
+    }
+
     function buildPanel() {
         const contentArea = document.querySelector('.content-area');
         if (!contentArea) return null;
@@ -748,7 +1005,7 @@
             <nav class="doll-wishlist-dots" aria-label="wishlist pages"></nav>
             <p class="doll-wishlist-status"></p>
             <div class="doll-wishlist-foot">
-                <span class="doll-wishlist-count"><b>0 items selected</b><small>+ fees at checkout</small></span>
+                <span class="doll-wishlist-count"><b>0 items</b><small>+ fees at checkout</small></span>
                 <button type="button" class="doll-wishlist-checkout" disabled>checkout</button>
             </div>
         `;
@@ -989,7 +1246,7 @@
             <div class="doll-wishlist-foot-row">
                 <span class="doll-wishlist-price">${escapeHtml(formatPrice(item.price_cents))}</span>
                 <button type="button" class="doll-wishlist-cart-btn" data-item-id="${escapeHtml(item.throne_item_id)}" aria-label="${selected ? 'Remove ' : 'Add '}${escapeHtml(fullLabel)}" aria-pressed="${selected}">
-                    ${ICON_CART}${ICON_CHECK}
+                    ${ICON_HEART}${ICON_HEART_FILLED}
                 </button>
             </div>
         </article>`;
@@ -1025,18 +1282,74 @@
                 toggleItem(btn.dataset.itemId);
             });
         });
+        body.querySelectorAll('.doll-wishlist-media').forEach(media => {
+            media.addEventListener('click', () => {
+                const id = media.closest('.doll-wishlist-item')?.dataset.itemId;
+                const item = items.find(candidate => candidate.throne_item_id === id);
+                if (item) openPreview(item);
+            });
+        });
         body.querySelector('.doll-wishlist-more-card')?.addEventListener('click', openInNewTab);
         window.requestAnimationFrame(() => syncTitleMarquees(body));
         renderDots();
     }
 
+    function getMarqueeStyleSheet() {
+        let el = document.getElementById(marqueeStyleId);
+        if (!el) {
+            el = document.createElement('style');
+            el.id = marqueeStyleId;
+            document.head.appendChild(el);
+        }
+        return el.sheet;
+    }
+
+    // A one-way marquee needs the "pause at the end" to stay a real, fixed
+    // ~1s no matter how long the scroll phase is — that ratio is different
+    // for every title, so a single shared keyframe can't express it. Each
+    // overflowing title gets its own tiny generated @keyframes instead:
+    // hold at the start -> scroll left at a constant speed -> pause -> a
+    // quick opacity dip masks an instant snap back to the start -> loop.
+    // No JS timers are involved once this is built; the browser just runs
+    // the animation natively and forever.
+    function buildMarqueeKeyframes(overflow) {
+        const shift = -(overflow + 4);
+        const scrollDuration = Math.min(9, Math.max(2.4, overflow / 55));
+        const startHold = 0.5;
+        const pause = 1;
+        const snapOut = 0.15;
+        const snapIn = 0.15;
+        const total = startHold + scrollDuration + pause + snapOut + snapIn;
+
+        const pct = seconds => Math.min(99.98, (seconds / total) * 100).toFixed(3);
+        const p1 = pct(startHold);
+        const p2 = pct(startHold + scrollDuration);
+        const p3 = pct(startHold + scrollDuration + pause);
+        const p4 = pct(startHold + scrollDuration + pause + snapOut);
+        const p5 = Math.min(99.99, Number(p4) + 0.01).toFixed(3);
+
+        const name = `dwlMarquee${marqueeRuleCounter++}`;
+        const css = `@keyframes ${name} {
+            0% { opacity: 1; transform: translateX(0); }
+            ${p1}% { opacity: 1; transform: translateX(0); }
+            ${p2}% { opacity: 1; transform: translateX(${shift}px); }
+            ${p3}% { opacity: 1; transform: translateX(${shift}px); }
+            ${p4}% { opacity: 0; transform: translateX(${shift}px); }
+            ${p5}% { opacity: 0; transform: translateX(0); }
+            100% { opacity: 1; transform: translateX(0); }
+        }`;
+        return { name, css, duration: total };
+    }
+
     function syncTitleMarquees(root = panel) {
         if (!root) return;
+        const sheet = getMarqueeStyleSheet();
+        while (sheet.cssRules.length) sheet.deleteRule(0);
+        marqueeRuleCounter = 0;
+
         const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
         root.querySelectorAll('.doll-wishlist-name').forEach(name => {
             name.classList.remove('dwl-marquee');
-            name.style.removeProperty('--dwl-shift');
-            name.style.removeProperty('--dwl-duration');
             const label = name.textContent;
             name.textContent = label;
             if (reduceMotion) return;
@@ -1044,12 +1357,14 @@
             const overflow = Math.ceil(name.scrollWidth - name.clientWidth);
             if (overflow <= 2) return;
 
-            // Consistent px/s speed regardless of title length, so a long
-            // title doesn't scroll noticeably faster/slower than a short one.
-            const duration = Math.min(14, Math.max(6.5, 6 + overflow / 42));
-            name.style.setProperty('--dwl-shift', `${-(overflow + 4)}px`);
-            name.style.setProperty('--dwl-duration', `${duration.toFixed(2)}s`);
-            name.innerHTML = `<span>${escapeHtml(label)}</span>`;
+            const { name: keyframeName, css, duration } = buildMarqueeKeyframes(overflow);
+            try {
+                sheet.insertRule(css, sheet.cssRules.length);
+            } catch (err) {
+                return;
+            }
+
+            name.innerHTML = `<span style="animation-name:${keyframeName};animation-duration:${duration.toFixed(2)}s;">${escapeHtml(label)}</span>`;
             name.classList.add('dwl-marquee');
         });
     }
@@ -1062,7 +1377,7 @@
             'has-wishlist-selection',
             count > 0 && panel.classList.contains('active')
         );
-        panel.querySelector('.doll-wishlist-count b').textContent = count === 1 ? '1 item selected' : `${count} items selected`;
+        panel.querySelector('.doll-wishlist-count b').textContent = count === 1 ? '1 item' : `${count} items`;
         const checkoutBtn = panel.querySelector('.doll-wishlist-checkout');
         checkoutBtn.disabled = count === 0 || checkoutInFlight;
         checkoutBtn.textContent = checkoutInFlight ? 'opening…' : 'checkout';
@@ -1221,6 +1536,7 @@
 
         selectedIds = new Set();
         checkoutStatusMessage = '';
+        previewOpenCount = 0;
         el.classList.remove('has-selection');
         el.classList.add('active');
         el.setAttribute('aria-hidden', 'false');
@@ -1231,6 +1547,7 @@
     }
 
     function closeThroneMockup(silent = false) {
+        closePreview();
         document.body.classList.remove('has-wishlist-panel-open', 'has-wishlist-selection');
         const wishlistButton = getWishlistButton();
         wishlistButton?.classList.remove('dwl-open', 'show-glitter');
@@ -1246,9 +1563,12 @@
     }
 
     document.addEventListener('keydown', event => {
-        if (event.key === 'Escape' && panel?.classList.contains('active')) {
-            closeThroneMockup();
+        if (event.key !== 'Escape') return;
+        if (previewOverlay?.classList.contains('active')) {
+            closePreview();
+            return;
         }
+        if (panel?.classList.contains('active')) closeThroneMockup();
     });
 
     window.addEventListener('resize', () => {
