@@ -667,6 +667,7 @@ body.has-posts-panel-open .site-brand-footer {
 }
 
 .content-area {
+    --open-surface-top: -14px;
     position: relative;
     width: 100%;
 }
@@ -896,12 +897,15 @@ body.has-posts-panel-open .site-brand-footer {
     --note-fold-y: 0px;
     transition: opacity 0.46s ease, transform 0.42s cubic-bezier(0.2, 0.86, 0.24, 1), filter 0.32s ease, box-shadow 0.32s ease;
     position: absolute;
+    /* The note scales around its lower half, so the small 4px compensation
+       keeps its visible top edge aligned with the other open surfaces. */
+    top: calc(var(--open-surface-top) + 4px);
     left: 50%;
-    transform: translateX(-50%) translateY(-4px) rotate(0deg) scale(1.015);
+    transform: translateX(-50%) rotate(0deg) scale(1.015);
     width: 254px;
     height: auto;
     max-height: 297px;
-    margin: -2px 0;
+    margin: 0;
     border-radius: 16px;
     box-shadow:
         0 18px 36px rgba(255, 145, 198, 0.21),
@@ -1027,6 +1031,7 @@ body.has-posts-panel-open .site-brand-footer {
 /* Update drawing widget positioning */
 .drawing-widget {
     position: absolute;
+    top: var(--open-surface-top);
     left: 50%;
     transform: translateX(-50%) translateY(-8px) scale(0.985);
     opacity: 0;
@@ -1295,37 +1300,210 @@ body.has-posts-panel-open .site-brand-footer {
     outline: none;
 }
 
+.socials-close-icon {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    flex: 0 0 auto;
+    color: rgba(184, 74, 117, 0.88);
+    font-family: ui-rounded, "Arial Rounded MT Bold", system-ui, sans-serif;
+    font-size: 20px;
+    font-weight: 400;
+    line-height: 1;
+}
+
 .socials-button.open {
-    width: 146px;
-}
-
-.socials-button.open .socials-options {
-    max-width: 106px;
-}
-
-.socials-button.open[data-visible-count="1"] {
-    width: 84px;
-}
-
-.socials-button.open[data-visible-count="1"] .socials-options {
-    max-width: 31px;
-}
-
-.socials-button.open[data-visible-count="2"] {
-    width: 116px;
-}
-
-.socials-button.open[data-visible-count="2"] .socials-options {
-    max-width: 68px;
-}
-
-.social-option {
-    min-width: 31px;
-    width: 31px;
+    width: 46px;
+    flex-basis: 46px;
+    gap: 0;
     padding: 0;
-    background: transparent;
-    box-shadow: none;
-    text-shadow: none;
+    background: linear-gradient(145deg, rgba(255, 252, 254, 0.98), rgba(255, 226, 239, 0.9));
+    box-shadow:
+        0 5px 13px rgba(211, 92, 140, 0.15),
+        inset 0 1px 0 rgba(255, 255, 255, 0.94);
+}
+
+.socials-button.open > .socials-close-icon {
+    display: inline-flex;
+}
+
+.socials-button.open::before,
+.socials-button.open::after {
+    opacity: 0;
+    animation: none;
+}
+
+.social-links-panel {
+    position: absolute;
+    top: var(--open-surface-top);
+    left: 50%;
+    z-index: 8;
+    display: grid;
+    width: min(82vw, 254px);
+    gap: 8px;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transform: translateX(-50%) translateY(-8px) scale(0.985);
+    transform-origin: 50% 18%;
+    transition:
+        opacity 0.34s ease,
+        transform 0.42s cubic-bezier(0.22, 1, 0.36, 1),
+        visibility 0s linear 0.42s;
+}
+
+.social-links-panel.active {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transform: translateX(-50%) translateY(0) scale(1);
+    transition-delay: 0s;
+}
+
+.social-link-card {
+    position: relative;
+    isolation: isolate;
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1fr) 18px;
+    align-items: center;
+    min-height: 68px;
+    gap: 10px;
+    padding: 7px 12px 7px 10px;
+    overflow: hidden;
+    border: 1px solid rgba(255, 174, 207, 0.52);
+    border-radius: 18px;
+    background:
+        linear-gradient(rgba(255, 255, 255, 0.76), rgba(255, 247, 252, 0.68)),
+        repeating-linear-gradient(90deg, rgba(255, 229, 241, 0.14) 0 8px, rgba(255, 250, 253, 0.12) 8px 16px);
+    box-shadow:
+        var(--glass-pink-shadow),
+        inset 0 1px 0 rgba(255, 255, 255, 0.78);
+    color: rgba(106, 92, 99, 0.78);
+    text-decoration: none;
+    -webkit-tap-highlight-color: transparent;
+    transition: transform 0.18s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+/* Future card videos can use this class and will stay softly masked beneath
+   the existing icon, copy, and arrow without changing the card structure. */
+.social-link-preview {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    opacity: 0.34;
+    filter: saturate(0.78) brightness(1.06);
+    pointer-events: none;
+}
+
+.social-link-card:has(.social-link-preview)::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    background: linear-gradient(90deg, rgba(255, 250, 253, 0.72), rgba(255, 240, 248, 0.38));
+    pointer-events: none;
+}
+
+.social-link-card > :not(.social-link-preview) {
+    position: relative;
+    z-index: 2;
+}
+
+.social-link-icon {
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+}
+
+.social-link-icon img {
+    display: block;
+    width: 36px;
+    height: 36px;
+    object-fit: contain;
+    filter: none;
+}
+
+.social-link-kofi-icon img {
+    width: 29px;
+    height: 29px;
+}
+
+.social-link-copy {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    align-items: flex-start;
+    line-height: 1.1;
+}
+
+.social-link-copy strong {
+    overflow: hidden;
+    max-width: 100%;
+    color: rgba(106, 92, 99, 0.78);
+    font-family: "Comic Sans MS", "Trebuchet MS", cursive;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.social-link-copy small {
+    overflow: hidden;
+    max-width: 100%;
+    margin-top: 3px;
+    color: rgba(174, 85, 130, 0.62);
+    font-family: "Trebuchet MS", Arial, sans-serif;
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: 0.025em;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.social-link-arrow {
+    color: rgba(174, 85, 130, 0.44);
+    font-family: "Trebuchet MS", Arial, sans-serif;
+    font-size: 14px;
+    line-height: 1;
+    transform: translateY(-1px);
+}
+
+@media (hover: hover) and (pointer: fine) {
+    .social-link-card:hover,
+    .social-link-card:focus-visible {
+        border-color: rgba(255, 157, 201, 0.68);
+        background:
+            linear-gradient(rgba(255, 255, 255, 0.84), rgba(255, 242, 249, 0.76)),
+            repeating-linear-gradient(90deg, rgba(255, 229, 241, 0.16) 0 8px, rgba(255, 250, 253, 0.14) 8px 16px);
+        box-shadow:
+            0 9px 22px rgba(255, 145, 195, 0.18),
+            inset 0 1px 0 rgba(255, 255, 255, 0.84);
+        outline: none;
+        transform: translateY(-1px);
+    }
+}
+
+.social-link-card:focus-visible {
+    outline: 2px solid rgba(255, 148, 197, 0.5);
+    outline-offset: 2px;
+}
+
+.social-link-card:active {
+    transform: scale(0.985);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .social-links-panel,
+    .social-link-card {
+        transition: none;
+    }
 }
 
 .site-link-hidden {
@@ -1334,7 +1512,7 @@ body.has-posts-panel-open .site-brand-footer {
 
 body:not(.site-links-ready) #socials-button,
 body:not(.site-links-ready) #support-menu-button,
-body:not(.site-links-ready) .social-option,
+body:not(.site-links-ready) #social-links-panel,
 body.kofi-public-hidden [id^="kofi-widget-overlay-"],
 body.kofi-public-hidden .floatingchat-container,
 body.kofi-public-hidden .floatingchat-container-mobi,
@@ -1741,24 +1919,6 @@ body.first-visit-tour-active .tour-highlight-target {
     }
 }
 
-.social-option img {
-    width: 30px;
-    height: 30px;
-    object-fit: contain;
-    filter: none;
-}
-
-.kofi-social-option img {
-    width: 25px;
-    height: 25px;
-    filter: brightness(0.72) contrast(1.16) saturate(1.08);
-}
-
-.social-option:hover,
-.social-option:focus-visible {
-    background: transparent;
-}
-
 .action-menu-button {
     color: #d7c0c5;
 }
@@ -1857,7 +2017,7 @@ body.first-visit-tour-active .tour-highlight-target {
 .ask-form-container {
     display: none;
     position: absolute;
-    top: 0;
+    top: var(--open-surface-top);
     left: 50%;
     transform: translateX(-50%) scale(1.1);
     transform-origin: top center;
@@ -1869,7 +2029,7 @@ body.first-visit-tour-active .tour-highlight-target {
     border: 2px solid rgba(255, 171, 205, 0.54);
     border-radius: 18px;
     padding: 22px 16px 24px;
-    margin-top: 0.625rem;
+    margin-top: 0;
     box-shadow: 0 6px 18px rgba(255, 174, 211, 0.2), inset 0 0 0 1px rgba(255, 255, 255, 0.82);
     backdrop-filter: blur(3px);
     -webkit-backdrop-filter: blur(3px);
@@ -2053,7 +2213,7 @@ body.first-visit-tour-active .tour-highlight-target {
 .posts-popup {
     display: block;
     position: absolute;
-    top: 0;
+    top: var(--open-surface-top);
     left: 0;
     width: 100%;
     height: auto;

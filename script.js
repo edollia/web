@@ -1155,7 +1155,7 @@ document.addEventListener("DOMContentLoaded", async function() {
 
     // ===== SOCIALS AND SUPPORT MENUS =====
     const socialsButton = document.getElementById('socials-button');
-    const socialsOptions = socialsButton?.querySelector('.socials-options');
+    const socialLinksPanel = document.getElementById('social-links-panel');
     const snapchatOption = document.getElementById('snapchat-option');
     const instagramOption = document.getElementById('instagram-option');
     const supportMenuButton = document.getElementById('support-menu-button');
@@ -1187,7 +1187,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     }
 
     function getVisibleSocialOptions() {
-        return Array.from(socialsButton?.querySelectorAll('.social-option') || [])
+        return Array.from(socialLinksPanel?.querySelectorAll('.social-link-card') || [])
             .filter(option => !option.classList.contains('site-link-hidden'));
     }
 
@@ -1346,12 +1346,13 @@ document.addEventListener("DOMContentLoaded", async function() {
         }
         if (socialsButton) {
             const hasVisibleLinks = getVisibleSocialOptions().length > 0;
-            const visibleCount = getVisibleSocialOptions().length;
-            socialsButton.dataset.visibleCount = String(visibleCount);
             socialsButton.classList.toggle('site-link-hidden', !hasVisibleLinks);
             socialsButton.setAttribute('aria-hidden', hasVisibleLinks ? 'false' : 'true');
             socialsButton.setAttribute('tabindex', hasVisibleLinks ? '0' : '-1');
             if (!hasVisibleLinks) closeSocialsMenu();
+            getVisibleSocialOptions().forEach(option => {
+                option.setAttribute('tabindex', socialsButton.classList.contains('open') ? '0' : '-1');
+            });
         }
         syncStructuredDataLinks();
         renderSeoSettings();
@@ -1424,18 +1425,24 @@ document.addEventListener("DOMContentLoaded", async function() {
         tryOpen();
     }
 
-    function closeSocialsMenu() {
+    function closeSocialsMenu({ restoreNote = true } = {}) {
         if (!socialsButton) return;
         const wasOpen = socialsButton.classList.contains('open');
         socialsButton.classList.remove('open');
         socialsButton.setAttribute('aria-expanded', 'false');
-        socialsOptions?.setAttribute('aria-hidden', 'true');
+        socialsButton.setAttribute('aria-label', 'Open socials');
+        socialLinksPanel?.classList.remove('active');
+        socialLinksPanel?.setAttribute('aria-hidden', 'true');
         if (wasOpen && typeof window.closeKofiOverlay === 'function') {
             window.closeKofiOverlay();
         }
         getVisibleSocialOptions().forEach(option => {
             option.setAttribute('tabindex', '-1');
         });
+        if (wasOpen && restoreNote) {
+            notePeelTarget?.classList.remove('hidden');
+            noteImage?.classList.remove('hidden');
+        }
     }
 
     function closeSupportMenu() {
@@ -1474,26 +1481,29 @@ document.addEventListener("DOMContentLoaded", async function() {
     }
 
     function handleSocialsButtonActivate(e) {
-        if (e.target.closest('.social-option')) {
+        e.preventDefault();
+        e.stopPropagation();
+        playUiSound('tap');
+
+        if (socialsButton.classList.contains('open')) {
+            closeSocialsMenu();
             return;
         }
 
-        e.preventDefault();
-        e.stopPropagation();
-        if (!socialsButton.classList.contains('open')) {
-            closeSupportMenu();
-            closeActionMenu();
-        }
-
-        playUiSound('tap');
-        const isOpen = socialsButton.classList.toggle('open');
-        socialsButton.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
-        socialsOptions?.setAttribute('aria-hidden', isOpen ? 'false' : 'true');
-        if (!isOpen && typeof window.closeKofiOverlay === 'function') {
-            window.closeKofiOverlay();
-        }
+        closeSupportMenu();
+        closeActionMenu();
+        closeDrawingWidget();
+        closeQuestionForm();
+        closePostsPanel();
+        hideNoteImage();
+        socialsButton.classList.remove('show-glitter');
+        socialsButton.classList.add('open');
+        socialsButton.setAttribute('aria-expanded', 'true');
+        socialsButton.setAttribute('aria-label', 'Close socials');
+        socialLinksPanel?.classList.add('active');
+        socialLinksPanel?.setAttribute('aria-hidden', 'false');
         getVisibleSocialOptions().forEach(option => {
-            option.setAttribute('tabindex', isOpen ? '0' : '-1');
+            option.setAttribute('tabindex', '0');
         });
     }
 
@@ -1733,7 +1743,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         e.preventDefault();
         e.stopPropagation();
         if (siteLinkSettings.maintenance_enabled === true) return;
-        closeSocialsMenu();
+        closeSocialsMenu({ restoreNote: false });
         closeActionMenu();
         if (!isPublicLinkEnabled('throne')) return;
         const useMockup = siteLinkSettings.throne_checkout_mode !== 'widget';

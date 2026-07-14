@@ -91,7 +91,7 @@
     }
     </script>
 
-    <link rel="stylesheet" href="styles.css?v=10.8">
+    <link rel="stylesheet" href="styles.css?v=11.1">
 </head>
 <body>
     <!-- Loading Screen -->
@@ -130,20 +130,9 @@
         <div class="toggle-container">
             <div class="button-group">
                 <div class="icon-container">
-                    <div id="socials-button" class="email-button support-menu-button socials-button" role="button" tabindex="0" aria-label="Open socials" aria-expanded="false">
+                    <div id="socials-button" class="email-button support-menu-button socials-button" role="button" tabindex="0" aria-label="Open socials" aria-expanded="false" aria-controls="social-links-panel">
                         <span class="socials-menu-label menu-main-icon">꩜</span>
-                        <span class="menu-back-arrow" aria-hidden="true">↢</span>
-                        <span class="support-options socials-options" aria-hidden="true">
-                            <a id="snapchat-option" class="support-option social-option" href="https://www.snapchat.com/add/dumidoll" target="_blank" rel="noopener noreferrer" tabindex="-1" aria-label="Snapchat">
-                                <img src="snap.png" alt="Snapchat" width="1203" height="1203">
-                            </a>
-                            <a id="instagram-option" class="support-option social-option" href="https://www.instagram.com/pawswirl" target="_blank" rel="noopener noreferrer" tabindex="-1" aria-label="Instagram">
-                                <img src="insta.png" alt="Instagram" width="1290" height="1290">
-                            </a>
-                            <a id="donate-option" class="support-option social-option kofi-social-option" href="https://ko-fi.com/edoll" target="_blank" rel="noopener noreferrer" tabindex="-1" aria-label="Ko-fi">
-                                <img src="mail.png" alt="Ko-fi" width="96" height="96">
-                            </a>
-                        </span>
+                        <span class="socials-close-icon" aria-hidden="true">&times;</span>
                     </div>
                 </div>
                 <a id="support-menu-button" class="email-button support-menu-button wishlist-direct-button" href="https://throne.com/edoll" target="_blank" rel="noopener noreferrer" aria-label="Open wishlist">
@@ -168,6 +157,39 @@
                     <span class="note-peel-corner" aria-hidden="true"></span>
                     <span class="note-peel-curl" aria-hidden="true"></span>
                 </div>
+
+                <nav id="social-links-panel" class="social-links-panel" aria-label="Social links" aria-hidden="true">
+                    <a id="snapchat-option" class="social-link-card" href="https://www.snapchat.com/add/dumidoll" target="_blank" rel="noopener noreferrer" tabindex="-1" aria-label="Open Snapchat: dumidoll">
+                        <span class="social-link-icon" aria-hidden="true">
+                            <img src="snap.png" alt="" width="1203" height="1203">
+                        </span>
+                        <span class="social-link-copy">
+                            <strong>snapchat</strong>
+                            <small>dumidoll</small>
+                        </span>
+                        <span class="social-link-arrow" aria-hidden="true">↗</span>
+                    </a>
+                    <a id="instagram-option" class="social-link-card" href="https://www.instagram.com/pawswirl" target="_blank" rel="noopener noreferrer" tabindex="-1" aria-label="Open Instagram: pawswirl">
+                        <span class="social-link-icon" aria-hidden="true">
+                            <img src="insta.png" alt="" width="1290" height="1290">
+                        </span>
+                        <span class="social-link-copy">
+                            <strong>instagram</strong>
+                            <small>@pawswirl</small>
+                        </span>
+                        <span class="social-link-arrow" aria-hidden="true">↗</span>
+                    </a>
+                    <a id="donate-option" class="social-link-card" href="https://ko-fi.com/edoll" target="_blank" rel="noopener noreferrer" tabindex="-1" aria-label="Open Ko-fi: edoll">
+                        <span class="social-link-icon social-link-kofi-icon" aria-hidden="true">
+                            <img src="kofi.png" alt="" width="1254" height="1254">
+                        </span>
+                        <span class="social-link-copy">
+                            <strong>kofi</strong>
+                            <small>edoll</small>
+                        </span>
+                        <span class="social-link-arrow" aria-hidden="true">↗</span>
+                    </a>
+                </nav>
 
                 <div id="ask-form-container" class="ask-form-container">
                     <span class="ask-deco ask-sparkle-left" aria-hidden="true">✧</span>
@@ -294,8 +316,8 @@
       }
     </script>
     <script src="throne-overlay-widget.js?v=3.7"></script>
-    <script src="throne-mockup-widget.js?v=15"></script>
-    <script src="script.js?v=9.8"></script>
+    <script src="throne-mockup-widget.js?v=17"></script>
+    <script src="script.js?v=9.9"></script>
     
     <!-- GoatCounter Analytics -->
     <script data-goatcounter="https://dollia.goatcounter.com/count"
