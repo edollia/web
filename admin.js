@@ -991,12 +991,9 @@ async function ensureAdminSession() {
 async function loadAdminData({ preserveDrafts = true } = {}) {
     setStatus(els.adminStatus, 'loading...');
 
-    const [drawingsResult, questionsResult, chatResult, bansResult, settingsResult, linkSettingsResult, wishlistItemsResult, wishlistSyncResult] = await Promise.all([
+    const [drawingsResult, questionsResult, linkSettingsResult, wishlistItemsResult, wishlistSyncResult] = await Promise.all([
         adminClient.from('drawings').select('*').order('created_at', { ascending: false }),
         adminClient.from('questions').select('*').order('created_at', { ascending: false }),
-        adminClient.from('stream_messages').select('*').order('created_at', { ascending: false }).limit(120),
-        adminClient.from('stream_chat_bans').select('*').eq('is_active', true).order('created_at', { ascending: false }),
-        adminClient.from('stream_chat_settings').select('*').eq('id', true).maybeSingle(),
         adminClient.from('site_settings').select('value').eq('id', 'links').maybeSingle(),
         adminClient.from('wishlist_items').select('*').order('featured', { ascending: false }).order('position').order('name'),
         adminClient.from('wishlist_sync_state').select('last_synced_at').eq('id', true).maybeSingle()
@@ -1004,125 +1001,33 @@ async function loadAdminData({ preserveDrafts = true } = {}) {
 
     if (drawingsResult.error) throw drawingsResult.error;
     if (questionsResult.error) throw questionsResult.error;
-    if (chatResult.error && chatResult.error.code !== '42P01') throw chatResult.error;
-    if (bansResult.error && bansResult.error.code !== '42P01') throw bansResult.error;
-    if (settingsResult.error && settingsResult.error.code !== '42P01' && settingsResult.error.code !== 'PGRST116') throw settingsResult.error;
     if (linkSettingsResult.error && linkSettingsResult.error.code !== '42P01' && linkSettingsResult.error.code !== 'PGRST116') throw linkSettingsResult.error;
     if (wishlistItemsResult.error && wishlistItemsResult.error.code !== '42P01') throw wishlistItemsResult.error;
 
     state.drawings = drawingsResult.data || [];
     state.questions = questionsResult.data || [];
-    state.streamMessages = chatResult.data || [];
-    state.streamBans = bansResult.data || [];
     state.wishlistItemsAvailable = !wishlistItemsResult.error;
     state.wishlistItems = wishlistItemsResult.data || [];
     state.wishlistSyncedAt = wishlistSyncResult.data?.last_synced_at || null;
-    if (settingsResult.data) {
-        state.chatSettings = {
-            chat_enabled: settingsResult.data.chat_enabled !== false,
-            slow_mode_seconds: Number(settingsResult.data.slow_mode_seconds ?? 5),
-            blocked_words: Array.isArray(settingsResult.data.blocked_words) ? settingsResult.data.blocked_words : []
-        };
-    }
     state.linkSettingsAvailable = !linkSettingsResult.error || linkSettingsResult.error.code === 'PGRST116';
     state.linkSettings = normalizeLinkSettings(linkSettingsResult.data?.value);
     renderAll({ preserveDrafts });
     setStatus(els.adminStatus, '');
 }
 
-async function loadStreamChatOnly() {
-    if (chatPollInFlight) return;
-    chatPollInFlight = true;
-
-    try {
-        const { data, error } = await adminClient
-            .from('stream_messages')
-            .select('*')
-            .order('created_at', { ascending: false })
-            .limit(120);
-        if (error) {
-            if (error.code !== '42P01') throw error;
-            return;
-        }
-        state.streamMessages = data || [];
-        renderStats();
-        renderChatMessages();
-    } catch (error) {
-        setStatus(els.adminStatus, error.message || 'Could not refresh chat.');
-    } finally {
-        chatPollInFlight = false;
-    }
-}
-
 function getItemById(collection, id) {
     return collection.find(item => item.id === id) || null;
-}
-
-function confirmDangerAction(message) {
-    return window.confirm(message);
-}
-
-async function addChatBan(type, value, note) {
-    const cleanType = type === 'nickname' ? 'nickname' : 'ip';
-    const cleanValue = String(value || '').trim();
-    if (!cleanValue) throw new Error('ban value is missing');
-
-    const payload = {
-        ban_type: cleanType,
-        ban_value: cleanType === 'nickname' ? cleanValue.toLowerCase() : cleanValue,
-        note: String(note || '').trim() || null,
-        is_active: true
-    };
-    const { error } = await adminClient.from('stream_chat_bans').insert(payload);
-    if (error) throw error;
 }
 
 async function openDashboard() {
     showPanel(els.dashboardPanel);
     try {
         await loadAdminData({ preserveDrafts: false });
-        startAdminRealtime();
-        startAdminChatPolling();
         checkStaticSeoStatus().catch(() => renderStaticSeoStatus());
     } catch (error) {
         setStatus(els.adminStatus, error.message || 'Could not load admin data.');
     }
     window.roomsLockdownStatus?.().catch(err => console.error('rooms lockdown status:', err));
-}
-
-function startAdminChatPolling() {
-    window.clearInterval(adminChatPollTimer);
-    adminChatPollTimer = window.setInterval(() => {
-        if (document.hidden || !document.getElementById('chat-panel')?.classList.contains('active')) {
-            return;
-        }
-        loadStreamChatOnly();
-    }, 1500);
-}
-
-function startAdminRealtime() {
-    if (adminChatChannel) return;
-
-    adminChatChannel = adminClient
-        .channel('doll_admin_stream_chat')
-        .on('postgres_changes', {
-            event: '*',
-            schema: 'public',
-            table: 'stream_messages'
-        }, () => {
-            loadStreamChatOnly().catch(error => {
-                setStatus(els.adminStatus, error.message || 'Could not refresh chat.');
-            });
-        })
-        .subscribe();
-}
-
-async function stopAdminRealtime() {
-    window.clearInterval(adminChatPollTimer);
-    adminChatPollTimer = null;
-    if (!adminChatChannel) return;
-    await adminClient.removeChannel(adminChatChannel);
-    adminChatChannel = null;
 }
 
 async function handleLogin(e) {
