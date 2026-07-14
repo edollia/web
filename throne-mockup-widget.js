@@ -32,12 +32,11 @@
     let items = [];
     let selectedIds = new Set();
     let loadState = 'idle'; // idle | loading | ready | failed
-    // TEMP: which of the 3 wishlist layouts to render — 'grid' is the
-    // current live one; 'list' and 'masonry' are the two new options being
-    // compared. Cycled by the dwl-mode-toggle button (see buildPanel /
-    // onModeToggleClick). Drop this whole flag, the toggle button, and
-    // whichever two render paths don't get picked once a mode is settled.
-    let wishlistViewMode = 'grid'; // 'grid' | 'list' | 'masonry'
+    // Which of the 3 wishlist layouts to render. Defaults to 'masonry' and
+    // is overridden by the admin-configurable wishlist_view_mode setting
+    // (fetched in loadItems, see applyWishlistViewModeSetting) — grid and
+    // list stay in the code as the other two options that setting can pick.
+    let wishlistViewMode = 'masonry'; // 'grid' | 'list' | 'masonry'
     const WISHLIST_VIEW_MODES = ['grid', 'list', 'masonry'];
     let checkoutInFlight = false;
     let checkoutStatusMessage = '';
@@ -212,28 +211,24 @@
                 to { opacity: 1; transform: translateY(0) scale(1); }
             }
 
-            /* TEMP — dev-only control to cycle the 3 view modes for live
-               comparison. Delete this rule, the button in buildPanel, and
-               onModeToggleClick once a mode is picked. */
-            .dwl-mode-toggle {
-                display: block;
-                margin: 0 0 6px;
-                padding: 5px 12px;
-                border-radius: 999px;
-                border: 1px solid rgba(245, 185, 208, 0.82);
-                background: linear-gradient(180deg, #fff, #ffedf4);
-                color: #ef6d9f;
-                font-family: var(--dwl-sans);
-                font-size: 10.5px;
-                font-weight: 700;
-                cursor: pointer;
-                box-shadow: 0 3px 8px rgba(210, 88, 136, 0.15);
-                -webkit-tap-highlight-color: transparent;
-            }
-            .dwl-mode-toggle:active { transform: scale(0.94); }
-
             .doll-wishlist-body {
                 position: relative;
+            }
+            /* List/masonry can hold many more items than the paged grid
+               ever showed at once, so without a cap the whole panel (and
+               the page space reserved for it, see syncReservedHeight)
+               would grow to fit every item — pushing the checkout bar
+               further down the more things are on the wishlist, exactly
+               backwards from what a shopping list needs. Capping the body
+               and scrolling *inside* it keeps checkout always one short
+               reach away, right under the visible items, no matter how
+               long the list is. */
+            .doll-wishlist-body.dwl-scroll-body {
+                max-height: 380px;
+                overflow-y: auto;
+                overflow-x: hidden;
+                overscroll-behavior-y: contain;
+                -webkit-overflow-scrolling: touch;
             }
 
             .doll-wishlist-scroll {
@@ -272,10 +267,9 @@
                 grid-column: 1 / -1;
             }
 
-            /* TEMP: two alternate view-mode containers, alongside the
-               paged grid above, while the wishlist layout is being decided
-               — see wishlistViewMode and the dwl-mode-toggle button. Remove
-               whichever two don't get picked once a mode is settled on. */
+            /* The other two wishlist layouts, alongside the paged grid
+               above — which one renders is driven by the admin-configurable
+               wishlist_view_mode setting (see applyWishlistViewModeSetting). */
             .doll-wishlist-list {
                 display: flex;
                 flex-direction: column;
@@ -1464,7 +1458,6 @@
         panel.className = 'doll-wishlist-panel';
         panel.setAttribute('aria-hidden', 'true');
         panel.innerHTML = `
-            <button type="button" class="dwl-mode-toggle" id="dwl-mode-toggle-btn">view: grid (tap to cycle)</button>
             <div class="doll-wishlist-body"></div>
             <nav class="doll-wishlist-dots" aria-label="wishlist pages"></nav>
             <p class="doll-wishlist-status"></p>
@@ -1495,22 +1488,9 @@
         }
 
         panel.querySelector('.doll-wishlist-checkout').addEventListener('click', startCheckout);
-        panel.querySelector('#dwl-mode-toggle-btn').addEventListener('click', onModeToggleClick);
         setupConflictGuards();
 
         return panel;
-    }
-
-    // TEMP — cycles grid -> list -> masonry -> grid and re-renders in place
-    // so the 3 layouts can be compared live without reopening the panel.
-    // Delete this function and the button in buildPanel once one is picked.
-    function onModeToggleClick() {
-        const currentIndex = WISHLIST_VIEW_MODES.indexOf(wishlistViewMode);
-        wishlistViewMode = WISHLIST_VIEW_MODES[(currentIndex + 1) % WISHLIST_VIEW_MODES.length];
-        const btn = panel?.querySelector('#dwl-mode-toggle-btn');
-        if (btn) btn.textContent = `view: ${wishlistViewMode} (tap to cycle)`;
-        resetSwipeHintSequence();
-        renderBody();
     }
 
     function ensurePanel() {
@@ -1863,6 +1843,7 @@
     function renderBody() {
         if (!panel) return;
         const body = panel.querySelector('.doll-wishlist-body');
+        body.classList.toggle('dwl-scroll-body', wishlistViewMode === 'list' || wishlistViewMode === 'masonry');
         if (loadState === 'loading') {
             pauseSwipeHintSequence();
             body.innerHTML = renderSkeleton();

@@ -1015,8 +1015,8 @@ async function loadAdminData({ preserveDrafts = true } = {}) {
     setStatus(els.adminStatus, '');
 }
 
-function getItemById(collection, id) {
-    return collection.find(item => item.id === id) || null;
+function confirmDangerAction(message) {
+    return window.confirm(message);
 }
 
 async function openDashboard() {
@@ -1098,24 +1098,6 @@ async function runAction(button) {
             if (error) throw error;
         }
 
-        if (action === 'hide-chat' || action === 'show-chat') {
-            const { error } = await adminClient
-                .from('stream_messages')
-                .update({ is_hidden: action === 'hide-chat' })
-                .eq('id', id);
-            if (error) throw error;
-        }
-
-        if (action === 'delete-chat') {
-            const { error } = await adminClient.from('stream_messages').delete().eq('id', id);
-            if (error) throw error;
-        }
-
-        if (action === 'ban-chat-ip' || action === 'ban-chat-user') {
-            const item = getItemById(state.streamMessages, id);
-            await addChatBan('ip', item?.ip_address, `${item?.nickname || 'unknown'} from message ${id}`);
-        }
-
         if (action === 'feature-wishlist-item' || action === 'unfeature-wishlist-item') {
             const featured = action === 'feature-wishlist-item';
             const update = { featured };
@@ -1149,115 +1131,9 @@ async function runAction(button) {
     }
 }
 
-async function runChatAction(button) {
-    const action = button.dataset.chatAction;
-    if (!action) return;
-
-    if (action === 'refresh') {
-        await loadStreamChatOnly();
-        return;
-    }
-
-    if (action === 'clear-visible' && !confirmDangerAction('Hide every visible chat message?')) return;
-    if (action === 'delete-all' && !confirmDangerAction('Delete every chat message? This cannot be undone.')) return;
-
-    button.disabled = true;
-    setStatus(els.adminStatus, 'saving chat...');
-    try {
-        if (action === 'clear-visible') {
-            const { error } = await adminClient
-                .from('stream_messages')
-                .update({ is_hidden: true })
-                .eq('is_hidden', false);
-            if (error) throw error;
-        }
-
-        if (action === 'delete-all') {
-            const { error } = await adminClient
-                .from('stream_messages')
-                .delete()
-                .not('id', 'is', null);
-            if (error) throw error;
-        }
-
-        if (action === 'toggle-pause') {
-            const nextEnabled = state.chatSettings.chat_enabled === false;
-            const { error } = await adminClient
-                .from('stream_chat_settings')
-                .upsert({
-                    id: true,
-                    chat_enabled: nextEnabled,
-                    slow_mode_seconds: Number(state.chatSettings.slow_mode_seconds ?? 5),
-                    blocked_words: state.chatSettings.blocked_words || [],
-                    updated_at: new Date().toISOString()
-                });
-            if (error) throw error;
-        }
-
-        await loadAdminData();
-    } catch (error) {
-        setStatus(els.adminStatus, error.message || 'Chat action failed.');
-    } finally {
-        button.disabled = false;
-    }
-}
-
-async function saveChatSettings(event) {
-    event.preventDefault();
-    const slowMode = Math.max(0, Math.min(120, Number(els.chatSlowMode?.value || 0)));
-    const blockedWords = String(els.chatBlockedWords?.value || '')
-        .split(/[\n,]+/)
-        .map(word => word.trim().toLowerCase())
-        .filter(Boolean)
-        .slice(0, 80);
-
-    setStatus(els.adminStatus, 'saving rules...');
-    const { error } = await adminClient
-        .from('stream_chat_settings')
-        .upsert({
-            id: true,
-            chat_enabled: state.chatSettings.chat_enabled !== false,
-            slow_mode_seconds: slowMode,
-            blocked_words: blockedWords,
-            updated_at: new Date().toISOString()
-        });
-
-    if (error) {
-        setStatus(els.adminStatus, error.message || 'Could not save rules.');
-        return;
-    }
-
-    chatSettingsDraftDirty = false;
-    await loadAdminData({ preserveDrafts: false });
-}
-
-async function saveChatBan(event) {
-    event.preventDefault();
-    setStatus(els.adminStatus, 'adding ban...');
-
-    try {
-        await addChatBan(els.chatBanType?.value, els.chatBanValue?.value, els.chatBanNote?.value);
-        if (els.chatBanValue) els.chatBanValue.value = '';
-        if (els.chatBanNote) els.chatBanNote.value = '';
-        await loadAdminData();
-    } catch (error) {
-        setStatus(els.adminStatus, error.message || 'Could not add ban.');
-    }
-}
-
 function cleanUrl(value, label) {
     const cleanValue = String(value || '').trim();
     if (!cleanValue) throw new Error(`${label} link is missing`);
-    try {
-        return new URL(cleanValue).href;
-    } catch (error) {
-        throw new Error(`${label} link is not a valid URL`);
-    }
-}
-
-function cleanOptionalUrl(value, label) {
-    const cleanValue = String(value || '').trim();
-    if (!cleanValue) return '';
     try {
         return new URL(cleanValue).href;
     } catch (error) {
@@ -1295,14 +1171,6 @@ async function saveLinkSettingsNow() {
             maintenance_eta: els.maintenanceEta?.value.trim() || '',
             drawings_enabled: els.drawingsEnabled?.checked !== false,
             questions_enabled: els.questionsEnabled?.checked !== false,
-            stream_enabled: els.streamEnabled?.checked === true,
-            stream_chat_enabled: els.streamChatEnabled?.checked !== false,
-            stream_provider: els.streamProvider?.value || DEFAULT_LINK_SETTINGS.stream_provider,
-            stream_aspect: els.streamAspect?.value || DEFAULT_LINK_SETTINGS.stream_aspect,
-            stream_title: els.streamTitle?.value.trim() || DEFAULT_LINK_SETTINGS.stream_title,
-            stream_url: cleanOptionalUrl(els.streamUrl?.value, 'Stream'),
-            stream_video_url: cleanOptionalUrl(els.streamVideoUrl?.value, 'Preview video'),
-            stream_offline_message: els.streamOfflineMessage?.value.trim() || DEFAULT_LINK_SETTINGS.stream_offline_message,
             seo_title: els.seoTitle?.value.trim() || DEFAULT_LINK_SETTINGS.seo_title,
             seo_description: els.seoDescription?.value.trim() || DEFAULT_LINK_SETTINGS.seo_description,
             site_tagline: els.siteTagline?.value.trim() || DEFAULT_LINK_SETTINGS.site_tagline
@@ -1375,11 +1243,11 @@ async function runSiteHealthCheck() {
             }
         },
         {
-            label: 'stream page',
+            label: 'rooms page',
             run: async () => {
-                const response = await fetch('../stream/index.html', { cache: 'no-store' });
+                const response = await fetch('../rooms/index.html', { cache: 'no-store' });
                 const text = await response.text();
-                return response.ok && text.includes('stream-live-shell');
+                return response.ok && text.includes('id="view-lobby"');
             }
         },
         {
@@ -1438,27 +1306,6 @@ async function runSiteHealthCheck() {
     }
 
     if (els.healthState) els.healthState.textContent = `${passed}/${checks.length}`;
-}
-
-async function runBanAction(button) {
-    const row = button.closest('.admin-ban-row');
-    const id = row?.dataset.id;
-    if (!id) return;
-
-    button.disabled = true;
-    setStatus(els.adminStatus, 'removing ban...');
-    try {
-        const { error } = await adminClient
-            .from('stream_chat_bans')
-            .update({ is_active: false })
-            .eq('id', id);
-        if (error) throw error;
-        await loadAdminData();
-    } catch (error) {
-        setStatus(els.adminStatus, error.message || 'Could not remove ban.');
-    } finally {
-        button.disabled = false;
-    }
 }
 
 function getSelectedIds(listId) {
@@ -1577,9 +1424,7 @@ function initTabs() {
         document.querySelectorAll('.admin-panel').forEach(panel => panel.classList.remove('active'));
         button.classList.add('active');
         document.getElementById(button.dataset.panel)?.classList.add('active');
-        if (button.dataset.panel === 'chat-panel') {
-            loadStreamChatOnly();
-        } else if (button.dataset.panel === 'rooms-panel') {
+        if (button.dataset.panel === 'rooms-panel') {
             window.initRoomsPanel?.();
         }
     });
@@ -1603,7 +1448,6 @@ async function init() {
     els.loginForm.addEventListener('submit', handleLogin);
     els.refresh.addEventListener('click', loadAdminData);
     els.logout.addEventListener('click', async () => {
-        await stopAdminRealtime();
         SOCIAL_CARD_VIDEO_KEYS.forEach(revokeSocialVideoObjectUrl);
         await adminClient.auth.signOut();
         await window.roomsSignOut?.().catch(err => console.error('rooms signOut:', err));
@@ -1618,17 +1462,6 @@ async function init() {
         });
     });
 
-    document.querySelectorAll('[data-chat-action]').forEach(button => {
-        button.addEventListener('click', () => runChatAction(button));
-    });
-
-    els.chatSettingsForm?.addEventListener('submit', saveChatSettings);
-    [els.chatSlowMode, els.chatBlockedWords].forEach(input => {
-        input?.addEventListener('input', () => { chatSettingsDraftDirty = true; });
-    });
-    els.chatFilter?.addEventListener('input', renderChatMessages);
-    els.chatVisibilityFilter?.addEventListener('change', renderChatMessages);
-    els.chatBanForm?.addEventListener('submit', saveChatBan);
     els.wishlistSyncNow?.addEventListener('click', syncWishlistNow);
     els.wishlistFeatureAll?.addEventListener('click', featureAllWishlistItems);
     els.wishlistUnfeatureAll?.addEventListener('click', unfeatureAllWishlistItems);
@@ -1679,12 +1512,6 @@ async function init() {
         els.maintenanceTitle,
         els.maintenanceMessage,
         els.maintenanceEta,
-        els.streamProvider,
-        els.streamAspect,
-        els.streamTitle,
-        els.streamUrl,
-        els.streamVideoUrl,
-        els.streamOfflineMessage,
         els.seoTitle,
         els.seoDescription,
         els.siteTagline
@@ -1695,11 +1522,6 @@ async function init() {
             scheduleAutoSave();
         });
     });
-    els.streamBans?.addEventListener('click', e => {
-        const button = e.target.closest('button[data-ban-action]');
-        if (button) runBanAction(button);
-    });
-
     document.querySelectorAll('.admin-bulk-bar').forEach(bar => {
         bar.addEventListener('click', e => {
             const button = e.target.closest('button[data-bulk-action]');
