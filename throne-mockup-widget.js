@@ -6,7 +6,7 @@
     const SUPABASE_URL = 'https://zvqdodzkhmcptwkjlfeu.supabase.co';
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp2cWRvZHpraG1jcHR3a2psZmV1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg3NjM1NjAsImV4cCI6MjA2NDMzOTU2MH0.i1xbRIhPHVkDIrnDlQFP0ebNklrx8WVQcQo8Iuo9zG8';
     const FETCH_TIMEOUT_MS = 6000;
-    const MAX_FEATURED = 12;
+    const MAX_FEATURED = 20;
     const NAME_MAX = 60;
     const CARD_GAP = 10;
     const PAGE_SIZE = 4;
@@ -495,10 +495,10 @@
 
             /* Plain price text on the grid card — selecting an item is the
                heart button's job alone; the price is just informational
-               here. The dashed tag-shaped button below (.doll-wishlist-price-tag)
-               is only used in the preview lightbox, as its own clickable
-               control there. Just the second line of .doll-wishlist-info
-               now, no wrapper row of its own needed. */
+               here. The price pill below (.doll-wishlist-price-tag) is only
+               used in the preview lightbox, as its own clickable control
+               there. Just the second line of .doll-wishlist-info now, no
+               wrapper row of its own needed. */
             .doll-wishlist-price {
                 display: block;
                 min-width: 0;
@@ -514,40 +514,52 @@
                 letter-spacing: -0.01em;
             }
 
-            /* Same real glass-pink control tokens as the title pill, with
-               one straight clipped corner — just enough to read "tag"
-               without needing hand-authored path/dash geometry (the
-               earlier SVG kite shape's dashed stroke didn't distribute
-               evenly around its point and hole, which is exactly what read
-               as sketchy up close). Used only in the preview lightbox as
-               its own clickable control — tapping it toggles selection
-               exactly like the heart button. It has no .doll-wishlist-item
-               ancestor there, so its selected look is driven by an
-               explicit .is-selected class rather than a parent rule. */
+            /* The preview title is plain text (see .doll-wishlist-preview-name
+               below), so this tag is the single, unambiguous control in the
+               caption — the only thing that looks like a button gets to be
+               one. Solid pill using the site's real glass-pink tokens (the
+               earlier clip-path notch read as noise at 13px), with a real
+               dark drop shadow so it stays legible sitting directly on the
+               blurred backdrop. Heart glyph crossfades outline -> filled
+               exactly like .doll-wishlist-cart-btn (same HEART_PATH, same
+               dollWishlistHeartIn keyframe), so selecting from the tag or
+               the grid card reads as the same action. It has no
+               .doll-wishlist-item ancestor here, so its selected look is
+               driven by an explicit .is-selected class rather than a
+               parent rule. */
             .doll-wishlist-price-tag {
                 display: inline-flex;
                 align-items: center;
+                gap: 6px;
                 background: linear-gradient(to right, #fdeef5, #ffdbee);
-                border: 1px solid rgba(255, 199, 222, 0.42);
-                box-shadow: 0 2px 7px rgba(255, 145, 195, 0.14);
-                clip-path: polygon(10px 0, 100% 0, 100% 100%, 10px 100%, 0 50%);
-                border-radius: 4px;
-                padding: 8px 16px 8px 21px;
-                color: rgba(106, 92, 99, 0.85);
-                font-family: var(--dwl-cute, "Comic Sans MS", cursive);
-                font-size: 13px;
-                font-weight: 700;
+                border: 1px solid rgba(255, 199, 222, 0.6);
+                border-radius: 999px;
+                padding: 8px 18px;
+                color: #7b304a;
+                font-family: var(--dwl-sans);
+                font-size: 13.5px;
+                font-weight: 800;
+                letter-spacing: -0.01em;
                 cursor: pointer;
-                transition: transform 0.16s cubic-bezier(0.2, 0.8, 0.25, 1.25), background 0.18s ease, color 0.18s ease;
+                box-shadow: 0 6px 16px rgba(0, 0, 0, 0.3), 0 2px 7px rgba(255, 145, 195, 0.2);
+                transition: transform 0.16s cubic-bezier(0.2, 0.8, 0.25, 1.25), background 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
                 -webkit-tap-highlight-color: transparent;
             }
+            .doll-wishlist-price-tag svg { width: 13px; height: 13px; display: block; flex: 0 0 auto; }
+            .doll-wishlist-price-tag .dwl-heart-filled { display: none; }
             .doll-wishlist-price-tag:active {
                 transform: scale(0.92);
             }
             .doll-wishlist-price-tag.is-selected {
-                background: linear-gradient(to right, #fbdde9, #ff98ca);
-                color: rgba(255, 255, 255, 0.96);
+                background: linear-gradient(to right, #f5527f, #ff8bb3);
+                color: #fff;
+                box-shadow: 0 8px 18px rgba(237, 88, 143, 0.4), 0 2px 7px rgba(255, 145, 195, 0.2);
                 animation: dollWishlistTagPop 0.32s cubic-bezier(0.2, 0.85, 0.25, 1.35);
+            }
+            .doll-wishlist-price-tag.is-selected .dwl-heart { display: none; }
+            .doll-wishlist-price-tag.is-selected .dwl-heart-filled {
+                display: block;
+                animation: dollWishlistHeartIn 0.32s cubic-bezier(0.2, 0.85, 0.25, 1.35);
             }
             @keyframes dollWishlistTagPop {
                 0%   { transform: scale(0.85); }
@@ -555,7 +567,7 @@
                 100% { transform: scale(1); }
             }
             @media (hover: hover) and (pointer: fine) {
-                .doll-wishlist-price-tag:hover {
+                .doll-wishlist-price-tag:not(.is-selected):hover {
                     transform: scale(1.05);
                     background: linear-gradient(to right, #ffdbee, #fdeef5);
                 }
@@ -911,7 +923,7 @@
                 position: absolute;
                 z-index: 2;
                 left: 50%;
-                bottom: 12px;
+                bottom: 17px;
                 width: 74px;
                 max-width: none;
                 height: auto;
@@ -1091,35 +1103,30 @@
             }
             .doll-wishlist-preview-caption {
                 display: flex;
+                flex-direction: column;
                 align-items: center;
-                gap: 10px;
                 max-width: 100%;
                 margin: 14px 0 0;
                 font-family: var(--dwl-cute, "Comic Sans MS", cursive);
             }
-            /* The title's pill is the site's own real "idle control" token
-               set (--glass-pink-control / --glass-pink-line-soft /
-               --glass-pink-shadow-small in styles.css:root), not an
-               invented gradient — this is the exact same fill/line/shadow
-               every button and slider on the site already uses, copied here
-               as literal values since the widget is self-contained and
-               doesn't reach into the host page's custom properties. */
+            /* Plain text, not a pill — the title is information, not a
+               control, so it shouldn't look tappable (only the price tag
+               below is). A soft dark text-shadow keeps it legible directly
+               on the blurred backdrop without needing a background chip. */
             .doll-wishlist-preview-name {
                 position: relative;
                 display: inline-block;
                 min-width: 0;
-                max-width: 216px;
-                padding: 7px 16px;
-                border-radius: 999px;
-                background: linear-gradient(to right, #fdeef5, #ffdbee);
-                border: 1px solid rgba(255, 199, 222, 0.42);
-                box-shadow: 0 2px 7px rgba(255, 145, 195, 0.14);
+                max-width: 232px;
+                margin: 0 0 9px;
                 overflow: hidden;
                 text-overflow: ellipsis;
                 white-space: nowrap;
-                font-size: 13px;
+                text-align: center;
+                font-size: 14px;
                 font-weight: 700;
-                color: rgba(106, 92, 99, 0.85);
+                color: #fff;
+                text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5), 0 1px 2px rgba(0, 0, 0, 0.4);
             }
             /* Floats as a soft toast above the photo (never overlapping it),
                anchored to the top edge of .doll-wishlist-preview-media, and
@@ -1228,14 +1235,22 @@
                 </div>
                 <figcaption class="doll-wishlist-preview-caption">
                     <span class="doll-wishlist-preview-name"></span>
-                    <button type="button" class="doll-wishlist-price-tag doll-wishlist-preview-price-tag"></button>
+                    <button type="button" class="doll-wishlist-price-tag doll-wishlist-preview-price-tag">${ICON_HEART}${ICON_HEART_FILLED}<span class="dwl-price-text"></span></button>
                 </figcaption>
             </figure>
         `;
-        // Tapping the dark backdrop closes it; tapping the card itself must
-        // not, so the card swallows its own clicks before they can bubble up.
+        // Tapping the dark backdrop closes it. The card (figure) itself has
+        // no background of its own, so most of its bounding box — the
+        // margins around the photo, the plain-text title, the gaps between
+        // pieces — still visually reads as backdrop; only the photo itself
+        // looks like "not background." Previously the whole card swallowed
+        // clicks, so those visually-backdrop areas silently ate taps meant
+        // to close the preview ("tapping the background doesn't always
+        // work"). Now only the photo stops propagation; the price tag stops
+        // its own separately below (it toggles selection instead of
+        // closing), and everything else in the card falls through to close.
         previewOverlay.addEventListener('click', closePreview);
-        previewOverlay.querySelector('.doll-wishlist-preview-card').addEventListener('click', e => e.stopPropagation());
+        previewOverlay.querySelector('.doll-wishlist-preview-media').addEventListener('click', e => e.stopPropagation());
         previewOverlay.querySelector('.doll-wishlist-preview-close').addEventListener('click', closePreview);
         previewOverlay.querySelector('.doll-wishlist-preview-price-tag').addEventListener('click', e => {
             e.stopPropagation();
@@ -1257,7 +1272,8 @@
         const selected = selectedIds.has(item.throne_item_id);
         const previewTag = overlay.querySelector('.doll-wishlist-preview-price-tag');
         if (previewTag) {
-            previewTag.textContent = formatPrice(item.price_cents);
+            const priceText = previewTag.querySelector('.dwl-price-text');
+            if (priceText) priceText.textContent = formatPrice(item.price_cents);
             previewTag.classList.toggle('is-selected', selected);
             previewTag.setAttribute('aria-pressed', String(selected));
             previewTag.setAttribute('aria-label', `${selected ? 'Remove ' : 'Add '}${fullLabel}`);

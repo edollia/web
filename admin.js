@@ -2,6 +2,11 @@ const SUPABASE_URL = 'https://zvqdodzkhmcptwkjlfeu.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp2cWRvZHpraG1jcHR3a2psZmV1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg3NjM1NjAsImV4cCI6MjA2NDMzOTU2MH0.i1xbRIhPHVkDIrnDlQFP0ebNklrx8WVQcQo8Iuo9zG8';
 const ADMIN_UID = '1b12f04e-c1a9-42c5-bd3a-04b6186245c3';
 const ADMIN_PASSCODE_HASH = 'ce157a63c5af6bc69d076f5cc7acd1c18a8b44933f907e682f24914a63e9939e';
+const SOCIAL_CARD_VIDEO_BUCKET = 'social-card-videos';
+const SOCIAL_CARD_VIDEO_KEYS = ['snapchat', 'instagram', 'kofi'];
+const MAX_SOCIAL_CARD_VIDEO_BYTES = 20 * 1024 * 1024;
+const SOCIAL_CARD_VIDEO_TYPES = new Set(['video/mp4', 'video/webm']);
+const socialVideoObjectUrls = new Map();
 
 async function hashPin(pin) {
     const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(pin));
@@ -10,10 +15,16 @@ async function hashPin(pin) {
 const DEFAULT_LINK_SETTINGS = {
     snapchat_url: 'https://www.snapchat.com/add/dumidoll',
     snapchat_enabled: true,
+    snapchat_card_video_url: '',
+    snapchat_card_video_path: '',
     instagram_url: 'https://www.instagram.com/pawswirl',
     instagram_enabled: true,
+    instagram_card_video_url: '',
+    instagram_card_video_path: '',
     kofi_url: 'https://ko-fi.com/edoll',
     kofi_enabled: true,
+    kofi_card_video_url: '',
+    kofi_card_video_path: '',
     throne_url: 'https://throne.com/edoll',
     throne_enabled: true,
     throne_checkout_mode: 'mockup',
@@ -428,10 +439,16 @@ function normalizeLinkSettings(value) {
     return {
         snapchat_url: String(settings.snapchat_url || DEFAULT_LINK_SETTINGS.snapchat_url),
         snapchat_enabled: settings.snapchat_enabled !== false,
+        snapchat_card_video_url: String(settings.snapchat_card_video_url || ''),
+        snapchat_card_video_path: String(settings.snapchat_card_video_path || ''),
         instagram_url: String(settings.instagram_url || DEFAULT_LINK_SETTINGS.instagram_url),
         instagram_enabled: settings.instagram_enabled !== false,
+        instagram_card_video_url: String(settings.instagram_card_video_url || ''),
+        instagram_card_video_path: String(settings.instagram_card_video_path || ''),
         kofi_url: String(settings.kofi_url || DEFAULT_LINK_SETTINGS.kofi_url),
         kofi_enabled: settings.kofi_enabled !== false,
+        kofi_card_video_url: String(settings.kofi_card_video_url || ''),
+        kofi_card_video_path: String(settings.kofi_card_video_path || ''),
         throne_url: String(settings.throne_url || DEFAULT_LINK_SETTINGS.throne_url),
         throne_enabled: settings.throne_enabled !== false,
         throne_checkout_mode: settings.throne_checkout_mode === 'widget' ? 'widget' : 'mockup',
@@ -463,6 +480,7 @@ function renderLinkSettings({ preserveDraft = false } = {}) {
     if (els.linkSettingsForm) {
         els.linkSettingsForm.classList.toggle('settings-unavailable', !state.linkSettingsAvailable);
     }
+    renderAllSocialVideoControls();
     if (preserveDraft && settingsDraftDirty) {
         renderLinkPreview();
         return;
@@ -514,10 +532,16 @@ function getDraftLinkSettings() {
     return {
         snapchat_url: els.snapchatUrl?.value.trim() || state.linkSettings.snapchat_url || DEFAULT_LINK_SETTINGS.snapchat_url,
         snapchat_enabled: els.snapchatEnabled?.checked !== false,
+        snapchat_card_video_url: state.linkSettings.snapchat_card_video_url || '',
+        snapchat_card_video_path: state.linkSettings.snapchat_card_video_path || '',
         instagram_url: els.instagramUrl?.value.trim() || state.linkSettings.instagram_url || DEFAULT_LINK_SETTINGS.instagram_url,
         instagram_enabled: els.instagramEnabled?.checked !== false,
+        instagram_card_video_url: state.linkSettings.instagram_card_video_url || '',
+        instagram_card_video_path: state.linkSettings.instagram_card_video_path || '',
         kofi_url: els.kofiUrl?.value.trim() || state.linkSettings.kofi_url || DEFAULT_LINK_SETTINGS.kofi_url,
         kofi_enabled: els.kofiEnabled?.checked !== false,
+        kofi_card_video_url: state.linkSettings.kofi_card_video_url || '',
+        kofi_card_video_path: state.linkSettings.kofi_card_video_path || '',
         throne_url: els.throneUrl?.value.trim() || state.linkSettings.throne_url || DEFAULT_LINK_SETTINGS.throne_url,
         throne_enabled: els.throneEnabled?.checked !== false,
         throne_checkout_mode: els.throneCheckoutMode?.value === 'widget' ? 'widget' : 'mockup',
@@ -592,6 +616,240 @@ function syncLinkDraftLabels(settings = getDraftLinkSettings()) {
 function renderLinkPreview() {
     const settings = getDraftLinkSettings();
     syncLinkDraftLabels(settings);
+}
+
+function getSocialVideoControl(key) {
+    return document.querySelector(`[data-social-video="${key}"]`);
+}
+
+function getSocialVideoSettingKey(key, suffix) {
+    return `${key}_card_video_${suffix}`;
+}
+
+function setSocialVideoStatus(key, message) {
+    const status = getSocialVideoControl(key)?.querySelector('[data-video-status]');
+    if (status) status.textContent = message;
+}
+
+function revokeSocialVideoObjectUrl(key) {
+    const objectUrl = socialVideoObjectUrls.get(key);
+    if (objectUrl) URL.revokeObjectURL(objectUrl);
+    socialVideoObjectUrls.delete(key);
+}
+
+function formatUploadSize(bytes) {
+    if (!Number.isFinite(bytes) || bytes <= 0) return '0 MB';
+    return `${(bytes / (1024 * 1024)).toFixed(bytes >= 10 * 1024 * 1024 ? 0 : 1)} MB`;
+}
+
+function getSocialVideoFileExtension(file) {
+    const namedExtension = String(file?.name || '').split('.').pop().toLowerCase();
+    if (namedExtension === 'mp4' || namedExtension === 'webm') return namedExtension;
+    if (file?.type === 'video/webm') return 'webm';
+    if (file?.type === 'video/mp4') return 'mp4';
+    return '';
+}
+
+function validateSocialVideoFile(file) {
+    if (!file) throw new Error('Choose a video first.');
+    const extension = getSocialVideoFileExtension(file);
+    const supportedType = SOCIAL_CARD_VIDEO_TYPES.has(file.type) || Boolean(extension);
+    if (!supportedType) throw new Error('Use an MP4 or WebM video.');
+    if (file.size > MAX_SOCIAL_CARD_VIDEO_BYTES) throw new Error('Video must be 20 MB or smaller.');
+    return extension;
+}
+
+function setSocialVideoBusy(key, busy, message = '') {
+    const control = getSocialVideoControl(key);
+    if (!control) return;
+    const fileInput = control.querySelector('[data-video-file]');
+    const uploadButton = control.querySelector('[data-video-upload]');
+    const removeButton = control.querySelector('[data-video-remove]');
+    const hasSavedVideo = Boolean(state.linkSettings[getSocialVideoSettingKey(key, 'url')]);
+    control.classList.toggle('is-busy', busy);
+    if (fileInput) fileInput.disabled = busy;
+    if (uploadButton) uploadButton.disabled = busy || !fileInput?.files?.length;
+    if (removeButton) removeButton.disabled = busy || !hasSavedVideo;
+    if (message) setSocialVideoStatus(key, message);
+}
+
+function renderSocialVideoControl(key) {
+    const control = getSocialVideoControl(key);
+    if (!control) return;
+    const fileInput = control.querySelector('[data-video-file]');
+    const preview = control.querySelector('[data-video-preview]');
+    const uploadButton = control.querySelector('[data-video-upload]');
+    const removeButton = control.querySelector('[data-video-remove]');
+    const savedUrl = String(state.linkSettings[getSocialVideoSettingKey(key, 'url')] || '');
+    const hasLocalPreview = socialVideoObjectUrls.has(key);
+
+    if (preview && !hasLocalPreview) {
+        if (preview.dataset.source !== savedUrl) {
+            preview.pause();
+            preview.removeAttribute('src');
+            preview.dataset.source = savedUrl;
+            if (savedUrl) {
+                preview.src = savedUrl;
+                preview.load();
+            }
+        }
+        preview.hidden = !savedUrl;
+    }
+
+    if (!hasLocalPreview) {
+        setSocialVideoStatus(key, savedUrl ? 'video live' : 'no video');
+    }
+    if (uploadButton) uploadButton.disabled = !fileInput?.files?.length;
+    if (removeButton) removeButton.disabled = !savedUrl;
+}
+
+function renderAllSocialVideoControls() {
+    SOCIAL_CARD_VIDEO_KEYS.forEach(renderSocialVideoControl);
+}
+
+function handleSocialVideoSelection(key) {
+    const control = getSocialVideoControl(key);
+    const fileInput = control?.querySelector('[data-video-file]');
+    const preview = control?.querySelector('[data-video-preview]');
+    const file = fileInput?.files?.[0];
+    revokeSocialVideoObjectUrl(key);
+
+    if (!file) {
+        renderSocialVideoControl(key);
+        return;
+    }
+
+    try {
+        validateSocialVideoFile(file);
+    } catch (error) {
+        fileInput.value = '';
+        renderSocialVideoControl(key);
+        setSocialVideoStatus(key, error.message || 'Video cannot be used.');
+        return;
+    }
+
+    const objectUrl = URL.createObjectURL(file);
+    socialVideoObjectUrls.set(key, objectUrl);
+    if (preview) {
+        preview.pause();
+        preview.dataset.source = objectUrl;
+        preview.src = objectUrl;
+        preview.hidden = false;
+        preview.load();
+    }
+    setSocialVideoStatus(key, `${file.name} · ${formatUploadSize(file.size)} ready`);
+    const uploadButton = control?.querySelector('[data-video-upload]');
+    if (uploadButton) uploadButton.disabled = false;
+}
+
+function socialVideoStorageError(error) {
+    const message = String(error?.message || error || 'Video upload failed.');
+    if (/bucket.*not found|not found.*bucket|row-level security|policy/i.test(message)) {
+        return 'Run social-card-videos.sql in Supabase first.';
+    }
+    return message;
+}
+
+async function uploadSocialCardVideo(key) {
+    if (!SOCIAL_CARD_VIDEO_KEYS.includes(key)) return;
+    const control = getSocialVideoControl(key);
+    const fileInput = control?.querySelector('[data-video-file]');
+    const file = fileInput?.files?.[0];
+    let extension;
+    try {
+        extension = validateSocialVideoFile(file);
+    } catch (error) {
+        setSocialVideoStatus(key, error.message || 'Video cannot be used.');
+        return;
+    }
+
+    const urlKey = getSocialVideoSettingKey(key, 'url');
+    const pathKey = getSocialVideoSettingKey(key, 'path');
+    const previousUrl = state.linkSettings[urlKey] || '';
+    const previousPath = state.linkSettings[pathKey] || '';
+    const uniquePart = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2);
+    const storagePath = `cards/${key}-${Date.now()}-${uniquePart}.${extension}`;
+    setSocialVideoBusy(key, true, 'uploading...');
+
+    try {
+        const { error: uploadError } = await adminClient.storage
+            .from(SOCIAL_CARD_VIDEO_BUCKET)
+            .upload(storagePath, file, {
+                cacheControl: '31536000',
+                contentType: extension === 'webm' ? 'video/webm' : 'video/mp4',
+                upsert: false
+            });
+        if (uploadError) throw uploadError;
+
+        const { data: publicData } = adminClient.storage
+            .from(SOCIAL_CARD_VIDEO_BUCKET)
+            .getPublicUrl(storagePath);
+        const publicUrl = publicData?.publicUrl || '';
+        if (!publicUrl) throw new Error('Could not create the public video URL.');
+
+        state.linkSettings[urlKey] = publicUrl;
+        state.linkSettings[pathKey] = storagePath;
+        settingsDraftDirty = true;
+        const saved = await saveLinkSettingsNow();
+        if (!saved) {
+            state.linkSettings[urlKey] = previousUrl;
+            state.linkSettings[pathKey] = previousPath;
+            await adminClient.storage.from(SOCIAL_CARD_VIDEO_BUCKET).remove([storagePath]);
+            throw new Error('Video uploaded, but its card setting could not be saved.');
+        }
+
+        if (previousPath && previousPath !== storagePath) {
+            adminClient.storage.from(SOCIAL_CARD_VIDEO_BUCKET).remove([previousPath])
+                .then(({ error }) => { if (error) console.warn('Old social video cleanup failed:', error); });
+        }
+        revokeSocialVideoObjectUrl(key);
+        if (fileInput) fileInput.value = '';
+        renderSocialVideoControl(key);
+        setSocialVideoStatus(key, 'video live ✓');
+    } catch (error) {
+        setSocialVideoStatus(key, socialVideoStorageError(error));
+    } finally {
+        setSocialVideoBusy(key, false);
+    }
+}
+
+async function removeSocialCardVideo(key) {
+    if (!SOCIAL_CARD_VIDEO_KEYS.includes(key)) return;
+    const urlKey = getSocialVideoSettingKey(key, 'url');
+    const pathKey = getSocialVideoSettingKey(key, 'path');
+    const previousUrl = state.linkSettings[urlKey] || '';
+    const previousPath = state.linkSettings[pathKey] || '';
+    if (!previousUrl) return;
+    if (!window.confirm(`Remove the ${key} card background video?`)) return;
+
+    setSocialVideoBusy(key, true, 'removing...');
+    state.linkSettings[urlKey] = '';
+    state.linkSettings[pathKey] = '';
+    settingsDraftDirty = true;
+
+    try {
+        const saved = await saveLinkSettingsNow();
+        if (!saved) {
+            state.linkSettings[urlKey] = previousUrl;
+            state.linkSettings[pathKey] = previousPath;
+            throw new Error('Could not save the empty video setting.');
+        }
+        if (previousPath) {
+            const { error: removeError } = await adminClient.storage
+                .from(SOCIAL_CARD_VIDEO_BUCKET)
+                .remove([previousPath]);
+            if (removeError) console.warn('Social video file cleanup failed:', removeError);
+        }
+        revokeSocialVideoObjectUrl(key);
+        const fileInput = getSocialVideoControl(key)?.querySelector('[data-video-file]');
+        if (fileInput) fileInput.value = '';
+        renderSocialVideoControl(key);
+        setSocialVideoStatus(key, 'removed ✓');
+    } catch (error) {
+        setSocialVideoStatus(key, socialVideoStorageError(error));
+    } finally {
+        setSocialVideoBusy(key, false);
+    }
 }
 
 function openPublicLinkPreview(key) {
@@ -694,7 +952,7 @@ function renderAll({ preserveDrafts = false } = {}) {
     renderWishlistItems();
 }
 
-const WISHLIST_FEATURED_CAP = 12;
+const WISHLIST_FEATURED_CAP = 20;
 const WISHLIST_NEW_WINDOW_MS = 24 * 60 * 60 * 1000;
 const WISHLIST_POSITION_ACTIONS = new Set([
     'feature-wishlist-item', 'unfeature-wishlist-item',
@@ -1263,15 +1521,23 @@ function cleanOptionalUrl(value, label) {
 }
 
 async function saveLinkSettingsNow() {
+    clearTimeout(autoSaveTimer);
+    autoSaveTimer = null;
     let nextSettings;
     try {
         nextSettings = {
             snapchat_url: cleanUrl(els.snapchatUrl?.value || state.linkSettings.snapchat_url, 'Snapchat'),
             snapchat_enabled: els.snapchatEnabled?.checked !== false,
+            snapchat_card_video_url: String(state.linkSettings.snapchat_card_video_url || ''),
+            snapchat_card_video_path: String(state.linkSettings.snapchat_card_video_path || ''),
             instagram_url: cleanUrl(els.instagramUrl?.value || state.linkSettings.instagram_url, 'Instagram'),
             instagram_enabled: els.instagramEnabled?.checked !== false,
+            instagram_card_video_url: String(state.linkSettings.instagram_card_video_url || ''),
+            instagram_card_video_path: String(state.linkSettings.instagram_card_video_path || ''),
             kofi_url: cleanUrl(els.kofiUrl?.value || state.linkSettings.kofi_url, 'Ko-fi'),
             kofi_enabled: els.kofiEnabled?.checked !== false,
+            kofi_card_video_url: String(state.linkSettings.kofi_card_video_url || ''),
+            kofi_card_video_path: String(state.linkSettings.kofi_card_video_path || ''),
             throne_url: cleanUrl(els.throneUrl?.value || state.linkSettings.throne_url, 'Throne'),
             throne_enabled: els.throneEnabled?.checked !== false,
             throne_checkout_mode: els.throneCheckoutMode?.value === 'widget' ? 'widget' : 'mockup',
@@ -1298,7 +1564,7 @@ async function saveLinkSettingsNow() {
         };
     } catch (error) {
         setStatus(els.adminStatus, error.message || 'Check the links.');
-        return;
+        return false;
     }
     const savedSettingsKey = JSON.stringify(nextSettings);
     if (els.seoState) els.seoState.textContent = 'saving';
@@ -1316,7 +1582,7 @@ async function saveLinkSettingsNow() {
         setStatus(els.adminStatus, error.code === '42P01'
             ? 'Install site_settings.sql in Supabase first.'
             : (error.message || 'Could not save links.'));
-        return;
+        return false;
     }
 
     state.linkSettings = nextSettings;
@@ -1327,6 +1593,7 @@ async function saveLinkSettingsNow() {
     setTimeout(() => {
         if (els.adminStatus?.textContent === 'saved ✓') setStatus(els.adminStatus, '');
     }, 2000);
+    return true;
 }
 
 function scheduleAutoSave() {
@@ -1335,7 +1602,13 @@ function scheduleAutoSave() {
 }
 
 function resetLinkSettings() {
-    state.linkSettings = { ...DEFAULT_LINK_SETTINGS };
+    const existingVideos = Object.fromEntries(
+        SOCIAL_CARD_VIDEO_KEYS.flatMap(key => [
+            [getSocialVideoSettingKey(key, 'url'), state.linkSettings[getSocialVideoSettingKey(key, 'url')] || ''],
+            [getSocialVideoSettingKey(key, 'path'), state.linkSettings[getSocialVideoSettingKey(key, 'path')] || '']
+        ])
+    );
+    state.linkSettings = { ...DEFAULT_LINK_SETTINGS, ...existingVideos };
     renderLinkSettings();
     settingsDraftDirty = true;
     scheduleAutoSave();
@@ -1586,6 +1859,7 @@ async function init() {
     els.refresh.addEventListener('click', loadAdminData);
     els.logout.addEventListener('click', async () => {
         await stopAdminRealtime();
+        SOCIAL_CARD_VIDEO_KEYS.forEach(revokeSocialVideoObjectUrl);
         await adminClient.auth.signOut();
         await window.roomsSignOut?.().catch(err => console.error('rooms signOut:', err));
         sessionStorage.removeItem('doll_admin_gate');
@@ -1619,6 +1893,18 @@ async function init() {
     });
     els.linkSettingsForm?.addEventListener('submit', e => e.preventDefault());
     els.linkSettingsReset?.addEventListener('click', resetLinkSettings);
+    SOCIAL_CARD_VIDEO_KEYS.forEach(key => {
+        const control = getSocialVideoControl(key);
+        control?.querySelector('[data-video-file]')?.addEventListener('change', () => {
+            handleSocialVideoSelection(key);
+        });
+        control?.querySelector('[data-video-upload]')?.addEventListener('click', () => {
+            uploadSocialCardVideo(key);
+        });
+        control?.querySelector('[data-video-remove]')?.addEventListener('click', () => {
+            removeSocialCardVideo(key);
+        });
+    });
     els.runHealthCheck?.addEventListener('click', runSiteHealthCheck);
     els.staticSeoCheck?.addEventListener('click', checkStaticSeoStatus);
     document.querySelectorAll('[data-link-open]').forEach(button => {

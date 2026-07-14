@@ -2,10 +2,16 @@ document.addEventListener("DOMContentLoaded", async function() {
     const DEFAULT_LINK_SETTINGS = {
         snapchat_url: 'https://www.snapchat.com/add/dumidoll',
         snapchat_enabled: true,
+        snapchat_card_video_url: '',
+        snapchat_card_video_path: '',
         instagram_url: 'https://www.instagram.com/pawswirl',
         instagram_enabled: true,
+        instagram_card_video_url: '',
+        instagram_card_video_path: '',
         kofi_url: 'https://ko-fi.com/edoll',
         kofi_enabled: true,
+        kofi_card_video_url: '',
+        kofi_card_video_path: '',
         throne_url: 'https://throne.com/edoll',
         throne_enabled: true,
         throne_checkout_mode: 'mockup',
@@ -745,10 +751,16 @@ document.addEventListener("DOMContentLoaded", async function() {
         return {
             snapchat_url: String(settings.snapchat_url || DEFAULT_LINK_SETTINGS.snapchat_url),
             snapchat_enabled: settings.snapchat_enabled !== false,
+            snapchat_card_video_url: String(settings.snapchat_card_video_url || ''),
+            snapchat_card_video_path: String(settings.snapchat_card_video_path || ''),
             instagram_url: String(settings.instagram_url || DEFAULT_LINK_SETTINGS.instagram_url),
             instagram_enabled: settings.instagram_enabled !== false,
+            instagram_card_video_url: String(settings.instagram_card_video_url || ''),
+            instagram_card_video_path: String(settings.instagram_card_video_path || ''),
             kofi_url: String(settings.kofi_url || DEFAULT_LINK_SETTINGS.kofi_url),
             kofi_enabled: settings.kofi_enabled !== false,
+            kofi_card_video_url: String(settings.kofi_card_video_url || ''),
+            kofi_card_video_path: String(settings.kofi_card_video_path || ''),
             throne_url: String(settings.throne_url || DEFAULT_LINK_SETTINGS.throne_url),
             throne_enabled: settings.throne_enabled !== false,
             throne_checkout_mode: settings.throne_checkout_mode === 'widget' ? 'widget' : 'mockup',
@@ -1178,6 +1190,86 @@ document.addEventListener("DOMContentLoaded", async function() {
     const FIRST_VISIT_TOUR_FORCE = new URLSearchParams(window.location.search).get('previewTour') === '1';
     let activeKofiWidgetHandle = 'edoll';
 
+    function getSocialCardVideoEntries() {
+        return [
+            ['snapchat', snapchatOption],
+            ['instagram', instagramOption],
+            ['kofi', donateOption]
+        ];
+    }
+
+    function removeSocialCardVideo(card) {
+        if (!card) return;
+        const video = card.querySelector('.social-link-preview');
+        if (video) {
+            video.pause();
+            video.removeAttribute('src');
+            video.load();
+            video.remove();
+        }
+        card.classList.remove('has-social-preview');
+    }
+
+    function syncSocialCardVideo(key, card) {
+        if (!card) return;
+        const url = String(siteLinkSettings[`${key}_card_video_url`] || '').trim();
+        if (!url) {
+            removeSocialCardVideo(card);
+            return;
+        }
+
+        let video = card.querySelector('.social-link-preview');
+        if (!video) {
+            video = document.createElement('video');
+            video.className = 'social-link-preview';
+            video.muted = true;
+            video.defaultMuted = true;
+            video.loop = true;
+            video.playsInline = true;
+            video.preload = 'metadata';
+            video.setAttribute('muted', '');
+            video.setAttribute('playsinline', '');
+            video.setAttribute('aria-hidden', 'true');
+            video.tabIndex = -1;
+            video.addEventListener('loadeddata', () => {
+                card.classList.add('has-social-preview');
+            });
+            video.addEventListener('error', () => {
+                card.classList.remove('has-social-preview');
+            });
+            card.prepend(video);
+        }
+
+        if (video.dataset.source !== url) {
+            card.classList.remove('has-social-preview');
+            video.pause();
+            video.dataset.source = url;
+            video.src = url;
+            video.load();
+        }
+
+        if (socialsButton?.classList.contains('open') && !document.hidden) {
+            video.play().catch(() => {});
+        }
+    }
+
+    function syncSocialCardVideos() {
+        getSocialCardVideoEntries().forEach(([key, card]) => syncSocialCardVideo(key, card));
+    }
+
+    function playSocialCardVideos() {
+        if (document.hidden) return;
+        getVisibleSocialOptions().forEach(card => {
+            card.querySelector('.social-link-preview')?.play().catch(() => {});
+        });
+    }
+
+    function pauseSocialCardVideos() {
+        getSocialCardVideoEntries().forEach(([, card]) => {
+            card?.querySelector('.social-link-preview')?.pause();
+        });
+    }
+
     function getPublicLink(key) {
         return siteLinkSettings[`${key}_url`] || DEFAULT_LINK_SETTINGS[`${key}_url`];
     }
@@ -1335,6 +1427,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             syncKofiWidgetHandle();
             setKofiWidgetVisibility(isPublicLinkEnabled('kofi'));
         }
+        syncSocialCardVideos();
         if (supportMenuButton) {
             const throneEnabled = isPublicLinkEnabled('throne');
             supportMenuButton.href = getPublicLink('throne');
@@ -1428,6 +1521,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     function closeSocialsMenu({ restoreNote = true } = {}) {
         if (!socialsButton) return;
         const wasOpen = socialsButton.classList.contains('open');
+        pauseSocialCardVideos();
         socialsButton.classList.remove('open');
         socialsButton.setAttribute('aria-expanded', 'false');
         socialsButton.setAttribute('aria-label', 'Open socials');
@@ -1505,11 +1599,19 @@ document.addEventListener("DOMContentLoaded", async function() {
         getVisibleSocialOptions().forEach(option => {
             option.setAttribute('tabindex', '0');
         });
+        window.requestAnimationFrame(playSocialCardVideos);
     }
 
     applySiteLinkSettingsToDom = applyPublicLinkSettings;
     applyPublicLinkSettings();
     addMenuActivation(socialsButton, handleSocialsButtonActivate);
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+            pauseSocialCardVideos();
+        } else if (socialsButton?.classList.contains('open')) {
+            playSocialCardVideos();
+        }
+    });
 
     function hasSeenFirstVisitTour() {
         try {
