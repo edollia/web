@@ -47,6 +47,13 @@ window.roomsLockdownStatus = async function roomsLockdownStatus() {
   await loadLockdown();
 };
 
+window.roomsForceCloseAll = async function roomsForceCloseAll() {
+  const data = await callAdmin({ action: 'force-close-all' });
+  appendLog('ok', `closed ${data.closedCount} rooms: ${data.closed.join(', ') || 'none'}`);
+  loadRecent();
+  return data;
+};
+
 let roomsPanelLoaded = false;
 window.initRoomsPanel = function initRoomsPanel() {
   if (roomsPanelLoaded) return;
@@ -125,11 +132,7 @@ document.getElementById('lockdown-toggle').addEventListener('change', async (e) 
 
 document.getElementById('btn-force-close-all').addEventListener('click', async () => {
   if (!confirm('Force-close EVERY active room right now? This disconnects all current calls.')) return;
-  const data = await callAdmin({ action: 'force-close-all' }).catch(() => null);
-  if (data) {
-    appendLog('ok', `closed ${data.closedCount} rooms: ${data.closed.join(', ') || 'none'}`);
-    loadRecent();
-  }
+  await window.roomsForceCloseAll().catch(() => null);
 });
 
 // ── Room table ───────────────────────────────────────────────────

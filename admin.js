@@ -349,6 +349,7 @@ function normalizeLinkSettings(value) {
         maintenance_eta: String(settings.maintenance_eta || ''),
         drawings_enabled: settings.drawings_enabled !== false,
         questions_enabled: settings.questions_enabled !== false,
+        rooms_enabled: settings.rooms_enabled !== false,
         seo_title: String(settings.seo_title || DEFAULT_LINK_SETTINGS.seo_title),
         seo_description: String(settings.seo_description || DEFAULT_LINK_SETTINGS.seo_description),
         site_tagline: String(settings.site_tagline || DEFAULT_LINK_SETTINGS.site_tagline)
@@ -392,6 +393,9 @@ function renderLinkSettings({ preserveDraft = false } = {}) {
     if (els.drawingsEnabled) els.drawingsEnabled.checked = settings.drawings_enabled !== false;
     if (els.questionsEnabled) els.questionsEnabled.checked = settings.questions_enabled !== false;
     if (els.submissionsState) els.submissionsState.textContent = getSubmissionsStateLabel(settings);
+    if (els.roomsMasterEnabled) els.roomsMasterEnabled.checked = settings.rooms_enabled !== false;
+    if (els.roomsMasterState) els.roomsMasterState.textContent = settings.rooms_enabled !== false ? 'enabled' : 'disabled';
+    els.roomsDisabledBanner?.classList.toggle('hidden', settings.rooms_enabled !== false);
     if (els.seoTitle) els.seoTitle.value = settings.seo_title || '';
     if (els.seoDescription) els.seoDescription.value = settings.seo_description || '';
     if (els.siteTagline) els.siteTagline.value = settings.site_tagline || '';
@@ -427,6 +431,7 @@ function getDraftLinkSettings() {
         maintenance_eta: els.maintenanceEta?.value.trim() || '',
         drawings_enabled: els.drawingsEnabled?.checked !== false,
         questions_enabled: els.questionsEnabled?.checked !== false,
+        rooms_enabled: els.roomsMasterEnabled?.checked !== false,
         seo_title: els.seoTitle?.value.trim() || DEFAULT_LINK_SETTINGS.seo_title,
         seo_description: els.seoDescription?.value.trim() || DEFAULT_LINK_SETTINGS.seo_description,
         site_tagline: els.siteTagline?.value.trim() || DEFAULT_LINK_SETTINGS.site_tagline
@@ -450,6 +455,8 @@ function syncLinkDraftLabels(settings = getDraftLinkSettings()) {
     if (els.latestNoteState) els.latestNoteState.textContent = settings.latest_note_enabled === true ? 'visible' : 'hidden';
     if (els.maintenanceState) els.maintenanceState.textContent = settings.maintenance_enabled === true ? 'on' : 'off';
     if (els.submissionsState) els.submissionsState.textContent = getSubmissionsStateLabel(settings);
+    if (els.roomsMasterState) els.roomsMasterState.textContent = settings.rooms_enabled !== false ? 'enabled' : 'disabled';
+    els.roomsDisabledBanner?.classList.toggle('hidden', settings.rooms_enabled !== false);
     if (els.seoPreviewTitle) els.seoPreviewTitle.textContent = settings.seo_title || DEFAULT_LINK_SETTINGS.seo_title;
     if (els.seoPreviewDescription) els.seoPreviewDescription.textContent = settings.seo_description || DEFAULT_LINK_SETTINGS.seo_description;
     if (els.seoTitleCount) els.seoTitleCount.textContent = `${settings.seo_title.length}/70`;
@@ -464,6 +471,7 @@ function syncLinkDraftLabels(settings = getDraftLinkSettings()) {
         }
         document.querySelector(`[data-link-card="${key}"]`)?.classList.toggle('is-disabled', disabled);
     });
+    document.querySelector('[data-link-card="rooms-master"]')?.classList.toggle('is-disabled', settings.rooms_enabled === false);
     renderStaticSeoStatus(settings);
 }
 
@@ -520,9 +528,10 @@ function setSocialVideoBusy(key, busy, message = '') {
     const uploadButton = control.querySelector('[data-video-upload]');
     const removeButton = control.querySelector('[data-video-remove]');
     const hasSavedVideo = Boolean(state.linkSettings[getSocialVideoSettingKey(key, 'url')]);
+    const hasSelectedFile = socialVideoSelectedFiles.has(key);
     control.classList.toggle('is-busy', busy);
     if (fileInput) fileInput.disabled = busy;
-    if (uploadButton) uploadButton.disabled = busy || !fileInput?.files?.length;
+    if (uploadButton) uploadButton.disabled = busy || !hasSelectedFile;
     if (removeButton) removeButton.disabled = busy || !hasSavedVideo;
     if (message) setSocialVideoStatus(key, message);
 }
@@ -534,7 +543,9 @@ function renderSocialVideoControl(key) {
     const preview = control.querySelector('[data-video-preview]');
     const uploadButton = control.querySelector('[data-video-upload]');
     const removeButton = control.querySelector('[data-video-remove]');
+    const pickerLabel = control.querySelector('.admin-video-picker > span');
     const savedUrl = String(state.linkSettings[getSocialVideoSettingKey(key, 'url')] || '');
+    const selectedFile = socialVideoSelectedFiles.get(key) || null;
     const hasLocalPreview = socialVideoObjectUrls.has(key);
 
     if (preview && !hasLocalPreview) {
@@ -550,10 +561,11 @@ function renderSocialVideoControl(key) {
         preview.hidden = !savedUrl;
     }
 
-    if (!hasLocalPreview) {
+    if (!hasLocalPreview && !selectedFile) {
         setSocialVideoStatus(key, savedUrl ? 'video live' : 'no video');
     }
-    if (uploadButton) uploadButton.disabled = !fileInput?.files?.length;
+    if (pickerLabel) pickerLabel.textContent = selectedFile || savedUrl ? 'choose another' : 'choose video';
+    if (uploadButton) uploadButton.disabled = !selectedFile;
     if (removeButton) removeButton.disabled = !savedUrl;
 }
 
@@ -566,9 +578,11 @@ function handleSocialVideoSelection(key) {
     const fileInput = control?.querySelector('[data-video-file]');
     const preview = control?.querySelector('[data-video-preview]');
     const file = fileInput?.files?.[0];
+    if (file && socialVideoSelectedFiles.get(key) === file) return;
     revokeSocialVideoObjectUrl(key);
 
     if (!file) {
+        socialVideoSelectedFiles.delete(key);
         renderSocialVideoControl(key);
         return;
     }
@@ -576,12 +590,14 @@ function handleSocialVideoSelection(key) {
     try {
         validateSocialVideoFile(file);
     } catch (error) {
+        socialVideoSelectedFiles.delete(key);
         fileInput.value = '';
         renderSocialVideoControl(key);
         setSocialVideoStatus(key, error.message || 'Video cannot be used.');
         return;
     }
 
+    socialVideoSelectedFiles.set(key, file);
     const objectUrl = URL.createObjectURL(file);
     socialVideoObjectUrls.set(key, objectUrl);
     if (preview) {
@@ -591,7 +607,7 @@ function handleSocialVideoSelection(key) {
         preview.hidden = false;
         preview.load();
     }
-    setSocialVideoStatus(key, `${file.name} · ${formatUploadSize(file.size)} ready`);
+    setSocialVideoStatus(key, `${file.name} · ${formatUploadSize(file.size)} ready — tap upload`);
     const uploadButton = control?.querySelector('[data-video-upload]');
     if (uploadButton) uploadButton.disabled = false;
 }
@@ -608,7 +624,7 @@ async function uploadSocialCardVideo(key) {
     if (!SOCIAL_CARD_VIDEO_KEYS.includes(key)) return;
     const control = getSocialVideoControl(key);
     const fileInput = control?.querySelector('[data-video-file]');
-    const file = fileInput?.files?.[0];
+    const file = socialVideoSelectedFiles.get(key) || fileInput?.files?.[0];
     let extension;
     try {
         extension = validateSocialVideoFile(file);
@@ -657,6 +673,7 @@ async function uploadSocialCardVideo(key) {
                 .then(({ error }) => { if (error) console.warn('Old social video cleanup failed:', error); });
         }
         revokeSocialVideoObjectUrl(key);
+        socialVideoSelectedFiles.delete(key);
         if (fileInput) fileInput.value = '';
         renderSocialVideoControl(key);
         setSocialVideoStatus(key, 'video live ✓');
@@ -695,6 +712,7 @@ async function removeSocialCardVideo(key) {
             if (removeError) console.warn('Social video file cleanup failed:', removeError);
         }
         revokeSocialVideoObjectUrl(key);
+        socialVideoSelectedFiles.delete(key);
         const fileInput = getSocialVideoControl(key)?.querySelector('[data-video-file]');
         if (fileInput) fileInput.value = '';
         renderSocialVideoControl(key);
@@ -1183,6 +1201,7 @@ async function saveLinkSettingsNow() {
             maintenance_eta: els.maintenanceEta?.value.trim() || '',
             drawings_enabled: els.drawingsEnabled?.checked !== false,
             questions_enabled: els.questionsEnabled?.checked !== false,
+            rooms_enabled: els.roomsMasterEnabled?.checked !== false,
             seo_title: els.seoTitle?.value.trim() || DEFAULT_LINK_SETTINGS.seo_title,
             seo_description: els.seoDescription?.value.trim() || DEFAULT_LINK_SETTINGS.seo_description,
             site_tagline: els.siteTagline?.value.trim() || DEFAULT_LINK_SETTINGS.site_tagline
@@ -1237,6 +1256,43 @@ function resetLinkSettings() {
     renderLinkSettings();
     settingsDraftDirty = true;
     scheduleAutoSave();
+}
+
+async function handleRoomsMasterToggle(event) {
+    const checkbox = event.currentTarget;
+    const enabled = checkbox.checked;
+    const confirmed = window.confirm(enabled
+        ? 'Enable Rooms again? The note pull and public Rooms page will become available.'
+        : 'Fully disable Rooms? The note pull will stop, public Rooms visits will go to 404, and active rooms will be closed.');
+
+    if (!confirmed) {
+        checkbox.checked = !enabled;
+        renderLinkPreview();
+        return;
+    }
+
+    checkbox.disabled = true;
+    settingsDraftDirty = true;
+    renderLinkPreview();
+    const saved = await saveLinkSettingsNow();
+
+    if (!saved) {
+        checkbox.checked = !enabled;
+        renderLinkPreview();
+        checkbox.disabled = false;
+        return;
+    }
+
+    if (!enabled && typeof window.roomsForceCloseAll === 'function') {
+        try {
+            const result = await window.roomsForceCloseAll();
+            setStatus(els.adminStatus, `rooms disabled · closed ${result?.closedCount || 0} active`);
+        } catch (error) {
+            setStatus(els.adminStatus, 'rooms disabled · active-room cleanup needs attention');
+        }
+    }
+
+    checkbox.disabled = false;
 }
 
 async function runSiteHealthCheck() {
@@ -1461,6 +1517,7 @@ async function init() {
     els.refresh.addEventListener('click', loadAdminData);
     els.logout.addEventListener('click', async () => {
         SOCIAL_CARD_VIDEO_KEYS.forEach(revokeSocialVideoObjectUrl);
+        socialVideoSelectedFiles.clear();
         await adminClient.auth.signOut();
         await window.roomsSignOut?.().catch(err => console.error('rooms signOut:', err));
         sessionStorage.removeItem('doll_admin_gate');
@@ -1483,11 +1540,16 @@ async function init() {
     });
     els.linkSettingsForm?.addEventListener('submit', e => e.preventDefault());
     els.linkSettingsReset?.addEventListener('click', resetLinkSettings);
+    els.roomsMasterEnabled?.addEventListener('change', event => {
+        event.stopPropagation();
+        handleRoomsMasterToggle(event);
+    });
     SOCIAL_CARD_VIDEO_KEYS.forEach(key => {
         const control = getSocialVideoControl(key);
-        control?.querySelector('[data-video-file]')?.addEventListener('change', () => {
-            handleSocialVideoSelection(key);
-        });
+        const fileInput = control?.querySelector('[data-video-file]');
+        const selectFile = () => handleSocialVideoSelection(key);
+        fileInput?.addEventListener('input', selectFile);
+        fileInput?.addEventListener('change', selectFile);
         control?.querySelector('[data-video-upload]')?.addEventListener('click', () => {
             uploadSocialCardVideo(key);
         });

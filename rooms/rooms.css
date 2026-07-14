@@ -116,6 +116,10 @@ body {
   overscroll-behavior: none;
 }
 
+html.rooms-gate-pending body {
+  visibility: hidden;
+}
+
 /* The note on the home page peels away before navigation. This short arrival
    completes that same motion on Rooms instead of cutting abruptly between pages. */
 html.rooms-note-arrival body::before {

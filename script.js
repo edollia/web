@@ -25,6 +25,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         maintenance_eta: '',
         drawings_enabled: true,
         questions_enabled: true,
+        rooms_enabled: true,
         seo_title: 'Lia | doll.gg',
         seo_description: "Lia's little space for messages, posts, socials and more.",
         site_tagline: "Lia's little space for messages, posts, socials and more."
@@ -417,6 +418,10 @@ document.addEventListener("DOMContentLoaded", async function() {
         let opening = false;
         let openDistance = 190;
 
+        function roomsAreEnabled() {
+            return siteLinkSettings.rooms_enabled !== false;
+        }
+
         function updatePeelMetrics() {
             const noteRect = noteTarget.getBoundingClientRect();
             openDistance = Math.max(150, Math.min(245, Math.hypot(noteRect.width, noteRect.height) * 0.62));
@@ -460,7 +465,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         }
 
         function openRoomsPage() {
-            if (opening) return;
+            if (opening || !roomsAreEnabled()) return;
             opening = true;
             playUiSound('link');
             try {
@@ -487,7 +492,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         });
 
         noteTarget.addEventListener('pointerdown', function(e) {
-            if (opening || !e.isPrimary || note.classList.contains('hidden')) return;
+            if (opening || !roomsAreEnabled() || !e.isPrimary || note.classList.contains('hidden')) return;
             if (!isCornerGesture(e)) return;
             dragging = true;
             startX = e.clientX;
@@ -767,6 +772,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             maintenance_eta: String(settings.maintenance_eta || ''),
             drawings_enabled: settings.drawings_enabled !== false,
             questions_enabled: settings.questions_enabled !== false,
+            rooms_enabled: settings.rooms_enabled !== false,
             seo_title: String(settings.seo_title || DEFAULT_LINK_SETTINGS.seo_title),
             seo_description: String(settings.seo_description || DEFAULT_LINK_SETTINGS.seo_description),
             site_tagline: String(settings.site_tagline || DEFAULT_LINK_SETTINGS.site_tagline)
@@ -828,7 +834,6 @@ document.addEventListener("DOMContentLoaded", async function() {
                 'dropdown1.png',
                 'notee.jpg',
                 'loading.gif',
-                'paw1.png',
                 'snap.png',
                 'insta.png',
                 'mail.png',
@@ -1008,35 +1013,41 @@ document.addEventListener("DOMContentLoaded", async function() {
         // established warm-up on newer browsers, but never start CUT1/CUT3 here
         // on the affected older phones.
         if (!isLegacyIOS) warmUiSounds();
-        popup.style.opacity = 0;
+
+        // Let the heart acknowledge the tap before the gate starts fading.
+        this.classList.add('is-pressed');
+
         setTimeout(() => {
-            popup.style.display = "none";
-            const mainScreen = document.getElementById("main-screen");
-            if (mainScreen) {
-                mainScreen.classList.remove('ui-ready', 'note-ready');
-                mainScreen.style.display = "block";
-                setTimeout(() => mainScreen.classList.add('ui-ready'), 780);
-                setTimeout(() => {
-                    mainScreen.classList.add('note-ready');
-                    scheduleFirstVisitTour();
-                }, 1080);
-            }
+            popup.style.opacity = 0;
+            setTimeout(() => {
+                popup.style.display = "none";
+                const mainScreen = document.getElementById("main-screen");
+                if (mainScreen) {
+                    mainScreen.classList.remove('ui-ready', 'note-ready');
+                    mainScreen.style.display = "block";
+                    setTimeout(() => mainScreen.classList.add('ui-ready'), 780);
+                    setTimeout(() => {
+                        mainScreen.classList.add('note-ready');
+                        scheduleFirstVisitTour();
+                    }, 1080);
+                }
 
-        }, 500);
+            }, 500);
 
-        // CUT2 is 0.6 seconds long. Give legacy iOS a little extra separation
-        // before page music starts, while retaining the current timing elsewhere.
-        window.setTimeout(() => {
-            if (audioPlayed) return;
-            audioPlayed = true;
-            backgroundFadeLevel = 0;
-            applyBackgroundMusicVolume();
-            audio.play()
-                .then(startBackgroundFadeLoop)
-                .catch(e => {
-                    audioPlayed = false;
-                });
-        }, isLegacyIOS ? 900 : 700);
+            // CUT2 is 0.6 seconds long. Give legacy iOS a little extra separation
+            // before page music starts, while retaining the current timing elsewhere.
+            window.setTimeout(() => {
+                if (audioPlayed) return;
+                audioPlayed = true;
+                backgroundFadeLevel = 0;
+                applyBackgroundMusicVolume();
+                audio.play()
+                    .then(startBackgroundFadeLoop)
+                    .catch(e => {
+                        audioPlayed = false;
+                    });
+            }, isLegacyIOS ? 900 : 700);
+        }, 420);
     });
 
     // ===== TOGGLE NOTE & DRAWING WIDGET =====
@@ -1393,6 +1404,13 @@ document.addEventListener("DOMContentLoaded", async function() {
 
     function applyPublicLinkSettings() {
         document.body.classList.add('site-links-ready');
+        const roomsEnabled = siteLinkSettings.rooms_enabled !== false;
+        const noteRoomsTarget = document.getElementById('note-peel-target');
+        noteRoomsTarget?.classList.toggle('rooms-disabled', !roomsEnabled);
+        noteRoomsTarget?.setAttribute('aria-disabled', roomsEnabled ? 'false' : 'true');
+        noteRoomsTarget?.setAttribute('aria-label', roomsEnabled
+            ? 'Pull the note corner to open rooms'
+            : 'Rooms are currently unavailable');
         if (snapchatOption) {
             snapchatOption.href = getPublicLink('snapchat');
             snapchatOption.classList.toggle('site-link-hidden', !isPublicLinkEnabled('snapchat'));
