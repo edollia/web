@@ -6,7 +6,7 @@
     <meta name="robots" content="noindex, nofollow">
     <meta name="referrer" content="strict-origin-when-cross-origin">
     <title>Lia Admin</title>
-    <link rel="stylesheet" href="../admin.css?v=4.5">
+    <link rel="stylesheet" href="../admin.css?v=4.6">
 </head>
 <body>
     <main class="admin-shell">
@@ -48,6 +48,7 @@
             </header>
 
             <p id="lockdown-banner" class="hidden">lockdown is ON — only the admin can create or join rooms.</p>
+            <p id="rooms-disabled-banner" class="hidden">rooms are OFF — the note pull and public Rooms page are disabled.</p>
 
             <section class="admin-stats" id="admin-stats"></section>
 
@@ -120,6 +121,25 @@
                 </div>
 
                 <div class="admin-control-grid">
+                    <details class="admin-link-card admin-control-card" data-link-card="rooms-master" open>
+                        <summary>
+                            <div class="admin-link-card-title">
+                                <span class="admin-link-icon">R</span>
+                                <div>
+                                    <strong>rooms master switch</strong>
+                                    <small id="rooms-master-state">enabled</small>
+                                </div>
+                            </div>
+                            <label class="admin-switch">
+                                <input id="rooms-master-enabled" type="checkbox" checked>
+                                <span></span>
+                            </label>
+                        </summary>
+                        <div class="admin-link-card-body">
+                            <p class="admin-tool-note">Turn this off to disable the homepage note pull and send every public Rooms visit to the 404 page.</p>
+                        </div>
+                    </details>
+
                     <details class="admin-link-card admin-control-card" data-link-card="rooms-lockdown" open>
                         <summary>
                             <div class="admin-link-card-title">
@@ -467,6 +487,14 @@
                                         <option value="widget">classic iframe widget</option>
                                     </select>
                                 </label>
+                                <label class="admin-url-field">
+                                    <span>wishlist layout</span>
+                                    <select id="wishlist-view-mode">
+                                        <option value="masonry">pinned masonry</option>
+                                        <option value="list">vertical list</option>
+                                        <option value="grid">paged grid (classic)</option>
+                                    </select>
+                                </label>
                             </div>
                         </details>
                     </div>
@@ -560,7 +588,7 @@
     </main>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="../admin-rooms.js?v=4.4"></script>
-    <script src="../admin.js?v=4.6"></script>
+    <script src="../admin-rooms.js?v=4.5"></script>
+    <script src="../admin.js?v=4.7"></script>
 </body>
 </html>

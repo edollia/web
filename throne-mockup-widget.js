@@ -2076,6 +2076,26 @@
         return null;
     }
 
+    // Reads the admin-configurable "wishlist layout" setting (site_settings,
+    // same row/table admin.js's other link settings live in) and applies it
+    // to wishlistViewMode. Deliberately never throws/rejects — it runs
+    // alongside the actual items fetch in loadItems, and a slow or failed
+    // settings read should never be treated as a failure to load the
+    // wishlist itself; it just leaves wishlistViewMode at its default.
+    async function applyWishlistViewModeSetting(client) {
+        try {
+            const { data, error } = await withTimeout(
+                client.from('site_settings').select('value').eq('id', 'links').maybeSingle(),
+                FETCH_TIMEOUT_MS
+            );
+            if (error || !data) return;
+            const mode = data.value?.wishlist_view_mode;
+            if (WISHLIST_VIEW_MODES.includes(mode)) wishlistViewMode = mode;
+        } catch (err) {
+            // Best-effort only — keep whatever wishlistViewMode already is.
+        }
+    }
+
     async function loadItems() {
         loadState = 'loading';
         renderBody();
@@ -2092,15 +2112,19 @@
         }
 
         try {
-            const { data, error } = await withTimeout(
-                client.from('wishlist_items')
-                    .select('*')
-                    .eq('featured', true)
-                    .eq('is_available', true)
-                    .order('position')
-                    .limit(MAX_FEATURED),
-                FETCH_TIMEOUT_MS
-            );
+            const [itemsResult] = await Promise.all([
+                withTimeout(
+                    client.from('wishlist_items')
+                        .select('*')
+                        .eq('featured', true)
+                        .eq('is_available', true)
+                        .order('position')
+                        .limit(MAX_FEATURED),
+                    FETCH_TIMEOUT_MS
+                ),
+                applyWishlistViewModeSetting(client),
+            ]);
+            const { data, error } = itemsResult;
             if (error) throw error;
             items = Array.isArray(data) ? data : [];
             loadState = 'ready';

@@ -7,11 +7,13 @@ const SOCIAL_CARD_VIDEO_KEYS = ['snapchat', 'instagram', 'kofi'];
 const MAX_SOCIAL_CARD_VIDEO_BYTES = 20 * 1024 * 1024;
 const SOCIAL_CARD_VIDEO_TYPES = new Set(['video/mp4', 'video/webm']);
 const socialVideoObjectUrls = new Map();
+const socialVideoSelectedFiles = new Map();
 
 async function hashPin(pin) {
     const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(pin));
     return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
+const WISHLIST_VIEW_MODES = ['grid', 'list', 'masonry'];
 const DEFAULT_LINK_SETTINGS = {
     snapchat_url: 'https://www.snapchat.com/add/dumidoll',
     snapchat_enabled: true,
@@ -28,6 +30,7 @@ const DEFAULT_LINK_SETTINGS = {
     throne_url: 'https://throne.com/edoll',
     throne_enabled: true,
     throne_checkout_mode: 'mockup',
+    wishlist_view_mode: 'masonry',
     latest_note_enabled: false,
     latest_note_title: 'latest note',
     latest_note_body: '',
@@ -37,6 +40,7 @@ const DEFAULT_LINK_SETTINGS = {
     maintenance_eta: '',
     drawings_enabled: true,
     questions_enabled: true,
+    rooms_enabled: true,
     seo_title: 'Lia | doll.gg',
     seo_description: "Lia's little space for messages, posts, socials and more.",
     site_tagline: "Lia's little space for messages, posts, socials and more."
@@ -116,6 +120,7 @@ const els = {
     throneUrl: document.getElementById('throne-url'),
     throneState: document.getElementById('throne-state'),
     throneCheckoutMode: document.getElementById('throne-checkout-mode'),
+    wishlistViewMode: document.getElementById('wishlist-view-mode'),
     wishlistItemsList: document.getElementById('wishlist-items-list'),
     wishlistSyncStatus: document.getElementById('wishlist-sync-status'),
     wishlistSyncNow: document.getElementById('wishlist-sync-now'),
@@ -135,6 +140,9 @@ const els = {
     drawingsEnabled: document.getElementById('drawings-enabled'),
     questionsEnabled: document.getElementById('questions-enabled'),
     submissionsState: document.getElementById('submissions-state'),
+    roomsMasterEnabled: document.getElementById('rooms-master-enabled'),
+    roomsMasterState: document.getElementById('rooms-master-state'),
+    roomsDisabledBanner: document.getElementById('rooms-disabled-banner'),
     seoTitle: document.getElementById('seo-title'),
     seoDescription: document.getElementById('seo-description'),
     siteTagline: document.getElementById('site-tagline'),
@@ -331,6 +339,7 @@ function normalizeLinkSettings(value) {
         throne_url: String(settings.throne_url || DEFAULT_LINK_SETTINGS.throne_url),
         throne_enabled: settings.throne_enabled !== false,
         throne_checkout_mode: settings.throne_checkout_mode === 'widget' ? 'widget' : 'mockup',
+        wishlist_view_mode: WISHLIST_VIEW_MODES.includes(settings.wishlist_view_mode) ? settings.wishlist_view_mode : 'masonry',
         latest_note_enabled: settings.latest_note_enabled === true,
         latest_note_title: String(settings.latest_note_title || DEFAULT_LINK_SETTINGS.latest_note_title),
         latest_note_body: String(settings.latest_note_body || ''),
@@ -370,6 +379,7 @@ function renderLinkSettings({ preserveDraft = false } = {}) {
     if (els.throneUrl) els.throneUrl.value = settings.throne_url || '';
     if (els.throneState) els.throneState.textContent = settings.throne_enabled !== false ? 'visible' : 'hidden';
     if (els.throneCheckoutMode) els.throneCheckoutMode.value = settings.throne_checkout_mode === 'widget' ? 'widget' : 'mockup';
+    if (els.wishlistViewMode) els.wishlistViewMode.value = WISHLIST_VIEW_MODES.includes(settings.wishlist_view_mode) ? settings.wishlist_view_mode : 'masonry';
     if (els.latestNoteEnabled) els.latestNoteEnabled.checked = settings.latest_note_enabled === true;
     if (els.latestNoteTitle) els.latestNoteTitle.value = settings.latest_note_title || '';
     if (els.latestNoteBody) els.latestNoteBody.value = settings.latest_note_body || '';
@@ -407,6 +417,7 @@ function getDraftLinkSettings() {
         throne_url: els.throneUrl?.value.trim() || state.linkSettings.throne_url || DEFAULT_LINK_SETTINGS.throne_url,
         throne_enabled: els.throneEnabled?.checked !== false,
         throne_checkout_mode: els.throneCheckoutMode?.value === 'widget' ? 'widget' : 'mockup',
+        wishlist_view_mode: WISHLIST_VIEW_MODES.includes(els.wishlistViewMode?.value) ? els.wishlistViewMode.value : 'masonry',
         latest_note_enabled: els.latestNoteEnabled?.checked === true,
         latest_note_title: els.latestNoteTitle?.value.trim() || DEFAULT_LINK_SETTINGS.latest_note_title,
         latest_note_body: els.latestNoteBody?.value.trim() || '',
@@ -1162,6 +1173,7 @@ async function saveLinkSettingsNow() {
             throne_url: cleanUrl(els.throneUrl?.value || state.linkSettings.throne_url, 'Throne'),
             throne_enabled: els.throneEnabled?.checked !== false,
             throne_checkout_mode: els.throneCheckoutMode?.value === 'widget' ? 'widget' : 'mockup',
+            wishlist_view_mode: WISHLIST_VIEW_MODES.includes(els.wishlistViewMode?.value) ? els.wishlistViewMode.value : 'masonry',
             latest_note_enabled: els.latestNoteEnabled?.checked === true,
             latest_note_title: els.latestNoteTitle?.value.trim() || DEFAULT_LINK_SETTINGS.latest_note_title,
             latest_note_body: els.latestNoteBody?.value.trim() || '',
@@ -1507,6 +1519,7 @@ async function init() {
         els.kofiUrl,
         els.throneUrl,
         els.throneCheckoutMode,
+        els.wishlistViewMode,
         els.latestNoteTitle,
         els.latestNoteBody,
         els.maintenanceTitle,
