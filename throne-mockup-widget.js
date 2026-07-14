@@ -32,6 +32,13 @@
     let items = [];
     let selectedIds = new Set();
     let loadState = 'idle'; // idle | loading | ready | failed
+    // TEMP: which of the 3 wishlist layouts to render — 'grid' is the
+    // current live one; 'list' and 'masonry' are the two new options being
+    // compared. Cycled by the dwl-mode-toggle button (see buildPanel /
+    // onModeToggleClick). Drop this whole flag, the toggle button, and
+    // whichever two render paths don't get picked once a mode is settled.
+    let wishlistViewMode = 'grid'; // 'grid' | 'list' | 'masonry'
+    const WISHLIST_VIEW_MODES = ['grid', 'list', 'masonry'];
     let checkoutInFlight = false;
     let checkoutStatusMessage = '';
     let scrollRaf = 0;
@@ -205,6 +212,26 @@
                 to { opacity: 1; transform: translateY(0) scale(1); }
             }
 
+            /* TEMP — dev-only control to cycle the 3 view modes for live
+               comparison. Delete this rule, the button in buildPanel, and
+               onModeToggleClick once a mode is picked. */
+            .dwl-mode-toggle {
+                display: block;
+                margin: 0 0 6px;
+                padding: 5px 12px;
+                border-radius: 999px;
+                border: 1px solid rgba(245, 185, 208, 0.82);
+                background: linear-gradient(180deg, #fff, #ffedf4);
+                color: #ef6d9f;
+                font-family: var(--dwl-sans);
+                font-size: 10.5px;
+                font-weight: 700;
+                cursor: pointer;
+                box-shadow: 0 3px 8px rgba(210, 88, 136, 0.15);
+                -webkit-tap-highlight-color: transparent;
+            }
+            .dwl-mode-toggle:active { transform: scale(0.94); }
+
             .doll-wishlist-body {
                 position: relative;
             }
@@ -245,6 +272,23 @@
                 grid-column: 1 / -1;
             }
 
+            /* TEMP: two alternate view-mode containers, alongside the
+               paged grid above, while the wishlist layout is being decided
+               — see wishlistViewMode and the dwl-mode-toggle button. Remove
+               whichever two don't get picked once a mode is settled on. */
+            .doll-wishlist-list {
+                display: flex;
+                flex-direction: column;
+                gap: ${CARD_GAP}px;
+                padding: 5px 1px 15px;
+            }
+
+            .doll-wishlist-masonry {
+                columns: 2;
+                column-gap: ${CARD_GAP}px;
+                padding: 5px 1px 15px;
+            }
+
             .doll-wishlist-item {
                 position: relative;
                 display: flex;
@@ -280,7 +324,7 @@
 
             .doll-wishlist-item.selected {
                 border-color: rgba(235, 107, 157, 0.86);
-                transform: translateY(-2px);
+                transform: translateY(-2px) rotate(var(--dwl-tilt, 0deg));
             }
 
             /* The glow is a real child element (not a pseudo-element, and
@@ -621,13 +665,107 @@
                 100% { opacity: 1; transform: scale(1); }
             }
 
+            /* TEMP — list view mode: same card, laid out as a row instead
+               of a tall tile. Heart/burst re-center vertically via top +
+               negative margin (not transform), so they never fight the
+               scale()/translateY() transforms hover, active and selected
+               already animate on those same elements. */
+            .doll-wishlist-item.dwl-row {
+                flex-direction: row;
+                align-items: center;
+                padding: 6px;
+            }
+            .doll-wishlist-item.dwl-row .doll-wishlist-media {
+                width: 66px;
+                aspect-ratio: 1;
+                flex: 0 0 auto;
+                border-radius: 12px;
+            }
+            .doll-wishlist-item.dwl-row .doll-wishlist-info {
+                flex: 1;
+                min-width: 0;
+                margin: 0 0 0 10px;
+                padding-right: 34px;
+            }
+            .doll-wishlist-item.dwl-row .doll-wishlist-name {
+                font-size: 12px;
+            }
+            .doll-wishlist-item.dwl-row .doll-wishlist-price {
+                font-size: 12.5px;
+            }
+            .doll-wishlist-item.dwl-row .doll-wishlist-cart-btn {
+                top: 50%;
+                bottom: auto;
+                margin-top: -15px;
+            }
+            .doll-wishlist-item.dwl-row .dwl-burst {
+                bottom: auto;
+                top: 50%;
+                margin-top: -8.5px;
+                transform-origin: 78% 50%;
+            }
+            .doll-wishlist-more-card.dwl-row {
+                flex-direction: row;
+                justify-content: center;
+                gap: 10px;
+                padding: 10px;
+            }
+
+            /* TEMP — masonry view mode: photos keep their natural aspect
+               ratio (capped) instead of a fixed crop, tiles get a small
+               alternating tilt via --dwl-tilt (composed into the existing
+               .selected / :hover transforms above, not replacing them) and
+               a little corkboard pin-head, matching the ":3" panel. */
+            .doll-wishlist-item.dwl-pin {
+                break-inside: avoid;
+                margin-bottom: 16px;
+            }
+            /* :not(.selected) (matching the existing hover rule's own
+               pattern below) instead of a plain .dwl-pin rule — a plain
+               rule would tie in specificity with .doll-wishlist-item.selected
+               and, being later in the sheet, silently win and eat the
+               selected translateY(-2px) lift on pinned cards. */
+            .doll-wishlist-item.dwl-pin:not(.selected) {
+                transform: translateZ(0) rotate(var(--dwl-tilt, 0deg));
+            }
+            .doll-wishlist-item.dwl-pin .doll-wishlist-media {
+                aspect-ratio: auto;
+            }
+            .doll-wishlist-item.dwl-pin .doll-wishlist-media img {
+                height: auto;
+                max-height: 230px;
+                object-fit: cover;
+            }
+            .doll-wishlist-item.dwl-pin::after {
+                content: '';
+                position: absolute;
+                top: -7px;
+                left: 50%;
+                transform: translateX(-50%);
+                width: 11px;
+                height: 11px;
+                border-radius: 50%;
+                background: radial-gradient(circle at 35% 30%, #fff, #ffb6d5);
+                box-shadow: 0 2px 3px rgba(0, 0, 0, 0.3), inset 0 -1px 1px rgba(0, 0, 0, 0.2), inset 0 1px 1px rgba(255, 255, 255, 0.5);
+                pointer-events: none;
+                z-index: 5;
+            }
+            .doll-wishlist-masonry .doll-wishlist-item.dwl-pin:nth-child(4n+1) { --dwl-tilt: -2deg; }
+            .doll-wishlist-masonry .doll-wishlist-item.dwl-pin:nth-child(4n+2) { --dwl-tilt: 1.6deg; }
+            .doll-wishlist-masonry .doll-wishlist-item.dwl-pin:nth-child(4n+3) { --dwl-tilt: 2deg; }
+            .doll-wishlist-masonry .doll-wishlist-item.dwl-pin:nth-child(4n+4) { --dwl-tilt: -1.6deg; }
+            .doll-wishlist-more-card.dwl-pin {
+                break-inside: avoid;
+                margin-bottom: 16px;
+            }
+
             @media (hover: hover) and (pointer: fine) {
                 .doll-wishlist-item:not(.selected):hover {
                     border-color: rgba(232, 151, 182, 0.82);
                     box-shadow:
                         inset 0 0 0 2px rgba(255, 255, 255, 0.94),
                         0 9px 18px rgba(174, 75, 113, 0.13);
-                    transform: translateY(-3px);
+                    transform: translateY(-3px) rotate(var(--dwl-tilt, 0deg));
                 }
                 .doll-wishlist-item:hover .doll-wishlist-media img {
                     transform: scale(1.028);
@@ -813,6 +951,12 @@
                 width: 30px;
                 height: 30px;
                 border-radius: 50%;
+            }
+            /* TEMP — matches the .dwl-row cart-btn override above. */
+            .doll-wishlist-skeleton.dwl-row .dwl-sk-circle {
+                top: 50%;
+                bottom: auto;
+                margin-top: -15px;
             }
 
             @keyframes dollWishlistShimmer {
@@ -1320,6 +1464,7 @@
         panel.className = 'doll-wishlist-panel';
         panel.setAttribute('aria-hidden', 'true');
         panel.innerHTML = `
+            <button type="button" class="dwl-mode-toggle" id="dwl-mode-toggle-btn">view: grid (tap to cycle)</button>
             <div class="doll-wishlist-body"></div>
             <nav class="doll-wishlist-dots" aria-label="wishlist pages"></nav>
             <p class="doll-wishlist-status"></p>
@@ -1350,9 +1495,22 @@
         }
 
         panel.querySelector('.doll-wishlist-checkout').addEventListener('click', startCheckout);
+        panel.querySelector('#dwl-mode-toggle-btn').addEventListener('click', onModeToggleClick);
         setupConflictGuards();
 
         return panel;
+    }
+
+    // TEMP — cycles grid -> list -> masonry -> grid and re-renders in place
+    // so the 3 layouts can be compared live without reopening the panel.
+    // Delete this function and the button in buildPanel once one is picked.
+    function onModeToggleClick() {
+        const currentIndex = WISHLIST_VIEW_MODES.indexOf(wishlistViewMode);
+        wishlistViewMode = WISHLIST_VIEW_MODES[(currentIndex + 1) % WISHLIST_VIEW_MODES.length];
+        const btn = panel?.querySelector('#dwl-mode-toggle-btn');
+        if (btn) btn.textContent = `view: ${wishlistViewMode} (tap to cycle)`;
+        resetSwipeHintSequence();
+        renderBody();
     }
 
     function ensurePanel() {
@@ -1615,17 +1773,28 @@
         });
     }
 
-    function renderSkeleton() {
-        return `<div class="doll-wishlist-scroll"><div class="doll-wishlist-page">${Array.from({ length: PAGE_SIZE }).map(() => `
-                <div class="doll-wishlist-item doll-wishlist-skeleton">
+    function renderSkeleton(mode = wishlistViewMode) {
+        const modeClass = mode === 'list' ? ' dwl-row' : '';
+        const tile = `
+                <div class="doll-wishlist-item doll-wishlist-skeleton${modeClass}">
                     <div class="doll-wishlist-media"></div>
                     <div class="doll-wishlist-info">
                         <p class="doll-wishlist-name"><span class="dwl-sk-line"></span></p>
                         <span class="dwl-sk-line dwl-sk-price"></span>
                     </div>
                     <span class="dwl-sk-circle"></span>
-                </div>
-            `).join('')}</div></div>`;
+                </div>`;
+        if (mode === 'list') {
+            return `<div class="doll-wishlist-list">${Array.from({ length: PAGE_SIZE }).map(() => tile).join('')}</div>`;
+        }
+        if (mode === 'masonry') {
+            // Skeleton tiles stay the default aspect ratio here (not
+            // .dwl-pin, which switches media to aspect-ratio:auto — with no
+            // real <img> yet that would collapse to zero height). Real
+            // cards get their natural varied heights once loaded.
+            return `<div class="doll-wishlist-masonry">${Array.from({ length: PAGE_SIZE }).map(() => tile).join('')}</div>`;
+        }
+        return `<div class="doll-wishlist-scroll"><div class="doll-wishlist-page">${Array.from({ length: PAGE_SIZE }).map(() => tile).join('')}</div></div>`;
     }
 
     function pagesMarkup(list) {
@@ -1642,25 +1811,40 @@
 
         return pageItems.map(page => `
             <div class="doll-wishlist-page">
-                ${page.map(item => item ? cardMarkup(item) : seeMoreMarkup()).join('')}
+                ${page.map(item => item ? cardMarkup(item, 'grid') : seeMoreMarkup('grid')).join('')}
             </div>
         `).join('');
     }
 
-    function seeMoreMarkup() {
+    // TEMP — the other two view modes being compared alongside the paged
+    // grid above. Both reuse the exact same cardMarkup/seeMoreMarkup as the
+    // grid (just a different mode flag), so selection, glow, burst and
+    // marquee behavior is identical in all three — only the container flow
+    // (and the card's own row/pin CSS modifier) differs.
+    function listMarkup(list) {
+        return `<div class="doll-wishlist-list">${list.map(item => cardMarkup(item, 'list')).join('')}${seeMoreMarkup('list')}</div>`;
+    }
+
+    function masonryMarkup(list) {
+        return `<div class="doll-wishlist-masonry">${list.map(item => cardMarkup(item, 'masonry')).join('')}${seeMoreMarkup('masonry')}</div>`;
+    }
+
+    function seeMoreMarkup(mode = wishlistViewMode) {
+        const modeClass = mode === 'list' ? ' dwl-row' : mode === 'masonry' ? ' dwl-pin' : '';
         return `
-        <a class="doll-wishlist-more-card" href="${FULL_WISHLIST_URL}" target="_blank" rel="noopener noreferrer" aria-label="See the full wishlist on Throne">
+        <a class="doll-wishlist-more-card${modeClass}" href="${FULL_WISHLIST_URL}" target="_blank" rel="noopener noreferrer" aria-label="See the full wishlist on Throne">
             <span class="dwl-more-arrow" aria-hidden="true">↗</span>
             <span class="dwl-more-label">see all</span>
         </a>`;
     }
 
-    function cardMarkup(item) {
+    function cardMarkup(item, mode = wishlistViewMode) {
         const selected = selectedIds.has(item.throne_item_id);
         const fullLabel = String(item.name || '').trim() || 'wishlist item';
         const label = capName(fullLabel);
+        const modeClass = mode === 'list' ? ' dwl-row' : mode === 'masonry' ? ' dwl-pin' : '';
         return `
-        <article class="doll-wishlist-item${selected ? ' selected' : ''}" data-item-id="${escapeHtml(item.throne_item_id)}">
+        <article class="doll-wishlist-item${modeClass}${selected ? ' selected' : ''}" data-item-id="${escapeHtml(item.throne_item_id)}">
             <div class="dwl-glow" aria-hidden="true"></div>
             <div class="dwl-burst-clip" aria-hidden="true"><div class="dwl-burst"></div></div>
             <div class="doll-wishlist-media">
@@ -1698,10 +1882,20 @@
             return;
         }
 
-        body.innerHTML = `<div class="doll-wishlist-scroll">${pagesMarkup(items)}</div>`;
+        // TEMP: 'list' and 'masonry' build their own self-contained
+        // container (no .doll-wishlist-scroll/.doll-wishlist-page), so the
+        // page-swipe/dots/swipe-hint machinery below simply finds nothing
+        // to attach to and no-ops for those two modes — only 'grid' uses it.
+        if (wishlistViewMode === 'list') {
+            body.innerHTML = listMarkup(items);
+        } else if (wishlistViewMode === 'masonry') {
+            body.innerHTML = masonryMarkup(items);
+        } else {
+            body.innerHTML = `<div class="doll-wishlist-scroll">${pagesMarkup(items)}</div>`;
+        }
 
         const scroll = body.querySelector('.doll-wishlist-scroll');
-        scroll.addEventListener('scroll', onScroll, { passive: true });
+        scroll?.addEventListener('scroll', onScroll, { passive: true });
         body.querySelectorAll('.doll-wishlist-cart-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 e.preventDefault();

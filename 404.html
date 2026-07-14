@@ -62,7 +62,9 @@
         (function() {
             var redirects = {
                 '/admin.html': '/admin/',
-                '/stream.html': '/stream/',
+                '/stream': '/rooms/',
+                '/stream/': '/rooms/',
+                '/stream.html': '/rooms/',
                 '/index.html': '/'
             };
             var cleanPath = redirects[window.location.pathname.toLowerCase()];

@@ -57,7 +57,6 @@
                 <button data-panel="site-panel"><span>site</span></button>
                 <button data-panel="links-panel"><span>links <b id="links-tab-count">0/4</b></span></button>
                 <button data-panel="search-panel"><span>search</span></button>
-                <button data-panel="chat-panel"><span>live chat <b id="chat-tab-count">0</b></span></button>
                 <button data-panel="rooms-panel"><span>rooms</span></button>
             </nav>
 
@@ -110,80 +109,6 @@
                     <h2>answered asks</h2>
                 </div>
                 <div class="admin-list admin-text-list" id="published-questions-list"></div>
-            </section>
-
-            <section class="admin-panel" id="chat-panel">
-                <div class="admin-chat-layout">
-                    <section class="admin-chat-main">
-                        <div class="admin-chat-command">
-                            <div>
-                                <p class="admin-kicker">moderation</p>
-                                <h2>live chat control</h2>
-                            </div>
-                            <div class="admin-chat-filters">
-                                <input id="chat-filter" type="search" maxlength="80" placeholder="filter chat">
-                                <select id="chat-visibility-filter">
-                                    <option value="all">all</option>
-                                    <option value="visible">visible</option>
-                                    <option value="hidden">hidden</option>
-                                </select>
-                            </div>
-                            <div class="admin-command-actions">
-                                <button class="soft" data-chat-action="refresh">refresh</button>
-                                <button class="soft" id="chat-pause-toggle" data-chat-action="toggle-pause">pause chat</button>
-                                <button class="danger" data-chat-action="clear-visible">hide visible</button>
-                                <button class="danger emergency" data-chat-action="delete-all">delete all</button>
-                            </div>
-                        </div>
-
-                        <div class="admin-section-heading">
-                            <h2>live chat</h2>
-                        </div>
-                        <div class="admin-list admin-chat-list" id="stream-chat-list"></div>
-                    </section>
-
-                    <aside class="admin-chat-tools">
-                        <form class="admin-tool-card" id="chat-settings-form">
-                            <h2>chat rules</h2>
-                            <p class="admin-tool-note">These apply to public chat after the SQL is installed.</p>
-                            <label>
-                                <span>slow mode seconds</span>
-                                <input id="chat-slow-mode" type="number" min="0" max="120" step="1" value="5">
-                            </label>
-                            <label>
-                                <span>blocked words</span>
-                                <textarea id="chat-blocked-words" placeholder="one per line"></textarea>
-                            </label>
-                            <button type="submit">save rules</button>
-                        </form>
-
-                        <form class="admin-tool-card" id="chat-ban-form">
-                            <h2>manual ban</h2>
-                            <p class="admin-tool-note">Message buttons ban by IP but keep the nickname in the note.</p>
-                            <label>
-                                <span>type</span>
-                                <select id="chat-ban-type">
-                                    <option value="ip">ip</option>
-                                    <option value="nickname">nickname</option>
-                                </select>
-                            </label>
-                            <label>
-                                <span>value</span>
-                                <input id="chat-ban-value" type="text" maxlength="100" placeholder="ip or nickname">
-                            </label>
-                            <label>
-                                <span>note</span>
-                                <input id="chat-ban-note" type="text" maxlength="160" placeholder="optional">
-                            </label>
-                            <button type="submit">add ban</button>
-                        </form>
-
-                        <div class="admin-tool-card">
-                            <h2>bans</h2>
-                            <div class="admin-ban-list" id="stream-ban-list"></div>
-                        </div>
-                    </aside>
-                </div>
             </section>
 
             <section class="admin-panel" id="rooms-panel">
@@ -345,70 +270,6 @@
                                     </span>
                                     <span class="admin-switch">
                                         <input id="questions-enabled" type="checkbox">
-                                        <span></span>
-                                    </span>
-                                </label>
-                            </div>
-                        </details>
-
-                        <details class="admin-link-card admin-control-card" data-link-card="stream" open>
-                            <summary>
-                                <div class="admin-link-card-title">
-                                    <span class="admin-link-icon">O</span>
-                                    <div>
-                                        <strong>stream room</strong>
-                                        <small id="stream-state">coming soon</small>
-                                    </div>
-                                </div>
-                                <label class="admin-switch">
-                                    <input id="stream-enabled" type="checkbox">
-                                    <span></span>
-                                </label>
-                            </summary>
-                            <div class="admin-link-card-body admin-field-grid">
-                                <label class="admin-url-field">
-                                    <span>provider</span>
-                                    <select id="stream-provider">
-                                        <option value="auto">auto detect</option>
-                                        <option value="owncast">Owncast</option>
-                                        <option value="twitch">Twitch</option>
-                                        <option value="youtube">YouTube</option>
-                                        <option value="vimeo">Vimeo</option>
-                                        <option value="direct">direct video</option>
-                                    </select>
-                                </label>
-                                <label class="admin-url-field">
-                                    <span>shape</span>
-                                    <select id="stream-aspect">
-                                        <option value="landscape">landscape</option>
-                                        <option value="portrait">portrait</option>
-                                        <option value="square">square</option>
-                                        <option value="auto">auto</option>
-                                    </select>
-                                </label>
-                                <label class="admin-url-field">
-                                    <span>title</span>
-                                    <input id="stream-title" type="text" maxlength="60" placeholder="Live">
-                                </label>
-                                <label class="admin-url-field">
-                                    <span>player url</span>
-                                    <input id="stream-url" type="url" inputmode="url" placeholder="Owncast, Twitch, YouTube, Vimeo, or direct video URL">
-                                </label>
-                                <label class="admin-url-field">
-                                    <span>offline preview</span>
-                                    <input id="stream-video-url" type="url" inputmode="url" placeholder="YouTube, Vimeo, Twitch, or video URL">
-                                </label>
-                                <label class="admin-url-field">
-                                    <span>offline note</span>
-                                    <textarea id="stream-offline-message" maxlength="160" placeholder="stream is offline right now."></textarea>
-                                </label>
-                                <label class="admin-toggle-row">
-                                    <span>
-                                        <strong>chat</strong>
-                                        <small>show chat on /stream</small>
-                                    </span>
-                                    <span class="admin-switch">
-                                        <input id="stream-chat-enabled" type="checkbox">
                                         <span></span>
                                     </span>
                                 </label>
@@ -700,6 +561,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="../admin-rooms.js?v=4.4"></script>
-    <script src="../admin.js?v=4.5"></script>
+    <script src="../admin.js?v=4.6"></script>
 </body>
 </html>

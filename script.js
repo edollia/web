@@ -24,14 +24,6 @@ document.addEventListener("DOMContentLoaded", async function() {
         maintenance_eta: '',
         drawings_enabled: true,
         questions_enabled: true,
-        stream_enabled: false,
-        stream_chat_enabled: true,
-        stream_provider: 'auto',
-        stream_aspect: 'landscape',
-        stream_title: 'Live',
-        stream_url: '',
-        stream_video_url: '',
-        stream_offline_message: 'stream is offline right now.',
         seo_title: 'Lia | doll.gg',
         seo_description: "Lia's little space for messages, posts, socials and more.",
         site_tagline: "Lia's little space for messages, posts, socials and more."
@@ -411,12 +403,12 @@ document.addEventListener("DOMContentLoaded", async function() {
 
     initAdminGate();
 
-    function initNoteStreamPeel() {
+    function initNoteRoomsPeel() {
         const noteTarget = document.getElementById('note-peel-target');
         const note = document.querySelector('.note-image');
         if (!noteTarget || !note) return;
 
-        const streamUrl = resolveSiteRoute('stream/');
+        const roomsUrl = resolveSiteRoute('rooms/');
         let startX = 0;
         let startY = 0;
         let currentProgress = 0;
@@ -448,8 +440,8 @@ document.addEventListener("DOMContentLoaded", async function() {
             noteTarget.style.setProperty('--note-fold-x', `${foldX.toFixed(1)}px`);
             noteTarget.style.setProperty('--note-fold-y', `${foldY.toFixed(1)}px`);
             noteTarget.style.transform = `translateX(-50%) translateY(${-4 - eased * 6}px) rotate(${-eased * 4.2}deg) scale(${1.015 + eased * 0.012})`;
-            document.body.style.setProperty('--stream-peel-progress', eased.toFixed(3));
-            document.body.style.setProperty('--stream-peel-blur', `${(eased * 12).toFixed(2)}px`);
+            document.body.style.setProperty('--rooms-peel-progress', eased.toFixed(3));
+            document.body.style.setProperty('--rooms-peel-blur', `${(eased * 12).toFixed(2)}px`);
         }
 
         function resetPeel() {
@@ -459,30 +451,30 @@ document.addEventListener("DOMContentLoaded", async function() {
             setPeelProgress(0);
             window.setTimeout(() => {
                 if (dragging || opening || currentProgress > 0.01) return;
-                document.body.classList.remove('stream-note-peeling');
+                document.body.classList.remove('rooms-note-peeling');
                 noteTarget.style.removeProperty('transform');
-                document.body.style.removeProperty('--stream-peel-progress');
-                document.body.style.removeProperty('--stream-peel-blur');
+                document.body.style.removeProperty('--rooms-peel-progress');
+                document.body.style.removeProperty('--rooms-peel-blur');
             }, 320);
         }
 
-        function openStreamPage() {
+        function openRoomsPage() {
             if (opening) return;
             opening = true;
             playUiSound('link');
             try {
-                sessionStorage.setItem('doll_stream_from_pull', '1');
+                sessionStorage.setItem('doll_rooms_from_pull', '1');
             } catch (error) {
                 // The route still works if session storage is unavailable.
             }
 
             noteTarget.classList.remove('peeling');
             noteTarget.classList.add('completing');
-            document.body.classList.add('stream-note-peeling');
+            document.body.classList.add('rooms-note-peeling');
             window.requestAnimationFrame(() => {
                 setPeelProgress(1);
                 window.setTimeout(() => {
-                    window.location.href = streamUrl;
+                    window.location.href = roomsUrl;
                 }, 330);
             });
         }
@@ -501,7 +493,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             startY = e.clientY;
             updatePeelMetrics();
             noteTarget.classList.add('peeling');
-            document.body.classList.add('stream-note-peeling');
+            document.body.classList.add('rooms-note-peeling');
             noteTarget.setPointerCapture?.(e.pointerId);
         });
 
@@ -522,7 +514,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             noteTarget.releasePointerCapture?.(e.pointerId);
 
             if (currentProgress >= 0.72) {
-                openStreamPage();
+                openRoomsPage();
                 return;
             }
 
@@ -533,7 +525,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         noteTarget.addEventListener('pointercancel', resetPeel);
     }
 
-    initNoteStreamPeel();
+    initNoteRoomsPeel();
     
     // ===== LOADING SCREEN =====
     const loadingScreen = document.getElementById("loading-screen");
@@ -773,14 +765,6 @@ document.addEventListener("DOMContentLoaded", async function() {
             maintenance_eta: String(settings.maintenance_eta || ''),
             drawings_enabled: settings.drawings_enabled !== false,
             questions_enabled: settings.questions_enabled !== false,
-            stream_enabled: settings.stream_enabled === true,
-            stream_chat_enabled: settings.stream_chat_enabled !== false,
-            stream_provider: ['auto', 'owncast', 'twitch', 'youtube', 'vimeo', 'direct'].includes(settings.stream_provider) ? settings.stream_provider : DEFAULT_LINK_SETTINGS.stream_provider,
-            stream_aspect: ['landscape', 'portrait', 'square', 'auto'].includes(settings.stream_aspect) ? settings.stream_aspect : DEFAULT_LINK_SETTINGS.stream_aspect,
-            stream_title: String(settings.stream_title || DEFAULT_LINK_SETTINGS.stream_title),
-            stream_url: String(settings.stream_url || ''),
-            stream_video_url: String(settings.stream_video_url || ''),
-            stream_offline_message: String(settings.stream_offline_message || DEFAULT_LINK_SETTINGS.stream_offline_message),
             seo_title: String(settings.seo_title || DEFAULT_LINK_SETTINGS.seo_title),
             seo_description: String(settings.seo_description || DEFAULT_LINK_SETTINGS.seo_description),
             site_tagline: String(settings.site_tagline || DEFAULT_LINK_SETTINGS.site_tagline)

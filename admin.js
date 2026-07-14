@@ -37,14 +37,6 @@ const DEFAULT_LINK_SETTINGS = {
     maintenance_eta: '',
     drawings_enabled: true,
     questions_enabled: true,
-    stream_enabled: false,
-    stream_chat_enabled: true,
-    stream_provider: 'auto',
-    stream_aspect: 'landscape',
-    stream_title: 'Live',
-    stream_url: '',
-    stream_video_url: '',
-    stream_offline_message: 'stream is offline right now.',
     seo_title: 'Lia | doll.gg',
     seo_description: "Lia's little space for messages, posts, socials and more.",
     site_tagline: "Lia's little space for messages, posts, socials and more."
@@ -57,12 +49,8 @@ const adminClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY
     }
 });
 
-let adminChatChannel = null;
-let adminChatPollTimer = null;
-let chatPollInFlight = false;
 let autoSaveTimer = null;
 let settingsDraftDirty = false;
-let chatSettingsDraftDirty = false;
 let staticSeoSnapshot = null;
 let staticSeoCheckFailed = false;
 
@@ -81,19 +69,12 @@ const adminDateFormatter = new Intl.DateTimeFormat(undefined, {
 const state = {
     drawings: [],
     questions: [],
-    streamMessages: [],
-    streamBans: [],
     wishlistItems: [],
     wishlistItemsAvailable: true,
     wishlistSyncedAt: null,
     wishlistSearch: '',
     linkSettings: { ...DEFAULT_LINK_SETTINGS },
-    linkSettingsAvailable: true,
-    chatSettings: {
-        chat_enabled: true,
-        slow_mode_seconds: 5,
-        blocked_words: []
-    }
+    linkSettingsAvailable: true
 };
 
 const els = {
@@ -113,25 +94,12 @@ const els = {
     reviewTabCount: document.getElementById('review-tab-count'),
     publishedTabCount: document.getElementById('published-tab-count'),
     linksTabCount: document.getElementById('links-tab-count'),
-    chatTabCount: document.getElementById('chat-tab-count'),
     refresh: document.getElementById('refresh-admin'),
     logout: document.getElementById('logout-admin'),
     pendingDrawings: document.getElementById('pending-drawings-list'),
     publishedDrawings: document.getElementById('published-drawings-list'),
     pendingQuestions: document.getElementById('pending-questions-list'),
     publishedQuestions: document.getElementById('published-questions-list'),
-    streamChat: document.getElementById('stream-chat-list'),
-    streamBans: document.getElementById('stream-ban-list'),
-    chatPauseToggle: document.getElementById('chat-pause-toggle'),
-    chatFilter: document.getElementById('chat-filter'),
-    chatVisibilityFilter: document.getElementById('chat-visibility-filter'),
-    chatSettingsForm: document.getElementById('chat-settings-form'),
-    chatSlowMode: document.getElementById('chat-slow-mode'),
-    chatBlockedWords: document.getElementById('chat-blocked-words'),
-    chatBanForm: document.getElementById('chat-ban-form'),
-    chatBanType: document.getElementById('chat-ban-type'),
-    chatBanValue: document.getElementById('chat-ban-value'),
-    chatBanNote: document.getElementById('chat-ban-note'),
     linkSettingsForm: document.getElementById('link-settings-form'),
     linkSettingsReset: document.getElementById('link-settings-reset'),
     snapchatEnabled: document.getElementById('snapchat-enabled'),
@@ -167,15 +135,6 @@ const els = {
     drawingsEnabled: document.getElementById('drawings-enabled'),
     questionsEnabled: document.getElementById('questions-enabled'),
     submissionsState: document.getElementById('submissions-state'),
-    streamEnabled: document.getElementById('stream-enabled'),
-    streamChatEnabled: document.getElementById('stream-chat-enabled'),
-    streamProvider: document.getElementById('stream-provider'),
-    streamAspect: document.getElementById('stream-aspect'),
-    streamTitle: document.getElementById('stream-title'),
-    streamUrl: document.getElementById('stream-url'),
-    streamVideoUrl: document.getElementById('stream-video-url'),
-    streamOfflineMessage: document.getElementById('stream-offline-message'),
-    streamState: document.getElementById('stream-state'),
     seoTitle: document.getElementById('seo-title'),
     seoDescription: document.getElementById('seo-description'),
     siteTagline: document.getElementById('site-tagline'),
@@ -294,20 +253,15 @@ function renderStats() {
     const publishedDrawings = state.drawings.filter(item => item.approved).length;
     const pendingQuestions = state.questions.filter(item => !hasAnswer(item)).length;
     const publishedQuestions = state.questions.filter(hasAnswer).length;
-    const visibleChat = state.streamMessages.filter(item => !item.is_hidden).length;
-    const hiddenChat = state.streamMessages.filter(item => item.is_hidden).length;
     const activeLinks = ['snapchat', 'instagram', 'kofi', 'throne']
         .filter(key => state.linkSettings[`${key}_enabled`] !== false).length;
     if (els.reviewTabCount) els.reviewTabCount.textContent = String(pendingDrawings + pendingQuestions);
     if (els.publishedTabCount) els.publishedTabCount.textContent = String(publishedDrawings + publishedQuestions);
     if (els.linksTabCount) els.linksTabCount.textContent = `${activeLinks}/4`;
-    if (els.chatTabCount) els.chatTabCount.textContent = String(visibleChat + hiddenChat);
 
     els.stats.innerHTML = `
         <div class="admin-stat"><strong>${pendingDrawings + pendingQuestions}</strong><span>waiting review</span></div>
         <div class="admin-stat"><strong>${publishedDrawings + publishedQuestions}</strong><span>published posts</span></div>
-        <div class="admin-stat"><strong>${visibleChat + hiddenChat}</strong><span>chat messages</span></div>
-        <div class="admin-stat"><strong>${state.chatSettings.chat_enabled === false ? 'off' : 'on'}</strong><span>chat status</span></div>
         <div class="admin-stat"><strong>${activeLinks}/4</strong><span>public links</span></div>
     `;
 }
@@ -359,81 +313,6 @@ function renderQuestions(list, container, published) {
     `).join('');
 }
 
-function renderChatMessages() {
-    if (!els.streamChat) return;
-    const query = String(els.chatFilter?.value || '').trim().toLowerCase();
-    const visibility = els.chatVisibilityFilter?.value || 'all';
-    const messages = state.streamMessages.filter(item => {
-        const matchesVisibility = visibility === 'all'
-            || (visibility === 'hidden' ? item.is_hidden : !item.is_hidden);
-        if (!matchesVisibility) return false;
-        if (!query) return true;
-        return [
-            item.nickname,
-            item.message,
-            item.ip_address,
-            item.id
-        ].some(value => String(value || '').toLowerCase().includes(query));
-    });
-    if (!messages.length) {
-        els.streamChat.innerHTML = emptyMessage(state.streamMessages.length ? 'no matching chat' : 'no stream chat yet');
-        return;
-    }
-
-    els.streamChat.innerHTML = messages.map(item => `
-        <article class="admin-card admin-chat-card ${item.is_hidden ? 'is-hidden-chat' : ''}" data-id="${escapeHtml(item.id)}">
-            <div class="admin-chat-message">
-                <strong>${escapeHtml(item.nickname || 'guest')}</strong>
-                <p>${escapeHtml(item.message || '')}</p>
-            </div>
-            ${renderMeta(item)}
-            <div class="admin-actions">
-                <span class="admin-pill">${item.is_hidden ? 'hidden' : 'visible'}</span>
-                <button class="soft" data-action="${item.is_hidden ? 'show-chat' : 'hide-chat'}">${item.is_hidden ? 'show' : 'hide'}</button>
-                <button class="soft" data-action="ban-chat-user">ban user</button>
-                <button class="danger" data-action="delete-chat">delete</button>
-            </div>
-        </article>
-    `).join('');
-}
-
-function renderChatSettings({ preserveDraft = false } = {}) {
-    if (els.chatPauseToggle) {
-        const paused = state.chatSettings.chat_enabled === false;
-        els.chatPauseToggle.textContent = paused ? 'resume chat' : 'pause chat';
-        els.chatPauseToggle.classList.toggle('danger', !paused);
-        els.chatPauseToggle.classList.toggle('soft', paused);
-        els.chatPauseToggle.classList.toggle('emergency', !paused);
-    }
-    if (preserveDraft && chatSettingsDraftDirty) return;
-    if (els.chatSlowMode) {
-        els.chatSlowMode.value = String(state.chatSettings.slow_mode_seconds ?? 5);
-    }
-    if (els.chatBlockedWords) {
-        els.chatBlockedWords.value = (state.chatSettings.blocked_words || []).join('\n');
-    }
-    chatSettingsDraftDirty = false;
-}
-
-function renderBans() {
-    if (!els.streamBans) return;
-    if (!state.streamBans.length) {
-        els.streamBans.innerHTML = emptyMessage('no bans');
-        return;
-    }
-
-    els.streamBans.innerHTML = state.streamBans.map(item => `
-        <article class="admin-ban-row" data-id="${escapeHtml(item.id)}">
-            <div>
-                <strong>${escapeHtml(item.ban_type)}: ${escapeHtml(item.ban_value)}</strong>
-                <span>${escapeHtml(item.note || 'no note')}</span>
-                ${renderTimestamp(item.created_at, true)}
-            </div>
-            <button class="soft" data-ban-action="unban">remove</button>
-        </article>
-    `).join('');
-}
-
 function normalizeLinkSettings(value) {
     const settings = value && typeof value === 'object' ? value : {};
     return {
@@ -461,14 +340,6 @@ function normalizeLinkSettings(value) {
         maintenance_eta: String(settings.maintenance_eta || ''),
         drawings_enabled: settings.drawings_enabled !== false,
         questions_enabled: settings.questions_enabled !== false,
-        stream_enabled: settings.stream_enabled === true,
-        stream_chat_enabled: settings.stream_chat_enabled !== false,
-        stream_provider: ['auto', 'owncast', 'twitch', 'youtube', 'vimeo', 'direct'].includes(settings.stream_provider) ? settings.stream_provider : DEFAULT_LINK_SETTINGS.stream_provider,
-        stream_aspect: ['landscape', 'portrait', 'square', 'auto'].includes(settings.stream_aspect) ? settings.stream_aspect : DEFAULT_LINK_SETTINGS.stream_aspect,
-        stream_title: String(settings.stream_title || DEFAULT_LINK_SETTINGS.stream_title),
-        stream_url: String(settings.stream_url || ''),
-        stream_video_url: String(settings.stream_video_url || ''),
-        stream_offline_message: String(settings.stream_offline_message || DEFAULT_LINK_SETTINGS.stream_offline_message),
         seo_title: String(settings.seo_title || DEFAULT_LINK_SETTINGS.seo_title),
         seo_description: String(settings.seo_description || DEFAULT_LINK_SETTINGS.seo_description),
         site_tagline: String(settings.site_tagline || DEFAULT_LINK_SETTINGS.site_tagline)
@@ -511,15 +382,6 @@ function renderLinkSettings({ preserveDraft = false } = {}) {
     if (els.drawingsEnabled) els.drawingsEnabled.checked = settings.drawings_enabled !== false;
     if (els.questionsEnabled) els.questionsEnabled.checked = settings.questions_enabled !== false;
     if (els.submissionsState) els.submissionsState.textContent = getSubmissionsStateLabel(settings);
-    if (els.streamEnabled) els.streamEnabled.checked = settings.stream_enabled === true;
-    if (els.streamChatEnabled) els.streamChatEnabled.checked = settings.stream_chat_enabled !== false;
-    if (els.streamProvider) els.streamProvider.value = settings.stream_provider || DEFAULT_LINK_SETTINGS.stream_provider;
-    if (els.streamAspect) els.streamAspect.value = settings.stream_aspect || DEFAULT_LINK_SETTINGS.stream_aspect;
-    if (els.streamTitle) els.streamTitle.value = settings.stream_title || '';
-    if (els.streamUrl) els.streamUrl.value = settings.stream_url || '';
-    if (els.streamVideoUrl) els.streamVideoUrl.value = settings.stream_video_url || '';
-    if (els.streamOfflineMessage) els.streamOfflineMessage.value = settings.stream_offline_message || '';
-    if (els.streamState) els.streamState.textContent = getStreamStateLabel(settings);
     if (els.seoTitle) els.seoTitle.value = settings.seo_title || '';
     if (els.seoDescription) els.seoDescription.value = settings.seo_description || '';
     if (els.siteTagline) els.siteTagline.value = settings.site_tagline || '';
@@ -554,14 +416,6 @@ function getDraftLinkSettings() {
         maintenance_eta: els.maintenanceEta?.value.trim() || '',
         drawings_enabled: els.drawingsEnabled?.checked !== false,
         questions_enabled: els.questionsEnabled?.checked !== false,
-        stream_enabled: els.streamEnabled?.checked === true,
-        stream_chat_enabled: els.streamChatEnabled?.checked !== false,
-        stream_provider: els.streamProvider?.value || DEFAULT_LINK_SETTINGS.stream_provider,
-        stream_aspect: els.streamAspect?.value || DEFAULT_LINK_SETTINGS.stream_aspect,
-        stream_title: els.streamTitle?.value.trim() || DEFAULT_LINK_SETTINGS.stream_title,
-        stream_url: els.streamUrl?.value.trim() || '',
-        stream_video_url: els.streamVideoUrl?.value.trim() || '',
-        stream_offline_message: els.streamOfflineMessage?.value.trim() || DEFAULT_LINK_SETTINGS.stream_offline_message,
         seo_title: els.seoTitle?.value.trim() || DEFAULT_LINK_SETTINGS.seo_title,
         seo_description: els.seoDescription?.value.trim() || DEFAULT_LINK_SETTINGS.seo_description,
         site_tagline: els.siteTagline?.value.trim() || DEFAULT_LINK_SETTINGS.site_tagline
@@ -576,13 +430,6 @@ function getSubmissionsStateLabel(settings) {
     return doods ? 'asks paused' : 'doods paused';
 }
 
-function getStreamStateLabel(settings) {
-    if (settings.stream_enabled !== true) return 'coming soon';
-    if (settings.stream_url) return settings.stream_provider && settings.stream_provider !== 'auto' ? settings.stream_provider : 'live';
-    if (settings.stream_video_url) return 'preview';
-    return 'offline';
-}
-
 function syncLinkDraftLabels(settings = getDraftLinkSettings()) {
     if (els.snapchatState) els.snapchatState.textContent = settings.snapchat_enabled !== false ? 'visible' : 'hidden';
     if (els.instagramState) els.instagramState.textContent = settings.instagram_enabled !== false ? 'visible' : 'hidden';
@@ -592,21 +439,17 @@ function syncLinkDraftLabels(settings = getDraftLinkSettings()) {
     if (els.latestNoteState) els.latestNoteState.textContent = settings.latest_note_enabled === true ? 'visible' : 'hidden';
     if (els.maintenanceState) els.maintenanceState.textContent = settings.maintenance_enabled === true ? 'on' : 'off';
     if (els.submissionsState) els.submissionsState.textContent = getSubmissionsStateLabel(settings);
-    if (els.streamState) els.streamState.textContent = getStreamStateLabel(settings);
     if (els.seoPreviewTitle) els.seoPreviewTitle.textContent = settings.seo_title || DEFAULT_LINK_SETTINGS.seo_title;
     if (els.seoPreviewDescription) els.seoPreviewDescription.textContent = settings.seo_description || DEFAULT_LINK_SETTINGS.seo_description;
     if (els.seoTitleCount) els.seoTitleCount.textContent = `${settings.seo_title.length}/70`;
     if (els.seoDescriptionCount) els.seoDescriptionCount.textContent = `${settings.seo_description.length}/180`;
     if (els.siteTaglineCount) els.siteTaglineCount.textContent = `${settings.site_tagline.length}/120`;
     if (els.seoState) els.seoState.textContent = settingsDraftDirty ? 'editing' : 'ready';
-    ['snapchat', 'instagram', 'kofi', 'throne', 'latest-note', 'maintenance', 'submissions', 'stream'].forEach(key => {
+    ['snapchat', 'instagram', 'kofi', 'throne', 'latest-note', 'maintenance', 'submissions'].forEach(key => {
         const settingKey = key.replace('-', '_');
         let disabled = settings[`${settingKey}_enabled`] === false;
         if (key === 'submissions') {
             disabled = settings.drawings_enabled === false && settings.questions_enabled === false;
-        }
-        if (key === 'stream') {
-            disabled = settings.stream_enabled !== true;
         }
         document.querySelector(`[data-link-card="${key}"]`)?.classList.toggle('is-disabled', disabled);
     });
@@ -945,9 +788,6 @@ function renderAll({ preserveDrafts = false } = {}) {
     renderDrawings(state.drawings.filter(item => item.approved), els.publishedDrawings, true);
     renderQuestions(state.questions.filter(item => !hasAnswer(item)), els.pendingQuestions, false);
     renderQuestions(state.questions.filter(hasAnswer), els.publishedQuestions, true);
-    renderChatMessages();
-    renderChatSettings({ preserveDraft: preserveDrafts });
-    renderBans();
     renderLinkSettings({ preserveDraft: preserveDrafts });
     renderWishlistItems();
 }

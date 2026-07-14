@@ -206,10 +206,10 @@ canvas {
     transition: filter 0.18s ease, opacity 0.18s ease, transform 0.18s ease;
 }
 
-body.stream-note-peeling .main-screen {
-    filter: blur(var(--stream-peel-blur, 0px)) saturate(calc(1 - (var(--stream-peel-progress, 0) * 0.08))) brightness(calc(1 + (var(--stream-peel-progress, 0) * 0.03)));
-    opacity: calc(1 - (var(--stream-peel-progress, 0) * 0.14));
-    transform: scale(calc(1 - (var(--stream-peel-progress, 0) * 0.012)));
+body.rooms-note-peeling .main-screen {
+    filter: blur(var(--rooms-peel-blur, 0px)) saturate(calc(1 - (var(--rooms-peel-progress, 0) * 0.08))) brightness(calc(1 + (var(--rooms-peel-progress, 0) * 0.03)));
+    opacity: calc(1 - (var(--rooms-peel-progress, 0) * 0.14));
+    transform: scale(calc(1 - (var(--rooms-peel-progress, 0) * 0.012)));
 }
 
 .main-screen .button-group,
@@ -3049,6 +3049,5 @@ body.first-visit-tour-active .tour-highlight-target {
     }
 }
 
-/* Stream feature styles live in stream.css. */
 /* Prevent Ko-fi icon link from showing underline */
 /* Ko-fi icon now uses .email-button class - no separate styling needed */
