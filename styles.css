@@ -289,21 +289,20 @@ button {
     cursor: pointer;
 }
 
-/* The entry-gate icon is the exact same paw print used in the loading bar
-   (.loading-paw-print above) — same SVG mask, same two-layer shadow/gradient
-   treatment, same drop-shadow-on-the-parent structure (not on ::after,
-   which would reintroduce the old-iOS square-edge mask+filter bug), AND the
-   same 74deg rotation and ~23:27 box proportions the loading print itself
-   uses (a previous pass here substituted a "modest" -14deg tilt of its own
-   invention, which is exactly why it read as a different paw). Only the
-   overall size differs, since a whole loading-bar-trail print rendered at
-   its actual ~14x17px would be too small a tap target on its own. */
+/* The entry-gate icon reuses the exact same paw print asset as the loading
+   bar (.loading-paw-print above) — same SVG mask, same two-layer
+   shadow/gradient treatment, same drop-shadow-on-the-parent structure (not
+   on ::after, which would reintroduce the old-iOS square-edge mask+filter
+   bug). The rotation is deliberately NOT the loading trail's 74deg/106deg,
+   though — those simulate an alternating walking trail and read as the
+   paw lying almost sideways when used as one standalone icon. Per explicit
+   direction: upright ("looking up"), just slightly tilted to one side. */
 .entry-paw {
     position: relative;
     display: block;
     width: 38px;
     height: 45px;
-    transform: rotate(74deg);
+    transform: rotate(-12deg);
     transform-origin: center;
     filter:
         drop-shadow(-1px -1px 0 rgba(255, 255, 255, 0.76))
@@ -332,11 +331,11 @@ button {
 
 /* Gentle idle bounce/wobble so the print feels alive while waiting to be
    tapped, rather than sitting there static — a small rock side-to-side
-   (rotate wobbling a few degrees either side of the real 74deg) paired with
-   a soft up-down bounce, looping continuously. */
+   (rotate wobbling a few degrees either side of the resting -12deg tilt)
+   paired with a soft up-down bounce, looping continuously. */
 @keyframes entryPawIdle {
-    0%, 100% { transform: rotate(74deg) translateY(0) scale(1); }
-    50% { transform: rotate(68deg) translateY(-3px) scale(1.05); }
+    0%, 100% { transform: rotate(-12deg) translateY(0) scale(1); }
+    50% { transform: rotate(-18deg) translateY(-3px) scale(1.05); }
 }
 
 #close-popup.is-pressed .entry-paw {
@@ -344,16 +343,16 @@ button {
 }
 
 @keyframes entryPawTap {
-    0% { transform: rotate(74deg) scale(1); }
-    45% { transform: rotate(74deg) scale(0.85); }
-    75% { transform: rotate(74deg) scale(1.1); }
-    100% { transform: rotate(74deg) scale(1); }
+    0% { transform: rotate(-12deg) scale(1); }
+    45% { transform: rotate(-12deg) scale(0.85); }
+    75% { transform: rotate(-12deg) scale(1.1); }
+    100% { transform: rotate(-12deg) scale(1); }
 }
 
 @media (hover: hover) and (pointer: fine) {
     #close-popup:not(.is-pressed):hover .entry-paw {
         animation-play-state: paused;
-        transform: rotate(74deg) scale(1.1);
+        transform: rotate(-12deg) scale(1.1);
     }
 }
 

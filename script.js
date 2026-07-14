@@ -610,8 +610,22 @@ document.addEventListener("DOMContentLoaded", async function() {
         }
 
         return new Promise(resolve => {
+            const startedAt = Date.now();
             const checkProgress = () => {
                 if (displayedLoadingProgress >= 100) {
+                    resolve();
+                    return;
+                }
+                // Safety net: by this point the real load is already done —
+                // this is purely waiting on the cosmetic paw trail to catch
+                // up visually. requestAnimationFrame can stall for a long
+                // time (a backgrounded/minimized tab) with nothing else to
+                // rescue it, so never let the site stay hidden behind the
+                // loading screen just because the last paw hasn't visually
+                // stamped yet.
+                if (Date.now() - startedAt >= 2500) {
+                    displayedLoadingProgress = 100;
+                    renderLoadingPaws(displayedLoadingProgress);
                     resolve();
                     return;
                 }
@@ -936,7 +950,15 @@ document.addEventListener("DOMContentLoaded", async function() {
         setLoadingProgress(82);
 
         try {
-            const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
+            // Bounded — unlike fetch(), a dynamic import() has no built-in
+            // timeout. A stalled connection to esm.sh (no error, just no
+            // response) would hang this await forever with nothing else in
+            // the whole loading sequence able to rescue it, since every
+            // other network step here already races against a timeout.
+            const { createClient } = await Promise.race([
+                import('https://esm.sh/@supabase/supabase-js@2'),
+                wait(8000).then(() => { throw new Error('Supabase module import timed out'); })
+            ]);
             window.supabase = createClient(
                 'https://zvqdodzkhmcptwkjlfeu.supabase.co',
                 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp2cWRvZHpraG1jcHR3a2psZmV1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg3NjM1NjAsImV4cCI6MjA2NDMzOTU2MH0.i1xbRIhPHVkDIrnDlQFP0ebNklrx8WVQcQo8Iuo9zG8',

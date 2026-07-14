@@ -8,6 +8,9 @@ const MAX_SOCIAL_CARD_VIDEO_BYTES = 20 * 1024 * 1024;
 const SOCIAL_CARD_VIDEO_TYPES = new Set(['video/mp4', 'video/webm', 'video/x-m4v']);
 const socialVideoObjectUrls = new Map();
 const socialVideoSelectedFiles = new Map();
+const socialVideoPickerTimers = new Map();
+const socialVideoPendingInputs = new Map();
+const SOCIAL_VIDEO_PICKER_SESSION_KEY = 'doll_social_video_picker_pending';
 
 async function hashPin(pin) {
     const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(pin));
@@ -494,6 +497,7 @@ function setSocialVideoStatus(key, message, tone = '') {
     status.textContent = message;
     status.classList.toggle('is-error', tone === 'error');
     status.classList.toggle('is-ready', tone === 'ready');
+    status.classList.toggle('is-waiting', tone === 'waiting');
 }
 
 function revokeSocialVideoObjectUrl(key) {
@@ -587,20 +591,73 @@ function renderAllSocialVideoControls() {
     SOCIAL_CARD_VIDEO_KEYS.forEach(renderSocialVideoControl);
 }
 
-function handleSocialVideoSelection(key) {
+function clearSocialVideoPickerTimer(key) {
+    const timer = socialVideoPickerTimers.get(key);
+    if (timer) window.clearTimeout(timer);
+    socialVideoPickerTimers.delete(key);
+}
+
+function rememberSocialVideoPicker(key) {
+    try {
+        sessionStorage.setItem(SOCIAL_VIDEO_PICKER_SESSION_KEY, JSON.stringify({ key, openedAt: Date.now() }));
+    } catch (error) {
+        // Diagnostics only; the picker still works if storage is unavailable.
+    }
+}
+
+function forgetSocialVideoPicker() {
+    try {
+        sessionStorage.removeItem(SOCIAL_VIDEO_PICKER_SESSION_KEY);
+    } catch (error) {
+        // Diagnostics only.
+    }
+}
+
+function reportInterruptedSocialVideoPicker() {
+    let pending = null;
+    try {
+        pending = JSON.parse(sessionStorage.getItem(SOCIAL_VIDEO_PICKER_SESSION_KEY) || 'null');
+    } catch (error) {
+        pending = null;
+    }
+    forgetSocialVideoPicker();
+    if (!pending || !SOCIAL_CARD_VIDEO_KEYS.includes(pending.key)) return;
+    if (!Number.isFinite(pending.openedAt) || Date.now() - pending.openedAt > 10 * 60 * 1000) return;
+    setSocialVideoStatus(
+        pending.key,
+        'Safari returned or reloaded without a file. Use a short MP4/M4V under 20 MB and tap Add or Done after selecting it.',
+        'error'
+    );
+}
+
+function handleSocialVideoSelection(key, inputOverride = null, { reportEmpty = false } = {}) {
     const control = getSocialVideoControl(key);
-    const fileInput = control?.querySelector('[data-video-file]');
+    const fileInput = inputOverride || control?.querySelector('[data-video-file]');
     const preview = control?.querySelector('[data-video-preview]');
     const file = fileInput?.files?.[0];
-    if (file && socialVideoSelectedFiles.get(key) === file) return;
-    revokeSocialVideoObjectUrl(key);
+    clearSocialVideoPickerTimer(key);
+    if (file) {
+        socialVideoPendingInputs.delete(key);
+        forgetSocialVideoPicker();
+    }
+    if (file && socialVideoSelectedFiles.get(key) === file) return true;
 
     if (!file) {
-        socialVideoSelectedFiles.delete(key);
-        renderSocialVideoControl(key);
-        return;
+        if (reportEmpty) {
+            socialVideoPendingInputs.delete(key);
+            forgetSocialVideoPicker();
+            const pickerLabel = control?.querySelector('.admin-video-picker > span');
+            if (pickerLabel) pickerLabel.textContent = 'choose again';
+            setSocialVideoStatus(
+                key,
+                'iPhone returned no file. Select the video, wait for it to load, then tap Add or Done.',
+                'error'
+            );
+        }
+        return false;
     }
 
+    revokeSocialVideoObjectUrl(key);
     try {
         validateSocialVideoFile(file);
     } catch (error) {
@@ -610,7 +667,7 @@ function handleSocialVideoSelection(key) {
         const pickerLabel = control?.querySelector('.admin-video-picker > span');
         if (pickerLabel) pickerLabel.textContent = 'choose another';
         setSocialVideoStatus(key, error.message || 'Video cannot be used.', 'error');
-        return;
+        return false;
     }
 
     // Commit the valid selection to the UI before asking Safari to build a
@@ -637,6 +694,58 @@ function handleSocialVideoSelection(key) {
         // Selection and upload stay available; only the optional local
         // preview failed.
     }
+    return true;
+}
+
+function beginSocialVideoPicker(key, fileInput) {
+    clearSocialVideoPickerTimer(key);
+    socialVideoPendingInputs.set(key, fileInput);
+    rememberSocialVideoPicker(key);
+    const control = getSocialVideoControl(key);
+    const pickerLabel = control?.querySelector('.admin-video-picker > span');
+    if (pickerLabel) pickerLabel.textContent = 'waiting for Add…';
+    setSocialVideoStatus(
+        key,
+        'Photo picker opened — choose the video, then tap Add or Done.',
+        'waiting'
+    );
+
+    // iOS occasionally resumes the page without dispatching the normal
+    // file-input change event after a Photos/iCloud preview. Timers are
+    // suspended while the native picker owns the screen, so this runs after
+    // Safari returns and inspects the input directly as a fallback.
+    const timer = window.setTimeout(() => {
+        socialVideoPickerTimers.delete(key);
+        if (fileInput?.files?.[0]) {
+            handleSocialVideoSelection(key, fileInput);
+            return;
+        }
+        const currentLabel = getSocialVideoControl(key)?.querySelector('.admin-video-picker > span');
+        if (currentLabel) currentLabel.textContent = 'choose again';
+        setSocialVideoStatus(
+            key,
+            'No video came back from Photos. Playing it only previews it — tap Add or Done to attach it.',
+            'error'
+        );
+    }, 1200);
+    socialVideoPickerTimers.set(key, timer);
+}
+
+function cancelSocialVideoPicker(key) {
+    clearSocialVideoPickerTimer(key);
+    socialVideoPendingInputs.delete(key);
+    forgetSocialVideoPicker();
+    const pickerLabel = getSocialVideoControl(key)?.querySelector('.admin-video-picker > span');
+    if (pickerLabel) pickerLabel.textContent = 'choose video';
+    setSocialVideoStatus(key, 'Video picker closed without selecting a file.', 'error');
+}
+
+function inspectPendingSocialVideoPickers() {
+    window.setTimeout(() => {
+        socialVideoPendingInputs.forEach((fileInput, key) => {
+            if (fileInput?.files?.[0]) handleSocialVideoSelection(key, fileInput);
+        });
+    }, 350);
 }
 
 function socialVideoStorageError(error) {
@@ -1068,6 +1177,7 @@ async function loadAdminData({ preserveDrafts = true } = {}) {
     state.linkSettingsAvailable = !linkSettingsResult.error || linkSettingsResult.error.code === 'PGRST116';
     state.linkSettings = normalizeLinkSettings(linkSettingsResult.data?.value);
     renderAll({ preserveDrafts });
+    reportInterruptedSocialVideoPicker();
     setStatus(els.adminStatus, '');
 }
 
@@ -1574,15 +1684,30 @@ async function init() {
     SOCIAL_CARD_VIDEO_KEYS.forEach(key => {
         const control = getSocialVideoControl(key);
         const fileInput = control?.querySelector('[data-video-file]');
-        const selectFile = () => handleSocialVideoSelection(key);
-        fileInput?.addEventListener('input', selectFile);
-        fileInput?.addEventListener('change', selectFile);
+        fileInput?.addEventListener('click', () => beginSocialVideoPicker(key, fileInput));
+        fileInput?.addEventListener('cancel', () => cancelSocialVideoPicker(key));
         control?.querySelector('[data-video-upload]')?.addEventListener('click', () => {
             uploadSocialCardVideo(key);
         });
         control?.querySelector('[data-video-remove]')?.addEventListener('click', () => {
             removeSocialCardVideo(key);
         });
+    });
+    // Capture-phase delegation is more reliable than a label-local listener
+    // for iOS' native Photos picker, and it keeps working if a card control is
+    // ever re-rendered later.
+    document.addEventListener('change', event => {
+        const fileInput = event.target instanceof Element
+            ? event.target.closest('[data-video-file]')
+            : null;
+        if (!fileInput) return;
+        const key = fileInput.closest('[data-social-video]')?.dataset.socialVideo;
+        if (!SOCIAL_CARD_VIDEO_KEYS.includes(key)) return;
+        handleSocialVideoSelection(key, fileInput, { reportEmpty: true });
+    }, true);
+    window.addEventListener('focus', inspectPendingSocialVideoPickers);
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) inspectPendingSocialVideoPickers();
     });
     els.runHealthCheck?.addEventListener('click', runSiteHealthCheck);
     els.staticSeoCheck?.addEventListener('click', checkStaticSeoStatus);

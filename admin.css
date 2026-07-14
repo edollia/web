@@ -1084,7 +1084,8 @@ h1 {
 }
 
 .admin-card-video-heading small.is-error,
-.admin-card-video-heading small.is-ready {
+.admin-card-video-heading small.is-ready,
+.admin-card-video-heading small.is-waiting {
     flex: 1 0 100%;
     max-width: none;
     padding: 7px 9px;
@@ -1106,6 +1107,12 @@ h1 {
     border: 1px solid rgba(122, 167, 133, 0.24);
     background: rgba(231, 248, 235, 0.7);
     color: rgba(68, 124, 82, 0.9);
+}
+
+.admin-card-video-heading small.is-waiting {
+    border: 1px solid rgba(179, 137, 72, 0.24);
+    background: rgba(255, 245, 217, 0.74);
+    color: rgba(139, 98, 44, 0.9);
 }
 
 .admin-card-video-control video {
