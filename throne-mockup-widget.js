@@ -1283,14 +1283,17 @@
                 mask-image: linear-gradient(to top, #000 34%, transparent 100%);
             }
             /* Docked mode only: drop the foot's own top margin so the blur
-               dissolve above meets the pill's top edge with no un-blurred gap,
-               and soften the pill's own hard top border (a crisp 1px line that
-               otherwise still reads as a cut even with the cards blurred above
-               it) — replace it with a soft upward glow so the bar's top blends
-               into the dissolve. Bottom of the pill stays solid/readable. */
+               dissolve above meets the pill's top edge with no un-blurred gap.
+               Drop the pill's 1px border ENTIRELY (not just the top): with the
+               border kept, its crisp pink outline drew hard, visible corners
+               that read as "too sharp" against the soft blur — verified by
+               rendering. Define the bar with a soft glow/shadow instead, and
+               round the corners more (24px) so the whole bar reads as a soft,
+               cozy shape rather than a bordered box. Bottom stays readable. */
             .doll-wishlist-foot-dock .doll-wishlist-foot {
                 margin-top: 0;
-                border-top-color: transparent;
+                border-color: transparent;
+                border-radius: 24px;
                 box-shadow:
                     0 -6px 12px rgba(255, 251, 253, 0.6),
                     0 8px 19px rgba(183, 82, 121, 0.12),
