@@ -491,6 +491,48 @@
                             </div>
                         </details>
 
+                        <details class="admin-link-card" data-link-card="telegram" open>
+                            <summary>
+                                <div class="admin-link-card-title">
+                                    <span class="admin-link-icon">TG</span>
+                                    <div>
+                                        <strong>Telegram</strong>
+                                        <small id="telegram-state">visible</small>
+                                    </div>
+                                </div>
+                                <div class="admin-link-card-actions">
+                                    <button class="soft admin-link-open" type="button" data-link-open="telegram">open</button>
+                                    <label class="admin-switch">
+                                        <input id="telegram-enabled" type="checkbox">
+                                        <span></span>
+                                    </label>
+                                </div>
+                            </summary>
+                            <div class="admin-link-card-body">
+                                <label class="admin-url-field">
+                                    <span>destination URL</span>
+                                    <input id="telegram-url" type="url" inputmode="url" placeholder="https://t.me/name">
+                                </label>
+                                <div class="admin-card-video-control" data-social-video="telegram">
+                                    <div class="admin-card-video-heading">
+                                        <span>animated card background</span>
+                                        <small data-video-status aria-live="polite">no background</small>
+                                    </div>
+                                    <video data-video-preview muted loop playsinline controls preload="metadata" hidden></video>
+                                    <img data-image-preview alt="" hidden>
+                                    <div class="admin-card-video-actions">
+                                        <label class="admin-video-picker">
+                                            <input data-video-file type="file" accept="video/*,image/gif,.mp4,.m4v,.mov,.webm,.gif">
+                                            <span>choose media</span>
+                                        </label>
+                                        <button class="soft" type="button" data-video-upload="telegram" disabled>upload</button>
+                                        <button class="soft" type="button" data-video-remove="telegram" disabled>remove</button>
+                                    </div>
+                                    <small class="admin-card-video-note">MP4, M4V, MOV, WebM, or GIF · max 20 MB</small>
+                                </div>
+                            </div>
+                        </details>
+
                         <details class="admin-link-card admin-widget-card" data-link-card="throne" open>
                             <summary>
                                 <div class="admin-link-card-title">
@@ -625,6 +667,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="../admin-rooms.js?v=4.5"></script>
-    <script src="../admin.js?v=5.1"></script>
+    <script src="../admin.js?v=5.2"></script>
 </body>
 </html>

@@ -3,7 +3,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 const ADMIN_UID = '1b12f04e-c1a9-42c5-bd3a-04b6186245c3';
 const ADMIN_PASSCODE_HASH = 'ce157a63c5af6bc69d076f5cc7acd1c18a8b44933f907e682f24914a63e9939e';
 const SOCIAL_CARD_VIDEO_BUCKET = 'social-card-videos';
-const SOCIAL_CARD_VIDEO_KEYS = ['snapchat', 'instagram', 'kofi'];
+const SOCIAL_CARD_VIDEO_KEYS = ['snapchat', 'instagram', 'kofi', 'telegram'];
 const MAX_SOCIAL_CARD_VIDEO_BYTES = 20 * 1024 * 1024;
 const SOCIAL_CARD_VIDEO_TYPES = new Set(['video/mp4', 'video/webm', 'video/x-m4v', 'video/quicktime', 'image/gif']);
 const socialVideoObjectUrls = new Map();
@@ -30,6 +30,10 @@ const DEFAULT_LINK_SETTINGS = {
     kofi_enabled: true,
     kofi_card_video_url: '',
     kofi_card_video_path: '',
+    telegram_url: 'https://t.me/wuufles',
+    telegram_enabled: true,
+    telegram_card_video_url: '',
+    telegram_card_video_path: '',
     throne_url: 'https://throne.com/edoll',
     throne_enabled: true,
     throne_checkout_mode: 'mockup',
@@ -120,6 +124,9 @@ const els = {
     kofiUrl: document.getElementById('kofi-url'),
     kofiState: document.getElementById('kofi-state'),
     kofiUrlPreview: document.getElementById('kofi-url-preview'),
+    telegramEnabled: document.getElementById('telegram-enabled'),
+    telegramUrl: document.getElementById('telegram-url'),
+    telegramState: document.getElementById('telegram-state'),
     throneEnabled: document.getElementById('throne-enabled'),
     throneUrl: document.getElementById('throne-url'),
     throneState: document.getElementById('throne-state'),
@@ -267,16 +274,16 @@ function renderStats() {
     const publishedDrawings = state.drawings.filter(item => item.approved).length;
     const pendingQuestions = state.questions.filter(item => !hasAnswer(item)).length;
     const publishedQuestions = state.questions.filter(hasAnswer).length;
-    const activeLinks = ['snapchat', 'instagram', 'kofi', 'throne']
+    const activeLinks = ['snapchat', 'instagram', 'kofi', 'telegram', 'throne']
         .filter(key => state.linkSettings[`${key}_enabled`] !== false).length;
     if (els.reviewTabCount) els.reviewTabCount.textContent = String(pendingDrawings + pendingQuestions);
     if (els.publishedTabCount) els.publishedTabCount.textContent = String(publishedDrawings + publishedQuestions);
-    if (els.linksTabCount) els.linksTabCount.textContent = `${activeLinks}/4`;
+    if (els.linksTabCount) els.linksTabCount.textContent = `${activeLinks}/5`;
 
     els.stats.innerHTML = `
         <div class="admin-stat"><strong>${pendingDrawings + pendingQuestions}</strong><span>waiting review</span></div>
         <div class="admin-stat"><strong>${publishedDrawings + publishedQuestions}</strong><span>published posts</span></div>
-        <div class="admin-stat"><strong>${activeLinks}/4</strong><span>public links</span></div>
+        <div class="admin-stat"><strong>${activeLinks}/5</strong><span>public links</span></div>
     `;
 }
 
@@ -342,6 +349,10 @@ function normalizeLinkSettings(value) {
         kofi_enabled: settings.kofi_enabled !== false,
         kofi_card_video_url: String(settings.kofi_card_video_url || ''),
         kofi_card_video_path: String(settings.kofi_card_video_path || ''),
+        telegram_url: String(settings.telegram_url || DEFAULT_LINK_SETTINGS.telegram_url),
+        telegram_enabled: settings.telegram_enabled !== false,
+        telegram_card_video_url: String(settings.telegram_card_video_url || ''),
+        telegram_card_video_path: String(settings.telegram_card_video_path || ''),
         throne_url: String(settings.throne_url || DEFAULT_LINK_SETTINGS.throne_url),
         throne_enabled: settings.throne_enabled !== false,
         throne_checkout_mode: settings.throne_checkout_mode === 'widget' ? 'widget' : 'mockup',
@@ -383,6 +394,9 @@ function renderLinkSettings({ preserveDraft = false } = {}) {
     if (els.kofiUrl) els.kofiUrl.value = settings.kofi_url || '';
     if (els.kofiState) els.kofiState.textContent = settings.kofi_enabled !== false ? 'visible' : 'hidden';
     if (els.kofiUrlPreview) els.kofiUrlPreview.textContent = settings.kofi_url || DEFAULT_LINK_SETTINGS.kofi_url;
+    if (els.telegramEnabled) els.telegramEnabled.checked = settings.telegram_enabled !== false;
+    if (els.telegramUrl) els.telegramUrl.value = settings.telegram_url || '';
+    if (els.telegramState) els.telegramState.textContent = settings.telegram_enabled !== false ? 'visible' : 'hidden';
     if (els.throneEnabled) els.throneEnabled.checked = settings.throne_enabled !== false;
     if (els.throneUrl) els.throneUrl.value = settings.throne_url || '';
     if (els.throneState) els.throneState.textContent = settings.throne_enabled !== false ? 'visible' : 'hidden';
@@ -427,6 +441,10 @@ function getDraftLinkSettings() {
         kofi_enabled: els.kofiEnabled?.checked !== false,
         kofi_card_video_url: state.linkSettings.kofi_card_video_url || '',
         kofi_card_video_path: state.linkSettings.kofi_card_video_path || '',
+        telegram_url: els.telegramUrl?.value.trim() || state.linkSettings.telegram_url || DEFAULT_LINK_SETTINGS.telegram_url,
+        telegram_enabled: els.telegramEnabled?.checked !== false,
+        telegram_card_video_url: state.linkSettings.telegram_card_video_url || '',
+        telegram_card_video_path: state.linkSettings.telegram_card_video_path || '',
         throne_url: els.throneUrl?.value.trim() || state.linkSettings.throne_url || DEFAULT_LINK_SETTINGS.throne_url,
         throne_enabled: els.throneEnabled?.checked !== false,
         throne_checkout_mode: els.throneCheckoutMode?.value === 'widget' ? 'widget' : 'mockup',
@@ -461,6 +479,7 @@ function syncLinkDraftLabels(settings = getDraftLinkSettings()) {
     if (els.instagramState) els.instagramState.textContent = settings.instagram_enabled !== false ? 'visible' : 'hidden';
     if (els.kofiState) els.kofiState.textContent = settings.kofi_enabled !== false ? 'visible' : 'hidden';
     if (els.kofiUrlPreview) els.kofiUrlPreview.textContent = settings.kofi_url || DEFAULT_LINK_SETTINGS.kofi_url;
+    if (els.telegramState) els.telegramState.textContent = settings.telegram_enabled !== false ? 'visible' : 'hidden';
     if (els.throneState) els.throneState.textContent = settings.throne_enabled !== false ? 'visible' : 'hidden';
     if (els.latestNoteState) els.latestNoteState.textContent = settings.latest_note_enabled === true ? 'visible' : 'hidden';
     if (els.maintenanceState) els.maintenanceState.textContent = settings.maintenance_enabled === true ? 'on' : 'off';
@@ -474,7 +493,7 @@ function syncLinkDraftLabels(settings = getDraftLinkSettings()) {
     if (els.seoDescriptionCount) els.seoDescriptionCount.textContent = `${settings.seo_description.length}/180`;
     if (els.siteTaglineCount) els.siteTaglineCount.textContent = `${settings.site_tagline.length}/120`;
     if (els.seoState) els.seoState.textContent = settingsDraftDirty ? 'editing' : 'ready';
-    ['snapchat', 'instagram', 'kofi', 'throne', 'latest-note', 'maintenance', 'submissions'].forEach(key => {
+    ['snapchat', 'instagram', 'kofi', 'telegram', 'throne', 'latest-note', 'maintenance', 'submissions'].forEach(key => {
         const settingKey = key.replace('-', '_');
         let disabled = settings[`${settingKey}_enabled`] === false;
         if (key === 'submissions') {
@@ -1367,6 +1386,10 @@ async function saveLinkSettingsNow() {
             kofi_enabled: els.kofiEnabled?.checked !== false,
             kofi_card_video_url: String(state.linkSettings.kofi_card_video_url || ''),
             kofi_card_video_path: String(state.linkSettings.kofi_card_video_path || ''),
+            telegram_url: cleanUrl(els.telegramUrl?.value || state.linkSettings.telegram_url, 'Telegram'),
+            telegram_enabled: els.telegramEnabled?.checked !== false,
+            telegram_card_video_url: String(state.linkSettings.telegram_card_video_url || ''),
+            telegram_card_video_path: String(state.linkSettings.telegram_card_video_path || ''),
             throne_url: cleanUrl(els.throneUrl?.value || state.linkSettings.throne_url, 'Throne'),
             throne_enabled: els.throneEnabled?.checked !== false,
             throne_checkout_mode: els.throneCheckoutMode?.value === 'widget' ? 'widget' : 'mockup',
@@ -1774,6 +1797,7 @@ async function init() {
         els.snapchatUrl,
         els.instagramUrl,
         els.kofiUrl,
+        els.telegramUrl,
         els.throneUrl,
         els.throneCheckoutMode,
         els.wishlistViewMode,

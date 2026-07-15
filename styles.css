@@ -1759,6 +1759,15 @@ body.has-posts-panel-open .site-brand-footer {
     left: 50%;
     z-index: 8;
     display: grid;
+    /* Without an explicit column track, grid falls back to auto-sizing the
+       single implicit column to whatever its widest child's content wants
+       -- one card's content was quietly forcing that column past this
+       panel's own 254px box, so the cards overflowed off the right edge
+       only (the panel's own box, e.g. its background/outline, stayed
+       correctly centered) -- which read as the whole group being shifted
+       right. minmax(0, 1fr) pins the column to exactly the container's
+       width and lets it shrink instead of grow. */
+    grid-template-columns: minmax(0, 1fr);
     width: min(82vw, 254px);
     gap: 8px;
     opacity: 0;
@@ -1787,6 +1796,7 @@ body.has-posts-panel-open .site-brand-footer {
     display: grid;
     grid-template-columns: 44px minmax(0, 1fr) 16px;
     align-items: center;
+    aspect-ratio: 32 / 11.385;
     min-height: 81px;
     gap: 10px;
     padding: 7px 12px 7px 10px;
@@ -1832,6 +1842,25 @@ body.has-posts-panel-open .site-brand-footer {
 .social-link-card > :not(.social-link-preview) {
     position: relative;
     z-index: 2;
+}
+
+/* Hand-drawn bunny peeking over the snapchat card (drawn by hand on iPad,
+   traced from a screenshot of this exact card). The card itself keeps
+   overflow:hidden for its own video-preview masking, so the mascot lives
+   in a plain relative wrapper alongside it instead of inside the card,
+   free to spill above the card's top edge uncropped. */
+.social-link-card-frame {
+    position: relative;
+}
+
+.social-link-mascot {
+    position: absolute;
+    top: -24px;
+    right: -3px;
+    width: 56px;
+    height: auto;
+    pointer-events: none;
+    z-index: 3;
 }
 
 .social-link-icon {

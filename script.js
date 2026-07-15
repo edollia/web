@@ -12,6 +12,10 @@ document.addEventListener("DOMContentLoaded", async function() {
         kofi_enabled: true,
         kofi_card_video_url: '',
         kofi_card_video_path: '',
+        telegram_url: 'https://t.me/wuufles',
+        telegram_enabled: true,
+        telegram_card_video_url: '',
+        telegram_card_video_path: '',
         throne_url: 'https://throne.com/edoll',
         throne_enabled: true,
         throne_checkout_mode: 'mockup',
@@ -774,6 +778,10 @@ document.addEventListener("DOMContentLoaded", async function() {
             kofi_enabled: settings.kofi_enabled !== false,
             kofi_card_video_url: String(settings.kofi_card_video_url || ''),
             kofi_card_video_path: String(settings.kofi_card_video_path || ''),
+            telegram_url: String(settings.telegram_url || DEFAULT_LINK_SETTINGS.telegram_url),
+            telegram_enabled: settings.telegram_enabled !== false,
+            telegram_card_video_url: String(settings.telegram_card_video_url || ''),
+            telegram_card_video_path: String(settings.telegram_card_video_path || ''),
             throne_url: String(settings.throne_url || DEFAULT_LINK_SETTINGS.throne_url),
             throne_enabled: settings.throne_enabled !== false,
             throne_checkout_mode: settings.throne_checkout_mode === 'widget' ? 'widget' : 'mockup',
@@ -1463,6 +1471,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     const socialLinksPanel = document.getElementById('social-links-panel');
     const snapchatOption = document.getElementById('snapchat-option');
     const instagramOption = document.getElementById('instagram-option');
+    const telegramOption = document.getElementById('telegram-option');
     const supportMenuButton = document.getElementById('support-menu-button');
     const actionMenuButton = document.getElementById('action-menu-button');
     const actionOptions = actionMenuButton?.querySelector('.action-options');
@@ -1487,7 +1496,8 @@ document.addEventListener("DOMContentLoaded", async function() {
         return [
             ['snapchat', snapchatOption],
             ['instagram', instagramOption],
-            ['kofi', donateOption]
+            ['kofi', donateOption],
+            ['telegram', telegramOption]
         ];
     }
 
@@ -1608,7 +1618,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             const websiteNode = graph.find(node => node['@type'] === 'WebSite');
             const pageTitle = siteLinkSettings.seo_title || DEFAULT_LINK_SETTINGS.seo_title;
             const pageDescription = siteLinkSettings.seo_description || DEFAULT_LINK_SETTINGS.seo_description;
-            const sameAs = ['instagram', 'snapchat', 'kofi', 'throne']
+            const sameAs = ['instagram', 'snapchat', 'kofi', 'telegram', 'throne']
                 .filter(isPublicLinkEnabled)
                 .map(getPublicLink)
                 .filter(Boolean);
@@ -1749,6 +1759,12 @@ document.addEventListener("DOMContentLoaded", async function() {
             donateOption.setAttribute('tabindex', '-1');
             syncKofiWidgetHandle();
             setKofiWidgetVisibility(isPublicLinkEnabled('kofi'));
+        }
+        if (telegramOption) {
+            telegramOption.href = getPublicLink('telegram');
+            telegramOption.classList.toggle('site-link-hidden', !isPublicLinkEnabled('telegram'));
+            telegramOption.setAttribute('aria-hidden', isPublicLinkEnabled('telegram') ? 'false' : 'true');
+            telegramOption.setAttribute('tabindex', '-1');
         }
         syncSocialCardVideos();
         if (supportMenuButton) {
@@ -2162,6 +2178,15 @@ document.addEventListener("DOMContentLoaded", async function() {
         if (!isPublicLinkEnabled('instagram')) return;
         playUiSound('link');
         window.open(getPublicLink('instagram'), '_blank', 'noopener,noreferrer');
+    });
+
+    telegramOption?.addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (siteLinkSettings.maintenance_enabled === true) return;
+        if (!isPublicLinkEnabled('telegram')) return;
+        playUiSound('link');
+        window.open(getPublicLink('telegram'), '_blank', 'noopener,noreferrer');
     });
 
     function handleWishlistButtonActivate(e) {

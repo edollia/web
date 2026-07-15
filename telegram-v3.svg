@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1254 1254" role="img" aria-label="">
+  <defs>
+    <linearGradient id="telegram-fill" x1="0.16" y1="0.08" x2="0.84" y2="0.94">
+      <stop offset="0" stop-color="#fff8fc"/>
+      <stop offset="0.52" stop-color="#ffeaf4"/>
+      <stop offset="1" stop-color="#ffdce9"/>
+    </linearGradient>
+    <linearGradient id="telegram-ink" x1="0.18" y1="0.1" x2="0.82" y2="0.92">
+      <stop offset="0" stop-color="#4b1715"/>
+      <stop offset="0.48" stop-color="#2e0807"/>
+      <stop offset="1" stop-color="#4a1514"/>
+    </linearGradient>
+    <filter id="telegram-softness" x="-8%" y="-8%" width="116%" height="116%" color-interpolation-filters="sRGB">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="1.35" result="soft-alpha"/>
+      <feComposite in="SourceGraphic" in2="soft-alpha" operator="in"/>
+    </filter>
+  </defs>
+
+  <!-- The slightly uneven curves and heavy rounded ink mirror the handmade
+       Snapchat, Instagram, and Ko-fi drawings used beside this icon. -->
+  <path
+    d="M128 533
+       C92 550 88 599 113 626
+       C126 640 151 653 182 667
+       L300 720
+       L370 1004
+       C382 1055 441 1072 475 1031
+       L597 878
+       L858 1081
+       C901 1115 966 1094 979 1037
+       L1137 218
+       C1147 163 1097 119 1043 136
+       C770 226 484 335 128 533Z"
+    fill="url(#telegram-fill)"
+    stroke="url(#telegram-ink)"
+    stroke-width="67"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    filter="url(#telegram-softness)"/>
+
+  <path
+    d="M300 720
+       C470 621 667 492 907 312
+       C925 299 940 318 926 335
+       L597 878"
+    fill="none"
+    stroke="url(#telegram-ink)"
+    stroke-width="67"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    filter="url(#telegram-softness)"/>
+
+  <path
+    d="M176 545 C228 511 285 484 345 459"
+    fill="none"
+    stroke="#ffffff"
+    stroke-width="34"
+    stroke-linecap="round"
+    opacity="0.72"/>
+  <path
+    d="M1004 193 C1034 183 1066 190 1080 213"
+    fill="none"
+    stroke="#ffffff"
+    stroke-width="23"
+    stroke-linecap="round"
+    opacity="0.56"/>
+</svg>

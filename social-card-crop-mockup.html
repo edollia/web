@@ -1,0 +1,581 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Social card crop comparison</title>
+    <style>
+        :root {
+            color-scheme: light;
+            --ink: #5f4452;
+            --muted: #866f7b;
+            --pink: #ff72ad;
+            --pink-dark: #d94e89;
+            --line: rgba(218, 87, 143, 0.26);
+            --paper: rgba(255, 251, 253, 0.92);
+            --crop-height: 56.692913%;
+            --lost-height: 21.6535435%;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            min-height: 100vh;
+            margin: 0;
+            padding: clamp(20px, 5vw, 52px) 16px 60px;
+            background:
+                radial-gradient(circle at 12% 12%, rgba(255, 174, 211, 0.28), transparent 28%),
+                radial-gradient(circle at 88% 24%, rgba(216, 198, 255, 0.3), transparent 31%),
+                linear-gradient(145deg, #fff8fc, #fff0f7 58%, #f9f4ff);
+            color: var(--ink);
+            font-family: ui-rounded, "SF Pro Rounded", "Avenir Next", system-ui, sans-serif;
+        }
+
+        main {
+            width: min(100%, 820px);
+            margin: 0 auto;
+        }
+
+        h1,
+        h2,
+        p {
+            margin-top: 0;
+        }
+
+        h1 {
+            margin-bottom: 10px;
+            font-size: clamp(1.8rem, 5vw, 3.1rem);
+            line-height: 1.04;
+            letter-spacing: -0.045em;
+        }
+
+        .intro {
+            max-width: 660px;
+            margin-bottom: 24px;
+            color: var(--muted);
+            font-size: clamp(0.98rem, 2.1vw, 1.08rem);
+            line-height: 1.55;
+        }
+
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 24px;
+        }
+
+        .file-button,
+        .reset-button {
+            min-height: 42px;
+            border: 1px solid var(--line);
+            border-radius: 999px;
+            font: inherit;
+            font-weight: 750;
+            cursor: pointer;
+        }
+
+        .file-button {
+            display: inline-flex;
+            align-items: center;
+            padding: 0 17px;
+            background: linear-gradient(135deg, #ff8abd, #f462a4);
+            box-shadow: 0 7px 20px rgba(215, 62, 126, 0.2);
+            color: white;
+        }
+
+        .file-button input {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            overflow: hidden;
+            clip: rect(0 0 0 0);
+            clip-path: inset(50%);
+            white-space: nowrap;
+        }
+
+        .reset-button {
+            padding: 0 15px;
+            background: rgba(255, 255, 255, 0.76);
+            color: var(--ink);
+        }
+
+        .file-status {
+            flex: 1 1 240px;
+            margin: 0;
+            color: var(--muted);
+            font-size: 0.87rem;
+        }
+
+        .comparison {
+            padding: clamp(16px, 3.5vw, 28px);
+            border: 1px solid rgba(223, 111, 161, 0.2);
+            border-radius: 28px;
+            background: var(--paper);
+            box-shadow: 0 22px 65px rgba(133, 69, 100, 0.14);
+            backdrop-filter: blur(18px);
+        }
+
+        .section-heading {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 16px;
+            margin-bottom: 10px;
+        }
+
+        .section-heading h2 {
+            margin-bottom: 0;
+            font-size: clamp(1rem, 3vw, 1.24rem);
+            letter-spacing: -0.02em;
+        }
+
+        .dimension {
+            flex: 0 0 auto;
+            color: var(--pink-dark);
+            font-size: 0.78rem;
+            font-weight: 800;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+        }
+
+        .current-card,
+        .full-source {
+            position: relative;
+            isolation: isolate;
+            width: 100%;
+            overflow: hidden;
+            background: #ffdce9;
+        }
+
+        .current-card {
+            aspect-ratio: 254 / 81;
+            display: grid;
+            grid-template-columns: clamp(36px, 8vw, 58px) minmax(0, 1fr) clamp(15px, 4vw, 24px);
+            align-items: center;
+            gap: clamp(8px, 2vw, 14px);
+            padding: 7px clamp(12px, 2.8vw, 22px) 7px clamp(10px, 2.5vw, 18px);
+            border: 1px solid rgba(255, 174, 207, 0.72);
+            border-radius: clamp(18px, 4vw, 32px);
+            box-shadow: 0 12px 28px rgba(225, 83, 145, 0.17), inset 0 1px 0 white;
+        }
+
+        .current-card::after {
+            content: "";
+            position: absolute;
+            inset: 0;
+            z-index: 1;
+            background: linear-gradient(90deg, rgba(255, 250, 253, 0.72), rgba(255, 240, 248, 0.38));
+            pointer-events: none;
+        }
+
+        .media-slot {
+            position: absolute;
+            inset: 0;
+            z-index: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        .media-slot > svg,
+        .media-slot > video,
+        .media-slot > img {
+            display: block;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .current-card .media-slot {
+            opacity: 0.34;
+            filter: saturate(0.78) brightness(1.06);
+        }
+
+        .sample-art text {
+            font-family: ui-rounded, "SF Pro Rounded", "Avenir Next", system-ui, sans-serif;
+        }
+
+        .card-icon,
+        .card-copy,
+        .card-arrow {
+            position: relative;
+            z-index: 2;
+        }
+
+        .card-icon {
+            display: grid;
+            place-items: center;
+            aspect-ratio: 1;
+            overflow: hidden;
+            border: 1px solid rgba(255, 175, 207, 0.54);
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.76);
+            box-shadow: 0 4px 12px rgba(196, 82, 130, 0.13);
+        }
+
+        .card-icon img {
+            width: 77%;
+            height: 77%;
+            object-fit: contain;
+        }
+
+        .card-copy {
+            display: grid;
+            min-width: 0;
+            text-align: left;
+        }
+
+        .card-copy strong {
+            overflow: hidden;
+            color: rgba(91, 70, 82, 0.88);
+            font-size: clamp(0.8rem, 3vw, 1.24rem);
+            line-height: 1.05;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .card-copy small {
+            margin-top: 3px;
+            color: rgba(106, 92, 99, 0.7);
+            font-size: clamp(0.62rem, 2vw, 0.9rem);
+        }
+
+        .card-arrow {
+            color: rgba(127, 91, 108, 0.68);
+            font-size: clamp(1rem, 3.5vw, 1.45rem);
+            font-weight: 500;
+        }
+
+        .down-arrow {
+            display: grid;
+            place-items: center;
+            height: clamp(42px, 8vw, 64px);
+            color: var(--pink-dark);
+            font-size: 1.45rem;
+        }
+
+        .full-source {
+            aspect-ratio: 16 / 9;
+            border: 1px solid rgba(255, 174, 207, 0.72);
+            border-radius: clamp(18px, 4vw, 28px);
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+        }
+
+        .lost-zone,
+        .visible-window {
+            position: absolute;
+            left: 0;
+            right: 0;
+            z-index: 3;
+            pointer-events: none;
+        }
+
+        .lost-zone {
+            display: grid;
+            place-items: center;
+            height: var(--lost-height);
+            border-color: rgba(138, 36, 79, 0.26);
+            background:
+                repeating-linear-gradient(-45deg, rgba(100, 26, 58, 0.09) 0 9px, rgba(255, 255, 255, 0.03) 9px 18px),
+                rgba(94, 34, 60, 0.58);
+            color: white;
+            font-size: clamp(0.66rem, 2.3vw, 0.94rem);
+            font-weight: 850;
+            letter-spacing: 0.05em;
+            text-shadow: 0 1px 5px rgba(68, 15, 39, 0.45);
+            text-transform: uppercase;
+        }
+
+        .lost-zone.top {
+            top: 0;
+            border-bottom: 1px dashed rgba(255, 255, 255, 0.8);
+        }
+
+        .lost-zone.bottom {
+            bottom: 0;
+            border-top: 1px dashed rgba(255, 255, 255, 0.8);
+        }
+
+        .visible-window {
+            top: var(--lost-height);
+            display: grid;
+            place-items: end start;
+            height: var(--crop-height);
+            border: clamp(2px, 0.55vw, 4px) solid #fff;
+            box-shadow: inset 0 0 0 2px rgba(224, 73, 137, 0.72), 0 0 0 1px rgba(119, 30, 69, 0.18);
+        }
+
+        .visible-label {
+            margin: 0 0 clamp(7px, 2vw, 14px) clamp(7px, 2vw, 14px);
+            padding: 5px 9px;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.9);
+            box-shadow: 0 4px 12px rgba(76, 32, 51, 0.16);
+            color: #ad356a;
+            font-size: clamp(0.62rem, 2.1vw, 0.82rem);
+            font-weight: 850;
+            text-transform: uppercase;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+            margin-top: 18px;
+        }
+
+        .stat {
+            padding: 14px 15px;
+            border: 1px solid rgba(223, 111, 161, 0.16);
+            border-radius: 17px;
+            background: rgba(255, 255, 255, 0.72);
+        }
+
+        .stat strong {
+            display: block;
+            margin-bottom: 3px;
+            color: var(--pink-dark);
+            font-size: clamp(1.35rem, 4vw, 2rem);
+            line-height: 1;
+        }
+
+        .stat span {
+            color: var(--muted);
+            font-size: 0.82rem;
+            line-height: 1.35;
+        }
+
+        .note {
+            margin: 14px 3px 0;
+            color: var(--muted);
+            font-size: 0.8rem;
+            line-height: 1.5;
+        }
+
+        .warning {
+            color: #af3f6d;
+            font-weight: 700;
+        }
+
+        @media (max-width: 520px) {
+            .comparison {
+                border-radius: 21px;
+            }
+
+            .section-heading {
+                align-items: flex-start;
+                flex-direction: column;
+                gap: 3px;
+            }
+
+            .stats {
+                grid-template-columns: 1fr;
+            }
+        }
+
+    </style>
+</head>
+<body>
+    <main>
+        <h1>What the social card cuts off</h1>
+        <p class="intro">This uses the live card’s normal maximum size, <strong>254 × 81</strong>. Load your own video or GIF to see the same center crop that <code>object-fit: cover</code> produces on the site.</p>
+
+        <div class="controls">
+            <label class="file-button">
+                Try your video or GIF
+                <input id="media-picker" type="file" accept="video/*,image/gif,image/*">
+            </label>
+            <button id="reset-media" class="reset-button" type="button" hidden>Use sample</button>
+            <p id="file-status" class="file-status" aria-live="polite">Showing a sample 16:9 scene.</p>
+        </div>
+
+        <section class="comparison" aria-label="Social card crop comparison">
+            <div class="section-heading">
+                <h2>1. What is visible in the current card</h2>
+                <span class="dimension">254:81 · about 3.14:1</span>
+            </div>
+
+            <div class="current-card">
+                <div class="media-slot" data-media-slot>
+                    <svg class="sample-art" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+                        <defs>
+                            <linearGradient id="sample-bg-current" x1="0" y1="0" x2="1" y2="1">
+                                <stop offset="0" stop-color="#7b6fd8"/>
+                                <stop offset="0.52" stop-color="#f487bd"/>
+                                <stop offset="1" stop-color="#ffd178"/>
+                            </linearGradient>
+                            <radialGradient id="sample-glow-current">
+                                <stop offset="0" stop-color="#fff" stop-opacity="0.92"/>
+                                <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+                            </radialGradient>
+                        </defs>
+                        <rect width="1600" height="900" fill="url(#sample-bg-current)"/>
+                        <circle cx="260" cy="118" r="170" fill="url(#sample-glow-current)"/>
+                        <path d="M1250 50l30 64 70 9-52 48 14 69-62-34-62 34 14-69-52-48 70-9z" fill="#fff4a8"/>
+                        <g fill="#fff" opacity="0.92" text-anchor="middle">
+                            <text x="800" y="110" font-size="55" font-weight="850" letter-spacing="10">TOP DETAILS</text>
+                            <text x="800" y="850" font-size="55" font-weight="850" letter-spacing="10">BOTTOM DETAILS</text>
+                        </g>
+                        <g transform="translate(800 450)">
+                            <ellipse cy="38" rx="205" ry="205" fill="#fff1f6"/>
+                            <ellipse cx="-135" cy="-150" rx="80" ry="155" fill="#fff1f6" transform="rotate(-18)"/>
+                            <ellipse cx="135" cy="-150" rx="80" ry="155" fill="#fff1f6" transform="rotate(18)"/>
+                            <circle cx="-72" cy="4" r="21" fill="#574052"/>
+                            <circle cx="72" cy="4" r="21" fill="#574052"/>
+                            <path d="M-14 49q14 17 28 0" fill="none" stroke="#d36896" stroke-width="13" stroke-linecap="round"/>
+                            <ellipse cx="-132" cy="64" rx="48" ry="25" fill="#f7a1c1" opacity="0.62"/>
+                            <ellipse cx="132" cy="64" rx="48" ry="25" fill="#f7a1c1" opacity="0.62"/>
+                        </g>
+                        <g fill="#fff0a7">
+                            <circle cx="170" cy="790" r="62"/>
+                            <circle cx="275" cy="830" r="46"/>
+                            <circle cx="1400" cy="785" r="68"/>
+                            <circle cx="1295" cy="835" r="43"/>
+                        </g>
+                    </svg>
+                </div>
+                <span class="card-icon"><img src="snap-v2-1.png" alt=""></span>
+                <span class="card-copy"><strong>snapchat</strong><small>dumidoll</small></span>
+                <span class="card-arrow" aria-hidden="true">↗</span>
+            </div>
+
+            <div class="down-arrow" aria-hidden="true">↓</div>
+
+            <div class="section-heading">
+                <h2>2. The full 16:9 frame underneath</h2>
+                <span class="dimension">16:9 · full source</span>
+            </div>
+
+            <div class="full-source">
+                <div class="media-slot" data-media-slot>
+                    <svg class="sample-art" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+                        <defs>
+                            <linearGradient id="sample-bg-full" x1="0" y1="0" x2="1" y2="1">
+                                <stop offset="0" stop-color="#7b6fd8"/>
+                                <stop offset="0.52" stop-color="#f487bd"/>
+                                <stop offset="1" stop-color="#ffd178"/>
+                            </linearGradient>
+                            <radialGradient id="sample-glow-full">
+                                <stop offset="0" stop-color="#fff" stop-opacity="0.92"/>
+                                <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+                            </radialGradient>
+                        </defs>
+                        <rect width="1600" height="900" fill="url(#sample-bg-full)"/>
+                        <circle cx="260" cy="118" r="170" fill="url(#sample-glow-full)"/>
+                        <path d="M1250 50l30 64 70 9-52 48 14 69-62-34-62 34 14-69-52-48 70-9z" fill="#fff4a8"/>
+                        <g fill="#fff" opacity="0.92" text-anchor="middle">
+                            <text x="800" y="110" font-size="55" font-weight="850" letter-spacing="10">TOP DETAILS</text>
+                            <text x="800" y="850" font-size="55" font-weight="850" letter-spacing="10">BOTTOM DETAILS</text>
+                        </g>
+                        <g transform="translate(800 450)">
+                            <ellipse cy="38" rx="205" ry="205" fill="#fff1f6"/>
+                            <ellipse cx="-135" cy="-150" rx="80" ry="155" fill="#fff1f6" transform="rotate(-18)"/>
+                            <ellipse cx="135" cy="-150" rx="80" ry="155" fill="#fff1f6" transform="rotate(18)"/>
+                            <circle cx="-72" cy="4" r="21" fill="#574052"/>
+                            <circle cx="72" cy="4" r="21" fill="#574052"/>
+                            <path d="M-14 49q14 17 28 0" fill="none" stroke="#d36896" stroke-width="13" stroke-linecap="round"/>
+                            <ellipse cx="-132" cy="64" rx="48" ry="25" fill="#f7a1c1" opacity="0.62"/>
+                            <ellipse cx="132" cy="64" rx="48" ry="25" fill="#f7a1c1" opacity="0.62"/>
+                        </g>
+                        <g fill="#fff0a7">
+                            <circle cx="170" cy="790" r="62"/>
+                            <circle cx="275" cy="830" r="46"/>
+                            <circle cx="1400" cy="785" r="68"/>
+                            <circle cx="1295" cy="835" r="43"/>
+                        </g>
+                    </svg>
+                </div>
+                <div class="lost-zone top"><span>cropped off · 21.7%</span></div>
+                <div class="visible-window"><span class="visible-label">current visible area · 56.7%</span></div>
+                <div class="lost-zone bottom"><span>cropped off · 21.7%</span></div>
+            </div>
+
+            <div class="stats">
+                <div class="stat"><strong>56.7%</strong><span>81 px remains from a 142.9 px-tall 16:9 frame</span></div>
+                <div class="stat"><strong>43.3%</strong><span>61.9 px total: about 30.9 px from each edge</span></div>
+            </div>
+            <p class="note">The comparison assumes a centered 16:9 source at the card’s usual 254 px width. Below a roughly 310 px viewport, the card becomes narrower while keeping its 81 px minimum height, so the crop is slightly less severe.</p>
+        </section>
+    </main>
+
+    <script>
+        const picker = document.getElementById('media-picker');
+        const resetButton = document.getElementById('reset-media');
+        const status = document.getElementById('file-status');
+        const slots = Array.from(document.querySelectorAll('[data-media-slot]'));
+        let objectUrl = '';
+
+        function removeLoadedMedia() {
+            slots.forEach(slot => {
+                slot.querySelector('.loaded-media')?.remove();
+                const sample = slot.querySelector('.sample-art');
+                if (sample) sample.hidden = false;
+            });
+            if (objectUrl) URL.revokeObjectURL(objectUrl);
+            objectUrl = '';
+        }
+
+        function describeDimensions(width, height) {
+            if (!width || !height) return;
+            const ratio = width / height;
+            const isSixteenNine = Math.abs(ratio - (16 / 9)) < 0.025;
+            status.textContent = `${picker.files[0].name} · ${width} × ${height}${isSixteenNine ? ' · 16:9' : ' · not 16:9; the guide still models a 16:9 frame'}`;
+            status.classList.toggle('warning', !isSixteenNine);
+        }
+
+        function loadFile(file) {
+            removeLoadedMedia();
+            if (!file) return;
+
+            objectUrl = URL.createObjectURL(file);
+            const isVideo = file.type.startsWith('video/');
+
+            slots.forEach((slot, index) => {
+                const media = document.createElement(isVideo ? 'video' : 'img');
+                media.className = 'loaded-media';
+                media.src = objectUrl;
+                media.alt = '';
+
+                if (isVideo) {
+                    media.muted = true;
+                    media.defaultMuted = true;
+                    media.loop = true;
+                    media.playsInline = true;
+                    media.autoplay = true;
+                    if (index === 0) {
+                        media.addEventListener('loadedmetadata', () => describeDimensions(media.videoWidth, media.videoHeight), { once: true });
+                    }
+                    media.addEventListener('canplay', () => media.play().catch(() => {}), { once: true });
+                } else if (index === 0) {
+                    media.addEventListener('load', () => describeDimensions(media.naturalWidth, media.naturalHeight), { once: true });
+                }
+
+                const sample = slot.querySelector('.sample-art');
+                if (sample) sample.hidden = true;
+                slot.append(media);
+            });
+
+            status.textContent = `Loading ${file.name}…`;
+            status.classList.remove('warning');
+            resetButton.hidden = false;
+        }
+
+        picker.addEventListener('change', () => loadFile(picker.files[0]));
+
+        resetButton.addEventListener('click', () => {
+            removeLoadedMedia();
+            picker.value = '';
+            resetButton.hidden = true;
+            status.textContent = 'Showing a sample 16:9 scene.';
+            status.classList.remove('warning');
+        });
+
+        window.addEventListener('pagehide', () => {
+            if (objectUrl) URL.revokeObjectURL(objectUrl);
+        });
+    </script>
+</body>
+</html>
