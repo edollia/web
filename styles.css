@@ -382,7 +382,7 @@ button {
     cursor: pointer;
     animation:
         entryBubbleBorn 0.58s cubic-bezier(0.18, 0.9, 0.22, 1.24) forwards,
-        footerBubbleFloat var(--bubble-duration, 5.2s) ease-in-out 0.58s infinite;
+        entryBubbleFloat var(--bubble-duration, 5.2s) ease-in-out 0.58s infinite;
 }
 
 .footer-play-bubble.entry-bubble:hover {
@@ -398,7 +398,7 @@ button {
 .footer-play-bubble.entry-bubble.popping:hover {
     pointer-events: none;
     filter: none;
-    animation: entryBubblePop 0.34s cubic-bezier(0.16, 0.86, 0.24, 1) forwards;
+    animation: entryBubblePop 0.31s cubic-bezier(0.12, 0.84, 0.2, 1) forwards;
 }
 
 .entry-bubble-burst {
@@ -422,106 +422,104 @@ button {
 }
 
 .entry-bubble-burst::before {
-    background: conic-gradient(
-        from 22deg,
-        rgba(255, 255, 255, 0.94) 0 7%,
-        rgba(160, 230, 255, 0.76) 8% 14%,
-        transparent 15% 23%,
-        rgba(255, 176, 222, 0.72) 24% 31%,
-        transparent 32% 44%,
-        rgba(255, 255, 255, 0.88) 45% 51%,
-        rgba(179, 255, 231, 0.68) 52% 59%,
-        transparent 60% 70%,
-        rgba(198, 183, 255, 0.7) 71% 79%,
-        transparent 80% 89%,
-        rgba(255, 225, 147, 0.64) 90% 96%,
-        transparent 97% 100%
-    );
-    -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px));
-    mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px));
-    filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.7));
-    animation: entryBubbleBurstRing 0.48s cubic-bezier(0.14, 0.74, 0.24, 1) forwards;
+    box-sizing: border-box;
+    border: 2px solid rgba(255, 180, 212, 0.28);
+    box-shadow:
+        inset 0 0 5px rgba(255, 166, 205, 0.12),
+        0 0 5px rgba(255, 255, 255, 0.3);
+    animation: entryBubbleBurstRing 0.56s cubic-bezier(0.1, 0.7, 0.2, 1) forwards;
 }
 
 .entry-bubble-burst::after {
-    background: radial-gradient(circle, rgba(255, 255, 255, 0.72) 0 8%, rgba(206, 244, 255, 0.2) 28%, rgba(255, 255, 255, 0) 68%);
-    animation: entryBubbleBurstFlash 0.24s ease-out forwards;
+    background: radial-gradient(ellipse, rgba(255, 255, 255, 0.75), rgba(255, 166, 205, 0.2) 38%, transparent 68%);
+    animation: entryBubbleBurstFlash 0.25s ease-out forwards;
 }
 
 .entry-bubble-burst i {
     position: absolute;
     left: 0;
     top: 0;
-    width: var(--particle-size);
-    height: calc(var(--particle-size) * 0.68);
-    border: 1px solid rgba(255, 255, 255, 0.74);
-    border-radius: 50%;
-    background:
-        radial-gradient(circle at 30% 24%, rgba(255, 255, 255, 0.94) 0 18%, transparent 22%),
-        linear-gradient(145deg, rgba(158, 230, 255, 0.38), rgba(255, 178, 222, 0.28) 52%, rgba(180, 255, 229, 0.3));
-    box-shadow:
-        inset -1px -1px 2px rgba(141, 205, 235, 0.22),
-        0 1px 3px rgba(130, 188, 215, 0.16);
+    width: calc(var(--particle-size) * 1.28);
+    height: var(--particle-size);
+    border: 1px solid rgba(255, 255, 255, 0.76);
+    border-radius: 52% 48% 50% 50%;
+    background: radial-gradient(
+        circle at 28% 24%,
+        #fff 0 12%,
+        rgba(255, 238, 247, 0.9) 18%,
+        rgba(255, 166, 205, 0.34) 58%,
+        rgba(255, 145, 195, 0.18) 100%
+    );
+    box-shadow: inset -2px -1px 3px rgba(255, 145, 195, 0.18);
     opacity: 0;
-    transform: translate(-50%, -50%) scale(0.2);
-    animation: entryBubbleBurstParticle 0.7s cubic-bezier(0.12, 0.72, 0.22, 1) var(--particle-delay) forwards;
+    transform: translate(-50%, -50%) scale(0.25);
+    animation: entryBubbleBurstParticle 0.82s cubic-bezier(0.08, 0.68, 0.16, 1) var(--particle-delay) forwards;
+}
+
+.entry-bubble-burst b {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: var(--fragment-size);
+    height: calc(var(--fragment-size) * 0.5);
+    border: 3px solid rgba(255, 180, 212, 0.5);
+    border-bottom: 0;
+    border-radius: 50% 50% 0 0;
+    opacity: 0;
+    animation: entryBubbleBurstFragment 0.66s ease-out var(--particle-delay) forwards;
 }
 
 @keyframes entryBubbleBorn {
     64% {
         opacity: 0.96;
-        transform: translate(-50%, -10px) scale(1.08);
+        transform: translate(-50%, -19px) scale(1.08);
     }
 
     to {
         opacity: 0.88;
-        transform: translate(-50%, 0) scale(1);
+        transform: translate(-50%, -9px) scale(1);
+    }
+}
+
+@keyframes entryBubbleFloat {
+    0%,
+    100% {
+        transform: translate(-50%, -9px) translateX(0) scale(1);
+    }
+
+    50% {
+        transform: translate(-50%, -31px) translateX(var(--bubble-drift, 26px)) scale(1.035);
     }
 }
 
 @keyframes entryBubblePop {
     0% {
-        opacity: 0.88;
-        transform: translate(-50%, 0) scale(1);
+        opacity: 0.9;
+        transform: translate(-50%, -9px) scale(1);
     }
 
-    22% {
-        opacity: 0.96;
-        transform: translate(-50%, 1px) scale(1.04, 0.96);
-    }
-
-    42% {
-        opacity: 0.82;
-        transform: translate(-50%, -2px) scale(1.13, 1.08);
-        box-shadow:
-            inset 0 1px 0 rgba(255, 255, 255, 0.92),
-            inset 5px -3px 12px rgba(159, 226, 255, 0.22),
-            inset -5px 3px 12px rgba(255, 169, 219, 0.2),
-            0 0 12px rgba(255, 255, 255, 0.58);
+    48% {
+        opacity: 1;
+        transform: translate(-50%, -11px) scale(1.16);
     }
 
     to {
         opacity: 0;
-        transform: translate(-50%, -4px) scale(1.18);
-        box-shadow:
-            inset 0 1px 0 rgba(255, 255, 255, 0),
-            inset 5px -3px 12px rgba(159, 226, 255, 0),
-            inset -5px 3px 12px rgba(255, 169, 219, 0),
-            0 0 18px rgba(255, 255, 255, 0);
+        transform: translate(-50%, -14px) scale(1.28, 1.2);
     }
 }
 
 @keyframes entryBubbleBurstRing {
     0% {
         opacity: 0;
-        transform: translate(-50%, -50%) scale(0.2);
+        transform: translate(-50%, -50%) scale(0.45, 0.32);
     }
 
-    20% { opacity: 1; }
+    26% { opacity: 0.9; }
 
     to {
         opacity: 0;
-        transform: translate(-50%, -50%) rotate(18deg) scale(1.42, 1.32);
+        transform: translate(-50%, -50%) scale(1.54, 1.18);
     }
 }
 
@@ -545,24 +543,40 @@ button {
 @keyframes entryBubbleBurstParticle {
     0% {
         opacity: 0;
-        transform: translate(-50%, -50%) scale(0.2);
+        transform: translate(-50%, -50%) scale(0.25);
     }
 
-    18% {
+    16% {
         opacity: 0.9;
-        transform: translate(-50%, -50%) scale(1);
+        transform: translate(-50%, -50%) scale(1.12);
     }
+
+    70% { opacity: 0.72; }
 
     to {
         opacity: 0;
-        transform: translate(calc(-50% + var(--burst-x)), calc(-50% + var(--burst-y))) rotate(var(--particle-spin)) scale(0.22);
+        transform: translate(calc(-50% + var(--burst-x)), calc(-50% + var(--burst-y))) rotate(var(--particle-spin)) scale(0.42);
+    }
+}
+
+@keyframes entryBubbleBurstFragment {
+    0% {
+        opacity: 0;
+        transform: translate(-50%, -50%) rotate(var(--fragment-angle)) scale(0.25);
+    }
+
+    22% { opacity: 0.8; }
+
+    to {
+        opacity: 0;
+        transform: translate(calc(-50% + var(--burst-x)), calc(-50% + var(--burst-y))) rotate(calc(var(--fragment-angle) + 55deg)) scale(0.1);
     }
 }
 
 @media (prefers-reduced-motion: reduce) {
     .footer-play-bubble.entry-bubble {
         opacity: 0.88;
-        transform: translate(-50%, 0);
+        transform: translate(-50%, -9px);
         animation: none;
     }
 
@@ -572,7 +586,8 @@ button {
 
     .entry-bubble-burst::before,
     .entry-bubble-burst::after,
-    .entry-bubble-burst i {
+    .entry-bubble-burst i,
+    .entry-bubble-burst b {
         animation-duration: 0.18s;
     }
 }

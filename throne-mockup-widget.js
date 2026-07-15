@@ -1262,25 +1262,38 @@
                own top edge (a bare backdrop-filter box does). The layered
                light gradient is a graceful fallback: if backdrop-filter or
                mask degrades on old WebKit, the result is still a soft wash,
-               never a hard seam. Verified over both light and busy cards. */
+               never a hard seam. Verified over both light and busy cards.
+
+               Shape: it matches the checkout bar rather than being a
+               full-width rectangle. An earlier full-width version had square
+               left/right ends that stuck out past the bar's rounded sides and
+               read as "sharp." This is the same width as the bar (min(100% -
+               8px, 420px)), centered, with the bar's 24px corner radius, and
+               it starts from BEHIND the whole bar (bottom:-2px) and rises up,
+               fading at the top — so the blur follows the bar's rounded border
+               and looks like it emanates from the bar. Because it now overlaps
+               the bar, the foot is given position/z-index below to stay on
+               top of (and readable over) its own blur. */
             .doll-wishlist-foot-dock::before {
                 content: '';
                 position: absolute;
-                left: 0;
-                right: 0;
-                bottom: 100%;
-                height: 70px;
+                left: 50%;
+                transform: translateX(-50%);
+                bottom: -2px;
+                width: min(calc(100% - 8px), 420px);
+                height: 104px;
+                border-radius: 24px;
                 pointer-events: none;
                 -webkit-backdrop-filter: blur(9px);
                 backdrop-filter: blur(9px);
                 background: linear-gradient(
                     to top,
                     rgba(255, 251, 253, 0.72) 0%,
-                    rgba(255, 251, 253, 0.34) 42%,
+                    rgba(255, 251, 253, 0.34) 46%,
                     rgba(255, 251, 253, 0) 100%
                 );
-                -webkit-mask-image: linear-gradient(to top, #000 34%, transparent 100%);
-                mask-image: linear-gradient(to top, #000 34%, transparent 100%);
+                -webkit-mask-image: linear-gradient(to top, #000 48%, transparent 100%);
+                mask-image: linear-gradient(to top, #000 48%, transparent 100%);
             }
             /* Docked mode only: drop the foot's own top margin so the blur
                dissolve above meets the pill's top edge with no un-blurred gap.
@@ -1291,6 +1304,8 @@
                round the corners more (24px) so the whole bar reads as a soft,
                cozy shape rather than a bordered box. Bottom stays readable. */
             .doll-wishlist-foot-dock .doll-wishlist-foot {
+                position: relative;
+                z-index: 1; /* stay above the ::before blur, which now overlaps it */
                 margin-top: 0;
                 border-color: transparent;
                 border-radius: 24px;

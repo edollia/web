@@ -1090,24 +1090,33 @@ document.addEventListener("DOMContentLoaded", async function() {
         const rect = bubble.getBoundingClientRect();
         const burst = document.createElement('span');
         const fragment = document.createDocumentFragment();
-        const particleCount = 14;
+        const particleCount = 18;
+        const fragmentCount = 6;
         burst.className = 'entry-bubble-burst';
         burst.setAttribute('aria-hidden', 'true');
         burst.style.cssText = `--burst-size:${Math.max(rect.width, rect.height)}px;left:${rect.left + rect.width / 2}px;top:${rect.top + rect.height / 2}px;`;
 
         for (let index = 0; index < particleCount; index += 1) {
-            const angle = (Math.PI * 2 * index) / particleCount + (Math.random() - 0.5) * 0.28;
-            const distance = 34 + Math.random() * 52;
+            const angle = (Math.PI * 2 * index) / particleCount + (Math.random() - 0.5) * 0.34;
+            const distance = 42 + Math.random() * 56;
             const particle = document.createElement('i');
-            const size = (3 + Math.random() * 5).toFixed(1);
+            const size = (5 + Math.random() * 7).toFixed(1);
             const spin = Math.round((Math.random() - 0.5) * 300);
-            particle.style.cssText = `--burst-x:${(Math.cos(angle) * distance).toFixed(1)}px;--burst-y:${(Math.sin(angle) * distance).toFixed(1)}px;--particle-size:${size}px;--particle-spin:${spin}deg;--particle-delay:${Math.round(Math.random() * 45)}ms;`;
+            particle.style.cssText = `--burst-x:${(Math.cos(angle) * distance).toFixed(1)}px;--burst-y:${(Math.sin(angle) * distance).toFixed(1)}px;--particle-size:${size}px;--particle-spin:${spin}deg;--particle-delay:${Math.round(Math.random() * 55)}ms;`;
             fragment.appendChild(particle);
+        }
+
+        for (let index = 0; index < fragmentCount; index += 1) {
+            const angle = (Math.PI * 2 * index) / fragmentCount + (Math.random() - 0.5) * 0.34;
+            const distance = 42 * 0.84 + Math.random() * ((98 * 0.9) - (42 * 0.84));
+            const filmArc = document.createElement('b');
+            filmArc.style.cssText = `--burst-x:${(Math.cos(angle) * distance).toFixed(1)}px;--burst-y:${(Math.sin(angle) * distance).toFixed(1)}px;--fragment-size:${(18 + Math.random() * 22).toFixed(1)}px;--fragment-angle:${(angle * 180 / Math.PI).toFixed(1)}deg;--particle-delay:${Math.round(Math.random() * 45)}ms;`;
+            fragment.appendChild(filmArc);
         }
 
         burst.appendChild(fragment);
         entryBubbleField.appendChild(burst);
-        window.setTimeout(() => burst.remove(), 820);
+        window.setTimeout(() => burst.remove(), 1080);
     }
 
     function startBubbleEntrance() {
@@ -1151,7 +1160,7 @@ document.addEventListener("DOMContentLoaded", async function() {
 
                 if (entryBubbleRemaining === 0) {
                     entryBubbleField.inert = true;
-                    window.setTimeout(() => dismissEntryGate(), 620);
+                    window.setTimeout(() => dismissEntryGate(), 900);
                 }
             });
 
