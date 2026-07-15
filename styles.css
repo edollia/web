@@ -1843,6 +1843,16 @@ body.has-posts-panel-open .site-brand-footer {
     --dwl-edge-bottom: 0;
 }
 
+/* Same lever the wishlist already uses (see body.has-wishlist-panel-open
+   .button-group in throne-mockup-widget.js) to restate the icon row's
+   *expanded* margin-bottom -- can't set margin-bottom directly at equal
+   specificity, that would fight .button-group's own calc(). Wishlist tightens
+   17px down to 9px; the gap above the social cards read as roughly double
+   that, so it comes down further, to ~2px, to actually halve it. */
+body.has-social-panel-open .button-group {
+    --dwl-collapse-base-margin: 2px;
+}
+
 /* Forces the open transform synchronously (no transition) for one frame so
    script.js can measure the panel's true open height with
    getBoundingClientRect() before the real .active transition starts --
