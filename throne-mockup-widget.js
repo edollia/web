@@ -217,13 +217,26 @@
             body.has-wishlist-panel-open .site-brand-footer .doll-wishlist-throne-footer-link {
                 display: inline-flex !important;
             }
+            /* .site-brand-gg (styles.css) is doll.gg's OWN cute rotated pink
+               badge around the "gg" of "doll.gg" — a deliberate brand mark.
+               This markup reuses that class for the "com" of "throne.com",
+               where the same badge reads as a disjointed chip floating apart
+               from "throne" (verified by rendering it). Reset it to plain
+               inline text so "throne.com" is one clean uniform word inside a
+               single glass pill, instead of two visually mismatched pieces. */
             .doll-wishlist-throne-footer-link .site-brand-gg {
-                margin-left: 3px;
+                margin-left: 1px;
+                padding: 0;
+                background: none;
+                box-shadow: none;
+                transform: none;
+                font-size: inherit;
+                color: inherit;
                 white-space: nowrap;
             }
             .doll-wishlist-throne-footer-link {
                 position: relative;
-                width: 78px;
+                width: 98px;
                 justify-content: center;
                 overflow: hidden;
                 transition: width 0.26s cubic-bezier(0.2, 0.84, 0.24, 1), color 0.2s ease;
@@ -1202,20 +1215,33 @@
                 to { opacity: 1; transform: translateY(0) scale(1); }
             }
             /* List/masonry: the foot is relocated inside .dwl-scroll-body
-               (see renderBody()), so position:sticky pins it to the bottom
-               of the visible scrolled area as the user scrolls the card
-               list, instead of the bottom of the whole panel — its existing
-               backdrop-filter blur above already gives the floating look. */
-            .doll-wishlist-body.dwl-scroll-body .doll-wishlist-foot {
+               (see renderBody()), wrapped in .doll-wishlist-foot-dock — a
+               full-width sticky wrapper (see below) — instead of being
+               sticky itself. Sticking the bare foot directly (an earlier
+               version of this) meant the fade scrim on it could only ever
+               be as wide as the foot's own narrow centered pill (min(100% -
+               8px, 420px)), reading as a boxed-in blur patch rather than an
+               edge-to-edge fade. The dock is a plain 100%-wide block, so its
+               own fade (below) genuinely spans the full card width instead
+               of needing overshoot tricks relative to a narrower ancestor. */
+            .doll-wishlist-foot-dock {
                 position: sticky;
                 bottom: 0;
                 z-index: 4;
+                /* Hidden by default (not just empty) — otherwise its ::before
+                   scrim below would render at the bottom of every scrolled
+                   list/masonry view even with nothing selected yet. */
+                display: none;
+            }
+            .doll-wishlist-panel.has-selection .doll-wishlist-foot-dock {
+                display: flex;
+                justify-content: center;
             }
             /* .dwl-scroll-body's own mask-image (below) fades its bottom edge
                to hint "more items below" — but mask-image composites the
-               WHOLE subtree, so with the foot relocated inside this same
-               masked container, that fade swept across the sticky foot bar
-               itself too, making checkout look semi-transparent/glitchy any
+               WHOLE subtree, so with the dock relocated inside this same
+               masked container, that fade swept across the sticky checkout
+               bar itself too, making it look semi-transparent/glitchy any
                time the list wasn't scrolled all the way down (i.e. nearly
                always while shopping). Selection mode gets its own deliberate
                transition instead (the ::before scrim below), so turn the
@@ -1223,28 +1249,31 @@
             .doll-wishlist-panel.has-selection .doll-wishlist-body.dwl-scroll-body.dwl-has-content-below {
                 --dwl-edge-bottom: 1;
             }
-            /* Softens the hard line where the sticky pill sits on top of
-               scrolled cards: a blurred gradient right above it so the last
-               row dissolves into the bar instead of being cut off sharply.
-               Overshoots the pill's own narrow centered width with a large
-               fixed offset instead of trying to match the scroll body's
-               exact width — .dwl-scroll-body already clips overflow-x, so
-               this still reads as edge-to-edge without needing to know the
-               container's size. No mask-image here (unlike the fade above) —
-               keep it to a plain gradient+blur so it can't reintroduce the
-               old-iOS mask+filter square-edge bug fixed elsewhere in this
-               project. */
-            .doll-wishlist-body.dwl-scroll-body .doll-wishlist-foot::before {
+            /* Softens the line where the sticky checkout bar overlaps the
+               cards, so busy product PHOTOS dissolve gently into the bar
+               instead of being cut off at a hard edge. Verified by rendering
+               over high-detail card content (qlmanage): a short/subtle scrim
+               vanishes against real photos — it needs real height (54px) and
+               to reach near-opaque bar colour at the bottom to actually read
+               as a gentle fade. Full-width (left/right:0 of the full-width
+               dock), plain vertical gradient — no blur and no mask, so it
+               can't seam at its own top edge (the backdrop-filter bug) or
+               trip the old-iOS mask+filter square-edge bug fixed elsewhere. */
+            .doll-wishlist-foot-dock::before {
                 content: '';
                 position: absolute;
-                left: -600px;
-                right: -600px;
+                left: 0;
+                right: 0;
                 bottom: 100%;
-                height: 44px;
+                height: 54px;
                 pointer-events: none;
-                background: linear-gradient(to bottom, rgba(255, 251, 253, 0), rgba(255, 251, 253, 0.92));
-                -webkit-backdrop-filter: blur(6px);
-                backdrop-filter: blur(6px);
+                background: linear-gradient(
+                    to top,
+                    rgba(255, 251, 253, 0.98) 0%,
+                    rgba(255, 251, 253, 0.9) 22%,
+                    rgba(255, 251, 253, 0.55) 55%,
+                    rgba(255, 251, 253, 0) 100%
+                );
             }
 
             .doll-wishlist-count {
@@ -1293,7 +1322,8 @@
                 font-weight: 700;
                 text-shadow: 0 1px 2px rgba(145, 44, 82, 0.18);
                 box-shadow:
-                    0 6px 13px rgba(202, 70, 122, 0.22),
+                    0 0 10px rgba(255, 255, 255, 0.58),
+                    0 5px 11px rgba(202, 70, 122, 0.2),
                     inset 0 1px 0 rgba(255, 255, 255, 0.48);
                 cursor: pointer;
                 transition: transform 0.16s ease, box-shadow 0.16s ease, filter 0.16s ease, opacity 0.16s ease;
@@ -1301,7 +1331,10 @@
             .doll-wishlist-checkout:not(:disabled):hover {
                 transform: translateY(-1px);
                 filter: saturate(1.04);
-                box-shadow: 0 8px 16px rgba(202, 70, 122, 0.27), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+                box-shadow:
+                    0 0 12px rgba(255, 255, 255, 0.68),
+                    0 7px 14px rgba(202, 70, 122, 0.23),
+                    inset 0 1px 0 rgba(255, 255, 255, 0.5);
             }
             .doll-wishlist-checkout:not(:disabled):active { transform: scale(0.97); }
             .doll-wishlist-checkout:focus-visible {
@@ -2185,6 +2218,10 @@
         if (foot && foot.parentElement !== panel) {
             panel.appendChild(foot);
         }
+        // The old dock (if any) is just an empty wrapper at this point —
+        // the line above already pulled foot back out of it — and is about
+        // to be destroyed anyway by the body.innerHTML assignment below, or
+        // by the fresh dock created further down for list/masonry.
         if (loadState === 'loading') {
             pauseSwipeHintSequence();
             body.scrollTop = 0;
@@ -2237,14 +2274,20 @@
             });
         });
         body.querySelector('.doll-wishlist-more-card')?.addEventListener('click', openInNewTab);
-        // List/masonry: move the foot inside the scroll container so
-        // position:sticky pins it to the bottom of the visible scrolled
-        // area (see .doll-wishlist-body.dwl-scroll-body .doll-wishlist-foot)
-        // instead of the bottom of the whole panel, which could sit below
-        // the fold on a long list/small screen. Grid mode keeps it at the
-        // panel level, where it already reads fine.
+        // List/masonry: move the foot inside the scroll container, wrapped
+        // in a full-width .doll-wishlist-foot-dock, so position:sticky pins
+        // it to the bottom of the visible scrolled area (see
+        // .doll-wishlist-foot-dock in the injected stylesheet) instead of
+        // the bottom of the whole panel, which could sit below the fold on
+        // a long list/small screen. Grid mode keeps the foot at the panel
+        // level, undocked, where it already reads fine. A fresh dock is
+        // created each render — any old one was left behind (now empty)
+        // when the innerHTML assignment above wiped body's children.
         if (foot && (wishlistViewMode === 'list' || wishlistViewMode === 'masonry')) {
-            body.appendChild(foot);
+            const dock = document.createElement('div');
+            dock.className = 'doll-wishlist-foot-dock';
+            dock.appendChild(foot);
+            body.appendChild(dock);
         }
         void body.offsetWidth;
         body.classList.add('dwl-ready-in');
