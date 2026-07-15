@@ -2359,11 +2359,19 @@
     // the animation natively and forever.
     function buildMarqueeKeyframes(overflow, explicitName) {
         const shift = -(overflow + 4);
-        // No upper cap on scrollDuration: capping it while overflow keeps
-        // growing (as happens with the preview title, which — unlike the
-        // grid titles — isn't length-limited by capName) breaks the "one
-        // constant speed" design and makes long titles visibly speed up.
-        const scrollDuration = Math.max(2.4, overflow / 55);
+        // Constant scroll SPEED (px per second), so every title — long or
+        // short — travels at the exact same visual pace. Duration is derived
+        // purely from distance (overflow / speed) with NO floor and NO cap:
+        //  - An upper cap would make very long titles speed up (they'd have
+        //    to cover more distance in the same capped time).
+        //  - A lower floor (the old Math.max(2.4, …)) did the mirror-image
+        //    damage — it stretched short overflows over a fixed minimum time,
+        //    so they crawled while long ones zipped. That mismatch is exactly
+        //    the "long titles scroll faster than short ones" bug. Distance is
+        //    already tiny for a small overflow, so a short duration there is
+        //    correct: same speed, just less ground to cover.
+        const MARQUEE_SPEED = 42; // px/sec — one calm, uniform reading pace
+        const scrollDuration = overflow / MARQUEE_SPEED;
         const startHold = 0.5;
         const pause = 1;
         const snapOut = 0.15;

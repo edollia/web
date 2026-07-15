@@ -1421,6 +1421,14 @@ body.has-posts-panel-open .site-brand-footer {
 
 .button-group.icons-collapsing .dwl-icons-row {
     overflow: hidden;
+    /* The max-height clip above is what physically shrinks the row into the
+       pill, but a bare overflow:hidden cut drew a hard horizontal line
+       straight across all three icons the instant a scroll began — sharp,
+       jumpy, ugly. Feather the bottom edge so the icons dissolve into the
+       clip instead of being guillotined by it: the cut becomes a soft fade
+       that reads as them melting down into the pill. */
+    -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 14px), transparent 100%);
+    mask-image: linear-gradient(to bottom, #000 calc(100% - 14px), transparent 100%);
 }
 
 /* Anchored dead-center via position:absolute, independent of the row — it
