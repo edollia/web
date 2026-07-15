@@ -112,23 +112,53 @@
         return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
     }
 
+    // url -> { w, h } natural pixel dimensions, captured while preloading so
+    // the markup can reserve each photo's exact final height up front (via
+    // width/height attributes). Without reserved height the masonry columns
+    // lay out at zero height and visibly re-balance the instant the photos
+    // decode — that split-second "the wishlist reorganizes itself" jump.
+    const imageDims = new Map();
+
     async function preloadVisibleItemImages(list) {
-        const urls = list.slice(0, 6).map(item => String(item?.image_url || '')).filter(Boolean);
+        // Preload EVERY featured item, not just the first page: masonry
+        // balances the whole set into two columns at once, so a single
+        // unmeasured photo further down still shoves everything above it
+        // when it finally decodes. Measuring them all up front is what lets
+        // the grid appear already-aligned instead of settling into place.
+        const urls = list.map(item => String(item?.image_url || '')).filter(Boolean);
         if (!urls.length) return;
         const loads = urls.map(url => new Promise(resolve => {
             const image = new Image();
             image.decoding = 'async';
-            image.onload = resolve;
+            const capture = () => {
+                if (image.naturalWidth && image.naturalHeight) {
+                    imageDims.set(url, { w: image.naturalWidth, h: image.naturalHeight });
+                }
+                resolve();
+            };
+            image.onload = capture;
             image.onerror = resolve;
             image.src = url;
-            if (image.complete) resolve();
+            if (image.complete) capture();
         }));
         try {
-            await withTimeout(Promise.all(loads), 700);
+            // Slightly longer cap than before since we now wait on the whole
+            // set, but still hard-capped so one slow photo can never strand
+            // the entire wishlist behind the loader.
+            await withTimeout(Promise.all(loads), 1100);
         } catch (err) {
             // The loader has already bought enough visual stability; never
             // hold the actual wishlist hostage to a slow product image.
         }
+    }
+
+    // Emits width/height attrs when the photo was measured during preload, so
+    // the browser reserves the tile's true aspect ratio before the pixels
+    // decode. Empty string when unknown — the tile just falls back to the old
+    // (reflow-prone) behavior for that one image rather than breaking.
+    function imageDimsAttr(url) {
+        const dims = imageDims.get(String(url || ''));
+        return dims ? ` width="${dims.w}" height="${dims.h}"` : '';
     }
 
     function injectStyles() {
@@ -2224,7 +2254,7 @@
             <div class="dwl-glow" aria-hidden="true"></div>
             <div class="dwl-burst-clip" aria-hidden="true"><div class="dwl-burst"></div></div>
             <div class="doll-wishlist-media">
-                <img src="${escapeHtml(item.image_url)}" alt="" loading="lazy" onerror="this.onerror=null;this.removeAttribute('src');this.parentNode.style.background='rgba(255,214,235,0.6)';">
+                <img src="${escapeHtml(item.image_url)}" alt="" loading="lazy"${imageDimsAttr(item.image_url)} onerror="this.onerror=null;this.removeAttribute('src');this.parentNode.style.background='rgba(255,214,235,0.6)';">
             </div>
             <div class="doll-wishlist-info">
                 <p class="doll-wishlist-name" title="${escapeHtml(fullLabel)}">${escapeHtml(label)}</p>
