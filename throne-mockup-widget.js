@@ -331,7 +331,12 @@
             .doll-wishlist-body.dwl-scroll-body {
                 --dwl-edge-top: 1;
                 --dwl-edge-bottom: 1;
-                max-height: 380px;
+                /* var(--dwl-scroll-grow), set on .content-area (see
+                   setIconCollapseProgress in script.js), adds back however
+                   much the icon row above has shrunk by, so scrolling
+                   through the list grows this window instead of sliding a
+                   fixed-size one up past the checkout bar/footer. */
+                max-height: calc(380px + var(--dwl-scroll-grow, 0px));
                 overflow-y: auto;
                 overflow-x: hidden;
                 overscroll-behavior-y: contain;
@@ -2744,6 +2749,7 @@
         checkoutStatusMessage = '';
         previewOpenCount = 0;
         el.classList.remove('has-selection');
+        window.dollCaptureScrollGrowBaseline?.();
         window.dollResetIconsCollapse?.();
 
         // Reuse already-fetched items on repeat opens. First opens get one
@@ -2787,6 +2793,7 @@
         cancelSwipeHintSequence();
         document.body.classList.remove('has-wishlist-panel-open', 'has-wishlist-selection');
         window.dollResetIconsCollapse?.();
+        window.dollResetScrollGrow?.();
         const wishlistButton = getWishlistButton();
         wishlistButton?.classList.remove('dwl-open', 'show-glitter');
         wishlistButton?.setAttribute('aria-expanded', 'false');

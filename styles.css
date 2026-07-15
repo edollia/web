@@ -1794,8 +1794,12 @@ body.has-posts-panel-open .site-brand-footer {
        two cards -- which read as "snapchat starts too low and everything
        ends too soon". 300px shows a third card almost in full (its last
        ~22px softly fading, correctly hinting a fourth is below) without
-       fitting all four -- this still needs to scroll, just less eagerly. */
-    max-height: 300px;
+       fitting all four -- this still needs to scroll, just less eagerly.
+       var(--dwl-scroll-grow) (set on .content-area, see setIconCollapseProgress
+       in script.js) adds back however much the icon row above has shrunk by,
+       so scrolling grows this panel's own window instead of just sliding a
+       fixed-size one up past the footer. */
+    max-height: calc(300px + var(--dwl-scroll-grow, 0px));
     overflow-y: auto;
     overflow-x: hidden;
     overscroll-behavior-y: contain;
@@ -2827,7 +2831,11 @@ body.first-visit-tour-active .tour-highlight-target {
     /* Free-floating, no card chrome — matches .doll-wishlist-panel's own
        background-less treatment. Only .posts-content (below) scrolls. */
     width: min(88vw, 300px);
-    max-height: 420px;
+    /* var(--dwl-scroll-grow), set on .content-area (see setIconCollapseProgress
+       in script.js), adds back however much the icon row above has shrunk
+       by, so scrolling grows this panel instead of sliding a fixed-size one
+       up past the footer. */
+    max-height: calc(420px + var(--dwl-scroll-grow, 0px));
     position: relative;
     display: flex;
     flex-direction: column;

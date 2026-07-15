@@ -1040,7 +1040,6 @@ document.addEventListener("DOMContentLoaded", async function() {
     function dismissEntryGate(trigger = null) {
         if (!popup || entryDismissalInProgress) return;
         entryDismissalInProgress = true;
-        playUiSound('link');
         // iOS 15 can briefly make the muted pre-warm sounds audible. Keep the
         // established warm-up on newer browsers, but never start CUT1/CUT3 here
         // on the affected older phones.
@@ -1216,12 +1215,49 @@ document.addEventListener("DOMContentLoaded", async function() {
     let iconCollapseTarget = 0;
     let iconCollapseDisplayed = 0;
 
+    // Collapsing the icon row used to just slide the whole panel-plus-footer
+    // block up as a rigid unit -- the reclaimed space moved the footer
+    // instead of ever becoming more visible list. .content-area's own top
+    // rises by exactly however much .button-group has shrunk, so feeding
+    // that same rise back in as extra max-height on whichever panel is open
+    // (see var(--dwl-scroll-grow) in .social-links-panel /
+    // .doll-wishlist-body.dwl-scroll-body / .posts-popup .popup-content)
+    // lets the panel's BOTTOM edge hold still while its TOP rises with the
+    // collapse -- the existing reserved-height syncs below then see a panel
+    // whose bottom hasn't actually moved, so the footer doesn't either.
+    let scrollGrowBaselineTop = null;
+
+    function captureScrollGrowBaseline() {
+        const contentArea = document.querySelector('.content-area');
+        scrollGrowBaselineTop = contentArea ? contentArea.getBoundingClientRect().top : null;
+    }
+
+    function applyScrollGrow() {
+        const contentArea = document.querySelector('.content-area');
+        if (!contentArea) return;
+        if (scrollGrowBaselineTop === null) {
+            contentArea.style.setProperty('--dwl-scroll-grow', '0px');
+            return;
+        }
+        const reclaimed = Math.max(0, scrollGrowBaselineTop - contentArea.getBoundingClientRect().top);
+        contentArea.style.setProperty('--dwl-scroll-grow', `${reclaimed.toFixed(1)}px`);
+    }
+
+    function resetScrollGrow() {
+        scrollGrowBaselineTop = null;
+        document.querySelector('.content-area')?.style.setProperty('--dwl-scroll-grow', '0px');
+    }
+
+    window.dollCaptureScrollGrowBaseline = captureScrollGrowBaseline;
+    window.dollResetScrollGrow = resetScrollGrow;
+
     function setIconCollapseProgress(progress) {
         const clamped = Math.max(0, Math.min(1, progress));
         iconCollapseDisplayed = clamped;
         const group = document.querySelector('.button-group');
         if (!group) return;
         group.style.setProperty('--dwl-collapse', clamped.toFixed(3));
+        applyScrollGrow();
         // Only clip the row once the row's max-height (60px * (1-collapse),
         // see .dwl-icons-row) has actually shrunk below the buttons' own
         // 46px content height — before that point nothing needs cropping,
@@ -1421,6 +1457,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         // reopening doesn't show a scrolled-down list underneath icons that
         // have already reset to their expanded state.
         resetIconsCollapse();
+        resetScrollGrow();
         if (postsContentEl) {
             postsContentEl.scrollTop = 0;
             updateScrollEdgeFade(postsContentEl);
@@ -1616,6 +1653,29 @@ document.addEventListener("DOMContentLoaded", async function() {
         return siteLinkSettings[`${key}_enabled`] !== false;
     }
 
+    // The card's handle (the <small> line, and the "Open X: handle" aria-label)
+    // used to be static markup, so changing a link in the admin dashboard
+    // updated the href but left the old handle showing -- this derives it
+    // fresh from whatever URL is currently active instead.
+    function getSocialCardHandle(urlString) {
+        try {
+            const url = new URL(urlString);
+            const segment = url.pathname.split('/').filter(Boolean).pop() || '';
+            return segment.replace(/^@/, '');
+        } catch (error) {
+            return '';
+        }
+    }
+
+    function updateSocialCardDisplay(option, key, platformLabel, withAt = false) {
+        if (!option) return;
+        const handle = getSocialCardHandle(getPublicLink(key));
+        if (!handle) return;
+        const small = option.querySelector('.social-link-copy small');
+        if (small) small.textContent = withAt ? `@${handle}` : handle;
+        option.setAttribute('aria-label', `Open ${platformLabel}: ${handle}`);
+    }
+
     function getVisibleSocialOptions() {
         return Array.from(socialLinksPanel?.querySelectorAll('.social-link-card') || [])
             .filter(option => !option.classList.contains('site-link-hidden'));
@@ -1758,18 +1818,21 @@ document.addEventListener("DOMContentLoaded", async function() {
             snapchatOption.classList.toggle('site-link-hidden', !isPublicLinkEnabled('snapchat'));
             snapchatOption.setAttribute('aria-hidden', isPublicLinkEnabled('snapchat') ? 'false' : 'true');
             snapchatOption.setAttribute('tabindex', '-1');
+            updateSocialCardDisplay(snapchatOption, 'snapchat', 'Snapchat');
         }
         if (instagramOption) {
             instagramOption.href = getPublicLink('instagram');
             instagramOption.classList.toggle('site-link-hidden', !isPublicLinkEnabled('instagram'));
             instagramOption.setAttribute('aria-hidden', isPublicLinkEnabled('instagram') ? 'false' : 'true');
             instagramOption.setAttribute('tabindex', '-1');
+            updateSocialCardDisplay(instagramOption, 'instagram', 'Instagram', true);
         }
         if (donateOption) {
             donateOption.href = getPublicLink('kofi');
             donateOption.classList.toggle('site-link-hidden', !isPublicLinkEnabled('kofi'));
             donateOption.setAttribute('aria-hidden', isPublicLinkEnabled('kofi') ? 'false' : 'true');
             donateOption.setAttribute('tabindex', '-1');
+            updateSocialCardDisplay(donateOption, 'kofi', 'Ko-fi');
             syncKofiWidgetHandle();
             setKofiWidgetVisibility(isPublicLinkEnabled('kofi'));
         }
@@ -1778,6 +1841,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             telegramOption.classList.toggle('site-link-hidden', !isPublicLinkEnabled('telegram'));
             telegramOption.setAttribute('aria-hidden', isPublicLinkEnabled('telegram') ? 'false' : 'true');
             telegramOption.setAttribute('tabindex', '-1');
+            updateSocialCardDisplay(telegramOption, 'telegram', 'Telegram');
         }
         syncSocialCardVideos();
         if (supportMenuButton) {
@@ -1923,6 +1987,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         socialLinksPanel?.setAttribute('aria-hidden', 'true');
         document.body.classList.remove('has-social-panel-open');
         resetIconsCollapse();
+        resetScrollGrow();
         if (socialLinksPanel) {
             socialLinksPanel.scrollTop = 0;
             socialLinksPanel.classList.remove('has-content-above', 'has-content-below');
@@ -1991,6 +2056,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         closeQuestionForm();
         closePostsPanel();
         hideNoteImage();
+        captureScrollGrowBaseline();
         resetIconsCollapse();
         socialsButton.classList.remove('show-glitter');
         socialsButton.classList.add('open');
@@ -2813,6 +2879,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                     closeQuestionForm();
                     if (typeof window.closeThroneMockup === 'function') window.closeThroneMockup();
                     hideNoteImage();
+                    captureScrollGrowBaseline();
                     postsPopup?.classList.add('active');
                     setPostsPanelLayoutOpen(true);
                     postsButton.textContent = '×';
