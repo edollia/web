@@ -1849,6 +1849,19 @@ body.has-social-panel-open .toggle-container {
     transition: min-height 0.42s cubic-bezier(0.2, 0.9, 0.25, 1);
 }
 
+/* Wishlist and the :3 panel both restate this footer margin while open
+   (see body.has-wishlist-panel-open in throne-mockup-widget.js and
+   body.has-posts-panel-open above) so the doll.gg pill sits tight under
+   their panel instead of inheriting the resting 56px gap meant for the
+   closed page. This one was missing, which read as "the blur/fade at the
+   bottom is too far from the pill" -- it isn't the fade distance, it's
+   this dead margin sitting below the panel's already-faded bottom edge.
+   !important for the same reason as wishlist's: it must beat the
+   @media (max-height:720px) .site-brand-footer margin-top bump. */
+body.has-social-panel-open .site-brand-footer {
+    margin-top: 10px !important;
+}
+
 .social-links-panel.active {
     opacity: 1;
     visibility: visible;

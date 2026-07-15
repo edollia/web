@@ -1222,9 +1222,18 @@ document.addEventListener("DOMContentLoaded", async function() {
         const group = document.querySelector('.button-group');
         if (!group) return;
         group.style.setProperty('--dwl-collapse', clamped.toFixed(3));
-        // Only clip the row while it is genuinely collapsing. Clipping at
-        // progress 0 cut a shared horizontal slice off all three round icons.
-        group.classList.toggle('icons-collapsing', clamped > 0.001);
+        // Only clip the row once the row's max-height (60px * (1-collapse),
+        // see .dwl-icons-row) has actually shrunk below the buttons' own
+        // 46px content height — before that point nothing needs cropping,
+        // but overflow:hidden was still switching on, which sliced off each
+        // button's soft drop-shadow (it paints a few px outside the 46px
+        // box, invisible to layout but not to overflow) the instant any
+        // scroll began, then let it back the moment collapse returned to
+        // exactly 0 — a barely-there horizontal line flickering in and out
+        // at the very top/bottom of a scroll. 46/60 is where clipping
+        // actually starts to matter; a hair below it so overflow:hidden is
+        // never late to a frame where max-height already needs it.
+        group.classList.toggle('icons-collapsing', clamped > 0.23);
         const pill = document.getElementById('dwl-icons-pill');
         if (pill) {
             const interactive = clamped > 0.6;
