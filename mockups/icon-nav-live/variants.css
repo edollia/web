@@ -1,0 +1,461 @@
+/* Preview-only overrides. Nothing in this file is loaded by the live site. */
+
+body[data-icon-nav-mockup] {
+    --preview-rose: #d85f99;
+    --preview-deep-rose: #a74673;
+}
+
+body[data-icon-nav-mockup] .loading-screen,
+body[data-icon-nav-mockup] .site-maintenance-screen,
+body[data-icon-nav-mockup] .site-maintenance-overlay,
+body[data-icon-nav-mockup] .maintenance-screen,
+body[data-icon-nav-mockup] .first-visit-tour,
+body[data-icon-nav-mockup] .first-visit-tour-overlay {
+    display: none !important;
+}
+
+body[data-icon-nav-mockup] .main-screen {
+    display: block !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    filter: none !important;
+    pointer-events: auto !important;
+}
+
+body[data-icon-nav-mockup] .main-screen header,
+body[data-icon-nav-mockup] .main-screen .content-area,
+body[data-icon-nav-mockup] .main-screen .site-brand-footer,
+body[data-icon-nav-mockup] .main-screen .button-group,
+body[data-icon-nav-mockup] .main-screen .note-peel-target.active-content {
+    opacity: 1 !important;
+    visibility: visible !important;
+}
+
+body[data-icon-nav-mockup] .button-group {
+    --dwl-collapse: 0 !important;
+    margin-bottom: 12px;
+}
+
+body[data-icon-nav-mockup] .dwl-icons-row {
+    max-height: none !important;
+    overflow: visible !important;
+    opacity: 1 !important;
+}
+
+body[data-icon-nav-mockup] .dwl-icons-row > * {
+    opacity: 1 !important;
+    animation: none !important;
+}
+
+body[data-icon-nav-mockup] .dwl-icons-pill,
+body[data-icon-nav-mockup] .preview-original-icon {
+    display: none !important;
+}
+
+body[data-icon-nav-mockup] .preview-main-icon {
+    position: relative;
+    display: block;
+    width: 100%;
+    height: 100%;
+    animation: none !important;
+    pointer-events: none;
+}
+
+body[data-icon-nav-mockup] .preview-art {
+    display: none;
+    width: 100%;
+    height: 100%;
+}
+
+body[data-icon-nav-mockup] .preview-art svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+}
+
+body[data-icon-nav-mockup] .dwl-icons-row .support-menu-button {
+    box-sizing: border-box;
+    position: relative;
+    isolation: isolate;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    padding: 0;
+    overflow: visible;
+    border: 0;
+    border-radius: 0;
+    color: var(--preview-rose);
+    background: transparent;
+    box-shadow: none;
+    filter: none;
+    transition: transform 190ms cubic-bezier(.2, .85, .25, 1.15), filter 190ms ease;
+}
+
+body[data-icon-nav-mockup] .dwl-icons-row .support-menu-button::before,
+body[data-icon-nav-mockup] .dwl-icons-row .support-menu-button::after {
+    display: none;
+}
+
+body[data-icon-nav-mockup] .dwl-icons-row .support-menu-button:hover,
+body[data-icon-nav-mockup] .dwl-icons-row .support-menu-button:focus-visible,
+body[data-icon-nav-mockup] .dwl-icons-row .support-menu-button.preview-pressed {
+    color: var(--preview-deep-rose);
+    background: transparent;
+    box-shadow: none;
+    outline: none;
+    transform: translateY(-4px) scale(1.07);
+}
+
+body[data-icon-nav-mockup] .dwl-icons-row .support-menu-button:active {
+    transform: translateY(1px) scale(.96);
+}
+
+body[data-icon-nav-mockup] .dwl-icons-row .support-menu-button.open {
+    flex-basis: auto;
+    gap: 0;
+    padding: 0;
+    color: var(--preview-deep-rose);
+    background: transparent;
+    box-shadow: none;
+}
+
+body[data-icon-nav-mockup] #action-menu-button.open {
+    width: 152px;
+    padding: 0 8px;
+    border-radius: 28px;
+    background: linear-gradient(145deg, rgba(255,255,255,.96), rgba(255,205,228,.88));
+    box-shadow: 0 8px 20px rgba(196, 75, 129, .19), inset 0 0 0 3px rgba(255,255,255,.65);
+}
+
+body[data-icon-nav-mockup] .dwl-icons-row .support-menu-button.open > .socials-close-icon,
+body[data-icon-nav-mockup] .dwl-icons-row .support-menu-button.open > .menu-back-arrow {
+    color: var(--preview-deep-rose);
+}
+
+/* 01 — Frosted paw-puff seals. */
+body[data-icon-nav-mockup="glyphs"] .button-group {
+    top: -11px;
+    margin-bottom: 17px;
+}
+
+body[data-icon-nav-mockup="glyphs"] .dwl-icons-row {
+    gap: 3px;
+}
+
+body[data-icon-nav-mockup="glyphs"] .dwl-icons-row .support-menu-button {
+    width: 86px;
+    min-width: 86px;
+    height: 78px;
+}
+
+body[data-icon-nav-mockup="glyphs"] .preview-art-puff {
+    display: block;
+}
+
+body[data-icon-nav-mockup="glyphs"] .puff-edge {
+    stroke: rgba(255,255,255,.98);
+    stroke-width: 5;
+    stroke-linejoin: round;
+    paint-order: stroke fill;
+    filter: drop-shadow(0 5px 4px rgba(177, 78, 121, .2));
+}
+
+body[data-icon-nav-mockup="glyphs"] .puff-shine {
+    fill: none;
+    stroke: rgba(255,255,255,.78);
+    stroke-width: 3;
+    stroke-linecap: round;
+}
+
+body[data-icon-nav-mockup="glyphs"] .puff-symbol {
+    fill: none;
+    stroke: #a74371;
+    stroke-width: 2.35;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    filter: drop-shadow(0 1px 0 rgba(255,255,255,.7));
+}
+
+body[data-icon-nav-mockup="glyphs"] .puff-label {
+    fill: #9d416b;
+    font-family: "Arial Rounded MT Bold", ui-rounded, system-ui, sans-serif;
+    font-size: 8.5px;
+    font-weight: 700;
+    letter-spacing: .015em;
+    text-anchor: middle;
+}
+
+body[data-icon-nav-mockup="glyphs"] #socials-button {
+    transform: rotate(-2deg);
+}
+
+body[data-icon-nav-mockup="glyphs"] #support-menu-button {
+    transform: translateY(3px) rotate(1deg);
+}
+
+body[data-icon-nav-mockup="glyphs"] #action-menu-button {
+    transform: rotate(2deg);
+}
+
+body[data-icon-nav-mockup="glyphs"] .dwl-icons-row .support-menu-button:hover,
+body[data-icon-nav-mockup="glyphs"] .dwl-icons-row .support-menu-button:focus-visible,
+body[data-icon-nav-mockup="glyphs"] .dwl-icons-row .support-menu-button.preview-pressed {
+    filter: saturate(1.08) drop-shadow(0 4px 5px rgba(186, 74, 127, .15));
+    transform: translateY(-4px) rotate(0deg) scale(1.08);
+}
+
+body[data-icon-nav-mockup="glyphs"] .dwl-icons-row .support-menu-button.open {
+    width: 86px;
+    min-width: 86px;
+    height: 78px;
+    transform: none;
+}
+
+/* 02 — Glossy resin toy charms. */
+body[data-icon-nav-mockup="charms"] .button-group {
+    top: -30px;
+    margin-bottom: -2px;
+    padding-top: 0;
+}
+
+body[data-icon-nav-mockup="charms"] .dwl-icons-row {
+    align-items: flex-start;
+    gap: 5px;
+}
+
+body[data-icon-nav-mockup="charms"] .dwl-icons-row .support-menu-button {
+    width: 80px;
+    min-width: 80px;
+    height: 100px;
+}
+
+body[data-icon-nav-mockup="charms"] #support-menu-button {
+    margin-top: 7px;
+}
+
+body[data-icon-nav-mockup="charms"] #action-menu-button {
+    margin-top: 2px;
+}
+
+body[data-icon-nav-mockup="charms"] .preview-art-charm {
+    display: block;
+}
+
+body[data-icon-nav-mockup="charms"] .charm-string {
+    fill: none;
+    stroke: rgba(185, 90, 132, .46);
+    stroke-width: 1.2;
+    stroke-dasharray: 1.8 2;
+}
+
+body[data-icon-nav-mockup="charms"] .charm-pearl {
+    fill: #fff9fc;
+    stroke: #e78db6;
+    stroke-width: 1.3;
+    filter: drop-shadow(0 2px 2px rgba(168, 74, 116, .18));
+}
+
+body[data-icon-nav-mockup="charms"] .resin-shape {
+    stroke: rgba(255,255,255,.96);
+    stroke-width: 4;
+    stroke-linejoin: round;
+    paint-order: stroke fill;
+    filter: drop-shadow(0 6px 5px rgba(172, 67, 116, .27));
+}
+
+body[data-icon-nav-mockup="charms"] .resin-highlight {
+    fill: none;
+    stroke: rgba(255,255,255,.9);
+    stroke-width: 3.5;
+    stroke-linecap: round;
+}
+
+body[data-icon-nav-mockup="charms"] .resin-symbol {
+    fill: none;
+    stroke: rgba(151, 51, 99, .78);
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+body[data-icon-nav-mockup="charms"] .resin-knot {
+    fill: #f7a8cd;
+    stroke: rgba(255,255,255,.9);
+    stroke-width: 2;
+}
+
+body[data-icon-nav-mockup="charms"] .charm-label {
+    fill: #9d416b;
+    font-family: "Arial Rounded MT Bold", ui-rounded, system-ui, sans-serif;
+    font-size: 8px;
+    font-weight: 700;
+    text-anchor: middle;
+}
+
+body[data-icon-nav-mockup="charms"] .dwl-icons-row .support-menu-button:hover .preview-art-charm,
+body[data-icon-nav-mockup="charms"] .dwl-icons-row .support-menu-button:focus-visible .preview-art-charm,
+body[data-icon-nav-mockup="charms"] .dwl-icons-row .support-menu-button.preview-pressed .preview-art-charm {
+    animation: resinCharmSway 680ms ease-in-out;
+    transform-origin: 50% 0;
+}
+
+body[data-icon-nav-mockup="charms"] .dwl-icons-row .support-menu-button.open {
+    width: 80px;
+    min-width: 80px;
+    height: 100px;
+    margin-top: 0;
+}
+
+@keyframes resinCharmSway {
+    0%, 100% { transform: rotate(0); }
+    28% { transform: rotate(5deg); }
+    65% { transform: rotate(-3deg); }
+}
+
+/* 03 — Mascot peeks with puffy name tabs. */
+body[data-icon-nav-mockup="links"] .button-group {
+    top: -10px;
+    margin-bottom: 18px;
+}
+
+body[data-icon-nav-mockup="links"] .dwl-icons-row {
+    gap: 0;
+}
+
+body[data-icon-nav-mockup="links"] .dwl-icons-row .support-menu-button {
+    width: 92px;
+    min-width: 92px;
+    height: 80px;
+}
+
+body[data-icon-nav-mockup="links"] .preview-art-character {
+    display: block;
+}
+
+body[data-icon-nav-mockup="links"] .tab-shadow {
+    fill: rgba(176, 74, 121, .16);
+    transform: translateY(4px);
+    filter: blur(3px);
+}
+
+body[data-icon-nav-mockup="links"] .name-tab {
+    fill: #ffd6e7;
+    stroke: rgba(255,255,255,.98);
+    stroke-width: 5;
+    paint-order: stroke fill;
+    filter: drop-shadow(0 4px 3px rgba(169, 72, 115, .19));
+}
+
+body[data-icon-nav-mockup="links"] .character-head,
+body[data-icon-nav-mockup="links"] .cat-ear,
+body[data-icon-nav-mockup="links"] .bunny-ear,
+body[data-icon-nav-mockup="links"] .pup-ear {
+    fill: #fffafd;
+    stroke: #de75a6;
+    stroke-width: 2.2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+body[data-icon-nav-mockup="links"] .cat-ear {
+    fill: #fff4f9;
+    stroke: #3c101d;
+    stroke-width: 3;
+}
+
+body[data-icon-nav-mockup="links"] .bunny-ear {
+    fill: #fff7fb;
+}
+
+body[data-icon-nav-mockup="links"] .pup-ear {
+    fill: #f8d5e4;
+}
+
+body[data-icon-nav-mockup="links"] .character-face {
+    fill: none;
+    stroke: #4f3442;
+    stroke-width: 2.4;
+    stroke-linecap: round;
+}
+
+body[data-icon-nav-mockup="links"] .character-blush {
+    fill: none;
+    stroke: #f49abd;
+    stroke-width: 3;
+    stroke-linecap: round;
+    opacity: .75;
+}
+
+body[data-icon-nav-mockup="links"] .character-bow {
+    fill: #f78fbc;
+    stroke: #c95689;
+    stroke-width: 1.7;
+    stroke-linejoin: round;
+}
+
+body[data-icon-nav-mockup="links"] .bow-knot {
+    fill: #fff1f7;
+    stroke: #c95689;
+    stroke-width: 1.3;
+}
+
+body[data-icon-nav-mockup="links"] .tiny-pencil {
+    fill: #f6a5c8;
+    stroke: #a74873;
+    stroke-width: 1.6;
+    stroke-linejoin: round;
+}
+
+body[data-icon-nav-mockup="links"] .character-label {
+    fill: #9e416c;
+    font-family: "Arial Rounded MT Bold", ui-rounded, system-ui, sans-serif;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .01em;
+    text-anchor: middle;
+}
+
+body[data-icon-nav-mockup="links"] #socials-button {
+    transform: rotate(-1.5deg);
+}
+
+body[data-icon-nav-mockup="links"] #support-menu-button {
+    transform: translateY(2px);
+}
+
+body[data-icon-nav-mockup="links"] #action-menu-button {
+    transform: rotate(1.5deg);
+}
+
+body[data-icon-nav-mockup="links"] .dwl-icons-row .support-menu-button:hover,
+body[data-icon-nav-mockup="links"] .dwl-icons-row .support-menu-button:focus-visible,
+body[data-icon-nav-mockup="links"] .dwl-icons-row .support-menu-button.preview-pressed {
+    filter: drop-shadow(0 4px 4px rgba(183, 73, 123, .12));
+    transform: translateY(-5px) rotate(0) scale(1.06);
+}
+
+body[data-icon-nav-mockup="links"] .dwl-icons-row .support-menu-button:hover .character-head,
+body[data-icon-nav-mockup="links"] .dwl-icons-row .support-menu-button:focus-visible .character-head,
+body[data-icon-nav-mockup="links"] .dwl-icons-row .support-menu-button.preview-pressed .character-head {
+    transform: translateY(-2px);
+    transform-origin: 50% 50%;
+    transition: transform 180ms ease;
+}
+
+body[data-icon-nav-mockup="links"] .dwl-icons-row .support-menu-button.open {
+    width: 92px;
+    min-width: 92px;
+    height: 80px;
+    transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    body[data-icon-nav-mockup] .dwl-icons-row .support-menu-button,
+    body[data-icon-nav-mockup] .preview-art,
+    body[data-icon-nav-mockup] .character-head {
+        transition: none !important;
+        animation: none !important;
+    }
+}

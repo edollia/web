@@ -247,26 +247,24 @@
             body.has-wishlist-panel-open .site-brand-footer .doll-wishlist-throne-footer-link {
                 display: inline-flex !important;
             }
-            /* .site-brand-gg (styles.css) is doll.gg's OWN cute rotated pink
-               badge around the "gg" of "doll.gg" — a deliberate brand mark.
-               This markup reuses that class for the "com" of "throne.com",
-               where the same badge reads as a disjointed chip floating apart
-               from "throne" (verified by rendering it). Reset it to plain
-               inline text so "throne.com" is one clean uniform word inside a
-               single glass pill, instead of two visually mismatched pieces. */
+            /* The "com" of "throne.com" wears the SAME pale rounded badge
+               that doll.gg's own "gg" does (.site-brand-gg in styles.css), so
+               the two footer pills read as one matched pair — same pale look,
+               shared visual language. (It was briefly reset to flat text; the
+               "disjointed floating chip" that motivated that was really the
+               stale reserved-height position jump — fixed separately via
+               dollSyncWishlistReservedHeight. With the pill steady, the pale
+               chip sits clean.) Just keep it from wrapping. */
             .doll-wishlist-throne-footer-link .site-brand-gg {
                 margin-left: 1px;
-                padding: 0;
-                background: none;
-                box-shadow: none;
-                transform: none;
-                font-size: inherit;
-                color: inherit;
                 white-space: nowrap;
             }
             .doll-wishlist-throne-footer-link {
                 position: relative;
-                width: 98px;
+                /* Wide enough that the "com" chip has doll.gg's same easy
+                   breathing room, never clipped by the overflow:hidden below
+                   (which exists for the swipe-hint width tween). */
+                width: 108px;
                 justify-content: center;
                 overflow: hidden;
                 transition: width 0.26s cubic-bezier(0.2, 0.84, 0.24, 1), color 0.2s ease;
@@ -1090,53 +1088,76 @@
                 font-size: 11.5px;
                 text-align: center;
             }
+            /* The wishlist loader reuses the EXACT paw-print asset and calm
+               stamping cadence of the main site's page loader
+               (.loading-paw-print in styles.css) — same SVG-masked paw, same
+               two-layer shadow+gradient build, same alternating up/down trail,
+               same gentle pop — so opening the wishlist reads as a
+               continuation of the site's own load rather than a different
+               spinner. The one necessary difference: the page loader is
+               progress-driven (paws stamp to the load bar), while the
+               wishlist wait is indeterminate, so here the trail simply stamps
+               across on a gentle repeating loop, staggered left→right. */
             .dwl-loading-paws {
                 display: flex;
-                align-items: flex-end;
-                gap: 13px;
-                height: 34px;
+                align-items: flex-start;
+                gap: 15px;
+                height: 44px;
             }
             .dwl-loading-paw {
+                --paw-rotation: 74deg;
                 position: relative;
-                width: 19px;
-                height: 23px;
-                opacity: 0.18;
-                transform: translateY(3px) rotate(-12deg) scale(0.78);
-                animation: dollWishlistPawStep 1.25s ease-in-out infinite;
+                width: 22px;
+                height: 26px;
+                opacity: 0;
+                transform-origin: center;
+                will-change: opacity, transform;
+                /* drop-shadow on the element, not the masked pseudo — same
+                   old-iOS square-edge avoidance as the main site paw. */
+                filter:
+                    drop-shadow(-1px -1px 0 rgba(255, 255, 255, 0.76))
+                    drop-shadow(1px 1px 0 rgba(171, 91, 130, 0.12));
+                animation: dollWishlistPawStamp 2.6s cubic-bezier(0.2, 0.9, 0.32, 1.25) infinite both;
             }
-            .dwl-loading-paw:nth-child(2) {
-                animation-delay: 0.18s;
-                transform: translateY(-2px) rotate(10deg) scale(0.78);
+            .dwl-loading-paw:nth-child(even) {
+                --paw-rotation: 106deg;
+                margin-top: 16px;
             }
-            .dwl-loading-paw:nth-child(3) { animation-delay: 0.36s; }
-            .dwl-loading-paw::before {
-                content: "";
-                position: absolute;
-                left: 4px;
-                bottom: 1px;
-                width: 12px;
-                height: 10px;
-                border-radius: 52% 52% 46% 46%;
-                background: linear-gradient(145deg, rgba(204, 113, 153, 0.74), rgba(244, 154, 193, 0.54));
-                box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.42);
-            }
+            .dwl-loading-paw:nth-child(1) { animation-delay: 0s; }
+            .dwl-loading-paw:nth-child(2) { animation-delay: 0.16s; }
+            .dwl-loading-paw:nth-child(3) { animation-delay: 0.32s; }
+            .dwl-loading-paw:nth-child(4) { animation-delay: 0.48s; }
+            .dwl-loading-paw:nth-child(5) { animation-delay: 0.64s; }
+            .dwl-loading-paw::before,
             .dwl-loading-paw::after {
                 content: "";
                 position: absolute;
-                top: 2px;
-                left: 2px;
-                width: 4px;
-                height: 6px;
-                border-radius: 50%;
-                background: rgba(213, 124, 163, 0.68);
-                box-shadow:
-                    5px -2px 0 rgba(213, 124, 163, 0.68),
-                    10px -1px 0 rgba(213, 124, 163, 0.68),
-                    14px 2px 0 rgba(213, 124, 163, 0.68);
+                inset: 0;
+                -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 54'%3E%3Cellipse cx='7.5' cy='20' rx='5.5' ry='8' transform='rotate(-22 7.5 20)'/%3E%3Cellipse cx='18' cy='11.5' rx='5.8' ry='8.5' transform='rotate(-8 18 11.5)'/%3E%3Cellipse cx='30' cy='11.5' rx='5.8' ry='8.5' transform='rotate(8 30 11.5)'/%3E%3Cellipse cx='40.5' cy='20' rx='5.5' ry='8' transform='rotate(22 40.5 20)'/%3E%3Cpath d='M24 25c-8.5 0-14.5 7.2-13 14.8 1.3 6.6 7.8 8.9 12.5 4.9.3-.3.7-.3 1 0 4.7 4 11.2 1.7 12.5-4.9C38.5 32.2 32.5 25 24 25Z'/%3E%3C/svg%3E") center / contain no-repeat;
+                mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 54'%3E%3Cellipse cx='7.5' cy='20' rx='5.5' ry='8' transform='rotate(-22 7.5 20)'/%3E%3Cellipse cx='18' cy='11.5' rx='5.8' ry='8.5' transform='rotate(-8 18 11.5)'/%3E%3Cellipse cx='30' cy='11.5' rx='5.8' ry='8.5' transform='rotate(8 30 11.5)'/%3E%3Cellipse cx='40.5' cy='20' rx='5.5' ry='8' transform='rotate(22 40.5 20)'/%3E%3Cpath d='M24 25c-8.5 0-14.5 7.2-13 14.8 1.3 6.6 7.8 8.9 12.5 4.9.3-.3.7-.3 1 0 4.7 4 11.2 1.7 12.5-4.9C38.5 32.2 32.5 25 24 25Z'/%3E%3C/svg%3E") center / contain no-repeat;
             }
-            @keyframes dollWishlistPawStep {
-                0%, 72%, 100% { opacity: 0.16; translate: 0 2px; scale: 0.78; }
-                28%, 48% { opacity: 0.9; translate: 0 -3px; scale: 1; }
+            .dwl-loading-paw::before {
+                background: rgba(171, 91, 130, 0.2);
+                transform: translate(1.2px, 1.2px);
+                filter: blur(0.35px);
+            }
+            .dwl-loading-paw::after {
+                background: linear-gradient(145deg, rgba(140, 77, 108, 0.42), rgba(208, 125, 165, 0.18) 55%, rgba(255, 255, 255, 0.8));
+            }
+            @keyframes dollWishlistPawStamp {
+                0%   { opacity: 0;    transform: translateY(-3px) rotate(var(--paw-rotation)) scale(0.58); }
+                10%  { opacity: 1;    transform: translateY(1px) rotate(var(--paw-rotation)) scale(1.08); }
+                18%  { opacity: 0.92; transform: translateY(0) rotate(var(--paw-rotation)) scale(1); }
+                70%  { opacity: 0.92; transform: translateY(0) rotate(var(--paw-rotation)) scale(1); }
+                84%  { opacity: 0;    transform: translateY(0) rotate(var(--paw-rotation)) scale(0.94); }
+                100% { opacity: 0;    transform: translateY(-3px) rotate(var(--paw-rotation)) scale(0.58); }
+            }
+            @media (prefers-reduced-motion: reduce) {
+                .dwl-loading-paw {
+                    animation: none;
+                    opacity: 0.9;
+                    transform: rotate(var(--paw-rotation)) scale(1);
+                }
             }
             .dwl-loading p {
                 margin: 0;
@@ -1593,6 +1614,16 @@
                 border-radius: 20px;
                 background: #fff;
                 box-shadow: 0 20px 45px rgba(0, 0, 0, 0.35), 0 0 0 4px rgba(255, 255, 255, 0.85);
+                /* Hidden until THIS item's photo has actually decoded — see
+                   openPreview. Without it the <img> keeps painting the
+                   previously-previewed photo while the new src loads, so
+                   opening a different item flashed the wrong picture for a
+                   beat (worst on first open / slow network). Fades in clean. */
+                opacity: 0;
+                transition: opacity 0.22s ease;
+            }
+            .doll-wishlist-preview-img.is-loaded {
+                opacity: 1;
             }
             .doll-wishlist-preview-caption {
                 display: flex;
@@ -1764,7 +1795,13 @@
         const overlay = ensurePreviewOverlay();
         previewItemId = item.throne_item_id;
         const fullLabel = String(item.name || '').trim() || 'wishlist item';
-        overlay.querySelector('.doll-wishlist-preview-img').src = item.image_url || '';
+        // Reveal the photo only once its OWN pixels have decoded, so a newly
+        // opened item never flashes the previously-previewed photo first.
+        const previewImg = overlay.querySelector('.doll-wishlist-preview-img');
+        previewImg.classList.remove('is-loaded');
+        previewImg.onload = () => previewImg.classList.add('is-loaded');
+        previewImg.src = item.image_url || '';
+        if (previewImg.complete && previewImg.naturalWidth) previewImg.classList.add('is-loaded');
         overlay.querySelector('.doll-wishlist-preview-name').textContent = fullLabel;
         window.requestAnimationFrame(() => syncPreviewTitleMarquee(overlay.querySelector('.doll-wishlist-preview-name')));
 
@@ -2163,6 +2200,8 @@
         return `
             <div class="dwl-loading" role="status" aria-live="polite">
                 <div class="dwl-loading-paws" aria-hidden="true">
+                    <span class="dwl-loading-paw"></span>
+                    <span class="dwl-loading-paw"></span>
                     <span class="dwl-loading-paw"></span>
                     <span class="dwl-loading-paw"></span>
                     <span class="dwl-loading-paw"></span>
