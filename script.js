@@ -1242,6 +1242,10 @@ document.addEventListener("DOMContentLoaded", async function() {
         // (syncPostsPanelSpace/--posts-panel-height) — it's a no-op while
         // that panel isn't open.
         syncPostsPanelSpace();
+        // Same issue, same fix, for the social panel's --dwl-social-height
+        // (defined further down, safe to reference here since this function
+        // only ever runs later, from actual scroll/tap events).
+        window.dollSyncSocialReservedHeight?.();
     }
 
     function cancelIconCollapseTween() {
@@ -1857,6 +1861,48 @@ document.addEventListener("DOMContentLoaded", async function() {
         tryOpen();
     }
 
+    // The social panel is now internally scrollable (see .social-links-panel
+    // in styles.css) and its own box can still overlap the doll.gg footer
+    // pill below .toggle-container -- same problem, same fix, as the
+    // wishlist's syncReservedHeight in throne-mockup-widget.js: measure the
+    // panel's real rendered bottom and reserve exactly that much room via a
+    // custom property, rather than a hand-picked min-height that would go
+    // stale the moment the icon row above it collapses/expands (which
+    // shifts the panel's own top without changing the panel's own height).
+    function syncSocialReservedHeight(force = false) {
+        if (!socialLinksPanel) return;
+        if (!force && !socialLinksPanel.classList.contains('active')) return;
+        const host = socialLinksPanel.closest('.toggle-container');
+        if (!host) return;
+        const panelRect = socialLinksPanel.getBoundingClientRect();
+        const hostRect = host.getBoundingClientRect();
+        const neededHeight = Math.max(60, Math.ceil(panelRect.bottom - hostRect.top + 4));
+        host.style.setProperty('--dwl-social-height', `${neededHeight}px`);
+    }
+    window.dollSyncSocialReservedHeight = () => syncSocialReservedHeight();
+
+    let socialScrollRaf = 0;
+    function updateSocialEdgeFade(el) {
+        const maxScroll = Math.max(0, el.scrollHeight - el.clientHeight);
+        const scrollTop = Math.max(0, Math.min(maxScroll, el.scrollTop));
+        el.classList.toggle('has-content-above', scrollTop > 3);
+        el.classList.toggle('has-content-below', scrollTop < maxScroll - 3);
+    }
+    function onSocialPanelScroll(event) {
+        const el = event.currentTarget;
+        if (socialScrollRaf) return;
+        socialScrollRaf = window.requestAnimationFrame(() => {
+            socialScrollRaf = 0;
+            // Reuses the exact same icon-collapse-to-pill mechanism the
+            // wishlist and :3 panel scroll already drive (see
+            // dollSetIconsScrollProgress above) -- one shared behavior, not
+            // a re-implementation.
+            setIconsScrollProgress(el.scrollTop);
+            updateSocialEdgeFade(el);
+        });
+    }
+    socialLinksPanel?.addEventListener('scroll', onSocialPanelScroll, { passive: true });
+
     function closeSocialsMenu({ restoreNote = true } = {}) {
         if (!socialsButton) return;
         const wasOpen = socialsButton.classList.contains('open');
@@ -1866,6 +1912,13 @@ document.addEventListener("DOMContentLoaded", async function() {
         socialsButton.setAttribute('aria-label', 'Open socials');
         socialLinksPanel?.classList.remove('active');
         socialLinksPanel?.setAttribute('aria-hidden', 'true');
+        document.body.classList.remove('has-social-panel-open');
+        resetIconsCollapse();
+        if (socialLinksPanel) {
+            socialLinksPanel.scrollTop = 0;
+            socialLinksPanel.classList.remove('has-content-above', 'has-content-below');
+        }
+        socialLinksPanel?.closest('.toggle-container')?.style.removeProperty('--dwl-social-height');
         if (wasOpen && typeof window.closeKofiOverlay === 'function') {
             window.closeKofiOverlay();
         }
@@ -1929,12 +1982,31 @@ document.addEventListener("DOMContentLoaded", async function() {
         closeQuestionForm();
         closePostsPanel();
         hideNoteImage();
+        resetIconsCollapse();
         socialsButton.classList.remove('show-glitter');
         socialsButton.classList.add('open');
         socialsButton.setAttribute('aria-expanded', 'true');
         socialsButton.setAttribute('aria-label', 'Close socials');
+        if (socialLinksPanel) {
+            socialLinksPanel.scrollTop = 0;
+            socialLinksPanel.classList.remove('has-content-above', 'has-content-below');
+            // Measure the panel's true open size before starting its
+            // transition (see .social-links-panel.measure-open in
+            // styles.css) -- measuring mid-transition would reserve a
+            // moving, momentarily-too-small target.
+            socialLinksPanel.classList.add('measure-open');
+            syncSocialReservedHeight(true);
+            socialLinksPanel.classList.remove('measure-open');
+        }
+        document.body.classList.add('has-social-panel-open');
         socialLinksPanel?.classList.add('active');
         socialLinksPanel?.setAttribute('aria-hidden', 'false');
+        // Establishes the correct top/bottom fade immediately (e.g. a bottom
+        // fade if there are more cards than fit) instead of leaving it fully
+        // opaque, undetected, until the user's first scroll event.
+        if (socialLinksPanel) {
+            window.requestAnimationFrame(() => updateSocialEdgeFade(socialLinksPanel));
+        }
         getVisibleSocialOptions().forEach(option => {
             option.setAttribute('tabindex', '0');
         });

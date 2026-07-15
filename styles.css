@@ -1780,6 +1780,73 @@ body.has-posts-panel-open .site-brand-footer {
         transform 0.42s cubic-bezier(0.22, 1, 0.36, 1),
         visibility 0s linear 0.42s;
     will-change: opacity, transform;
+    /* Four cards (was three, and each is now taller for the 16:9 video
+       backgrounds) no longer fit without either growing the card list past
+       the doll.gg footer pill below it or making the card itself
+       uncomfortably squat. Cap it and scroll internally instead -- same
+       move the wishlist list already makes for the exact same reason (see
+       .doll-wishlist-body.dwl-scroll-body in throne-mockup-widget.js), and
+       reuse its exact top/bottom fade technique for visual consistency:
+       two edge-state classes toggle a mask-image's endpoint alpha, so nothing
+       is rebuilt on every scroll frame. */
+    max-height: 250px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    /* Room above the first card for the hand-drawn bunny mascot, which
+       peeks 24px above its own card frame (see .social-link-mascot) -- with
+       no padding here that peek would sit above this element's own top edge
+       and get clipped the instant overflow becomes anything but visible. */
+    padding-top: 28px;
+    --dwl-edge-top: 1;
+    --dwl-edge-bottom: 1;
+    -webkit-mask-image: linear-gradient(
+        to bottom,
+        rgba(0, 0, 0, var(--dwl-edge-top)) 0,
+        #000 22px,
+        #000 calc(100% - 22px),
+        rgba(0, 0, 0, var(--dwl-edge-bottom)) 100%
+    );
+    mask-image: linear-gradient(
+        to bottom,
+        rgba(0, 0, 0, var(--dwl-edge-top)) 0,
+        #000 22px,
+        #000 calc(100% - 22px),
+        rgba(0, 0, 0, var(--dwl-edge-bottom)) 100%
+    );
+}
+
+.social-links-panel::-webkit-scrollbar {
+    display: none;
+}
+
+.social-links-panel.has-content-above {
+    --dwl-edge-top: 0;
+}
+
+.social-links-panel.has-content-below {
+    --dwl-edge-bottom: 0;
+}
+
+/* Forces the open transform synchronously (no transition) for one frame so
+   script.js can measure the panel's true open height with
+   getBoundingClientRect() before the real .active transition starts --
+   measuring mid-transition would reserve a moving, wrong target. Mirrors
+   .dwl-measure-open in throne-mockup-widget.js exactly. */
+.social-links-panel.measure-open {
+    transform: translateX(-50%) translateY(0) scale(1);
+    transition: none;
+}
+
+/* Reserves the space this now-scrollable-but-still-growing panel needs so
+   it stops overlapping the doll.gg footer pill below .toggle-container --
+   same fix, same reason, as .doll-wishlist-panel's own
+   --dwl-wishlist-height (see body.has-wishlist-panel-open below). */
+body.has-social-panel-open .toggle-container {
+    min-height: var(--dwl-social-height, 220px);
+    transition: min-height 0.42s cubic-bezier(0.2, 0.9, 0.25, 1);
 }
 
 .social-links-panel.active {
@@ -1856,7 +1923,15 @@ body.has-posts-panel-open .site-brand-footer {
 .social-link-mascot {
     position: absolute;
     top: -24px;
-    right: -3px;
+    /* Was -3px (a deliberate small overshoot past the card's own right edge,
+       matching the original hand-drawn mockup). That was harmless while the
+       panel had no clipping, but the panel now scrolls (overflow-y: auto
+       forces overflow-x to clip too, never truly "visible") -- so any
+       horizontal overshoot here gets sliced off in a hard vertical line
+       right through the ear. Keeping the whole mascot inside the frame's
+       own width avoids relying on overflow allowances that scrolling can't
+       give it. */
+    right: 3px;
     width: 56px;
     height: auto;
     pointer-events: none;
@@ -1893,6 +1968,10 @@ body.has-posts-panel-open .site-brand-footer {
 
 #instagram-option .social-link-icon img {
     transform: scale(0.98);
+}
+
+#telegram-option .social-link-icon img {
+    transform: scale(0.91);
 }
 
 .social-link-copy {
