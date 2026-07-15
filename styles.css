@@ -1789,7 +1789,13 @@ body.has-posts-panel-open .site-brand-footer {
        reuse its exact top/bottom fade technique for visual consistency:
        two edge-state classes toggle a mask-image's endpoint alpha, so nothing
        is rebuilt on every scroll frame. */
-    max-height: 250px;
+    /* Was 250px. At that cap, the 28px top gutter (below) plus the mask's
+       own 22px fade zone left only ~200px of real card window -- barely
+       two cards -- which read as "snapchat starts too low and everything
+       ends too soon". 300px shows a third card almost in full (its last
+       ~22px softly fading, correctly hinting a fourth is below) without
+       fitting all four -- this still needs to scroll, just less eagerly. */
+    max-height: 300px;
     overflow-y: auto;
     overflow-x: hidden;
     overscroll-behavior-y: contain;
@@ -1798,8 +1804,11 @@ body.has-posts-panel-open .site-brand-footer {
     /* Room above the first card for the hand-drawn bunny mascot, which
        peeks 24px above its own card frame (see .social-link-mascot) -- with
        no padding here that peek would sit above this element's own top edge
-       and get clipped the instant overflow becomes anything but visible. */
-    padding-top: 28px;
+       and get clipped the instant overflow becomes anything but visible.
+       26px keeps a 2px buffer over the exact 24px overshoot -- trimmed from
+       the previous 28px's 4px buffer, since every extra px here is a px the
+       first card sits lower for no visual reason. */
+    padding-top: 26px;
     --dwl-edge-top: 1;
     --dwl-edge-bottom: 1;
     -webkit-mask-image: linear-gradient(
