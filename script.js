@@ -23,6 +23,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         maintenance_title: '',
         maintenance_message: '',
         maintenance_eta: '',
+        entrance_mode: 'paw',
         drawings_enabled: true,
         questions_enabled: true,
         rooms_enabled: true,
@@ -784,6 +785,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             maintenance_title: String(settings.maintenance_title || DEFAULT_LINK_SETTINGS.maintenance_title),
             maintenance_message: String(settings.maintenance_message || DEFAULT_LINK_SETTINGS.maintenance_message),
             maintenance_eta: String(settings.maintenance_eta || ''),
+            entrance_mode: settings.entrance_mode === 'bubbles' ? 'bubbles' : 'paw',
             drawings_enabled: settings.drawings_enabled !== false,
             questions_enabled: settings.questions_enabled !== false,
             rooms_enabled: settings.rooms_enabled !== false,
@@ -1018,26 +1020,30 @@ document.addEventListener("DOMContentLoaded", async function() {
         }, 500);
     });
 
-    // ===== PAW POPUP =====
+    // ===== SITE ENTRANCE =====
     const popup = document.getElementById("popup");
-    let pawDismissalInProgress = false;
+    const closePopupButton = document.getElementById("close-popup");
+    const entryBubbleField = document.getElementById("entry-bubble-field");
+    let entryDismissalInProgress = false;
+    let entryBubbleRemaining = 0;
     const legacyIOSMatch = navigator.userAgent.match(/(?:CPU (?:iPhone )?OS|iPhone OS) (\d+)[._]/);
     const isLegacyIOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
         && legacyIOSMatch
         && Number(legacyIOSMatch[1]) <= 15;
     if (popup) popup.style.display = "flex";
 
-    document.getElementById("close-popup")?.addEventListener("click", function() {
-        if (!popup || pawDismissalInProgress) return;
-        pawDismissalInProgress = true;
+    function dismissEntryGate(trigger = null) {
+        if (!popup || entryDismissalInProgress) return;
+        entryDismissalInProgress = true;
         playUiSound('link');
         // iOS 15 can briefly make the muted pre-warm sounds audible. Keep the
         // established warm-up on newer browsers, but never start CUT1/CUT3 here
         // on the affected older phones.
         if (!isLegacyIOS) warmUiSounds();
 
-        // Let the heart acknowledge the tap before the gate starts fading.
-        this.classList.add('is-pressed');
+        // The paw gets its press acknowledgement. Bubble mode has already
+        // played its final pop before reaching this shared exit path.
+        trigger?.classList.add('is-pressed');
 
         setTimeout(() => {
             popup.style.opacity = 0;
@@ -1069,8 +1075,110 @@ document.addEventListener("DOMContentLoaded", async function() {
                         audioPlayed = false;
                     });
             }, isLegacyIOS ? 900 : 700);
-        }, 420);
+        }, trigger ? 420 : 80);
+    }
+
+    function clearEntryBubbles() {
+        if (!entryBubbleField) return;
+        entryBubbleField.replaceChildren();
+        entryBubbleField.inert = false;
+        entryBubbleRemaining = 0;
+    }
+
+    function createEntryBubbleBurst(bubble) {
+        if (!entryBubbleField) return;
+        const rect = bubble.getBoundingClientRect();
+        const burst = document.createElement('span');
+        const fragment = document.createDocumentFragment();
+        const particleCount = 14;
+        burst.className = 'entry-bubble-burst';
+        burst.setAttribute('aria-hidden', 'true');
+        burst.style.cssText = `--burst-size:${Math.max(rect.width, rect.height)}px;left:${rect.left + rect.width / 2}px;top:${rect.top + rect.height / 2}px;`;
+
+        for (let index = 0; index < particleCount; index += 1) {
+            const angle = (Math.PI * 2 * index) / particleCount + (Math.random() - 0.5) * 0.28;
+            const distance = 34 + Math.random() * 52;
+            const particle = document.createElement('i');
+            const size = (3 + Math.random() * 5).toFixed(1);
+            const spin = Math.round((Math.random() - 0.5) * 300);
+            particle.style.cssText = `--burst-x:${(Math.cos(angle) * distance).toFixed(1)}px;--burst-y:${(Math.sin(angle) * distance).toFixed(1)}px;--particle-size:${size}px;--particle-spin:${spin}deg;--particle-delay:${Math.round(Math.random() * 45)}ms;`;
+            fragment.appendChild(particle);
+        }
+
+        burst.appendChild(fragment);
+        entryBubbleField.appendChild(burst);
+        window.setTimeout(() => burst.remove(), 820);
+    }
+
+    function startBubbleEntrance() {
+        if (!entryBubbleField || entryDismissalInProgress) return;
+        clearEntryBubbles();
+
+        const zones = [
+            { x: [18, 36], y: [22, 42] },
+            { x: [64, 82], y: [22, 42] },
+            { x: [20, 40], y: [58, 76] },
+            { x: [60, 80], y: [58, 76] }
+        ].sort(() => Math.random() - 0.5);
+        const bubbleCount = Math.random() < 0.5 ? 3 : 4;
+        entryBubbleRemaining = bubbleCount;
+        entryBubbleField.hidden = false;
+        entryBubbleField.setAttribute('aria-label', `Pop all ${bubbleCount} bubbles to enter the site`);
+
+        zones.slice(0, bubbleCount).forEach((zone, index) => {
+            const bubble = document.createElement('button');
+            const size = Math.round(66 + Math.random() * 38);
+            const x = Math.round(zone.x[0] + Math.random() * (zone.x[1] - zone.x[0]));
+            const y = Math.round(zone.y[0] + Math.random() * (zone.y[1] - zone.y[0]));
+            const drift = Math.round((Math.random() - 0.5) * 42);
+            const duration = (4.2 + Math.random() * 1.8).toFixed(2);
+            bubble.type = 'button';
+            bubble.className = 'footer-play-bubble entry-bubble';
+            bubble.setAttribute('aria-label', `Pop bubble ${index + 1} of ${bubbleCount}`);
+            bubble.style.cssText = `--bubble-size:${size}px;--bubble-x:${x}vw;--bubble-y:${y}vh;--bubble-drift:${drift}px;--bubble-duration:${duration}s;`;
+
+            bubble.addEventListener('click', () => {
+                if (bubble.classList.contains('popping') || entryDismissalInProgress) return;
+                createEntryBubbleBurst(bubble);
+                bubble.classList.add('popping');
+                bubble.disabled = true;
+                entryBubbleRemaining -= 1;
+                playUiSound('tap');
+                entryBubbleField.setAttribute('aria-label', entryBubbleRemaining
+                    ? `${entryBubbleRemaining} bubble${entryBubbleRemaining === 1 ? '' : 's'} left to pop`
+                    : 'All bubbles popped. Entering the site.');
+                window.setTimeout(() => bubble.remove(), 620);
+
+                if (entryBubbleRemaining === 0) {
+                    entryBubbleField.inert = true;
+                    window.setTimeout(() => dismissEntryGate(), 620);
+                }
+            });
+
+            entryBubbleField.appendChild(bubble);
+        });
+    }
+
+    function renderEntryGateMode() {
+        if (!popup || entryDismissalInProgress || popup.style.display === 'none') return;
+        const useBubbles = siteLinkSettings.entrance_mode === 'bubbles';
+        popup.classList.toggle('entry-mode-bubbles', useBubbles);
+        if (closePopupButton) closePopupButton.hidden = useBubbles;
+
+        if (useBubbles) {
+            if (entryBubbleField && !entryBubbleField.children.length) startBubbleEntrance();
+            return;
+        }
+
+        clearEntryBubbles();
+        if (entryBubbleField) entryBubbleField.hidden = true;
+    }
+
+    closePopupButton?.addEventListener("click", function() {
+        dismissEntryGate(this);
     });
+
+    renderEntryGateMode();
 
     // ===== TOP ICON ROW COLLAPSE (shared by wishlist + :3 panel scrolling) =====
     // Scrolling either the wishlist card list or the :3 panel's posts list
@@ -1377,14 +1485,22 @@ document.addEventListener("DOMContentLoaded", async function() {
         ];
     }
 
+    function isGifSocialCardMedia(url) {
+        return /\.gif(?:$|[?#])/i.test(String(url || ''));
+    }
+
     function removeSocialCardVideo(card) {
         if (!card) return;
-        const video = card.querySelector('.social-link-preview');
-        if (video) {
-            video.pause();
-            video.removeAttribute('src');
-            video.load();
-            video.remove();
+        const preview = card.querySelector('.social-link-preview');
+        if (preview) {
+            if (preview instanceof HTMLVideoElement) {
+                preview.pause();
+                preview.removeAttribute('src');
+                preview.load();
+            } else {
+                preview.removeAttribute('src');
+            }
+            preview.remove();
         }
         card.classList.remove('has-social-preview');
     }
@@ -1397,38 +1513,52 @@ document.addEventListener("DOMContentLoaded", async function() {
             return;
         }
 
-        let video = card.querySelector('.social-link-preview');
-        if (!video) {
-            video = document.createElement('video');
-            video.className = 'social-link-preview';
-            video.muted = true;
-            video.defaultMuted = true;
-            video.loop = true;
-            video.playsInline = true;
-            video.preload = 'metadata';
-            video.setAttribute('muted', '');
-            video.setAttribute('playsinline', '');
-            video.setAttribute('aria-hidden', 'true');
-            video.tabIndex = -1;
-            video.addEventListener('loadeddata', () => {
+        const useGif = isGifSocialCardMedia(url);
+        let preview = card.querySelector('.social-link-preview');
+        const hasWrongPreviewType = preview && (useGif
+            ? !(preview instanceof HTMLImageElement)
+            : !(preview instanceof HTMLVideoElement));
+        if (hasWrongPreviewType) {
+            removeSocialCardVideo(card);
+            preview = null;
+        }
+
+        if (!preview) {
+            preview = document.createElement(useGif ? 'img' : 'video');
+            preview.className = 'social-link-preview';
+            preview.setAttribute('aria-hidden', 'true');
+            preview.tabIndex = -1;
+            if (preview instanceof HTMLVideoElement) {
+                preview.muted = true;
+                preview.defaultMuted = true;
+                preview.loop = true;
+                preview.playsInline = true;
+                preview.preload = 'metadata';
+                preview.setAttribute('muted', '');
+                preview.setAttribute('playsinline', '');
+            } else {
+                preview.alt = '';
+                preview.decoding = 'async';
+            }
+            preview.addEventListener(useGif ? 'load' : 'loadeddata', () => {
                 card.classList.add('has-social-preview');
             });
-            video.addEventListener('error', () => {
+            preview.addEventListener('error', () => {
                 card.classList.remove('has-social-preview');
             });
-            card.prepend(video);
+            card.prepend(preview);
         }
 
-        if (video.dataset.source !== url) {
+        if (preview.dataset.source !== url) {
             card.classList.remove('has-social-preview');
-            video.pause();
-            video.dataset.source = url;
-            video.src = url;
-            video.load();
+            if (preview instanceof HTMLVideoElement) preview.pause();
+            preview.dataset.source = url;
+            preview.src = url;
+            if (preview instanceof HTMLVideoElement) preview.load();
         }
 
-        if (socialsButton?.classList.contains('open') && !document.hidden) {
-            video.play().catch(() => {});
+        if (preview instanceof HTMLVideoElement && socialsButton?.classList.contains('open') && !document.hidden) {
+            preview.play().catch(() => {});
         }
     }
 
@@ -1439,13 +1569,13 @@ document.addEventListener("DOMContentLoaded", async function() {
     function playSocialCardVideos() {
         if (document.hidden) return;
         getVisibleSocialOptions().forEach(card => {
-            card.querySelector('.social-link-preview')?.play().catch(() => {});
+            card.querySelector('video.social-link-preview')?.play().catch(() => {});
         });
     }
 
     function pauseSocialCardVideos() {
         getSocialCardVideoEntries().forEach(([, card]) => {
-            card?.querySelector('.social-link-preview')?.pause();
+            card?.querySelector('video.social-link-preview')?.pause();
         });
     }
 
@@ -1586,6 +1716,7 @@ document.addEventListener("DOMContentLoaded", async function() {
 
     function applyPublicLinkSettings() {
         document.body.classList.add('site-links-ready');
+        renderEntryGateMode();
         const roomsEnabled = siteLinkSettings.rooms_enabled !== false;
         const noteRoomsTarget = document.getElementById('note-peel-target');
         noteRoomsTarget?.classList.toggle('rooms-disabled', !roomsEnabled);

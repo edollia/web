@@ -360,6 +360,223 @@ button {
     }
 }
 
+.entry-bubble-field {
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+    overflow: hidden;
+    pointer-events: auto;
+}
+
+.entry-bubble-field[hidden] {
+    display: none;
+}
+
+.footer-play-bubble.entry-bubble {
+    min-width: 44px;
+    min-height: 44px;
+    appearance: none;
+    -webkit-appearance: none;
+    pointer-events: auto;
+    touch-action: manipulation;
+    cursor: pointer;
+    animation:
+        entryBubbleBorn 0.58s cubic-bezier(0.18, 0.9, 0.22, 1.24) forwards,
+        footerBubbleFloat var(--bubble-duration, 5.2s) ease-in-out 0.58s infinite;
+}
+
+.footer-play-bubble.entry-bubble:hover {
+    filter: brightness(1.05) saturate(1.04);
+}
+
+.footer-play-bubble.entry-bubble:focus-visible {
+    outline: 3px solid rgba(255, 132, 187, 0.62);
+    outline-offset: 4px;
+}
+
+.footer-play-bubble.entry-bubble.popping,
+.footer-play-bubble.entry-bubble.popping:hover {
+    pointer-events: none;
+    filter: none;
+    animation: entryBubblePop 0.34s cubic-bezier(0.16, 0.86, 0.24, 1) forwards;
+}
+
+.entry-bubble-burst {
+    position: fixed;
+    z-index: 2;
+    width: 0;
+    height: 0;
+    pointer-events: none;
+}
+
+.entry-bubble-burst::before,
+.entry-bubble-burst::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: var(--burst-size);
+    height: var(--burst-size);
+    border-radius: 50%;
+    transform: translate(-50%, -50%) scale(0.2);
+}
+
+.entry-bubble-burst::before {
+    background: conic-gradient(
+        from 22deg,
+        rgba(255, 255, 255, 0.94) 0 7%,
+        rgba(160, 230, 255, 0.76) 8% 14%,
+        transparent 15% 23%,
+        rgba(255, 176, 222, 0.72) 24% 31%,
+        transparent 32% 44%,
+        rgba(255, 255, 255, 0.88) 45% 51%,
+        rgba(179, 255, 231, 0.68) 52% 59%,
+        transparent 60% 70%,
+        rgba(198, 183, 255, 0.7) 71% 79%,
+        transparent 80% 89%,
+        rgba(255, 225, 147, 0.64) 90% 96%,
+        transparent 97% 100%
+    );
+    -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px));
+    mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px));
+    filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.7));
+    animation: entryBubbleBurstRing 0.48s cubic-bezier(0.14, 0.74, 0.24, 1) forwards;
+}
+
+.entry-bubble-burst::after {
+    background: radial-gradient(circle, rgba(255, 255, 255, 0.72) 0 8%, rgba(206, 244, 255, 0.2) 28%, rgba(255, 255, 255, 0) 68%);
+    animation: entryBubbleBurstFlash 0.24s ease-out forwards;
+}
+
+.entry-bubble-burst i {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: var(--particle-size);
+    height: calc(var(--particle-size) * 0.68);
+    border: 1px solid rgba(255, 255, 255, 0.74);
+    border-radius: 50%;
+    background:
+        radial-gradient(circle at 30% 24%, rgba(255, 255, 255, 0.94) 0 18%, transparent 22%),
+        linear-gradient(145deg, rgba(158, 230, 255, 0.38), rgba(255, 178, 222, 0.28) 52%, rgba(180, 255, 229, 0.3));
+    box-shadow:
+        inset -1px -1px 2px rgba(141, 205, 235, 0.22),
+        0 1px 3px rgba(130, 188, 215, 0.16);
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.2);
+    animation: entryBubbleBurstParticle 0.7s cubic-bezier(0.12, 0.72, 0.22, 1) var(--particle-delay) forwards;
+}
+
+@keyframes entryBubbleBorn {
+    64% {
+        opacity: 0.96;
+        transform: translate(-50%, -10px) scale(1.08);
+    }
+
+    to {
+        opacity: 0.88;
+        transform: translate(-50%, 0) scale(1);
+    }
+}
+
+@keyframes entryBubblePop {
+    0% {
+        opacity: 0.88;
+        transform: translate(-50%, 0) scale(1);
+    }
+
+    22% {
+        opacity: 0.96;
+        transform: translate(-50%, 1px) scale(1.04, 0.96);
+    }
+
+    42% {
+        opacity: 0.82;
+        transform: translate(-50%, -2px) scale(1.13, 1.08);
+        box-shadow:
+            inset 0 1px 0 rgba(255, 255, 255, 0.92),
+            inset 5px -3px 12px rgba(159, 226, 255, 0.22),
+            inset -5px 3px 12px rgba(255, 169, 219, 0.2),
+            0 0 12px rgba(255, 255, 255, 0.58);
+    }
+
+    to {
+        opacity: 0;
+        transform: translate(-50%, -4px) scale(1.18);
+        box-shadow:
+            inset 0 1px 0 rgba(255, 255, 255, 0),
+            inset 5px -3px 12px rgba(159, 226, 255, 0),
+            inset -5px 3px 12px rgba(255, 169, 219, 0),
+            0 0 18px rgba(255, 255, 255, 0);
+    }
+}
+
+@keyframes entryBubbleBurstRing {
+    0% {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(0.2);
+    }
+
+    20% { opacity: 1; }
+
+    to {
+        opacity: 0;
+        transform: translate(-50%, -50%) rotate(18deg) scale(1.42, 1.32);
+    }
+}
+
+@keyframes entryBubbleBurstFlash {
+    0% {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(0.18);
+    }
+
+    30% {
+        opacity: 0.72;
+        transform: translate(-50%, -50%) scale(0.92);
+    }
+
+    to {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(1.22);
+    }
+}
+
+@keyframes entryBubbleBurstParticle {
+    0% {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(0.2);
+    }
+
+    18% {
+        opacity: 0.9;
+        transform: translate(-50%, -50%) scale(1);
+    }
+
+    to {
+        opacity: 0;
+        transform: translate(calc(-50% + var(--burst-x)), calc(-50% + var(--burst-y))) rotate(var(--particle-spin)) scale(0.22);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .footer-play-bubble.entry-bubble {
+        opacity: 0.88;
+        transform: translate(-50%, 0);
+        animation: none;
+    }
+
+    .footer-play-bubble.entry-bubble.popping {
+        animation: entryBubblePop 0.16s ease-out forwards;
+    }
+
+    .entry-bubble-burst::before,
+    .entry-bubble-burst::after,
+    .entry-bubble-burst i {
+        animation-duration: 0.18s;
+    }
+}
+
 .loading-gif {
     display: block;
     width: 180px;
@@ -1547,7 +1764,7 @@ body.has-posts-panel-open .site-brand-footer {
     display: grid;
     grid-template-columns: 44px minmax(0, 1fr) 16px;
     align-items: center;
-    min-height: 74px;
+    min-height: 81px;
     gap: 10px;
     padding: 7px 12px 7px 10px;
     overflow: hidden;
@@ -1566,8 +1783,8 @@ body.has-posts-panel-open .site-brand-footer {
     will-change: transform;
 }
 
-/* Future card videos can use this class and will stay softly masked beneath
-   the existing icon, copy, and arrow without changing the card structure. */
+/* Animated card backgrounds (video or GIF) stay softly masked beneath the
+   existing icon, copy, and arrow without changing the card structure. */
 .social-link-preview {
     position: absolute;
     inset: 0;

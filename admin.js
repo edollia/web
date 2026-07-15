@@ -5,7 +5,7 @@ const ADMIN_PASSCODE_HASH = 'ce157a63c5af6bc69d076f5cc7acd1c18a8b44933f907e682f2
 const SOCIAL_CARD_VIDEO_BUCKET = 'social-card-videos';
 const SOCIAL_CARD_VIDEO_KEYS = ['snapchat', 'instagram', 'kofi'];
 const MAX_SOCIAL_CARD_VIDEO_BYTES = 20 * 1024 * 1024;
-const SOCIAL_CARD_VIDEO_TYPES = new Set(['video/mp4', 'video/webm', 'video/x-m4v']);
+const SOCIAL_CARD_VIDEO_TYPES = new Set(['video/mp4', 'video/webm', 'video/x-m4v', 'video/quicktime', 'image/gif']);
 const socialVideoObjectUrls = new Map();
 const socialVideoSelectedFiles = new Map();
 const socialVideoPickerTimers = new Map();
@@ -41,6 +41,7 @@ const DEFAULT_LINK_SETTINGS = {
     maintenance_title: 'site update in progress',
     maintenance_message: 'Please check back soon.',
     maintenance_eta: '',
+    entrance_mode: 'paw',
     drawings_enabled: true,
     questions_enabled: true,
     rooms_enabled: true,
@@ -140,6 +141,8 @@ const els = {
     maintenanceMessage: document.getElementById('maintenance-message'),
     maintenanceEta: document.getElementById('maintenance-eta'),
     maintenanceState: document.getElementById('maintenance-state'),
+    entranceMode: document.getElementById('entrance-mode'),
+    entranceModeState: document.getElementById('entrance-mode-state'),
     drawingsEnabled: document.getElementById('drawings-enabled'),
     questionsEnabled: document.getElementById('questions-enabled'),
     submissionsState: document.getElementById('submissions-state'),
@@ -350,6 +353,7 @@ function normalizeLinkSettings(value) {
         maintenance_title: String(settings.maintenance_title || DEFAULT_LINK_SETTINGS.maintenance_title),
         maintenance_message: String(settings.maintenance_message || DEFAULT_LINK_SETTINGS.maintenance_message),
         maintenance_eta: String(settings.maintenance_eta || ''),
+        entrance_mode: settings.entrance_mode === 'bubbles' ? 'bubbles' : 'paw',
         drawings_enabled: settings.drawings_enabled !== false,
         questions_enabled: settings.questions_enabled !== false,
         rooms_enabled: settings.rooms_enabled !== false,
@@ -393,6 +397,8 @@ function renderLinkSettings({ preserveDraft = false } = {}) {
     if (els.maintenanceMessage) els.maintenanceMessage.value = settings.maintenance_message || '';
     if (els.maintenanceEta) els.maintenanceEta.value = settings.maintenance_eta || '';
     if (els.maintenanceState) els.maintenanceState.textContent = settings.maintenance_enabled === true ? 'on' : 'off';
+    if (els.entranceMode) els.entranceMode.value = settings.entrance_mode === 'bubbles' ? 'bubbles' : 'paw';
+    if (els.entranceModeState) els.entranceModeState.textContent = settings.entrance_mode === 'bubbles' ? 'pop bubbles' : 'paw press';
     if (els.drawingsEnabled) els.drawingsEnabled.checked = settings.drawings_enabled !== false;
     if (els.questionsEnabled) els.questionsEnabled.checked = settings.questions_enabled !== false;
     if (els.submissionsState) els.submissionsState.textContent = getSubmissionsStateLabel(settings);
@@ -432,6 +438,7 @@ function getDraftLinkSettings() {
         maintenance_title: els.maintenanceTitle?.value.trim() || DEFAULT_LINK_SETTINGS.maintenance_title,
         maintenance_message: els.maintenanceMessage?.value.trim() || DEFAULT_LINK_SETTINGS.maintenance_message,
         maintenance_eta: els.maintenanceEta?.value.trim() || '',
+        entrance_mode: els.entranceMode?.value === 'bubbles' ? 'bubbles' : 'paw',
         drawings_enabled: els.drawingsEnabled?.checked !== false,
         questions_enabled: els.questionsEnabled?.checked !== false,
         rooms_enabled: els.roomsMasterEnabled?.checked !== false,
@@ -457,6 +464,7 @@ function syncLinkDraftLabels(settings = getDraftLinkSettings()) {
     if (els.throneState) els.throneState.textContent = settings.throne_enabled !== false ? 'visible' : 'hidden';
     if (els.latestNoteState) els.latestNoteState.textContent = settings.latest_note_enabled === true ? 'visible' : 'hidden';
     if (els.maintenanceState) els.maintenanceState.textContent = settings.maintenance_enabled === true ? 'on' : 'off';
+    if (els.entranceModeState) els.entranceModeState.textContent = settings.entrance_mode === 'bubbles' ? 'pop bubbles' : 'paw press';
     if (els.submissionsState) els.submissionsState.textContent = getSubmissionsStateLabel(settings);
     if (els.roomsMasterState) els.roomsMasterState.textContent = settings.rooms_enabled !== false ? 'enabled' : 'disabled';
     els.roomsDisabledBanner?.classList.toggle('hidden', settings.rooms_enabled !== false);
@@ -513,30 +521,81 @@ function formatUploadSize(bytes) {
 
 function getSocialVideoFileExtension(file) {
     const namedExtension = String(file?.name || '').split('.').pop().toLowerCase();
-    if (namedExtension === 'mp4' || namedExtension === 'webm') return namedExtension;
+    if (['mp4', 'webm', 'mov', 'gif'].includes(namedExtension)) return namedExtension;
     // M4V is the same MPEG-4 family and is a common iPhone export. Store it
     // with an .mp4 extension/content type so the public video element gets
     // the broadly-supported MIME type it expects.
     if (namedExtension === 'm4v' || file?.type === 'video/x-m4v') return 'mp4';
     if (file?.type === 'video/webm') return 'webm';
+    if (file?.type === 'video/quicktime') return 'mov';
+    if (file?.type === 'image/gif') return 'gif';
     if (file?.type === 'video/mp4') return 'mp4';
     return '';
 }
 
+function isGifSocialMedia(value) {
+    if (value instanceof File) {
+        return value.type === 'image/gif' || String(value.name || '').toLowerCase().endsWith('.gif');
+    }
+    return /\.gif(?:$|[?#])/i.test(String(value || ''));
+}
+
+function getSocialMediaContentType(extension) {
+    if (extension === 'gif') return 'image/gif';
+    if (extension === 'mov') return 'video/quicktime';
+    if (extension === 'webm') return 'video/webm';
+    return 'video/mp4';
+}
+
 function validateSocialVideoFile(file) {
-    if (!file) throw new Error('Choose a video first.');
+    if (!file) throw new Error('Choose a background file first.');
     const extension = getSocialVideoFileExtension(file);
     const supportedType = SOCIAL_CARD_VIDEO_TYPES.has(file.type) || Boolean(extension);
-    const name = String(file.name || '').toLowerCase();
-    const isQuickTime = file.type === 'video/quicktime' || name.endsWith('.mov');
-    if (!supportedType && isQuickTime) {
-        throw new Error('iPhone selected a MOV. Export it as MP4 or M4V first so it plays for everyone.');
-    }
-    if (!supportedType) throw new Error('Use an MP4, M4V, or WebM video.');
+    if (!supportedType) throw new Error('Use an MP4, M4V, MOV, WebM, or GIF file.');
     if (file.size > MAX_SOCIAL_CARD_VIDEO_BYTES) {
-        throw new Error(`${formatUploadSize(file.size)} is too large — use a video 20 MB or smaller.`);
+        throw new Error(`${formatUploadSize(file.size)} is too large — use a background 20 MB or smaller.`);
     }
     return extension;
+}
+
+function setAdminSocialMediaPreview(control, source, useGif) {
+    const videoPreview = control?.querySelector('[data-video-preview]');
+    const imagePreview = control?.querySelector('[data-image-preview]');
+
+    if (useGif) {
+        if (videoPreview) {
+            videoPreview.pause();
+            videoPreview.removeAttribute('src');
+            videoPreview.dataset.source = '';
+            videoPreview.hidden = true;
+            videoPreview.load();
+        }
+        if (imagePreview) {
+            if (imagePreview.dataset.source !== source) {
+                imagePreview.dataset.source = source;
+                imagePreview.src = source;
+            }
+            imagePreview.hidden = !source;
+        }
+        return;
+    }
+
+    if (imagePreview) {
+        imagePreview.removeAttribute('src');
+        imagePreview.dataset.source = '';
+        imagePreview.hidden = true;
+    }
+    if (!videoPreview) return;
+    if (videoPreview.dataset.source !== source) {
+        videoPreview.pause();
+        videoPreview.removeAttribute('src');
+        videoPreview.dataset.source = source;
+        if (source) {
+            videoPreview.src = source;
+            videoPreview.load();
+        }
+    }
+    videoPreview.hidden = !source;
 }
 
 function setSocialVideoBusy(key, busy, message = '') {
@@ -558,7 +617,6 @@ function renderSocialVideoControl(key) {
     const control = getSocialVideoControl(key);
     if (!control) return;
     const fileInput = control.querySelector('[data-video-file]');
-    const preview = control.querySelector('[data-video-preview]');
     const uploadButton = control.querySelector('[data-video-upload]');
     const removeButton = control.querySelector('[data-video-remove]');
     const pickerLabel = control.querySelector('.admin-video-picker > span');
@@ -566,23 +624,14 @@ function renderSocialVideoControl(key) {
     const selectedFile = socialVideoSelectedFiles.get(key) || null;
     const hasLocalPreview = socialVideoObjectUrls.has(key);
 
-    if (preview && !hasLocalPreview) {
-        if (preview.dataset.source !== savedUrl) {
-            preview.pause();
-            preview.removeAttribute('src');
-            preview.dataset.source = savedUrl;
-            if (savedUrl) {
-                preview.src = savedUrl;
-                preview.load();
-            }
-        }
-        preview.hidden = !savedUrl;
+    if (!hasLocalPreview) {
+        setAdminSocialMediaPreview(control, savedUrl, isGifSocialMedia(savedUrl));
     }
 
     if (!hasLocalPreview && !selectedFile) {
-        setSocialVideoStatus(key, savedUrl ? 'video live' : 'no video');
+        setSocialVideoStatus(key, savedUrl ? 'background live' : 'no background');
     }
-    if (pickerLabel) pickerLabel.textContent = selectedFile || savedUrl ? 'choose another' : 'choose video';
+    if (pickerLabel) pickerLabel.textContent = selectedFile || savedUrl ? 'choose another' : 'choose media';
     if (uploadButton) uploadButton.disabled = !selectedFile;
     if (removeButton) removeButton.disabled = !savedUrl;
 }
@@ -625,7 +674,7 @@ function reportInterruptedSocialVideoPicker() {
     if (!Number.isFinite(pending.openedAt) || Date.now() - pending.openedAt > 10 * 60 * 1000) return;
     setSocialVideoStatus(
         pending.key,
-        'Safari returned or reloaded without a file. Use a short MP4/M4V under 20 MB and tap Add or Done after selecting it.',
+        'Safari returned or reloaded without a file. Choose a supported file under 20 MB and tap Add or Done after selecting it.',
         'error'
     );
 }
@@ -633,7 +682,6 @@ function reportInterruptedSocialVideoPicker() {
 function handleSocialVideoSelection(key, inputOverride = null, { reportEmpty = false } = {}) {
     const control = getSocialVideoControl(key);
     const fileInput = inputOverride || control?.querySelector('[data-video-file]');
-    const preview = control?.querySelector('[data-video-preview]');
     const file = fileInput?.files?.[0];
     clearSocialVideoPickerTimer(key);
     if (file) {
@@ -650,7 +698,7 @@ function handleSocialVideoSelection(key, inputOverride = null, { reportEmpty = f
             if (pickerLabel) pickerLabel.textContent = 'choose again';
             setSocialVideoStatus(
                 key,
-                'iPhone returned no file. Select the video, wait for it to load, then tap Add or Done.',
+                'iPhone returned no file. Select the media, wait for it to load, then tap Add or Done.',
                 'error'
             );
         }
@@ -666,30 +714,24 @@ function handleSocialVideoSelection(key, inputOverride = null, { reportEmpty = f
         renderSocialVideoControl(key);
         const pickerLabel = control?.querySelector('.admin-video-picker > span');
         if (pickerLabel) pickerLabel.textContent = 'choose another';
-        setSocialVideoStatus(key, error.message || 'Video cannot be used.', 'error');
+        setSocialVideoStatus(key, error.message || 'Background cannot be used.', 'error');
         return false;
     }
 
     // Commit the valid selection to the UI before asking Safari to build a
-    // local video preview. Some iPhone/iCloud files cannot preview locally
+    // local media preview. Some iPhone/iCloud files cannot preview locally
     // even though the file itself is perfectly uploadable.
     socialVideoSelectedFiles.set(key, file);
     const uploadButton = control?.querySelector('[data-video-upload]');
     if (uploadButton) uploadButton.disabled = false;
     const pickerLabel = control?.querySelector('.admin-video-picker > span');
     if (pickerLabel) pickerLabel.textContent = 'choose another';
-    setSocialVideoStatus(key, `${file.name || 'video'} · ${formatUploadSize(file.size)} ready — tap upload`, 'ready');
+    setSocialVideoStatus(key, `${file.name || 'media'} · ${formatUploadSize(file.size)} ready — tap upload`, 'ready');
 
     try {
         const objectUrl = URL.createObjectURL(file);
         socialVideoObjectUrls.set(key, objectUrl);
-        if (preview) {
-            preview.pause();
-            preview.dataset.source = objectUrl;
-            preview.src = objectUrl;
-            preview.hidden = false;
-            preview.load();
-        }
+        setAdminSocialMediaPreview(control, objectUrl, isGifSocialMedia(file));
     } catch (error) {
         // Selection and upload stay available; only the optional local
         // preview failed.
@@ -706,7 +748,7 @@ function beginSocialVideoPicker(key, fileInput) {
     if (pickerLabel) pickerLabel.textContent = 'waiting for Add…';
     setSocialVideoStatus(
         key,
-        'Photo picker opened — choose the video, then tap Add or Done.',
+        'Photo picker opened — choose the media, then tap Add or Done.',
         'waiting'
     );
 
@@ -724,7 +766,7 @@ function beginSocialVideoPicker(key, fileInput) {
         if (currentLabel) currentLabel.textContent = 'choose again';
         setSocialVideoStatus(
             key,
-            'No video came back from Photos. Playing it only previews it — tap Add or Done to attach it.',
+            'No media came back from Photos. Previewing it is not enough — tap Add or Done to attach it.',
             'error'
         );
     }, 1200);
@@ -736,8 +778,8 @@ function cancelSocialVideoPicker(key) {
     socialVideoPendingInputs.delete(key);
     forgetSocialVideoPicker();
     const pickerLabel = getSocialVideoControl(key)?.querySelector('.admin-video-picker > span');
-    if (pickerLabel) pickerLabel.textContent = 'choose video';
-    setSocialVideoStatus(key, 'Video picker closed without selecting a file.', 'error');
+    if (pickerLabel) pickerLabel.textContent = 'choose media';
+    setSocialVideoStatus(key, 'Media picker closed without selecting a file.', 'error');
 }
 
 function inspectPendingSocialVideoPickers() {
@@ -749,7 +791,7 @@ function inspectPendingSocialVideoPickers() {
 }
 
 function socialVideoStorageError(error) {
-    const message = String(error?.message || error || 'Video upload failed.');
+    const message = String(error?.message || error || 'Media upload failed.');
     if (/bucket.*not found|not found.*bucket|row-level security|policy/i.test(message)) {
         return 'Run social-card-videos.sql in Supabase first.';
     }
@@ -765,7 +807,7 @@ async function uploadSocialCardVideo(key) {
     try {
         extension = validateSocialVideoFile(file);
     } catch (error) {
-        setSocialVideoStatus(key, error.message || 'Video cannot be used.', 'error');
+        setSocialVideoStatus(key, error.message || 'Background cannot be used.', 'error');
         return;
     }
 
@@ -782,7 +824,7 @@ async function uploadSocialCardVideo(key) {
             .from(SOCIAL_CARD_VIDEO_BUCKET)
             .upload(storagePath, file, {
                 cacheControl: '31536000',
-                contentType: extension === 'webm' ? 'video/webm' : 'video/mp4',
+                contentType: getSocialMediaContentType(extension),
                 upsert: false
             });
         if (uploadError) throw uploadError;
@@ -791,7 +833,7 @@ async function uploadSocialCardVideo(key) {
             .from(SOCIAL_CARD_VIDEO_BUCKET)
             .getPublicUrl(storagePath);
         const publicUrl = publicData?.publicUrl || '';
-        if (!publicUrl) throw new Error('Could not create the public video URL.');
+        if (!publicUrl) throw new Error('Could not create the public media URL.');
 
         state.linkSettings[urlKey] = publicUrl;
         state.linkSettings[pathKey] = storagePath;
@@ -801,7 +843,7 @@ async function uploadSocialCardVideo(key) {
             state.linkSettings[urlKey] = previousUrl;
             state.linkSettings[pathKey] = previousPath;
             await adminClient.storage.from(SOCIAL_CARD_VIDEO_BUCKET).remove([storagePath]);
-            throw new Error('Video uploaded, but its card setting could not be saved.');
+            throw new Error('Media uploaded, but its card setting could not be saved.');
         }
 
         if (previousPath && previousPath !== storagePath) {
@@ -812,7 +854,7 @@ async function uploadSocialCardVideo(key) {
         socialVideoSelectedFiles.delete(key);
         if (fileInput) fileInput.value = '';
         renderSocialVideoControl(key);
-        setSocialVideoStatus(key, 'video live ✓');
+        setSocialVideoStatus(key, 'background live ✓');
     } catch (error) {
         setSocialVideoStatus(key, socialVideoStorageError(error), 'error');
     } finally {
@@ -827,7 +869,7 @@ async function removeSocialCardVideo(key) {
     const previousUrl = state.linkSettings[urlKey] || '';
     const previousPath = state.linkSettings[pathKey] || '';
     if (!previousUrl) return;
-    if (!window.confirm(`Remove the ${key} card background video?`)) return;
+    if (!window.confirm(`Remove the ${key} card background?`)) return;
 
     setSocialVideoBusy(key, true, 'removing...');
     state.linkSettings[urlKey] = '';
@@ -839,7 +881,7 @@ async function removeSocialCardVideo(key) {
         if (!saved) {
             state.linkSettings[urlKey] = previousUrl;
             state.linkSettings[pathKey] = previousPath;
-            throw new Error('Could not save the empty video setting.');
+            throw new Error('Could not save the empty background setting.');
         }
         if (previousPath) {
             const { error: removeError } = await adminClient.storage
@@ -1336,6 +1378,7 @@ async function saveLinkSettingsNow() {
             maintenance_title: els.maintenanceTitle?.value.trim() || DEFAULT_LINK_SETTINGS.maintenance_title,
             maintenance_message: els.maintenanceMessage?.value.trim() || DEFAULT_LINK_SETTINGS.maintenance_message,
             maintenance_eta: els.maintenanceEta?.value.trim() || '',
+            entrance_mode: els.entranceMode?.value === 'bubbles' ? 'bubbles' : 'paw',
             drawings_enabled: els.drawingsEnabled?.checked !== false,
             questions_enabled: els.questionsEnabled?.checked !== false,
             rooms_enabled: els.roomsMasterEnabled?.checked !== false,
@@ -1739,6 +1782,7 @@ async function init() {
         els.maintenanceTitle,
         els.maintenanceMessage,
         els.maintenanceEta,
+        els.entranceMode,
         els.seoTitle,
         els.seoDescription,
         els.siteTagline

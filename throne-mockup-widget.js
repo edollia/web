@@ -1250,30 +1250,51 @@
                 --dwl-edge-bottom: 1;
             }
             /* Softens the line where the sticky checkout bar overlaps the
-               cards, so busy product PHOTOS dissolve gently into the bar
-               instead of being cut off at a hard edge. Verified by rendering
-               over high-detail card content (qlmanage): a short/subtle scrim
-               vanishes against real photos — it needs real height (54px) and
-               to reach near-opaque bar colour at the bottom to actually read
-               as a gentle fade. Full-width (left/right:0 of the full-width
-               dock), plain vertical gradient — no blur and no mask, so it
-               can't seam at its own top edge (the backdrop-filter bug) or
-               trip the old-iOS mask+filter square-edge bug fixed elsewhere. */
+               cards so they dissolve gently into it instead of being cut off
+               hard. This MUST be a real backdrop-blur, not a coloured
+               gradient: proven by rendering (qlmanage) over light/white
+               product photos (makeup sets, pale plushes), a near-white
+               gradient scrim is completely INVISIBLE — white-on-white — so it
+               only ever softened dark cards and did nothing for the many
+               light ones, which is why the bar kept reading as an abrupt cut.
+               A blur softens content of ANY colour. The mask-image fades the
+               blur out toward the top so it doesn't leave a hard seam at its
+               own top edge (a bare backdrop-filter box does). The layered
+               light gradient is a graceful fallback: if backdrop-filter or
+               mask degrades on old WebKit, the result is still a soft wash,
+               never a hard seam. Verified over both light and busy cards. */
             .doll-wishlist-foot-dock::before {
                 content: '';
                 position: absolute;
                 left: 0;
                 right: 0;
                 bottom: 100%;
-                height: 54px;
+                height: 70px;
                 pointer-events: none;
+                -webkit-backdrop-filter: blur(9px);
+                backdrop-filter: blur(9px);
                 background: linear-gradient(
                     to top,
-                    rgba(255, 251, 253, 0.98) 0%,
-                    rgba(255, 251, 253, 0.9) 22%,
-                    rgba(255, 251, 253, 0.55) 55%,
+                    rgba(255, 251, 253, 0.72) 0%,
+                    rgba(255, 251, 253, 0.34) 42%,
                     rgba(255, 251, 253, 0) 100%
                 );
+                -webkit-mask-image: linear-gradient(to top, #000 34%, transparent 100%);
+                mask-image: linear-gradient(to top, #000 34%, transparent 100%);
+            }
+            /* Docked mode only: drop the foot's own top margin so the blur
+               dissolve above meets the pill's top edge with no un-blurred gap,
+               and soften the pill's own hard top border (a crisp 1px line that
+               otherwise still reads as a cut even with the cards blurred above
+               it) — replace it with a soft upward glow so the bar's top blends
+               into the dissolve. Bottom of the pill stays solid/readable. */
+            .doll-wishlist-foot-dock .doll-wishlist-foot {
+                margin-top: 0;
+                border-top-color: transparent;
+                box-shadow:
+                    0 -6px 12px rgba(255, 251, 253, 0.6),
+                    0 8px 19px rgba(183, 82, 121, 0.12),
+                    inset 0 1px 0 rgba(255, 255, 255, 0.9);
             }
 
             .doll-wishlist-count {

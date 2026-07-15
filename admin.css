@@ -1115,7 +1115,8 @@ h1 {
     color: rgba(139, 98, 44, 0.9);
 }
 
-.admin-card-video-control video {
+.admin-card-video-control video,
+.admin-card-video-control img[data-image-preview] {
     display: block;
     width: 100%;
     height: 116px;
@@ -1126,7 +1127,8 @@ h1 {
     object-fit: cover;
 }
 
-.admin-card-video-control video[hidden] {
+.admin-card-video-control video[hidden],
+.admin-card-video-control img[data-image-preview][hidden] {
     display: none;
 }
 

@@ -6,7 +6,7 @@
     <meta name="robots" content="noindex, nofollow">
     <meta name="referrer" content="strict-origin-when-cross-origin">
     <title>Lia Admin</title>
-    <link rel="stylesheet" href="../admin.css?v=5.2">
+    <link rel="stylesheet" href="../admin.css?v=5.3">
 </head>
 <body>
     <main class="admin-shell">
@@ -271,6 +271,27 @@
                             </div>
                         </details>
 
+                        <details class="admin-link-card admin-control-card" data-link-card="entrance" open>
+                            <summary>
+                                <div class="admin-link-card-title">
+                                    <span class="admin-link-icon">B</span>
+                                    <div>
+                                        <strong>site entrance</strong>
+                                        <small id="entrance-mode-state">paw press</small>
+                                    </div>
+                                </div>
+                            </summary>
+                            <div class="admin-link-card-body admin-field-grid">
+                                <label class="admin-url-field">
+                                    <span>entrance interaction</span>
+                                    <select id="entrance-mode">
+                                        <option value="paw">press the paw</option>
+                                        <option value="bubbles">pop 3–4 bubbles</option>
+                                    </select>
+                                </label>
+                            </div>
+                        </details>
+
                         <details class="admin-link-card admin-control-card" data-link-card="submissions" open>
                             <summary>
                                 <div class="admin-link-card-title">
@@ -367,19 +388,20 @@
                                 </label>
                                 <div class="admin-card-video-control" data-social-video="snapchat">
                                     <div class="admin-card-video-heading">
-                                        <span>card background video</span>
-                                        <small data-video-status aria-live="polite">no video</small>
+                                        <span>animated card background</span>
+                                        <small data-video-status aria-live="polite">no background</small>
                                     </div>
                                     <video data-video-preview muted loop playsinline controls preload="metadata" hidden></video>
+                                    <img data-image-preview alt="" hidden>
                                     <div class="admin-card-video-actions">
                                         <label class="admin-video-picker">
-                                            <input data-video-file type="file" accept="video/*,.mp4,.m4v,.webm">
-                                            <span>choose video</span>
+                                            <input data-video-file type="file" accept="video/*,image/gif,.mp4,.m4v,.mov,.webm,.gif">
+                                            <span>choose media</span>
                                         </label>
                                         <button class="soft" type="button" data-video-upload="snapchat" disabled>upload</button>
                                         <button class="soft" type="button" data-video-remove="snapchat" disabled>remove</button>
                                     </div>
-                                    <small class="admin-card-video-note">MP4, M4V, or WebM · max 20 MB · muted and looped</small>
+                                    <small class="admin-card-video-note">MP4, M4V, MOV, WebM, or GIF · max 20 MB</small>
                                 </div>
                             </div>
                         </details>
@@ -408,19 +430,20 @@
                                 </label>
                                 <div class="admin-card-video-control" data-social-video="instagram">
                                     <div class="admin-card-video-heading">
-                                        <span>card background video</span>
-                                        <small data-video-status aria-live="polite">no video</small>
+                                        <span>animated card background</span>
+                                        <small data-video-status aria-live="polite">no background</small>
                                     </div>
                                     <video data-video-preview muted loop playsinline controls preload="metadata" hidden></video>
+                                    <img data-image-preview alt="" hidden>
                                     <div class="admin-card-video-actions">
                                         <label class="admin-video-picker">
-                                            <input data-video-file type="file" accept="video/*,.mp4,.m4v,.webm">
-                                            <span>choose video</span>
+                                            <input data-video-file type="file" accept="video/*,image/gif,.mp4,.m4v,.mov,.webm,.gif">
+                                            <span>choose media</span>
                                         </label>
                                         <button class="soft" type="button" data-video-upload="instagram" disabled>upload</button>
                                         <button class="soft" type="button" data-video-remove="instagram" disabled>remove</button>
                                     </div>
-                                    <small class="admin-card-video-note">MP4, M4V, or WebM · max 20 MB · muted and looped</small>
+                                    <small class="admin-card-video-note">MP4, M4V, MOV, WebM, or GIF · max 20 MB</small>
                                 </div>
                             </div>
                         </details>
@@ -450,19 +473,20 @@
                                 </label>
                                 <div class="admin-card-video-control" data-social-video="kofi">
                                     <div class="admin-card-video-heading">
-                                        <span>card background video</span>
-                                        <small data-video-status aria-live="polite">no video</small>
+                                        <span>animated card background</span>
+                                        <small data-video-status aria-live="polite">no background</small>
                                     </div>
                                     <video data-video-preview muted loop playsinline controls preload="metadata" hidden></video>
+                                    <img data-image-preview alt="" hidden>
                                     <div class="admin-card-video-actions">
                                         <label class="admin-video-picker">
-                                            <input data-video-file type="file" accept="video/*,.mp4,.m4v,.webm">
-                                            <span>choose video</span>
+                                            <input data-video-file type="file" accept="video/*,image/gif,.mp4,.m4v,.mov,.webm,.gif">
+                                            <span>choose media</span>
                                         </label>
                                         <button class="soft" type="button" data-video-upload="kofi" disabled>upload</button>
                                         <button class="soft" type="button" data-video-remove="kofi" disabled>remove</button>
                                     </div>
-                                    <small class="admin-card-video-note">MP4, M4V, or WebM · max 20 MB · muted and looped</small>
+                                    <small class="admin-card-video-note">MP4, M4V, MOV, WebM, or GIF · max 20 MB</small>
                                 </div>
                             </div>
                         </details>
@@ -601,6 +625,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="../admin-rooms.js?v=4.5"></script>
-    <script src="../admin.js?v=4.9"></script>
+    <script src="../admin.js?v=5.1"></script>
 </body>
 </html>

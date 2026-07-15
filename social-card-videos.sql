@@ -1,5 +1,5 @@
 -- Run this once in the Supabase SQL editor for the main doll.gg project.
--- Public reads are intentional: these files are decorative public-site videos.
+-- Public reads are intentional: these files are decorative public-site media.
 -- Upload, replacement, and deletion stay restricted to the dashboard admin UID.
 
 insert into storage.buckets (
@@ -14,7 +14,7 @@ values (
   'social-card-videos',
   true,
   20971520,
-  array['video/mp4', 'video/webm']
+  array['video/mp4', 'video/webm', 'video/quicktime', 'image/gif']
 )
 on conflict (id) do update
 set
