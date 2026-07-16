@@ -1931,6 +1931,15 @@ body.has-social-panel-open .site-brand-footer {
     opacity: 0.34;
     filter: saturate(0.78) brightness(1.06);
     pointer-events: none;
+    /* iOS Safari can hardware-decode an autoplaying <video> straight to the
+       screen and skip compositing its own CSS opacity/filter with the rest
+       of the layer stack -- the video shows through at something close to
+       full strength instead of 0.34, which is exactly the "clear photo
+       behind the card, not soft at all" look on a real phone even though
+       desktop (no such bug) renders the same CSS correctly. Forcing this
+       onto its own GPU layer is the standard mitigation. */
+    transform: translateZ(0);
+    -webkit-transform: translateZ(0);
 }
 
 .social-link-card.has-social-preview::after {
@@ -1980,6 +1989,16 @@ body.has-social-panel-open .site-brand-footer {
     width: 44px;
     height: 44px;
     overflow: hidden;
+    /* Forces its own GPU compositing layer instead of being flattened
+       together with the card's stacked background-video/scrim layers below
+       (.social-link-preview + the ::after scrim) during paint. iOS Safari
+       has a known history of blending stacked semi-transparent layers into
+       whatever sits above them instead of compositing it as a clean opaque
+       layer on top -- this file already has one documented case of exactly
+       that class of bug (see the loading-paw-print drop-shadow comment).
+       Cheap and harmless if the icon was already rendering correctly. */
+    transform: translateZ(0);
+    backface-visibility: hidden;
 }
 
 .social-link-icon img {
