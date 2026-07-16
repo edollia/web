@@ -230,15 +230,12 @@
                 margin-top: 10px !important;
             }
 
-            body.has-wishlist-panel-open .button-group {
-                /* Restates the *expanded* baseline only — .button-group's own
-                   calc() (styles.css) is still what actually sets
-                   margin-bottom, so this can't fight it the way a direct
-                   margin-bottom override used to (equal specificity, this
-                   file loads later, so it silently won outright and the
-                   scroll-collapse's margin change never applied while the
-                   wishlist was open). */
+            body.has-wishlist-panel-open .toggle-container {
+                /* Wishlist reclaims 38px of icon-row height plus 7px of its
+                   9px expanded gap. The body grows by this same 45px, keeping
+                   the checkout/footer edge stationary while content rises. */
                 --dwl-collapse-base-margin: 9px;
+                --dwl-collapse-distance: 45px;
             }
 
             .doll-wishlist-throne-footer-link {
@@ -322,6 +319,9 @@
             .doll-wishlist-body {
                 position: relative;
             }
+            .doll-wishlist-scroll-shell {
+                position: relative;
+            }
             /* List/masonry can hold many more items than the paged grid
                ever showed at once, so without a cap the whole panel (and
                the page space reserved for it, see syncReservedHeight)
@@ -332,45 +332,13 @@
                reach away, right under the visible items, no matter how
                long the list is. */
             .doll-wishlist-body.dwl-scroll-body {
-                --dwl-edge-top: 1;
-                --dwl-edge-bottom: 1;
-                /* var(--dwl-scroll-grow), set on .content-area (see
-                   setIconCollapseProgress in script.js), adds back however
-                   much the icon row above has shrunk by, so scrolling
-                   through the list grows this window instead of sliding a
-                   fixed-size one up past the checkout bar/footer.
-                   --panel-fill-max (setPanelFillMax in script.js) fills the
-                   viewport down to just above the checkout foot + pill on a
-                   tall screen; max() (NOT +, which double-counts scroll-grow)
-                   picks the larger, so small screens keep the 380px+grow
-                   baseline and tall screens grow to use the space. */
-                max-height: max(calc(380px + var(--dwl-scroll-grow, 0px)), var(--panel-fill-max, 0px));
+                max-height: calc(max(380px, var(--panel-fill-max, 0px)) + var(--dwl-scroll-grow, 0px));
                 overflow-y: auto;
                 overflow-x: hidden;
                 overscroll-behavior-y: contain;
                 -webkit-overflow-scrolling: touch;
                 scrollbar-width: none;
-                /* Restore the soft top/bottom card fade, but drive it from
-                   two edge-state classes instead of rebuilding this mask on
-                   every scroll frame. This keeps the pretty depth cue
-                   without the old repaint-heavy scroll path. */
-                -webkit-mask-image: linear-gradient(
-                    to bottom,
-                    rgba(0, 0, 0, var(--dwl-edge-top)) 0,
-                    #000 22px,
-                    #000 calc(100% - 22px),
-                    rgba(0, 0, 0, var(--dwl-edge-bottom)) 100%
-                );
-                mask-image: linear-gradient(
-                    to bottom,
-                    rgba(0, 0, 0, var(--dwl-edge-top)) 0,
-                    #000 22px,
-                    #000 calc(100% - 22px),
-                    rgba(0, 0, 0, var(--dwl-edge-bottom)) 100%
-                );
             }
-            .doll-wishlist-body.dwl-scroll-body.dwl-has-content-above { --dwl-edge-top: 0; }
-            .doll-wishlist-body.dwl-scroll-body.dwl-has-content-below { --dwl-edge-bottom: 0; }
             .doll-wishlist-body.dwl-scroll-body::-webkit-scrollbar { display: none; }
 
             .doll-wishlist-scroll {
@@ -1301,16 +1269,9 @@
                 display: flex;
                 justify-content: center;
             }
-            /* .dwl-scroll-body's own mask-image (below) fades its bottom edge
-               to hint "more items below" — but mask-image composites the
-               WHOLE subtree, so with the dock relocated inside this same
-               masked container, that fade swept across the sticky checkout
-               bar itself too, making it look semi-transparent/glitchy any
-               time the list wasn't scrolled all the way down (i.e. nearly
-               always while shopping). Selection mode gets its own deliberate
-               transition instead (the ::before scrim below), so turn the
-               automatic edge fade off here rather than let the two fight. */
-            .doll-wishlist-panel.has-selection .doll-wishlist-body.dwl-scroll-body.dwl-has-content-below {
+            /* Selection mode has its own checkout dissolve. Keep this mask's
+               bottom edge opaque so it never fades the sticky bar itself. */
+            .doll-wishlist-panel.has-selection .doll-wishlist-scroll-shell {
                 --dwl-edge-bottom: 1;
             }
             /* Softens the line where the sticky checkout bar overlaps the
@@ -1869,7 +1830,9 @@
         panel.className = 'doll-wishlist-panel';
         panel.setAttribute('aria-hidden', 'true');
         panel.innerHTML = `
-            <div class="doll-wishlist-body"></div>
+            <div class="doll-wishlist-scroll-shell scroll-edge-mask">
+                <div class="doll-wishlist-body"></div>
+            </div>
             <nav class="doll-wishlist-dots" aria-label="wishlist pages"></nav>
             <p class="doll-wishlist-status"></p>
             <div class="doll-wishlist-foot">
@@ -1885,7 +1848,13 @@
 
         if (typeof window.ResizeObserver === 'function') {
             panelResizeObserver?.disconnect();
-            panelResizeObserver = new ResizeObserver(() => syncReservedHeight());
+            panelResizeObserver = new ResizeObserver(() => {
+                // The shared icon morph deliberately makes this panel taller
+                // by exactly as much as it moves upward. Its bottom has not
+                // changed, so do not remeasure it inside Safari's scroll path.
+                if (window.dollIsPanelScrolling?.()) return;
+                syncReservedHeight();
+            });
             panelResizeObserver.observe(panel);
         }
         if (typeof window.MutationObserver === 'function') {
@@ -2040,17 +2009,9 @@
         const neededHeight = Math.max(60, Math.ceil(panelRect.bottom - hostRect.top + 4));
         host.style.setProperty('--dwl-wishlist-height', `${neededHeight}px`);
     }
-    // The icon row (.button-group) sits in the same .toggle-container as the
-    // panel, but as a SIBLING, not a descendant — so neither panelResizeObserver
-    // nor panelMutationObserver above (both scoped to the panel itself) ever
-    // fire when scrolling shrinks/grows it. That let .toggle-container's
-    // reserved height go stale mid-scroll: the panel visually slides up as
-    // the icon row collapses, but the reserved space beneath it doesn't
-    // shrink to match until some unrelated mutation inside the panel forces
-    // a recompute — which is exactly what read as the throne.com pill
-    // "glitching"/jumping position. Exposed so script.js's collapse tick
-    // (the single place that drives .button-group's height, for both the
-    // wishlist and the :3 panel) can keep this in sync every frame.
+    // Exposed for the shared settled-resize scheduler in script.js. It is not
+    // called by the scroll-driven icon morph; that separation keeps Safari's
+    // scroller geometry stable throughout momentum scrolling.
     window.dollSyncWishlistReservedHeight = () => syncReservedHeight();
 
     function getActivePageIndex(scroll) {
@@ -2204,16 +2165,26 @@
 
     let bodyScrollRaf = 0;
     function updateWishlistEdgeFade(body) {
-        if (!body?.classList.contains('dwl-scroll-body')) return;
-        const maxScroll = Math.max(0, body.scrollHeight - body.clientHeight);
-        const scrollTop = Math.max(0, Math.min(maxScroll, body.scrollTop));
-        body.classList.toggle('dwl-has-content-above', scrollTop > 3);
-        body.classList.toggle('dwl-has-content-below', scrollTop < maxScroll - 3);
+        if (!body) return;
+        const shell = body.closest('.doll-wishlist-scroll-shell');
+        if (!shell) return;
+        const scrollable = body.classList.contains('dwl-scroll-body');
+        const maxScroll = scrollable ? Math.max(0, body.scrollHeight - body.clientHeight) : 0;
+        const scrollTop = scrollable ? Math.max(0, Math.min(maxScroll, body.scrollTop)) : 0;
+        const hasAbove = scrollTop > 3;
+        const hasBelow = scrollTop < maxScroll - 3;
+        if (shell.classList.contains('has-content-above') !== hasAbove) {
+            shell.classList.toggle('has-content-above', hasAbove);
+        }
+        if (shell.classList.contains('has-content-below') !== hasBelow) {
+            shell.classList.toggle('has-content-below', hasBelow);
+        }
     }
 
     function onWishlistBodyScroll(event) {
         const body = event.currentTarget;
         if (!body.classList.contains('dwl-scroll-body')) return;
+        window.dollMarkPanelScrollActivity?.();
         if (bodyScrollRaf) return;
         bodyScrollRaf = window.requestAnimationFrame(() => {
             bodyScrollRaf = 0;
@@ -2338,7 +2309,8 @@
             && (wishlistViewMode === 'list' || wishlistViewMode === 'masonry');
         body.classList.toggle('dwl-scroll-body', readyScrollable);
         body.classList.remove('dwl-ready-in');
-        body.classList.remove('dwl-has-content-above', 'dwl-has-content-below');
+        body.closest('.doll-wishlist-scroll-shell')
+            ?.classList.remove('has-content-above', 'has-content-below');
         if (!body.dataset.dwlBodyScrollBound) {
             body.dataset.dwlBodyScrollBound = '1';
             body.addEventListener('scroll', onWishlistBodyScroll, { passive: true });
@@ -2770,8 +2742,10 @@
         checkoutStatusMessage = '';
         previewOpenCount = 0;
         el.classList.remove('has-selection');
-        window.dollCaptureScrollGrowBaseline?.();
         window.dollResetIconsCollapse?.();
+        // Apply the wishlist's stable open-state gap/footer before measuring
+        // so the frozen panel geometry matches what is actually displayed.
+        document.body.classList.add('has-wishlist-panel-open');
 
         // Reuse already-fetched items on repeat opens. First opens get one
         // stable paw loader rather than a fake card layout that can morph
@@ -2783,7 +2757,6 @@
         el.classList.add('dwl-measure-open');
         syncReservedHeight(true);
         el.classList.remove('dwl-measure-open');
-        document.body.classList.add('has-wishlist-panel-open');
 
         // Commit the hidden starting state before adding .active. This keeps
         // repeat opens reliable and gives opacity/transform one clean start.
@@ -2814,7 +2787,6 @@
         cancelSwipeHintSequence();
         document.body.classList.remove('has-wishlist-panel-open', 'has-wishlist-selection');
         window.dollResetIconsCollapse?.();
-        window.dollResetScrollGrow?.();
         panel?.querySelector('.doll-wishlist-body')?.style.removeProperty('--panel-fill-max');
         const wishlistButton = getWishlistButton();
         wishlistButton?.classList.remove('dwl-open', 'show-glitter');
