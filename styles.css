@@ -938,18 +938,35 @@ button {
 }
 
 .toggle-container {
-    /* One scroll-linked value drives both halves of the morph. The icon row
-       gives up real flow space while the open panel inherits that exact
-       distance as extra scroll-window height, so its top rises but its bottom
-       (and the footer below it) stays planted. Panel-specific open states only
-       change the total reclaim distance below. */
+    /* The scroll-linked value is visual only. Open panels allocate their
+       fully-grown viewport once, then the compositor reveals it by moving an
+       inner layer. No flow geometry changes while a finger is scrolling. */
     --dwl-collapse: 0;
     --dwl-collapse-distance: 53px;
     --dwl-scroll-grow: calc(var(--dwl-collapse-distance) * var(--dwl-collapse));
+    --dwl-motion-hidden: calc(var(--dwl-collapse-distance) - var(--dwl-scroll-grow));
+    --dwl-collapse-easing: linear(
+        0,
+        0.0078 5%,
+        0.0313 10%,
+        0.0703 15%,
+        0.125 20%,
+        0.25 30%,
+        0.375 40%,
+        0.5 50%,
+        0.625 60%,
+        0.75 70%,
+        0.875 80%,
+        0.9297 85%,
+        0.9688 90%,
+        0.9922 95%,
+        1
+    );
     position: relative;
     min-height: 350px;
     margin: 0 auto;
     width: min(94vw, 360px);
+    timeline-scope: --dwl-social-scroll, --dwl-wishlist-scroll, --dwl-posts-scroll;
 }
 
 body.has-posts-panel-open {
@@ -1384,10 +1401,7 @@ body.has-posts-panel-open .site-brand-footer {
 }
 
 .button-group {
-    /* Closed-page geometry stays exactly as it was. While a scroll panel is
-       open, the rule below combines row height + collapsible gap into ONE
-       block-size calculation. That preserves every endpoint while avoiding
-       three simultaneous height/margin/padding mutations on each iOS frame. */
+    /* Closed-page geometry stays exactly as it was. */
     position: relative;
     top: -8px;
     display: flex;
@@ -1405,11 +1419,10 @@ body.has-posts-panel-open .site-brand-footer {
 body.has-social-panel-open .button-group,
 body.has-wishlist-panel-open .button-group,
 body.has-posts-panel-open .button-group {
-    height: calc(
-        22px
-        + (var(--dwl-collapse-distance) * (1 - var(--dwl-collapse, 0)))
-    );
-    min-height: 22px;
+    /* This is the expanded endpoint, frozen for the whole open session. The
+       apparent reclaim is produced by the panel motion viewport below. */
+    height: calc(22px + var(--dwl-collapse-distance));
+    min-height: calc(22px + var(--dwl-collapse-distance));
     margin-bottom: 2px;
     padding-block: 0;
 }
@@ -1417,9 +1430,7 @@ body.has-posts-panel-open .button-group {
 .dwl-icons-row {
     position: absolute;
     left: 50%;
-    /* Matches the old 60px -> 22px row center exactly, even though the open
-       group's single block-size now also absorbs its collapsible gap. */
-    top: calc(30px - (19px * var(--dwl-collapse, 0)));
+    top: 30px;
     display: flex;
     align-items: center;
     gap: 16px;
@@ -1427,7 +1438,7 @@ body.has-posts-panel-open .button-group {
     overflow: visible;
     opacity: calc(1 - var(--dwl-collapse, 0));
     transform:
-        translate(-50%, calc(-50% - (7px * var(--dwl-collapse, 0))))
+        translate(-50%, calc(-50% - (26px * var(--dwl-collapse, 0))))
         scale(calc(1 - (0.12 * var(--dwl-collapse, 0))));
     transform-origin: center;
     will-change: transform, opacity;
@@ -1446,7 +1457,7 @@ body.has-posts-panel-open .button-group {
     box-sizing: border-box;
     position: absolute;
     left: 50%;
-    top: calc(30px - (19px * var(--dwl-collapse, 0)));
+    top: 30px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -1455,7 +1466,9 @@ body.has-posts-panel-open .button-group {
     padding: 0;
     overflow: hidden;
     opacity: var(--dwl-collapse, 0);
-    transform: translate(-50%, -50%) scale(calc(0.74 + (0.26 * var(--dwl-collapse, 0))));
+    transform:
+        translate(-50%, calc(-50% - (19px * var(--dwl-collapse, 0))))
+        scale(calc(0.74 + (0.26 * var(--dwl-collapse, 0))));
     border: 1px solid rgba(255, 180, 212, 0.48);
     border-radius: 999px;
     background:
@@ -1472,7 +1485,7 @@ body.has-posts-panel-open .button-group {
 }
 
 .dwl-icons-pill:active {
-    transform: translate(-50%, -50%) scale(0.9);
+    transform: translate(-50%, calc(-50% - (19px * var(--dwl-collapse, 0)))) scale(0.9);
 }
 
 /* Pill content is a genuine mesh of the same three icons, shrunk and
@@ -1781,10 +1794,7 @@ body.has-posts-panel-open .button-group {
 .social-links-panel {
     position: relative;
     width: 100%;
-    /* Reuse every pixel reclaimed above. --panel-fill-max itself is measured
-       against the expanded panel top, so adding --dwl-scroll-grow once keeps
-       this panel's bottom stationary throughout the morph. */
-    max-height: calc(max(300px, var(--panel-fill-max, 0px)) + var(--dwl-scroll-grow, 0px));
+    max-height: max(300px, var(--panel-fill-max, 0px));
     overflow-y: auto;
     overflow-x: hidden;
     overscroll-behavior-y: contain;
@@ -1797,40 +1807,98 @@ body.has-posts-panel-open .button-group {
     display: none;
 }
 
-/* A stationary transparency mask gives all three scroll surfaces the same
-   genuine content fade. It replaces the coloured overlay strips (which made
-   social cards look washed out and exposed a horizontal colour seam). The
-   gradient string never changes while scrolling; JS only toggles each edge
-   between opaque and transparent when content crosses a 3px threshold. */
-.scroll-edge-mask {
+/* The shell is enlarged once when a sufficiently long scroller opens. Its
+   negative margin keeps the bottom and every following element in exactly the
+   same place. Only this inner viewport then moves: at progress 0 the extra
+   area sits clipped below the shell; at progress 1 it has slid fully into the
+   newly exposed space above. Scroll-time layout geometry never changes. */
+.dwl-motion-shell.dwl-motion-ready {
+    height: calc(var(--dwl-motion-base-height) + var(--dwl-collapse-distance));
+    margin-top: calc(-1 * var(--dwl-collapse-distance));
+    overflow: hidden;
+}
+
+.dwl-motion-shell > .dwl-motion-viewport {
+    position: relative;
+    width: 100%;
+}
+
+.dwl-motion-shell.dwl-motion-ready > .dwl-motion-viewport {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    transform: translate3d(0, var(--dwl-motion-hidden), 0);
+    will-change: transform;
+}
+
+.dwl-motion-ready > .dwl-motion-viewport > .social-links-panel,
+.dwl-motion-ready > .dwl-motion-viewport > .popup-content,
+.dwl-motion-ready > .dwl-motion-viewport > .doll-wishlist-body {
+    height: 100%;
+    max-height: none;
+}
+
+/* Split transparency masks keep the upper fade attached to the moving visual
+   viewport and the lower fade attached to the stationary panel bottom. They
+   contain no colour overlay, so pale social cards cannot acquire a wash or a
+   horizontal colour seam. JS only toggles binary edge-state classes. */
+.scroll-edge-bottom-mask,
+.scroll-edge-top-mask {
     --dwl-edge-top: 1;
     --dwl-edge-bottom: 1;
-    -webkit-mask-image: linear-gradient(
-        to bottom,
-        rgba(0, 0, 0, var(--dwl-edge-top)) 0,
-        #000 22px,
-        #000 calc(100% - 22px),
-        rgba(0, 0, 0, var(--dwl-edge-bottom)) 100%
-    );
-    mask-image: linear-gradient(
-        to bottom,
-        rgba(0, 0, 0, var(--dwl-edge-top)) 0,
-        #000 22px,
-        #000 calc(100% - 22px),
-        rgba(0, 0, 0, var(--dwl-edge-bottom)) 100%
-    );
     -webkit-mask-repeat: no-repeat;
     mask-repeat: no-repeat;
     -webkit-mask-size: 100% 100%;
     mask-size: 100% 100%;
 }
 
-.scroll-edge-mask.has-content-above {
+.scroll-edge-bottom-mask {
+    -webkit-mask-image: linear-gradient(
+        to bottom,
+        #000 0,
+        #000 calc(100% - 22px),
+        rgba(0, 0, 0, var(--dwl-edge-bottom)) 100%
+    );
+    mask-image: linear-gradient(
+        to bottom,
+        #000 0,
+        #000 calc(100% - 22px),
+        rgba(0, 0, 0, var(--dwl-edge-bottom)) 100%
+    );
+}
+
+.scroll-edge-top-mask {
+    -webkit-mask-image: linear-gradient(
+        to bottom,
+        rgba(0, 0, 0, var(--dwl-edge-top)) 0,
+        #000 22px,
+        #000 100%
+    );
+    mask-image: linear-gradient(
+        to bottom,
+        rgba(0, 0, 0, var(--dwl-edge-top)) 0,
+        #000 22px,
+        #000 100%
+    );
+}
+
+.scroll-edge-bottom-mask.has-content-above {
     --dwl-edge-top: 0;
 }
 
-.scroll-edge-mask.has-content-below {
+.scroll-edge-bottom-mask.has-content-below {
     --dwl-edge-bottom: 0;
+}
+
+.scroll-edge-bottom-mask > .scroll-edge-top-mask,
+.scroll-edge-bottom-mask > .dwl-motion-viewport > .scroll-edge-top-mask {
+    --dwl-edge-top: inherit;
+}
+
+.social-links-panel {
+    scroll-timeline-name: --dwl-social-scroll;
+    scroll-timeline-axis: block;
 }
 
 /* Socials starts with the smallest expanded gap, so its 38px row reduction
@@ -2857,7 +2925,7 @@ body.first-visit-tour-active .tour-highlight-target {
     /* Free-floating, no card chrome — matches .doll-wishlist-panel's own
        background-less treatment. Only .posts-content (below) scrolls. */
     width: min(88vw, 300px);
-    max-height: calc(max(420px, var(--panel-fill-max, 0px)) + var(--dwl-scroll-grow, 0px));
+    max-height: max(420px, var(--panel-fill-max, 0px));
     position: relative;
     display: flex;
     flex-direction: column;
@@ -2947,6 +3015,93 @@ body.first-visit-tour-active .tour-highlight-target {
     min-height: 0;
     position: relative;
     z-index: 1;
+    scroll-timeline-name: --dwl-posts-scroll;
+    scroll-timeline-axis: block;
+}
+
+.doll-wishlist-body.dwl-scroll-body {
+    scroll-timeline-name: --dwl-wishlist-scroll;
+    scroll-timeline-axis: block;
+}
+
+.dwl-motion-ready .doll-wishlist-foot-dock {
+    transform: translate3d(0, calc(-1 * var(--dwl-motion-hidden)), 0);
+    will-change: transform;
+}
+
+/* Safari 26+ can bind these compositor-friendly properties directly to the
+   native scroller. Older Safari keeps the identical transform-only result via
+   the rAF fallback driven by --dwl-collapse. In both paths, layout is frozen. */
+@keyframes dwlIconsRowCollapse {
+    from {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
+    }
+    to {
+        opacity: 0;
+        transform: translate(-50%, calc(-50% - 26px)) scale(0.88);
+    }
+}
+
+@keyframes dwlIconsPillCollapse {
+    from {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(0.74);
+    }
+    to {
+        opacity: 1;
+        transform: translate(-50%, calc(-50% - 19px)) scale(1);
+    }
+}
+
+@keyframes dwlPanelViewportReveal {
+    from { transform: translate3d(0, var(--dwl-collapse-distance), 0); }
+    to { transform: translate3d(0, 0, 0); }
+}
+
+@keyframes dwlWishlistDockReveal {
+    from { transform: translate3d(0, calc(-1 * var(--dwl-collapse-distance)), 0); }
+    to { transform: translate3d(0, 0, 0); }
+}
+
+@supports ((animation-timeline: scroll()) and (timeline-scope: --dwl-test)) {
+    body.has-dwl-scroll-motion .dwl-icons-row {
+        animation: dwlIconsRowCollapse 1ms var(--dwl-collapse-easing) both;
+    }
+
+    body.has-dwl-scroll-motion .dwl-icons-pill {
+        animation: dwlIconsPillCollapse 1ms var(--dwl-collapse-easing) both;
+    }
+
+    body.has-dwl-scroll-motion .dwl-motion-ready > .dwl-motion-viewport {
+        animation: dwlPanelViewportReveal 1ms var(--dwl-collapse-easing) both;
+    }
+
+    body.has-dwl-scroll-motion .dwl-motion-ready .doll-wishlist-foot-dock {
+        animation: dwlWishlistDockReveal 1ms var(--dwl-collapse-easing) both;
+    }
+
+    body.has-social-panel-open.has-dwl-scroll-motion .dwl-icons-row,
+    body.has-social-panel-open.has-dwl-scroll-motion .dwl-icons-pill,
+    body.has-social-panel-open.has-dwl-scroll-motion .dwl-motion-ready > .dwl-motion-viewport {
+        animation-timeline: --dwl-social-scroll;
+        animation-range: 0px var(--dwl-motion-range, 72px);
+    }
+
+    body.has-wishlist-panel-open.has-dwl-scroll-motion .dwl-icons-row,
+    body.has-wishlist-panel-open.has-dwl-scroll-motion .dwl-icons-pill,
+    body.has-wishlist-panel-open.has-dwl-scroll-motion .dwl-motion-ready > .dwl-motion-viewport,
+    body.has-wishlist-panel-open.has-dwl-scroll-motion .dwl-motion-ready .doll-wishlist-foot-dock {
+        animation-timeline: --dwl-wishlist-scroll;
+        animation-range: 0px var(--dwl-motion-range, 90px);
+    }
+
+    body.has-posts-panel-open.has-dwl-scroll-motion .dwl-icons-row,
+    body.has-posts-panel-open.has-dwl-scroll-motion .dwl-icons-pill,
+    body.has-posts-panel-open.has-dwl-scroll-motion .dwl-motion-ready > .dwl-motion-viewport {
+        animation-timeline: --dwl-posts-scroll;
+        animation-range: 0px var(--dwl-motion-range, 106px);
+    }
 }
 
 .tab-button {

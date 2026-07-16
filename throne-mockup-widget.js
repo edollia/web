@@ -331,7 +331,7 @@
                reach away, right under the visible items, no matter how
                long the list is. */
             .doll-wishlist-body.dwl-scroll-body {
-                max-height: calc(max(380px, var(--panel-fill-max, 0px)) + var(--dwl-scroll-grow, 0px));
+                max-height: max(380px, var(--panel-fill-max, 0px));
                 overflow-y: auto;
                 overflow-x: hidden;
                 overscroll-behavior-y: contain;
@@ -1829,8 +1829,10 @@
         panel.className = 'doll-wishlist-panel';
         panel.setAttribute('aria-hidden', 'true');
         panel.innerHTML = `
-            <div class="doll-wishlist-scroll-shell scroll-edge-mask">
-                <div class="doll-wishlist-body"></div>
+            <div class="doll-wishlist-scroll-shell dwl-motion-shell scroll-edge-bottom-mask">
+                <div class="dwl-motion-viewport scroll-edge-top-mask">
+                    <div class="doll-wishlist-body"></div>
+                </div>
             </div>
             <nav class="doll-wishlist-dots" aria-label="wishlist pages"></nav>
             <p class="doll-wishlist-status"></p>
@@ -1909,6 +1911,10 @@
         const postsButton = document.getElementById('posts-button');
         if (postsPopup?.classList.contains('active')) {
             forceInstantClose(postsPopup);
+            window.dollClearScrollMotion?.(postsPopup);
+            document.body.classList.remove('has-posts-panel-open');
+            postsPopup.closest('.toggle-container')?.style.removeProperty('--posts-panel-height');
+            postsPopup.querySelector('.popup-content')?.style.removeProperty('--panel-fill-max');
             if (postsButton) postsButton.textContent = ':3';
         }
     }
@@ -1991,17 +1997,19 @@
         const host = panel.closest('.toggle-container');
         if (!host) return;
         // The scroll cap lives on .doll-wishlist-body, but the checkout foot
-        // (+ dots/status) renders BELOW it inside the panel. Measure that
-        // below-body chrome first (its height is independent of the body's
-        // max-height), then grow the body to fill the viewport minus that
-        // chrome + the footer pill. Growing the body only extends its bottom,
-        // so re-reading panelRect.bottom after gives the reserved height.
+        // (+ dots/status) renders below its stationary shell. Measure that
+        // chrome, set the base cap, then allocate the final viewport once.
         const body = panel.querySelector('.doll-wishlist-body');
+        const shell = body?.closest('.doll-wishlist-scroll-shell');
         if (body) {
-            const preBodyBottom = body.getBoundingClientRect().bottom;
+            const preShellBottom = shell?.getBoundingClientRect().bottom
+                ?? body.getBoundingClientRect().bottom;
             const prePanelBottom = panel.getBoundingClientRect().bottom;
-            const belowBody = Math.max(0, prePanelBottom - preBodyBottom);
+            const belowBody = Math.max(0, prePanelBottom - preShellBottom);
             window.dollSetPanelFillMax?.(body, { reservedPad: 4, openMargin: 10, bottomGap: 16, extraReserve: belowBody });
+            window.dollConfigureScrollMotion?.(shell, body, body, {
+                enabled: body.classList.contains('dwl-scroll-body'),
+            });
         }
         const panelRect = panel.getBoundingClientRect();
         const hostRect = host.getBoundingClientRect();
@@ -2786,6 +2794,7 @@
         cancelSwipeHintSequence();
         document.body.classList.remove('has-wishlist-panel-open', 'has-wishlist-selection');
         window.dollResetIconsCollapse?.();
+        window.dollClearScrollMotion?.(panel?.querySelector('.doll-wishlist-scroll-shell'));
         panel?.querySelector('.doll-wishlist-body')?.style.removeProperty('--panel-fill-max');
         const wishlistButton = getWishlistButton();
         wishlistButton?.classList.remove('dwl-open', 'show-glitter');

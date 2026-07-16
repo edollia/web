@@ -1194,9 +1194,9 @@ document.addEventListener("DOMContentLoaded", async function() {
     renderEntryGateMode();
 
     // ===== TOP ICON ROW COLLAPSE (shared by wishlist + socials + :3) =====
-    // One shared progress value drives BOTH the real upward reclaim and the
-    // equal panel-height compensation in CSS: content rises, the scroll window
-    // grows by the same amount, and the panel bottom/footer do not move.
+    // One shared progress value drives a visual morph only. Each eligible
+    // panel allocates its final scroll viewport once when it opens; scrolling
+    // thereafter changes transforms/opacity, never layout or scroller size.
     //
     // A single 48px linear range made the content briefly travel at almost 2x
     // finger speed on iPhone (native scroll + as much as 53px of panel rise).
@@ -1213,8 +1213,29 @@ document.addEventListener("DOMContentLoaded", async function() {
     const ICON_COLLAPSE_PEAK_RATE = 1 / (1 - ICON_COLLAPSE_RAMP);
     let iconCollapseTweenRaf = 0;
     let iconCollapseDisplayed = 0;
+    const hasNativeScrollCollapse = Boolean(
+        window.CSS?.supports?.('animation-timeline: scroll()')
+        && window.CSS?.supports?.('timeline-scope: --dwl-test')
+    );
+
+    function getActiveMotionShell() {
+        if (document.body.classList.contains('has-social-panel-open')) {
+            return document.querySelector('.social-links-shell');
+        }
+        if (document.body.classList.contains('has-wishlist-panel-open')) {
+            return document.querySelector('.doll-wishlist-scroll-shell');
+        }
+        if (document.body.classList.contains('has-posts-panel-open')) {
+            return document.getElementById('posts-popup');
+        }
+        return null;
+    }
 
     function getIconCollapseRange() {
+        const configuredRange = parseFloat(
+            getActiveMotionShell()?.style.getPropertyValue('--dwl-motion-range') || ''
+        );
+        if (configuredRange > 0) return configuredRange;
         if (document.body.classList.contains('has-social-panel-open')) {
             return ICON_COLLAPSE_RANGES.social;
         }
@@ -1237,6 +1258,72 @@ document.addEventListener("DOMContentLoaded", async function() {
             return 1 - ((rate * remaining * remaining) / (2 * ramp));
         }
         return ((rate * ramp) / 2) + (rate * (t - ramp));
+    }
+
+    function refreshMotionBodyState() {
+        document.body.classList.toggle(
+            'has-dwl-scroll-motion',
+            Boolean(document.querySelector('.dwl-motion-shell.dwl-motion-ready'))
+        );
+    }
+
+    function clearScrollMotion(shell) {
+        if (!shell) return;
+        shell.classList.remove('dwl-motion-ready');
+        shell.style.removeProperty('--dwl-motion-base-height');
+        shell.style.removeProperty('--dwl-motion-range');
+        refreshMotionBodyState();
+    }
+
+    // Configure while the panel is stationary. The base measurement is saved
+    // once and the real scroller is immediately given its final height. The
+    // moving child initially offsets that extra height below the shell, so the
+    // open-state appearance is unchanged until scrolling begins.
+    function configureScrollMotion(shell, scroller, baseElement = scroller, { enabled = true } = {}) {
+        if (!shell || !scroller || !baseElement) return false;
+        clearScrollMotion(shell);
+        if (!enabled) return false;
+
+        const baseHeight = baseElement.getBoundingClientRect().height;
+        const distance = parseFloat(
+            window.getComputedStyle(shell).getPropertyValue('--dwl-collapse-distance')
+        ) || 0;
+        const baseOverflow = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+        const finalOverflow = Math.max(0, baseOverflow - distance);
+        const desiredRange = document.body.classList.contains('has-social-panel-open')
+            ? ICON_COLLAPSE_RANGES.social
+            : document.body.classList.contains('has-wishlist-panel-open')
+                ? ICON_COLLAPSE_RANGES.wishlist
+                : ICON_COLLAPSE_RANGES.posts;
+
+        // If the final, enlarged viewport cannot still scroll through the full
+        // conversion range, leave the ordinary panel alone. This prevents a
+        // short list from gaining unreachable clipped content or a too-fast
+        // partial morph merely for the sake of showing the pill.
+        if (!(baseHeight > 0 && distance > 0 && finalOverflow >= desiredRange - 1)) {
+            refreshMotionBodyState();
+            return false;
+        }
+
+        shell.style.setProperty('--dwl-motion-base-height', `${baseHeight.toFixed(2)}px`);
+        shell.style.setProperty('--dwl-motion-range', `${desiredRange}px`);
+        shell.classList.add('dwl-motion-ready');
+        refreshMotionBodyState();
+        return true;
+    }
+    window.dollConfigureScrollMotion = configureScrollMotion;
+    window.dollClearScrollMotion = clearScrollMotion;
+
+    function getCurrentMotionGrow(panel) {
+        const shell = panel?.closest('.dwl-motion-shell');
+        if (!shell?.classList.contains('dwl-motion-ready')) return 0;
+        const scroller = shell.querySelector('.social-links-panel, .doll-wishlist-body, .posts-content');
+        const distance = parseFloat(
+            window.getComputedStyle(shell).getPropertyValue('--dwl-collapse-distance')
+        ) || 0;
+        const range = parseFloat(shell.style.getPropertyValue('--dwl-motion-range')) || getIconCollapseRange();
+        const progress = easeIconCollapseProgress((scroller?.scrollTop || 0) / range);
+        return distance * progress;
     }
 
     // Grow the open panel's scroll window to fill the real screen height
@@ -1262,13 +1349,10 @@ document.addEventListener("DOMContentLoaded", async function() {
         const footer = document.querySelector('.site-brand-footer');
         const viewportHeight = window.visualViewport?.height || window.innerHeight;
         const renderedPanelTop = panel.getBoundingClientRect().top;
-        // A collapsed icon row has already moved the panel upward. Normalize
-        // back to its expanded top before calculating the base fill height;
-        // CSS adds --dwl-scroll-grow exactly once afterward. Without this,
-        // a settled viewport sync while scrolled would count the reclaim twice.
-        const scrollGrow = parseFloat(
-            window.getComputedStyle(panel).getPropertyValue('--dwl-scroll-grow')
-        ) || 0;
+        // A ready motion viewport may already be visually translated upward.
+        // Normalize that transform back to its expanded-state top before
+        // calculating a new stationary fill cap.
+        const scrollGrow = getCurrentMotionGrow(panel);
         const panelTop = renderedPanelTop + scrollGrow;
         const footerHeight = footer ? (footer.getBoundingClientRect().height || 0) : 44;
         const avail = viewportHeight - panelTop - (footerHeight + reservedPad + openMargin + bottomGap + extraReserve);
@@ -1312,24 +1396,26 @@ document.addEventListener("DOMContentLoaded", async function() {
     window.addEventListener('resize', schedulePanelFillSync);
     window.visualViewport?.addEventListener('resize', schedulePanelFillSync);
 
-    function setIconCollapseProgress(progress) {
+    function setPillInteraction(progress, group = document.querySelector('.button-group')) {
+        if (!group) return;
+        const pill = document.getElementById('dwl-icons-pill');
+        if (!pill) return;
+        const interactive = progress > 0.6;
+        if (group.classList.contains('icons-pill-active') !== interactive) {
+            group.classList.toggle('icons-pill-active', interactive);
+            pill.style.pointerEvents = interactive ? 'auto' : 'none';
+            pill.tabIndex = interactive ? 0 : -1;
+        }
+    }
+
+    function setIconCollapseProgress(progress, { writeVisual = true } = {}) {
         const clamped = Math.max(0, Math.min(1, progress));
         iconCollapseDisplayed = clamped;
         const host = document.querySelector('.toggle-container');
         const group = document.querySelector('.button-group');
         if (!host || !group) return;
-        // Set this on the common ancestor so the icon group and all three
-        // sibling panel implementations consume the exact same progress.
-        host.style.setProperty('--dwl-collapse', clamped.toFixed(4));
-        const pill = document.getElementById('dwl-icons-pill');
-        if (pill) {
-            const interactive = clamped > 0.6;
-            if (group.classList.contains('icons-pill-active') !== interactive) {
-                group.classList.toggle('icons-pill-active', interactive);
-                pill.style.pointerEvents = interactive ? 'auto' : 'none';
-                pill.tabIndex = interactive ? 0 : -1;
-            }
-        }
+        if (writeVisual) host.style.setProperty('--dwl-collapse', clamped.toFixed(4));
+        setPillInteraction(clamped, group);
     }
 
     function cancelIconCollapseTween() {
@@ -1358,8 +1444,17 @@ document.addEventListener("DOMContentLoaded", async function() {
     // behind Safari momentum and continue repainting after the gesture ends.
     function setIconsScrollProgress(scrollTop) {
         cancelIconCollapseTween();
+        const shell = getActiveMotionShell();
+        if (!shell?.classList.contains('dwl-motion-ready')) {
+            setIconCollapseProgress(0);
+            return;
+        }
         const linearProgress = Math.max(0, Math.min(1, scrollTop / getIconCollapseRange()));
-        setIconCollapseProgress(easeIconCollapseProgress(linearProgress));
+        setIconCollapseProgress(easeIconCollapseProgress(linearProgress), {
+            // Native scroll timelines own the visual properties directly and
+            // do not need main-thread style writes on every scroll frame.
+            writeVisual: !hasNativeScrollCollapse,
+        });
     }
 
     function resetIconsCollapse() {
@@ -1425,7 +1520,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         postsScrollRaf = window.requestAnimationFrame(() => {
             postsScrollRaf = 0;
             setIconsScrollProgress(el.scrollTop);
-            updateScrollEdgeState(el, postsScrollShell);
+            updateScrollEdgeState(el, postsPanel);
         });
     }, { passive: true });
 
@@ -1443,21 +1538,23 @@ document.addEventListener("DOMContentLoaded", async function() {
         const host = postsPanel.closest('.toggle-container');
         const card = postsPanel.querySelector('.popup-content');
         if (!host || !card) return;
-        // Establish the expanded-state fill cap first, then reserve the
-        // resulting panel bottom. During scrolling CSS keeps that bottom fixed
-        // by pairing every upward pixel with one pixel of added height.
+        // Establish the base fill cap, then allocate the final motion viewport
+        // once. Its negative margin and added height cancel exactly, so this
+        // outer bottom is identical before, during and after the conversion.
         setPanelFillMax(card, { reservedPad: 14, openMargin: 18, bottomGap: 16 });
-        const cardRect = card.getBoundingClientRect();
+        configureScrollMotion(postsPanel, postsContentEl, card);
+        const panelRect = postsPanel.getBoundingClientRect();
         const hostRect = host.getBoundingClientRect();
-        const neededHeight = Math.max(310, Math.ceil(cardRect.bottom - hostRect.top + 14));
+        const neededHeight = Math.max(310, Math.ceil(panelRect.bottom - hostRect.top + 14));
         host.style.setProperty('--posts-panel-height', `${neededHeight}px`);
-        updateScrollEdgeState(postsContentEl, postsScrollShell);
+        updateScrollEdgeState(postsContentEl, postsPanel);
     }
 
     function setPostsPanelLayoutOpen(open) {
         document.body.classList.toggle('has-posts-panel-open', open);
         const host = postsPanel?.closest('.toggle-container');
         if (!open) {
+            clearScrollMotion(postsPanel);
             host?.style.removeProperty('--posts-panel-height');
             postsPanel?.querySelector('.popup-content')?.style.removeProperty('--panel-fill-max');
             postsPanelResizeObserver?.disconnect();
@@ -1470,10 +1567,9 @@ document.addEventListener("DOMContentLoaded", async function() {
         if (card && typeof window.ResizeObserver === 'function') {
             postsPanelResizeObserver?.disconnect();
             postsPanelResizeObserver = new ResizeObserver(() => {
-                // The intended scroll morph changes the card's height, but
-                // not its bottom. Ignore that known resize so it cannot put
-                // geometry reads back into Safari's scroll path.
-                if (panelScrolling) return;
+                // Configuring the final viewport changes this card once. It
+                // remains frozen afterward, so that known resize is ignored.
+                if (panelScrolling || postsPanel.classList.contains('dwl-motion-ready')) return;
                 syncPostsPanelSpace();
             });
             postsPanelResizeObserver.observe(card);
@@ -1507,7 +1603,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         resetIconsCollapse();
         if (postsContentEl) {
             postsContentEl.scrollTop = 0;
-            updateScrollEdgeState(postsContentEl, postsScrollShell);
+            updateScrollEdgeState(postsContentEl, postsPanel);
         }
         if (!postsPanel || !postsButton) return;
         postsPanel.classList.remove('active');
@@ -1995,10 +2091,10 @@ document.addEventListener("DOMContentLoaded", async function() {
         if (!force && !socialLinksShell.classList.contains('active')) return;
         const host = socialLinksPanel.closest('.toggle-container');
         if (!host) return;
-        // Establish the expanded-state fill cap first, then reserve the
-        // resulting shell bottom. The scroll-linked grow/reclaim pair keeps
-        // that bottom unchanged afterward.
+        // Establish the base fill cap, then allocate the final viewport once.
+        // The shell's stationary bottom is what the host reserves.
         setPanelFillMax(socialLinksPanel, { reservedPad: 4, openMargin: 10, bottomGap: 16 });
+        configureScrollMotion(socialLinksShell, socialLinksPanel, socialLinksPanel);
         const panelRect = socialLinksShell.getBoundingClientRect();
         const hostRect = host.getBoundingClientRect();
         const neededHeight = Math.max(60, Math.ceil(panelRect.bottom - hostRect.top + 4));
@@ -2035,6 +2131,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         socialsButton.setAttribute('aria-label', 'Open socials');
         socialLinksShell?.classList.remove('active');
         socialLinksPanel?.setAttribute('aria-hidden', 'true');
+        clearScrollMotion(socialLinksShell);
         document.body.classList.remove('has-social-panel-open');
         resetIconsCollapse();
         if (socialLinksPanel) {
