@@ -972,7 +972,14 @@ body.has-posts-panel-open .site-brand-footer {
 .site-brand-footer {
     display: flex;
     justify-content: center;
-    margin: 56px auto 0;
+    /* --footer-bottom-margin is computed in script.js
+       (syncFooterBottomAnchor): how much room is actually free between the
+       resting content and the real viewport bottom. On a tall screen this
+       pushes the footer down to use that space instead of leaving it dead;
+       on a short screen there's no slack to give and it falls back to the
+       original 56px, unchanged from before. body.has-*-panel-open still
+       overrides this directly (see below) while a panel is open. */
+    margin: var(--footer-bottom-margin, 56px) auto 0;
     padding-bottom: max(14px, env(safe-area-inset-bottom));
     opacity: 0;
     transform: translateY(6px);
@@ -2963,6 +2970,31 @@ body.first-visit-tour-active .tour-highlight-target {
     min-height: 0;
     position: relative;
     z-index: 1;
+    /* Edge fade lives here as a static gradient referencing two custom
+       properties (0..1, set continuously from scroll position — see
+       updateScrollEdgeFade in script.js) instead of having JS rebuild the
+       whole mask-image string every scroll frame. Safari has to
+       reparse/recompile the entire mask whenever its string value changes,
+       and doing that on nearly every frame while inside the 22px fade zone
+       was what made the very first scroll (and scrolling back to the top)
+       janky on Safari specifically — Chrome's repaint path for the same
+       string rewrite is cheap, so it never showed up there locally. */
+    --posts-edge-top: 0;
+    --posts-edge-bottom: 0;
+    -webkit-mask-image: linear-gradient(
+        to bottom,
+        rgba(0, 0, 0, calc(1 - var(--posts-edge-top))) 0,
+        black 22px,
+        black calc(100% - 22px),
+        rgba(0, 0, 0, calc(1 - var(--posts-edge-bottom))) 100%
+    );
+    mask-image: linear-gradient(
+        to bottom,
+        rgba(0, 0, 0, calc(1 - var(--posts-edge-top))) 0,
+        black 22px,
+        black calc(100% - 22px),
+        rgba(0, 0, 0, calc(1 - var(--posts-edge-bottom))) 100%
+    );
 }
 
 .tab-button {

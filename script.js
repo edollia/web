@@ -1057,10 +1057,12 @@ document.addEventListener("DOMContentLoaded", async function() {
                 if (mainScreen) {
                     mainScreen.classList.remove('ui-ready', 'note-ready');
                     mainScreen.style.display = "block";
+                    window.dollSyncFooterBottomAnchor?.();
                     setTimeout(() => mainScreen.classList.add('ui-ready'), 780);
                     setTimeout(() => {
                         mainScreen.classList.add('note-ready');
                         scheduleFirstVisitTour();
+                        window.dollSyncFooterBottomAnchor?.();
                     }, 1080);
                 }
 
@@ -1251,6 +1253,42 @@ document.addEventListener("DOMContentLoaded", async function() {
     window.dollCaptureScrollGrowBaseline = captureScrollGrowBaseline;
     window.dollResetScrollGrow = resetScrollGrow;
 
+    // The doll.gg footer pill used to sit at a fixed margin below the
+    // content no matter the viewport height -- fine on a short screen where
+    // the content already fills it, but on a tall screen it left the footer
+    // stranded right under the content with a big dead gap wasted below it.
+    // Measure how much room is actually free between the resting content
+    // (.toggle-container's own bottom, which already accounts for whichever
+    // panel-reserved min-height is active) and the real viewport bottom, and
+    // push the footer down to use it instead of a static margin-top. Falls
+    // back to the original 56px whenever there's no slack to give (small
+    // screen, or content taller than the viewport) -- same as before.
+    const FOOTER_MIN_GAP = 56;
+    function syncFooterBottomAnchor() {
+        const mainScreen = document.getElementById('main-screen');
+        const toggleContainer = document.querySelector('.toggle-container');
+        const footer = document.querySelector('.site-brand-footer');
+        if (!mainScreen || !toggleContainer || !footer) return;
+        const viewportHeight = window.visualViewport?.height || window.innerHeight;
+        const contentBottom = toggleContainer.getBoundingClientRect().bottom;
+        const footerHeight = footer.getBoundingClientRect().height || 0;
+        const availableBelow = viewportHeight - contentBottom - footerHeight;
+        const margin = Math.max(FOOTER_MIN_GAP, availableBelow);
+        mainScreen.style.setProperty('--footer-bottom-margin', `${Math.round(margin)}px`);
+    }
+    window.dollSyncFooterBottomAnchor = syncFooterBottomAnchor;
+
+    let footerAnchorRaf = 0;
+    function scheduleFooterAnchorSync() {
+        if (footerAnchorRaf) return;
+        footerAnchorRaf = window.requestAnimationFrame(() => {
+            footerAnchorRaf = 0;
+            syncFooterBottomAnchor();
+        });
+    }
+    window.addEventListener('resize', scheduleFooterAnchorSync);
+    window.visualViewport?.addEventListener('resize', scheduleFooterAnchorSync);
+
     function setIconCollapseProgress(progress) {
         const clamped = Math.max(0, Math.min(1, progress));
         iconCollapseDisplayed = clamped;
@@ -1291,6 +1329,11 @@ document.addEventListener("DOMContentLoaded", async function() {
         // (defined further down, safe to reference here since this function
         // only ever runs later, from actual scroll/tap events).
         window.dollSyncSocialReservedHeight?.();
+        // Any of the above can change .toggle-container's own bottom edge
+        // (a panel's reserved height growing/shrinking, or the icon row
+        // collapsing), which changes how much room is left for the footer
+        // push below — see syncFooterBottomAnchor above.
+        syncFooterBottomAnchor();
     }
 
     function cancelIconCollapseTween() {
@@ -1365,8 +1408,15 @@ document.addEventListener("DOMContentLoaded", async function() {
     // smoothly as you approach an edge rather than snapping on/off. Values
     // are rounded and cached per-element so the (identical) middle-of-list
     // case is a no-op instead of rewriting the same gradient every frame.
-    // mask-image, not filter — can't collide with the mask+filter bug
-    // already fixed on the loading paw.
+    // The gradient itself lives in CSS (see .posts-content) and only the two
+    // --posts-edge-* custom properties are written here — Safari has to
+    // fully reparse/recompile the mask whenever mask-image's *string* value
+    // changes, and doing that on near-every scroll frame while inside the
+    // fade zone was the actual cause of the Safari-only first-scroll/
+    // scroll-to-top jank (Chrome's mask repaint path is cheap either way, so
+    // it never showed up there). Writing just a custom property instead
+    // matches the same technique .social-links-panel and the wishlist body
+    // already use for their (binary) edge fades, minus the string rebuild.
     const SCROLL_FADE_PX = 22;
     function updateScrollEdgeFade(el) {
         const topT = Math.min(1, Math.max(0, el.scrollTop) / SCROLL_FADE_PX);
@@ -1375,9 +1425,8 @@ document.addEventListener("DOMContentLoaded", async function() {
         const key = `${topT.toFixed(2)}|${bottomT.toFixed(2)}`;
         if (el.dataset.dwlFadeKey === key) return;
         el.dataset.dwlFadeKey = key;
-        const mask = `linear-gradient(to bottom, rgba(0,0,0,${(1 - topT).toFixed(2)}) 0, black ${SCROLL_FADE_PX}px, black calc(100% - ${SCROLL_FADE_PX}px), rgba(0,0,0,${(1 - bottomT).toFixed(2)}) 100%)`;
-        el.style.maskImage = mask;
-        el.style.webkitMaskImage = mask;
+        el.style.setProperty('--posts-edge-top', topT.toFixed(2));
+        el.style.setProperty('--posts-edge-bottom', bottomT.toFixed(2));
     }
 
     let postsScrollRaf = 0;
