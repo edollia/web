@@ -1758,18 +1758,22 @@ body.has-posts-panel-open .site-brand-footer {
     top: var(--open-surface-top);
     left: 50%;
     z-index: 8;
-    display: grid;
-    /* Without an explicit column track, grid falls back to auto-sizing the
-       single implicit column to whatever its widest child's content wants
-       -- one card's content was quietly forcing that column past this
-       panel's own 254px box, so the cards overflowed off the right edge
-       only (the panel's own box, e.g. its background/outline, stayed
-       correctly centered) -- which read as the whole group being shifted
-       right. minmax(0, 1fr) pins the column to exactly the container's
-       width and lets it shrink instead of grow. */
-    grid-template-columns: minmax(0, 1fr);
+    /* Was display: grid with gap: 8px for the card spacing. Safari/WebKit
+       has a layout bug where an auto-sized grid row containing an
+       aspect-ratio child gets its track height computed wrong once a
+       sibling card promotes a descendant to its own GPU layer (the
+       .social-link-icon / .social-link-preview transform: translateZ(0)
+       added for the iOS video-compositing fix) -- the gap after that row
+       comes out negative, so cards overlap instead of spacing evenly.
+       Chrome renders the same CSS correctly, which is why this only showed
+       up live on Safari/iOS and not in local Chromium testing. Plain block
+       flow + margin-bottom below sidesteps grid's row-track sizing
+       entirely, so the bug has nothing to trigger on. Block layout also
+       doesn't let a child's intrinsic content width push past the panel's
+       own box the way grid's auto column track used to (that's what
+       minmax(0, 1fr) on grid-template-columns used to work around), so
+       nothing is lost by dropping grid here. */
     width: min(82vw, 254px);
-    gap: 8px;
     opacity: 0;
     visibility: hidden;
     pointer-events: none;
@@ -1963,6 +1967,18 @@ body.has-social-panel-open .site-brand-footer {
    free to spill above the card's top edge uncropped. */
 .social-link-card-frame {
     position: relative;
+}
+
+/* Replaces the old grid `gap: 8px` between cards (see .social-links-panel)
+   -- targets direct children generically since the snapchat card is wrapped
+   in .social-link-card-frame while the rest are bare .social-link-card
+   anchors. */
+.social-links-panel > * {
+    margin-bottom: 8px;
+}
+
+.social-links-panel > *:last-child {
+    margin-bottom: 0;
 }
 
 .social-link-mascot {
