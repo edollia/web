@@ -1398,7 +1398,35 @@ document.addEventListener("DOMContentLoaded", async function() {
     }
     window.dollSetIconsScrollProgress = setIconsScrollProgress;
     window.dollResetIconsCollapse = resetIconsCollapse;
-    document.getElementById('dwl-icons-pill')?.addEventListener('click', () => animateIconCollapseTo(0));
+
+    // Whichever panel is open owns the scroll position that collapsed the
+    // icons in the first place (collapse tracks its scrollTop 1:1 — see
+    // setIconsScrollProgress). Tapping the pill used to only tween the icons
+    // back open while that panel stayed scrolled down, so the very next
+    // scroll tick (or even just momentum settling) immediately fed the same
+    // scrollTop back in and re-collapsed them — the icons would pop back
+    // open for a moment then snap shut again. Scrolling the actual panel to
+    // top instead lets that one native motion drive everything: the existing
+    // scroll listener sees scrollTop fall and un-collapses the icons in the
+    // same smooth motion as the scroll, so the pill tap and the "back to
+    // top" both read as one gesture instead of two fighting ones.
+    function scrollOpenPanelToTop() {
+        const panel = document.body.classList.contains('has-social-panel-open')
+            ? document.querySelector('.social-links-panel')
+            : document.body.classList.contains('has-wishlist-panel-open')
+                ? document.querySelector('.doll-wishlist-body')
+                : document.body.classList.contains('has-posts-panel-open')
+                    ? document.querySelector('.posts-content')
+                    : null;
+        if (panel && panel.scrollTop > 0) {
+            panel.scrollTo({ top: 0, behavior: 'smooth' });
+            return true;
+        }
+        return false;
+    }
+    document.getElementById('dwl-icons-pill')?.addEventListener('click', () => {
+        if (!scrollOpenPanelToTop()) animateIconCollapseTo(0);
+    });
 
     // A static top+bottom fade would lie about the scroll state — fading the
     // top even when already at the very top (nothing above to hint at), and
