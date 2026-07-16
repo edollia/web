@@ -20,6 +20,8 @@ document.addEventListener("DOMContentLoaded", async function() {
         throne_enabled: true,
         throne_checkout_mode: 'mockup',
         wishlist_view_mode: 'masonry',
+        homepage_note_text: '',
+        homepage_note_font_size: 13.25,
         latest_note_enabled: false,
         latest_note_title: 'latest note',
         latest_note_body: '',
@@ -38,6 +40,10 @@ document.addEventListener("DOMContentLoaded", async function() {
     let siteLinkSettings = { ...DEFAULT_LINK_SETTINGS };
     let applySiteLinkSettingsToDom = null;
     let siteSettingsLoadExpired = false;
+    let resolveSiteClientReady;
+    const siteClientReady = new Promise(resolve => {
+        resolveSiteClientReady = resolve;
+    });
 
     // ===== ENHANCED AUDIO HANDLING =====
     const audio = new Audio('hehe.mp3');
@@ -498,6 +504,7 @@ document.addEventListener("DOMContentLoaded", async function() {
 
         noteTarget.addEventListener('pointerdown', function(e) {
             if (opening || !roomsAreEnabled() || !e.isPrimary || note.classList.contains('hidden')) return;
+            if (noteTarget.classList.contains('editing')) return;
             if (!isCornerGesture(e)) return;
             dragging = true;
             startX = e.clientX;
@@ -786,6 +793,8 @@ document.addEventListener("DOMContentLoaded", async function() {
             throne_enabled: settings.throne_enabled !== false,
             throne_checkout_mode: settings.throne_checkout_mode === 'widget' ? 'widget' : 'mockup',
             wishlist_view_mode: ['grid', 'list', 'masonry'].includes(settings.wishlist_view_mode) ? settings.wishlist_view_mode : 'masonry',
+            homepage_note_text: String(settings.homepage_note_text || '').slice(0, 220),
+            homepage_note_font_size: Math.min(17, Math.max(9, Number(settings.homepage_note_font_size) || 13.25)),
             latest_note_enabled: settings.latest_note_enabled === true,
             latest_note_title: String(settings.latest_note_title || DEFAULT_LINK_SETTINGS.latest_note_title),
             latest_note_body: String(settings.latest_note_body || ''),
@@ -856,7 +865,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             const criticalResources = [
                 'background1.png',
                 'dropdown1.png',
-                'notee.jpg',
+                'note-paper-v3.png',
                 'loading.gif',
                 'wishlist.png',
                 'question-bunny.png',
@@ -974,8 +983,8 @@ document.addEventListener("DOMContentLoaded", async function() {
                         schema: 'public'
                     },
                     auth: {
-                        persistSession: false,
-                        autoRefreshToken: false
+                        persistSession: true,
+                        autoRefreshToken: true
                     }
                 }
             );
@@ -985,6 +994,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             window.supabase = createUnavailableSupabaseClient();
             setLoadingProgress(89);
         }
+        resolveSiteClientReady(window.supabase);
 
         // Tick the bar forward while data fetches to avoid a long plateau
         const progressTick = setInterval(() => {
@@ -1013,6 +1023,8 @@ document.addEventListener("DOMContentLoaded", async function() {
         }, 500);
     }).catch(e => {
         // Mobile fallback: show website even if loading fails
+        if (!window.supabase) window.supabase = createUnavailableSupabaseClient();
+        resolveSiteClientReady(window.supabase);
         loadingScreen.style.opacity = 0;
         setTimeout(() => {
             loadingScreen.style.display = "none";
@@ -1788,6 +1800,19 @@ document.addEventListener("DOMContentLoaded", async function() {
     const latestNoteToggle = document.getElementById('latest-note-toggle');
     const latestNoteTitle = document.getElementById('latest-note-title');
     const latestNoteBody = document.getElementById('latest-note-body');
+    const homepageNoteText = document.getElementById('homepage-note-text');
+    const homepageNoteEditor = document.getElementById('homepage-note-editor');
+    const homepageNoteTarget = document.getElementById('note-peel-target');
+    const homepageNoteAdminControls = document.getElementById('homepage-note-admin-controls');
+    const homepageNoteSize = document.getElementById('homepage-note-size');
+    const HOMEPAGE_NOTE_ADMIN_UID = '1b12f04e-c1a9-42c5-bd3a-04b6186245c3';
+    let homepageNoteCanEdit = false;
+    let homepageNoteLastValidText = '';
+    let homepageNoteSaveQueue = Promise.resolve();
+    let homepageNoteSaveRevision = 0;
+    let homepageNoteSizeSaveTimer = null;
+    let homepageNoteSizeRollback = null;
+    let homepageNoteFitFrame = null;
     const maintenanceOverlay = document.getElementById('site-maintenance-overlay');
     const maintenanceKicker = document.getElementById('site-maintenance-kicker');
     const maintenanceTitle = document.getElementById('site-maintenance-title');
@@ -1987,6 +2012,299 @@ document.addEventListener("DOMContentLoaded", async function() {
         latestNoteBody.textContent = siteLinkSettings.latest_note_body;
     }
 
+    function fitHomepageNoteElement(element) {
+        if (!element || element.hidden || !element.clientWidth || !element.clientHeight) return false;
+
+        const preferredSize = getHomepageNoteFontSize();
+        element.style.fontSize = `${preferredSize}px`;
+        const fitsPreferredSize = element.scrollHeight <= element.clientHeight + 1
+            && element.scrollWidth <= element.clientWidth + 1;
+        if (fitsPreferredSize) return true;
+
+        let low = 8.75;
+        let high = preferredSize;
+        for (let i = 0; i < 8; i += 1) {
+            const middle = (low + high) / 2;
+            element.style.fontSize = `${middle}px`;
+            const fits = element.scrollHeight <= element.clientHeight + 1
+                && element.scrollWidth <= element.clientWidth + 1;
+            if (fits) low = middle;
+            else high = middle;
+        }
+        element.style.fontSize = `${Math.floor(low * 4) / 4}px`;
+        return element.scrollHeight <= element.clientHeight + 1
+            && element.scrollWidth <= element.clientWidth + 1;
+    }
+
+    function getHomepageNoteDisplayText() {
+        return String(siteLinkSettings.homepage_note_text || '').trim();
+    }
+
+    function getHomepageNoteFontSize() {
+        return Math.min(17, Math.max(9, Number(siteLinkSettings.homepage_note_font_size) || 13.25));
+    }
+
+    function getHomepageNoteSettingsSnapshot() {
+        return {
+            homepage_note_text: getHomepageNoteDisplayText(),
+            homepage_note_font_size: getHomepageNoteFontSize()
+        };
+    }
+
+    function syncHomepageNoteSizeControl() {
+        if (!homepageNoteSize) return;
+        const size = getHomepageNoteFontSize();
+        homepageNoteSize.value = String(size);
+        homepageNoteSize.setAttribute('aria-valuetext', `${size.toFixed(2).replace(/0+$/, '').replace(/\.$/, '')} pixels`);
+    }
+
+    function renderHomepageNoteText() {
+        if (!homepageNoteText) return;
+        const text = getHomepageNoteDisplayText();
+        homepageNoteText.textContent = text;
+        homepageNoteText.hidden = !text || homepageNoteTarget?.classList.contains('editing');
+        homepageNoteText.style.removeProperty('font-size');
+        syncHomepageNoteSizeControl();
+        if (homepageNoteFitFrame !== null) cancelAnimationFrame(homepageNoteFitFrame);
+        homepageNoteFitFrame = text
+            ? requestAnimationFrame(() => {
+                homepageNoteFitFrame = null;
+                fitHomepageNoteElement(homepageNoteText);
+            })
+            : null;
+    }
+
+    function getEditorPlainText() {
+        if (!homepageNoteEditor) return '';
+        return String(homepageNoteEditor.innerText || homepageNoteEditor.textContent || '')
+            .replace(/\r\n?/g, '\n')
+            .replace(/\u00a0/g, ' ');
+    }
+
+    function placeEditorCaretAtEnd() {
+        if (!homepageNoteEditor) return;
+        const selection = window.getSelection?.();
+        if (!selection) return;
+        const range = document.createRange();
+        range.selectNodeContents(homepageNoteEditor);
+        range.collapse(false);
+        selection.removeAllRanges();
+        selection.addRange(range);
+    }
+
+    function closeHomepageNoteEditor() {
+        if (!homepageNoteEditor || !homepageNoteTarget) return;
+        homepageNoteEditor.hidden = true;
+        homepageNoteEditor.textContent = '';
+        homepageNoteEditor.style.removeProperty('font-size');
+        homepageNoteTarget.classList.remove('editing');
+    }
+
+    async function saveHomepageNoteSettings(noteSettings, revision) {
+        const client = await siteClientReady;
+        const { data: userData, error: userError } = await client.auth.getUser();
+        if (userError || userData?.user?.id !== HOMEPAGE_NOTE_ADMIN_UID) {
+            throw new Error('Your admin session has ended.');
+        }
+
+        const { data: currentRow, error: readError } = await client
+            .from('site_settings')
+            .select('value')
+            .eq('id', 'links')
+            .maybeSingle();
+        if (readError && readError.code !== 'PGRST116') throw readError;
+
+        const storedSettings = currentRow?.value && typeof currentRow.value === 'object'
+            ? currentRow.value
+            : {};
+        const latestSettings = {
+            ...storedSettings,
+            ...normalizeSiteLinkSettings(storedSettings)
+        };
+        latestSettings.homepage_note_text = noteSettings.homepage_note_text;
+        latestSettings.homepage_note_font_size = noteSettings.homepage_note_font_size;
+        const { error: saveError } = await client
+            .from('site_settings')
+            .upsert({
+                id: 'links',
+                value: latestSettings,
+                updated_at: new Date().toISOString()
+            });
+        if (saveError) throw saveError;
+
+        if (revision === homepageNoteSaveRevision) {
+            siteLinkSettings = latestSettings;
+            renderHomepageNoteText();
+        }
+    }
+
+    function queueHomepageNoteSave(previousSettings) {
+        const noteSettings = getHomepageNoteSettingsSnapshot();
+        const revision = ++homepageNoteSaveRevision;
+        homepageNoteSaveQueue = homepageNoteSaveQueue
+            .catch(() => {})
+            .then(() => saveHomepageNoteSettings(noteSettings, revision))
+            .catch(error => {
+                if (revision !== homepageNoteSaveRevision) return;
+                siteLinkSettings = { ...siteLinkSettings, ...previousSettings };
+                renderHomepageNoteText();
+                showSubmitPopup(error?.message || 'The note could not be saved.');
+                void refreshHomepageNoteAdminAccess();
+            });
+    }
+
+    function finishHomepageNoteEditing() {
+        if (!homepageNoteEditor || !homepageNoteTarget || homepageNoteEditor.hidden) return;
+        const value = getEditorPlainText().trim().slice(0, 220);
+        const previousSettings = getHomepageNoteSettingsSnapshot();
+        closeHomepageNoteEditor();
+        if (!homepageNoteCanEdit) {
+            renderHomepageNoteText();
+            return;
+        }
+        siteLinkSettings = { ...siteLinkSettings, homepage_note_text: value };
+        renderHomepageNoteText();
+        if (value !== previousSettings.homepage_note_text) queueHomepageNoteSave(previousSettings);
+    }
+
+    function beginHomepageNoteEditing() {
+        if (!homepageNoteCanEdit || !homepageNoteEditor || !homepageNoteTarget || homepageNoteTarget.classList.contains('editing')) return;
+        const noteImage = homepageNoteTarget.querySelector('.note-image');
+        if (noteImage?.classList.contains('hidden') || homepageNoteTarget.classList.contains('completing')) return;
+
+        homepageNoteLastValidText = getHomepageNoteDisplayText();
+        homepageNoteEditor.textContent = homepageNoteLastValidText;
+        homepageNoteEditor.hidden = false;
+        homepageNoteText.hidden = true;
+        homepageNoteTarget.classList.add('editing');
+        homepageNoteEditor.style.removeProperty('font-size');
+        fitHomepageNoteElement(homepageNoteEditor);
+        try {
+            homepageNoteEditor.focus({ preventScroll: true });
+        } catch (error) {
+            homepageNoteEditor.focus();
+        }
+        placeEditorCaretAtEnd();
+    }
+
+    if (homepageNoteEditor && homepageNoteTarget) {
+        homepageNoteTarget.addEventListener('click', event => {
+            if (!homepageNoteCanEdit) return;
+            if (event.target instanceof Element && event.target.closest('.note-admin-controls')) return;
+            if (event.target === homepageNoteEditor || homepageNoteEditor.contains(event.target)) return;
+            if (homepageNoteTarget.classList.contains('peeling') || homepageNoteTarget.classList.contains('completing')) return;
+
+            const rect = homepageNoteTarget.getBoundingClientRect();
+            const x = event.clientX - rect.left;
+            const y = event.clientY - rect.top;
+            const isPeelCorner = x >= rect.width - 82 && y >= rect.height - 92;
+            if (!isPeelCorner) beginHomepageNoteEditing();
+        });
+
+        homepageNoteEditor.addEventListener('input', () => {
+            let value = getEditorPlainText();
+            if (value.length > 220) {
+                value = value.slice(0, 220);
+                homepageNoteEditor.textContent = value;
+                placeEditorCaretAtEnd();
+            }
+            if (fitHomepageNoteElement(homepageNoteEditor)) {
+                homepageNoteLastValidText = value;
+                return;
+            }
+
+            homepageNoteEditor.textContent = homepageNoteLastValidText;
+            placeEditorCaretAtEnd();
+            fitHomepageNoteElement(homepageNoteEditor);
+        });
+
+        homepageNoteEditor.addEventListener('blur', finishHomepageNoteEditing);
+        homepageNoteEditor.addEventListener('keydown', event => {
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                homepageNoteEditor.blur();
+            }
+        });
+    }
+
+    function flushHomepageNoteSizeSave() {
+        clearTimeout(homepageNoteSizeSaveTimer);
+        homepageNoteSizeSaveTimer = null;
+        if (!homepageNoteSizeRollback) return;
+        const previousSettings = homepageNoteSizeRollback;
+        homepageNoteSizeRollback = null;
+        queueHomepageNoteSave(previousSettings);
+    }
+
+    if (homepageNoteSize && homepageNoteAdminControls) {
+        homepageNoteAdminControls.addEventListener('pointerdown', event => event.stopPropagation());
+        homepageNoteAdminControls.addEventListener('click', event => event.stopPropagation());
+        homepageNoteSize.addEventListener('input', () => {
+            if (!homepageNoteCanEdit) {
+                syncHomepageNoteSizeControl();
+                return;
+            }
+            if (!homepageNoteSizeRollback) homepageNoteSizeRollback = getHomepageNoteSettingsSnapshot();
+            siteLinkSettings = {
+                ...siteLinkSettings,
+                homepage_note_font_size: Math.min(17, Math.max(9, Number(homepageNoteSize.value) || 13.25))
+            };
+            renderHomepageNoteText();
+            if (!homepageNoteEditor?.hidden) {
+                homepageNoteEditor.style.removeProperty('font-size');
+                fitHomepageNoteElement(homepageNoteEditor);
+            }
+            clearTimeout(homepageNoteSizeSaveTimer);
+            homepageNoteSizeSaveTimer = window.setTimeout(flushHomepageNoteSizeSave, 500);
+        });
+        homepageNoteSize.addEventListener('change', flushHomepageNoteSizeSave);
+    }
+
+    function setHomepageNoteAdminAccess(canEdit) {
+        homepageNoteCanEdit = canEdit;
+        homepageNoteTarget?.classList.toggle('admin-editable', canEdit);
+        if (homepageNoteAdminControls) homepageNoteAdminControls.hidden = !canEdit;
+        if (homepageNoteSize) homepageNoteSize.disabled = !canEdit;
+        homepageNoteTarget?.setAttribute('aria-label', canEdit
+            ? 'Tap the note to edit it, or pull its corner to open rooms'
+            : 'Pull the note corner to open rooms');
+        if (!canEdit && homepageNoteTarget?.classList.contains('editing')) {
+            closeHomepageNoteEditor();
+            renderHomepageNoteText();
+        }
+        if (!canEdit) {
+            if (homepageNoteSizeRollback) {
+                siteLinkSettings = { ...siteLinkSettings, ...homepageNoteSizeRollback };
+                renderHomepageNoteText();
+            }
+            clearTimeout(homepageNoteSizeSaveTimer);
+            homepageNoteSizeSaveTimer = null;
+            homepageNoteSizeRollback = null;
+        }
+    }
+
+    async function refreshHomepageNoteAdminAccess() {
+        const client = await siteClientReady;
+        if (!client?.auth?.getUser) {
+            setHomepageNoteAdminAccess(false);
+            return;
+        }
+
+        try {
+            const { data, error } = await client.auth.getUser();
+            setHomepageNoteAdminAccess(!error && data?.user?.id === HOMEPAGE_NOTE_ADMIN_UID);
+        } catch (error) {
+            setHomepageNoteAdminAccess(false);
+        }
+    }
+
+    void siteClientReady.then(client => {
+        void refreshHomepageNoteAdminAccess();
+        client.auth?.onAuthStateChange?.(() => {
+            window.setTimeout(() => void refreshHomepageNoteAdminAccess(), 0);
+        });
+    });
+
     function renderMaintenanceMode() {
         const enabled = siteLinkSettings.maintenance_enabled === true;
         if (enabled) {
@@ -2121,6 +2439,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         syncStructuredDataLinks();
         renderSeoSettings();
         renderSubmissionControls();
+        renderHomepageNoteText();
         renderLatestNote();
         renderMaintenanceMode();
     }

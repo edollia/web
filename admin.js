@@ -38,6 +38,8 @@ const DEFAULT_LINK_SETTINGS = {
     throne_enabled: true,
     throne_checkout_mode: 'mockup',
     wishlist_view_mode: 'masonry',
+    homepage_note_text: '',
+    homepage_note_font_size: 13.25,
     latest_note_enabled: false,
     latest_note_title: 'latest note',
     latest_note_body: '',
@@ -139,6 +141,9 @@ const els = {
     wishlistUnfeatureAll: document.getElementById('wishlist-unfeature-all'),
     wishlistSearch: document.getElementById('wishlist-search'),
     wishlistFeaturedWarning: document.getElementById('wishlist-featured-warning'),
+    homepageNoteText: document.getElementById('homepage-note-text-input'),
+    homepageNoteState: document.getElementById('homepage-note-state'),
+    homepageNoteCount: document.getElementById('homepage-note-count'),
     latestNoteEnabled: document.getElementById('latest-note-enabled'),
     latestNoteTitle: document.getElementById('latest-note-title'),
     latestNoteBody: document.getElementById('latest-note-body-input'),
@@ -357,6 +362,8 @@ function normalizeLinkSettings(value) {
         throne_enabled: settings.throne_enabled !== false,
         throne_checkout_mode: settings.throne_checkout_mode === 'widget' ? 'widget' : 'mockup',
         wishlist_view_mode: WISHLIST_VIEW_MODES.includes(settings.wishlist_view_mode) ? settings.wishlist_view_mode : 'masonry',
+        homepage_note_text: String(settings.homepage_note_text || '').slice(0, 220),
+        homepage_note_font_size: Math.min(17, Math.max(9, Number(settings.homepage_note_font_size) || 13.25)),
         latest_note_enabled: settings.latest_note_enabled === true,
         latest_note_title: String(settings.latest_note_title || DEFAULT_LINK_SETTINGS.latest_note_title),
         latest_note_body: String(settings.latest_note_body || ''),
@@ -402,6 +409,7 @@ function renderLinkSettings({ preserveDraft = false } = {}) {
     if (els.throneState) els.throneState.textContent = settings.throne_enabled !== false ? 'visible' : 'hidden';
     if (els.throneCheckoutMode) els.throneCheckoutMode.value = settings.throne_checkout_mode === 'widget' ? 'widget' : 'mockup';
     if (els.wishlistViewMode) els.wishlistViewMode.value = WISHLIST_VIEW_MODES.includes(settings.wishlist_view_mode) ? settings.wishlist_view_mode : 'masonry';
+    if (els.homepageNoteText) els.homepageNoteText.value = settings.homepage_note_text || '';
     if (els.latestNoteEnabled) els.latestNoteEnabled.checked = settings.latest_note_enabled === true;
     if (els.latestNoteTitle) els.latestNoteTitle.value = settings.latest_note_title || '';
     if (els.latestNoteBody) els.latestNoteBody.value = settings.latest_note_body || '';
@@ -449,6 +457,8 @@ function getDraftLinkSettings() {
         throne_enabled: els.throneEnabled?.checked !== false,
         throne_checkout_mode: els.throneCheckoutMode?.value === 'widget' ? 'widget' : 'mockup',
         wishlist_view_mode: WISHLIST_VIEW_MODES.includes(els.wishlistViewMode?.value) ? els.wishlistViewMode.value : 'masonry',
+        homepage_note_text: (els.homepageNoteText?.value || '').trim().slice(0, 220),
+        homepage_note_font_size: Math.min(17, Math.max(9, Number(state.linkSettings.homepage_note_font_size) || 13.25)),
         latest_note_enabled: els.latestNoteEnabled?.checked === true,
         latest_note_title: els.latestNoteTitle?.value.trim() || DEFAULT_LINK_SETTINGS.latest_note_title,
         latest_note_body: els.latestNoteBody?.value.trim() || '',
@@ -481,6 +491,10 @@ function syncLinkDraftLabels(settings = getDraftLinkSettings()) {
     if (els.kofiUrlPreview) els.kofiUrlPreview.textContent = settings.kofi_url || DEFAULT_LINK_SETTINGS.kofi_url;
     if (els.telegramState) els.telegramState.textContent = settings.telegram_enabled !== false ? 'visible' : 'hidden';
     if (els.throneState) els.throneState.textContent = settings.throne_enabled !== false ? 'visible' : 'hidden';
+    const homepageNoteText = String(settings.homepage_note_text || '');
+    if (els.homepageNoteState) els.homepageNoteState.textContent = homepageNoteText ? 'visible' : 'blank';
+    if (els.homepageNoteCount) els.homepageNoteCount.textContent = `${homepageNoteText.length}/220`;
+    document.querySelector('[data-link-card="homepage-note"]')?.classList.toggle('is-disabled', !homepageNoteText);
     if (els.latestNoteState) els.latestNoteState.textContent = settings.latest_note_enabled === true ? 'visible' : 'hidden';
     if (els.maintenanceState) els.maintenanceState.textContent = settings.maintenance_enabled === true ? 'on' : 'off';
     if (els.entranceModeState) els.entranceModeState.textContent = settings.entrance_mode === 'bubbles' ? 'pop bubbles' : 'paw press';
@@ -1394,6 +1408,8 @@ async function saveLinkSettingsNow() {
             throne_enabled: els.throneEnabled?.checked !== false,
             throne_checkout_mode: els.throneCheckoutMode?.value === 'widget' ? 'widget' : 'mockup',
             wishlist_view_mode: WISHLIST_VIEW_MODES.includes(els.wishlistViewMode?.value) ? els.wishlistViewMode.value : 'masonry',
+            homepage_note_text: (els.homepageNoteText?.value || '').trim().slice(0, 220),
+            homepage_note_font_size: Math.min(17, Math.max(9, Number(state.linkSettings.homepage_note_font_size) || 13.25)),
             latest_note_enabled: els.latestNoteEnabled?.checked === true,
             latest_note_title: els.latestNoteTitle?.value.trim() || DEFAULT_LINK_SETTINGS.latest_note_title,
             latest_note_body: els.latestNoteBody?.value.trim() || '',
@@ -1801,6 +1817,7 @@ async function init() {
         els.throneUrl,
         els.throneCheckoutMode,
         els.wishlistViewMode,
+        els.homepageNoteText,
         els.latestNoteTitle,
         els.latestNoteBody,
         els.maintenanceTitle,

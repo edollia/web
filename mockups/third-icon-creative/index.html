@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>3rd icon — creative concepts</title>
+<style>
+/* ============================================================
+   ISOLATED MOCKUP #2 — bolder concepts. Nothing live is edited.
+   Each variant gives the 3rd icon its OWN opening choreography,
+   but keeps the shared rule: one tap, siblings get out of the way,
+   one surface for doodle / ask / posts. Pink-glass tokens from styles.css.
+   ============================================================ */
+:root{
+  --surface: rgba(255,247,251,.94);
+  --control: linear-gradient(to right,#fdeef5,#ffdbee);
+  --active: linear-gradient(135deg,#fbdde9,#ff98ca);
+  --line: rgba(255,174,207,.62);
+  --line-soft: rgba(255,199,222,.42);
+  --sh: 0 5px 14px rgba(255,145,195,.16);
+  --sh-sm: 0 2px 7px rgba(255,145,195,.16);
+  --text: rgba(106,92,99,.86);
+  --pink: #c75e8f;
+  --ease: cubic-bezier(.22,.61,.36,1);
+  --spring: cubic-bezier(.34,1.56,.64,1);
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{
+  font-family:ui-rounded,"Arial Rounded MT Bold",system-ui,sans-serif;color:#7a5c69;
+  min-height:100vh;display:flex;flex-direction:column;align-items:center;
+  background:radial-gradient(circle at 50% 16%,rgba(255,255,255,.55),transparent 42%),linear-gradient(#fff0f7,#ffedf6 52%,#fff5fa);
+}
+.lab-head{max-width:760px;padding:24px 20px 4px;text-align:center}
+.lab-head .eyebrow{margin:0;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#d98bb4}
+.lab-head h1{margin:6px 0 4px;font-size:20px;color:#b8557f}
+.lab-head p{margin:0 auto;max-width:54ch;font-size:13px;line-height:1.5;color:rgba(122,92,105,.85)}
+
+.picker{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;padding:14px 12px 2px;max-width:820px}
+.tab{border:1px solid var(--line-soft);background:var(--surface);border-radius:14px;padding:8px 13px;cursor:pointer;
+  display:flex;flex-direction:column;align-items:flex-start;gap:1px;box-shadow:var(--sh-sm);transition:.18s var(--ease);min-width:132px}
+.tab strong{font-size:13px;color:#b8557f}
+.tab small{font-size:11px;color:rgba(122,92,105,.7)}
+.tab[aria-pressed="true"]{border-color:var(--line);background:linear-gradient(#fff,#ffeef6);transform:translateY(-1px)}
+
+.stage{margin:16px 0 24px;width:340px;max-width:92vw;border-radius:34px;padding:14px 0 26px;position:relative;overflow:hidden;
+  background:linear-gradient(#fff8fc,#fff2f9);border:1px solid rgba(255,199,222,.6);box-shadow:0 24px 60px rgba(196,93,141,.18)}
+.stage-art{width:78%;height:90px;margin:2px auto 4px;border-radius:16px;display:grid;place-items:center;color:#d98bb4;font-size:11px;letter-spacing:.08em;
+  background:radial-gradient(circle at 30% 40%,#ffd3e7,transparent 60%),radial-gradient(circle at 72% 60%,#ffe0b8,transparent 55%),linear-gradient(120deg,#ffe4f1,#fff3d9)}
+
+.button-group{position:relative;z-index:5;display:flex;justify-content:center;min-height:80px;padding:7px 0}
+.row{display:flex;align-items:center;justify-content:center}
+.ibtn{position:relative;margin:0 10px;width:54px;height:54px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  text-decoration:none;cursor:pointer;color:var(--pink);background:var(--control);border:1px solid var(--line-soft);box-shadow:var(--sh);font-size:22px;
+  transition:transform .42s var(--ease),opacity .3s var(--ease),width .42s var(--ease),margin .42s var(--ease),background .2s var(--ease)}
+.ibtn:hover{transform:translateY(-2px)}
+.ibtn img{width:30px;height:30px;object-fit:contain}
+.ibtn .glyph{line-height:1;transition:opacity .2s}
+.ibtn .x{position:absolute;font-size:24px;opacity:0;transition:opacity .2s}
+.stage.open .ibtn:not(.act){width:0;margin:0;opacity:0;pointer-events:none;transform:scale(.4)}
+.stage.open .ibtn.act .glyph,.stage.open .ibtn.act img{opacity:0}
+.stage.open .ibtn.act .x{opacity:1}
+.stage.open .ibtn.act{background:var(--active);color:#fff}
+
+.host{position:relative;width:84%;margin:2px auto 0;min-height:210px}
+.note{border-radius:14px;aspect-ratio:3/4;display:grid;place-items:center;color:#c99a6a;font-size:12px;
+  background:linear-gradient(#fffdf6,#fff6e9);border:1px solid rgba(255,214,180,.6);box-shadow:0 12px 26px rgba(196,140,93,.14);
+  transition:opacity .3s var(--ease),transform .3s var(--ease)}
+.stage.open .note{opacity:0;transform:scale(.95);position:absolute;inset:0;pointer-events:none}
+
+.hint{margin:0;text-align:center;font-size:11px;color:rgba(122,92,105,.6);padding:8px 0 0}
+.notes{max-width:460px;padding:6px 20px 44px;font-size:12.5px;line-height:1.6;color:rgba(122,92,105,.85)}
+.notes b{color:#b8557f}
+.hidden{display:none!important}
+
+/* action label shared */
+.act-lbl{font-size:11px;color:var(--pink);font-weight:bold;letter-spacing:.02em}
+
+/* ============ VARIANT 1 · PETAL BLOOM ============ */
+/* the icon blossoms — 3 round buds arc out on an invisible flower */
+.bloom{position:absolute;left:50%;bottom:100%;width:0;height:0;pointer-events:none;z-index:6}
+.stage.open .bloom.on{pointer-events:auto}
+.bud{position:absolute;left:0;top:0;width:60px;height:60px;margin:-30px;border-radius:50%;display:grid;place-items:center;gap:1px;
+  background:linear-gradient(135deg,#fff,#ffe4f1);border:1px solid var(--line);box-shadow:var(--sh);color:var(--pink);
+  transform:translate(0,0) scale(.2);opacity:0;transition:transform .5s var(--spring),opacity .3s var(--ease)}
+.bud svg{width:20px;height:20px}
+.bud span{font-size:9px;font-weight:bold}
+.stage.open .bloom.on .bud{opacity:1}
+.stage.open .bloom.on .bud:nth-child(1){transform:translate(-92px,-40px) scale(1);transition-delay:.04s}
+.stage.open .bloom.on .bud:nth-child(2){transform:translate(0,-96px) scale(1);transition-delay:.10s}
+.stage.open .bloom.on .bud:nth-child(3){transform:translate(92px,-40px) scale(1);transition-delay:.16s}
+
+/* ============ VARIANT 2 · STICKER PEEL ============ */
+/* echoes the site's note-peel: actions are stickers lifting off a sheet */
+.sheet{position:absolute;inset:0;border-radius:16px;padding:12px;display:flex;flex-direction:column;gap:9px;
+  background:repeating-linear-gradient(45deg,#fff6fb,#fff6fb 10px,#fff0f8 10px,#fff0f8 20px);
+  border:1px dashed var(--line);opacity:0;transform:translateY(14px);transition:.34s var(--ease);pointer-events:none}
+.stage.open .sheet.on{opacity:1;transform:none;pointer-events:auto}
+.sticker{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:14px;cursor:pointer;
+  background:linear-gradient(#fff,#fff2fa);border:1px solid var(--line);box-shadow:0 6px 14px rgba(196,93,141,.16);
+  transform:rotate(-2deg);transition:transform .2s var(--spring)}
+.sticker:nth-child(2){transform:rotate(1.5deg)}
+.sticker:nth-child(3){transform:rotate(-1deg)}
+.sticker:hover{transform:rotate(0) translateY(-3px) scale(1.03)}
+.sticker .ic{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;background:linear-gradient(135deg,#ffe1ef,#ffd0e6);color:var(--pink)}
+.sticker .ic svg{width:19px;height:19px}
+.sticker strong{font-size:14px;color:#a8517a}
+.sticker small{display:block;font-size:11px;color:rgba(122,92,105,.72)}
+.sticker .curl{margin-left:auto;width:16px;height:16px;border-radius:0 0 12px 0;background:linear-gradient(135deg,#ffd7ea,#ffb8d8);box-shadow:-1px -1px 2px rgba(255,255,255,.7) inset}
+
+/* ============ VARIANT 3 · CHARM MOBILE ============ */
+/* actions dangle down on strings like a charm mobile / bracelet */
+.mobile{position:absolute;left:0;right:0;top:-6px;height:0;display:flex;justify-content:space-around;pointer-events:none;z-index:6}
+.charm{position:relative;display:flex;flex-direction:column;align-items:center;transform-origin:top center;
+  transform:translateY(-40px) scale(.6);opacity:0;transition:transform .5s var(--spring),opacity .3s}
+.stage.open .mobile.on{pointer-events:auto}
+.stage.open .mobile.on .charm{opacity:1;transform:translateY(0) scale(1);animation:sway 2.6s ease-in-out infinite}
+.stage.open .mobile.on .charm:nth-child(2){transition-delay:.07s;animation-delay:.3s}
+.stage.open .mobile.on .charm:nth-child(3){transition-delay:.14s;animation-delay:.6s}
+.charm .string{width:2px;height:34px;background:linear-gradient(var(--line),transparent)}
+.charm .bead{width:54px;height:54px;margin-top:-3px;border-radius:50%;display:grid;place-items:center;gap:1px;cursor:pointer;
+  background:radial-gradient(circle at 35% 30%,#fff,#ffd7ea 70%,#ff9fca);border:1px solid #fff;box-shadow:var(--sh),inset 0 -4px 8px rgba(255,120,180,.25);color:#fff}
+.charm .bead svg{width:20px;height:20px}
+.charm .bead span{font-size:9px;font-weight:bold}
+.charm .bead:hover{transform:translateY(2px)}
+@keyframes sway{0%,100%{rotate:-4deg}50%{rotate:4deg}}
+
+/* ============ VARIANT 4 · GACHA CAPSULE ============ */
+/* toy-machine energy: tap dispenses a capsule that cracks into 3 actions */
+.gacha{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none}
+.capsule{width:96px;height:96px;border-radius:50%;position:relative;overflow:hidden;cursor:pointer;
+  background:linear-gradient(#ffd7ea 50%,#fff 50%);border:2px solid #fff;box-shadow:var(--sh);
+  transform:scale(0);opacity:0;transition:transform .45s var(--spring),opacity .3s}
+.capsule::after{content:"";position:absolute;left:0;right:0;top:calc(50% - 3px);height:6px;background:rgba(255,150,200,.5)}
+.stage.open .gacha.on{pointer-events:auto}
+.stage.open .gacha.on .capsule{opacity:1;transform:scale(1)}
+.capsule.crack{animation:pop .5s var(--spring) forwards}
+@keyframes pop{40%{transform:scale(1.12) rotate(-4deg)}100%{transform:scale(.2);opacity:0}}
+.prizes{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;gap:9px;padding:0 8px;pointer-events:none;opacity:0}
+.prizes.show{opacity:1;pointer-events:auto;transition:opacity .3s .25s}
+.prize{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:14px;cursor:pointer;
+  background:linear-gradient(#fff,#fff2fa);border:1px solid var(--line);box-shadow:var(--sh-sm);
+  transform:translateY(16px) scale(.9);opacity:0;transition:.4s var(--spring)}
+.prizes.show .prize{transform:none;opacity:1}
+.prizes.show .prize:nth-child(2){transition-delay:.34s}
+.prizes.show .prize:nth-child(3){transition-delay:.42s}
+.prize .ic{width:32px;height:32px;border-radius:10px;display:grid;place-items:center;background:linear-gradient(135deg,#ffe1ef,#ffd0e6);color:var(--pink)}
+.prize .ic svg{width:18px;height:18px}
+.prize strong{font-size:14px;color:#a8517a}
+.gacha-tip{position:absolute;bottom:6px;left:0;right:0;text-align:center;font-size:10px;color:rgba(122,92,105,.6)}
+
+/* ============ VARIANT 5 · RIBBON SCROLL ============ */
+/* a ribbon drops and unfurls a little scroll of tabs */
+.ribbon{position:absolute;left:50%;top:-4px;transform:translateX(-50%);width:0;pointer-events:none;z-index:6}
+.rband{width:26px;height:0;margin:0 auto;background:linear-gradient(#ff9fca,#ff7fb8);transition:height .3s var(--ease)}
+.scroll{width:210px;margin:0 auto;border-radius:14px;padding:12px;transform-origin:top;transform:scaleY(0);opacity:0;
+  background:var(--surface);border:1px solid var(--line);box-shadow:0 16px 34px rgba(196,93,141,.2);transition:.36s var(--spring)}
+.stage.open .ribbon.on{pointer-events:auto}
+.stage.open .ribbon.on .rband{height:22px}
+.stage.open .ribbon.on .scroll{transform:scaleY(1);opacity:1;transition-delay:.12s}
+.rtabs{display:flex;gap:6px;justify-content:center;margin-bottom:8px}
+.rtab{border:none;background:transparent;font:inherit;font-size:12px;color:rgba(122,92,105,.6);padding:5px 11px;border-radius:999px;cursor:pointer}
+.rtab.active{background:var(--active);color:#fff;box-shadow:var(--sh-sm)}
+.rbody{border-radius:10px;min-height:82px;display:grid;place-items:center;text-align:center;font-size:12px;padding:8px;color:rgba(122,92,105,.72);
+  background:linear-gradient(#fff,#fff6fb);border:1px solid var(--line-soft)}
+</style>
+</head>
+<body>
+  <div class="lab-head">
+    <p class="eyebrow">isolated mockup #2 · nothing live is edited</p>
+    <h1>5 more playful ways to open the 3rd icon</h1>
+    <p>Same promise as socials/wishlist — one tap, siblings clear out — but each concept gives the 3rd icon its own little bit of theatre. Tap the <b>3rd icon</b> (𓏲ּ𝄢).</p>
+  </div>
+
+  <nav class="picker" aria-label="Concepts">
+    <button class="tab" aria-pressed="true" data-v="bloom"><strong>1 · petal bloom</strong><small>buds arc out</small></button>
+    <button class="tab" aria-pressed="false" data-v="peel"><strong>2 · sticker peel</strong><small>echoes the note peel</small></button>
+    <button class="tab" aria-pressed="false" data-v="charm"><strong>3 · charm mobile</strong><small>dangles + sways</small></button>
+    <button class="tab" aria-pressed="false" data-v="gacha"><strong>4 · gacha capsule</strong><small>tap to crack open</small></button>
+    <button class="tab" aria-pressed="false" data-v="ribbon"><strong>5 · ribbon scroll</strong><small>unfurls tabs</small></button>
+  </nav>
+
+  <div class="stage" id="stage">
+    <div class="stage-art">header art</div>
+    <div class="button-group">
+      <div class="row">
+        <div class="ibtn" data-icon="socials"><span class="glyph">꩜</span><span class="x">&times;</span></div>
+        <a class="ibtn" data-icon="wishlist" href="#" onclick="return false"><img src="../../wishlist.png" alt="Wishlist" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'glyph',textContent:'♡'}))"><span class="x">&times;</span></a>
+        <div class="ibtn" data-icon="third"><span class="glyph">𓏲ּ𝄢</span><span class="x">&times;</span></div>
+      </div>
+      <!-- bloom lives near the icon so it can arc from it -->
+      <div class="bloom" id="bloom">
+        <div class="bud"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 16 14 6l4 4L8 20H4z"/></svg><span>doodle</span></div>
+        <div class="bud"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.2 2.4c-.7.3-.7.8-.7 1.6M12 17h.01"/></svg><span>ask</span></div>
+        <div class="bud"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="5" width="16" height="14" rx="3"/><path d="M8 10h8M8 14h5"/></svg><span>posts</span></div>
+      </div>
+    </div>
+
+    <div class="host">
+      <div class="note">note</div>
+
+      <!-- socials reference panel (simple) -->
+      <div class="sheet" id="p-socials" style="border-style:solid;background:var(--surface)">
+        <div class="sticker" style="transform:none"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v12H5.2L4 18z"/></svg></span><div><strong>snapchat</strong><small>dumidoll</small></div></div>
+        <div class="sticker" style="transform:none"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="5"/><circle cx="12" cy="12" r="3.4"/></svg></span><div><strong>instagram</strong><small>@pawswirl</small></div></div>
+        <p class="hint" style="padding:0">socials — shown for reference</p>
+      </div>
+
+      <!-- V2 sticker peel -->
+      <div class="sheet" id="p-peel">
+        <div class="sticker"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 16 14 6l4 4L8 20H4z"/></svg></span><div><strong>doodle</strong><small>draw me something</small></div><span class="curl"></span></div>
+        <div class="sticker"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.2 2.4c-.7.3-.7.8-.7 1.6M12 17h.01"/></svg></span><div><strong>ask</strong><small>anonymous question</small></div><span class="curl"></span></div>
+        <div class="sticker"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="5" width="16" height="14" rx="3"/><path d="M8 10h8M8 14h5"/></svg></span><div><strong>posts</strong><small>doods &amp; replies</small></div><span class="curl"></span></div>
+      </div>
+
+      <!-- V4 gacha -->
+      <div class="gacha" id="p-gacha">
+        <div class="capsule" id="capsule"></div>
+        <div class="prizes" id="prizes">
+          <div class="prize"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 16 14 6l4 4L8 20H4z"/></svg></span><strong>doodle</strong></div>
+          <div class="prize"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.2 2.4c-.7.3-.7.8-.7 1.6M12 17h.01"/></svg></span><strong>ask</strong></div>
+          <div class="prize"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="5" width="16" height="14" rx="3"/><path d="M8 10h8M8 14h5"/></svg></span><strong>posts</strong></div>
+        </div>
+        <span class="gacha-tip" id="gtip">tap the capsule ♡</span>
+      </div>
+    </div>
+
+    <!-- V3 charm mobile (dangles from just under the row) -->
+    <div class="mobile" id="mobile" style="position:absolute;top:150px;left:8%;right:8%">
+      <div class="charm"><span class="string"></span><span class="bead"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 16 14 6l4 4L8 20H4z"/></svg><span>doodle</span></span></div>
+      <div class="charm"><span class="string"></span><span class="bead"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.2 2.4c-.7.3-.7.8-.7 1.6M12 17h.01"/></svg><span>ask</span></span></div>
+      <div class="charm"><span class="string"></span><span class="bead"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="5" width="16" height="14" rx="3"/><path d="M8 10h8M8 14h5"/></svg><span>posts</span></span></div>
+    </div>
+
+    <!-- V5 ribbon (drops from the row) -->
+    <div class="ribbon" id="ribbon" style="position:absolute;top:150px">
+      <div class="rband"></div>
+      <div class="scroll">
+        <div class="rtabs"><button class="rtab active" data-t="doods">Doods</button><button class="rtab" data-t="ask">Ask</button><button class="rtab" data-t="posts">Posts</button></div>
+        <div class="rbody" id="rbody">the doodle canvas lives here</div>
+      </div>
+    </div>
+
+    <p class="hint" id="stage-hint">tap the 3rd icon 𓏲ּ𝄢 · tap again to close</p>
+  </div>
+
+  <div class="notes">
+    <p><b>Read them as motion, not menus.</b> 1 blooms upward like a flower · 2 reuses the site's peel language · 3 dangles + gently sways · 4 leans into the toy/gacha world · 5 unfurls a tiny scroll. Any of them can hold the same doodle/ask/posts — the question is which <b>personality</b> fits doll.gg.</p>
+  </div>
+
+<script>
+const stage=document.getElementById('stage');
+let openIcon=null;
+const V=()=>document.querySelector('.tab[aria-pressed="true"]').dataset.v;
+
+const surfaces={
+  bloom:document.getElementById('bloom'),
+  peel:document.getElementById('p-peel'),
+  charm:document.getElementById('mobile'),
+  gacha:document.getElementById('p-gacha'),
+  ribbon:document.getElementById('ribbon'),
+};
+function clearThird(){Object.values(surfaces).forEach(el=>el.classList.remove('on'));
+  document.getElementById('prizes').classList.remove('show');
+  document.getElementById('capsule').classList.remove('crack');
+  document.getElementById('capsule').style.display='';
+  document.getElementById('gtip').style.display='';}
+
+function closeAll(){stage.classList.remove('open');
+  document.querySelectorAll('.ibtn').forEach(b=>b.classList.remove('act'));
+  document.getElementById('p-socials').classList.remove('on');
+  clearThird();openIcon=null;}
+
+function openThird(btn){
+  btn.classList.add('act');stage.classList.add('open');openIcon='third';
+  const v=V();surfaces[v].classList.add('on');
+  if(v==='gacha'){document.getElementById('capsule').style.display='';document.getElementById('gtip').style.display='';}
+}
+function openSocials(btn){btn.classList.add('act');stage.classList.add('open');openIcon='socials';
+  document.getElementById('p-socials').classList.add('on');}
+
+document.querySelectorAll('.ibtn').forEach(btn=>{
+  btn.addEventListener('click',e=>{e.preventDefault();
+    const icon=btn.dataset.icon;
+    if(openIcon===icon){closeAll();return;}
+    if(openIcon)closeAll();
+    if(icon==='wishlist'){btn.animate([{transform:'scale(1)'},{transform:'scale(.86)'},{transform:'scale(1)'}],{duration:220});return;}
+    if(icon==='third')openThird(btn); else openSocials(btn);
+  });
+});
+
+document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{
+  document.querySelectorAll('.tab').forEach(x=>x.setAttribute('aria-pressed','false'));
+  t.setAttribute('aria-pressed','true');closeAll();
+}));
+
+// gacha crack
+document.getElementById('capsule').addEventListener('click',()=>{
+  const cap=document.getElementById('capsule');cap.classList.add('crack');
+  document.getElementById('gtip').style.display='none';
+  setTimeout(()=>{cap.style.display='none';document.getElementById('prizes').classList.add('show');},420);
+});
+// ribbon tabs
+document.querySelectorAll('.rtab').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('.rtab').forEach(x=>x.classList.remove('active'));b.classList.add('active');
+  const m={doods:'the doodle canvas lives here',ask:'anonymous ask box lives here',posts:'the posts wall lives here'};
+  document.getElementById('rbody').textContent=m[b.dataset.t];
+}));
+</script>
+</body>
+</html>

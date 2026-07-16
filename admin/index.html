@@ -326,6 +326,25 @@
                             </div>
                         </details>
 
+                        <details class="admin-link-card admin-control-card" data-link-card="homepage-note" open>
+                            <summary>
+                                <div class="admin-link-card-title">
+                                    <span class="admin-link-icon">N</span>
+                                    <div>
+                                        <strong>paper note</strong>
+                                        <small id="homepage-note-state">blank</small>
+                                    </div>
+                                </div>
+                            </summary>
+                            <div class="admin-link-card-body admin-field-grid">
+                                <label class="admin-url-field">
+                                    <span>text on the homepage note <small id="homepage-note-count">0/220</small></span>
+                                    <textarea id="homepage-note-text-input" maxlength="220" placeholder="write directly on the pink note"></textarea>
+                                </label>
+                                <p class="admin-tool-note">Autosaves. Line breaks are kept, and the homepage gently resizes the handwriting so it stays inside the paper.</p>
+                            </div>
+                        </details>
+
                         <details class="admin-link-card admin-control-card" data-link-card="latest-note" open>
                             <summary>
                                 <div class="admin-link-card-title">
@@ -667,6 +686,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="../admin-rooms.js?v=4.5"></script>
-    <script src="../admin.js?v=5.2"></script>
+    <script src="../admin.js?v=5.4"></script>
 </body>
 </html>
