@@ -1222,14 +1222,10 @@ body.has-posts-panel-open .site-brand-footer {
 }
 
 .note-peel-target {
-    --note-peel-progress: 0;
-    --note-fold-size: 28px;
-    --note-fold-x: 0px;
-    --note-fold-y: 0px;
     transition: opacity 0.46s ease, transform 0.42s cubic-bezier(0.2, 0.86, 0.24, 1), filter 0.32s ease;
     position: absolute;
-    /* The note scales around its lower half, so the small 4px compensation
-       keeps its visible top edge aligned with the other open surfaces. */
+    /* The small 4px compensation keeps the visible paper edge aligned with
+       the other open surfaces while its natural corner remains untouched. */
     top: calc(var(--open-surface-top) + 4px);
     left: 50%;
     transform: translateX(-50%) rotate(0deg) scale(1.015);
@@ -1244,15 +1240,10 @@ body.has-posts-panel-open .site-brand-footer {
     cursor: default;
     overflow: visible;
     isolation: isolate;
-    transform-origin: 50% 82%;
+    transform-origin: 22% 18%;
     touch-action: pan-y;
     user-select: none;
     -webkit-user-select: none;
-}
-
-.note-peel-target.rooms-disabled {
-    cursor: default;
-    touch-action: auto;
 }
 
 .note-peel-target.editing {
@@ -1262,13 +1253,6 @@ body.has-posts-panel-open .site-brand-footer {
 
 .note-peel-target.admin-editable {
     cursor: text;
-}
-
-.note-peel-target.rooms-disabled .note-peel-corner,
-.note-peel-target.rooms-disabled .note-peel-curl,
-.note-peel-target.rooms-disabled .note-peel-handle {
-    opacity: 0;
-    pointer-events: none;
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -1284,19 +1268,13 @@ body.has-posts-panel-open .site-brand-footer {
 .note-peel-target.peeling {
     cursor: grabbing;
     animation: none !important;
-    transition: none;
+    transition: filter 0.14s ease;
     z-index: 4;
     will-change: transform, filter;
     filter:
         saturate(1.035)
-        drop-shadow(0 21px 18px rgba(126, 82, 103, 0.2))
-        drop-shadow(0 5px 6px rgba(116, 74, 95, 0.12));
-}
-
-.note-peel-target.peeling .note-image,
-.note-peel-target.peeling .note-peel-corner,
-.note-peel-target.peeling .note-peel-curl {
-    transition: none;
+        drop-shadow(0 17px 16px rgba(126, 82, 103, 0.18))
+        drop-shadow(0 4px 5px rgba(116, 74, 95, 0.1));
 }
 
 .note-peel-target.completing {
@@ -1308,11 +1286,11 @@ body.has-posts-panel-open .site-brand-footer {
     will-change: transform, filter, opacity;
     filter:
         saturate(1.035)
-        drop-shadow(0 23px 20px rgba(126, 82, 103, 0.22))
-        drop-shadow(0 6px 7px rgba(116, 74, 95, 0.13));
+        drop-shadow(0 19px 17px rgba(126, 82, 103, 0.19))
+        drop-shadow(0 5px 6px rgba(116, 74, 95, 0.1));
 }
 
-.note-peel-target.detached {
+.main-screen.note-ready .note-peel-target.active-content.detached {
     opacity: 0;
     transition:
         transform 0.82s cubic-bezier(0.38, 0.02, 0.72, 0.45),
@@ -1320,7 +1298,7 @@ body.has-posts-panel-open .site-brand-footer {
         opacity 0.68s ease 0.1s;
     filter:
         saturate(1.01)
-        drop-shadow(0 28px 19px rgba(126, 82, 103, 0.13));
+        drop-shadow(0 24px 18px rgba(126, 82, 103, 0.11));
 }
 
 .note-peel-target.peeled-away {
@@ -1334,30 +1312,25 @@ body.has-posts-panel-open .site-brand-footer {
     width: 100%;
     height: auto;
     border-radius: 0 0 16px 16px;
-    clip-path: polygon(
-        1px 1px,
-        calc(100% - 1px) 1px,
-        calc(100% - 1px) calc(100% - var(--note-fold-size)),
-        calc(100% - var(--note-fold-size)) 100%,
-        1px 100%
-    );
-    transition: clip-path 0.34s cubic-bezier(0.18, 0.86, 0.24, 1), opacity 0.46s ease;
+    clip-path: inset(1px 1px 0 1px);
+    transition: opacity 0.46s ease;
     pointer-events: none;
     user-select: none;
     -webkit-user-drag: none;
     transform: translateZ(0);
-    will-change: clip-path;
 }
 
 .note-copy,
 .note-editor {
     position: absolute;
     z-index: 2;
-    top: 10.5%;
+    top: 8.5%;
     right: 17%;
     bottom: 24%;
     left: 17%;
     margin: 0;
+    box-sizing: border-box;
+    padding: 0 0 4px;
     overflow: hidden;
     color: rgba(108, 75, 101, 0.72);
     font-family: "Noteworthy", "Chalkboard SE", "Bradley Hand", "Segoe Print", "Comic Sans MS", cursive;
@@ -1383,7 +1356,7 @@ body.has-posts-panel-open .site-brand-footer {
 
 .note-editor {
     z-index: 3;
-    padding: 0;
+    padding: 0 0 4px;
     border: 0;
     outline: 0;
     background: transparent;
@@ -1508,8 +1481,6 @@ body.has-posts-panel-open .site-brand-footer {
     opacity: 0.62;
 }
 
-.note-peel-corner,
-.note-peel-curl,
 .note-peel-handle {
     position: absolute;
     right: 0;
@@ -1519,8 +1490,8 @@ body.has-posts-panel-open .site-brand-footer {
 
 .note-peel-handle {
     z-index: 4;
-    width: 82px;
-    height: 92px;
+    width: 64px;
+    height: 70px;
     pointer-events: auto;
     touch-action: none;
     cursor: grab;
@@ -1535,47 +1506,9 @@ body.has-posts-panel-open .site-brand-footer {
     pointer-events: none;
 }
 
-.note-peel-corner {
-    width: var(--note-fold-size);
-    height: var(--note-fold-size);
-    border-radius: 8px 0 14px 0;
-    clip-path: polygon(100% 0, 100% 100%, 0 100%);
-    background:
-        linear-gradient(135deg, rgba(255, 255, 255, 0.99) 0%, rgba(255, 246, 251, 0.9) 42%, rgba(255, 202, 229, 0.62) 76%, rgba(178, 96, 136, 0.22) 100%),
-        url('note-paper-v4.png') right bottom / 254px auto no-repeat;
-    box-shadow:
-        -10px -10px 20px rgba(153, 91, 121, calc(0.035 + var(--note-peel-progress) * 0.18)),
-        inset 1px 1px 0 rgba(255, 255, 255, 0.86),
-        inset -1px -1px 0 rgba(196, 103, 148, calc(0.08 + var(--note-peel-progress) * 0.12));
-    transform:
-        translate3d(var(--note-fold-x), var(--note-fold-y), 0)
-        rotate(calc(-8deg - (var(--note-peel-progress) * 16deg)));
-    transform-origin: 100% 100%;
-    opacity: calc(0.76 + var(--note-peel-progress) * 0.24);
-    transition: width 0.34s cubic-bezier(0.18, 0.86, 0.24, 1), height 0.34s cubic-bezier(0.18, 0.86, 0.24, 1), transform 0.34s cubic-bezier(0.18, 0.86, 0.24, 1), opacity 0.24s ease;
-    backface-visibility: hidden;
-    will-change: width, height, transform, opacity;
-}
-
-.note-peel-curl {
-    width: calc(var(--note-fold-size) * 1.22);
-    height: 2.5px;
-    border-radius: 999px;
-    background: linear-gradient(90deg, transparent, rgba(139, 89, 112, 0.22), rgba(255, 255, 255, 0.7));
-    transform:
-        translate3d(calc(var(--note-fold-x) - 6px), calc(var(--note-fold-y) - var(--note-fold-size) * 0.18), 0)
-        rotate(-45deg);
-    opacity: calc(0.12 + var(--note-peel-progress) * 0.62);
-    filter: blur(0.1px);
-    transition: width 0.34s cubic-bezier(0.18, 0.86, 0.24, 1), transform 0.34s cubic-bezier(0.18, 0.86, 0.24, 1), opacity 0.24s ease;
-    will-change: width, transform, opacity;
-}
-
 @media (prefers-reduced-motion: reduce) {
     .note-peel-target,
     .note-image,
-    .note-peel-corner,
-    .note-peel-curl,
     .note-peel-handle {
         animation: none;
         transition: none;

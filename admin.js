@@ -1481,8 +1481,8 @@ async function handleRoomsMasterToggle(event) {
     const checkbox = event.currentTarget;
     const enabled = checkbox.checked;
     const confirmed = window.confirm(enabled
-        ? 'Enable Rooms again? The note pull and public Rooms page will become available.'
-        : 'Fully disable Rooms? The note pull will stop, public Rooms visits will go to 404, and active rooms will be closed.');
+        ? 'Enable Rooms again? The public Rooms page will become available.'
+        : 'Fully disable Rooms? Public Rooms visits will go to 404, and active rooms will be closed. The homepage note will still peel independently.');
 
     if (!confirmed) {
         checkbox.checked = !enabled;

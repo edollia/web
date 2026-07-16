@@ -416,7 +416,7 @@ document.addEventListener("DOMContentLoaded", async function() {
 
     initAdminGate();
 
-    function initNoteRoomsPeel() {
+    function initNotePeel() {
         const noteTarget = document.getElementById('note-peel-target');
         const note = document.querySelector('.note-image');
         const peelHandle = noteTarget?.querySelector('.note-peel-handle');
@@ -429,10 +429,6 @@ document.addEventListener("DOMContentLoaded", async function() {
         let detaching = false;
         let openDistance = 190;
 
-        function roomsAreEnabled() {
-            return siteLinkSettings.rooms_enabled !== false;
-        }
-
         function updatePeelMetrics() {
             const noteRect = noteTarget.getBoundingClientRect();
             openDistance = Math.max(150, Math.min(245, Math.hypot(noteRect.width, noteRect.height) * 0.62));
@@ -441,15 +437,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         function setPeelProgress(progress) {
             currentProgress = Math.max(0, Math.min(1, progress));
             const eased = 1 - Math.pow(1 - currentProgress, 2.05);
-            const foldSize = 28 + eased * 64;
-            const foldX = eased * -42;
-            const foldY = eased * -34;
-
-            noteTarget.style.setProperty('--note-peel-progress', eased.toFixed(3));
-            noteTarget.style.setProperty('--note-fold-size', `${foldSize.toFixed(1)}px`);
-            noteTarget.style.setProperty('--note-fold-x', `${foldX.toFixed(1)}px`);
-            noteTarget.style.setProperty('--note-fold-y', `${foldY.toFixed(1)}px`);
-            noteTarget.style.transform = `translateX(-50%) translate3d(${-eased * 44}px, ${-4 - eased * 30}px, 0) rotate(${-eased * 7.5}deg) scale(${1.015 + eased * 0.014})`;
+            noteTarget.style.transform = `translateX(-50%) translate3d(${-eased * 38}px, ${-eased * 30}px, 0) rotate(${-eased * 5.25}deg) scale(${1.015 + eased * 0.008})`;
         }
 
         function resetPeel() {
@@ -464,7 +452,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         }
 
         function detachNote() {
-            if (detaching || !roomsAreEnabled()) return;
+            if (detaching) return;
             detaching = true;
             playUiSound('link');
             noteTarget.classList.remove('peeling');
@@ -474,7 +462,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                 window.setTimeout(() => {
                     noteTarget.classList.add('detached');
                     window.requestAnimationFrame(() => {
-                        noteTarget.style.transform = 'translateX(-50%) translate3d(-72px, calc(100vh + 140px), 0) rotate(-26deg) scale(0.985)';
+                        noteTarget.style.transform = 'translateX(-50%) translate3d(-52px, calc(100vh + 140px), 0) rotate(-18deg) scale(0.985)';
                     });
                     window.setTimeout(() => {
                         noteTarget.classList.add('peeled-away');
@@ -487,11 +475,11 @@ document.addEventListener("DOMContentLoaded", async function() {
         updatePeelMetrics();
         window.addEventListener('resize', function() {
             updatePeelMetrics();
-            if (!dragging && !detaching) resetPeel();
+            if (!dragging && !detaching && currentProgress > 0.001) resetPeel();
         });
 
         peelHandle.addEventListener('pointerdown', function(e) {
-            if (detaching || !roomsAreEnabled() || !e.isPrimary || note.classList.contains('hidden')) return;
+            if (detaching || !e.isPrimary || note.classList.contains('hidden')) return;
             if (noteTarget.classList.contains('editing')) return;
             dragging = true;
             startX = e.clientX;
@@ -528,9 +516,12 @@ document.addEventListener("DOMContentLoaded", async function() {
 
         peelHandle.addEventListener('pointerup', finishPeel);
         peelHandle.addEventListener('pointercancel', resetPeel);
+        peelHandle.addEventListener('lostpointercapture', function() {
+            if (dragging && !detaching) resetPeel();
+        });
     }
 
-    initNoteRoomsPeel();
+    initNotePeel();
     
     // ===== LOADING SCREEN =====
     const loadingScreen = document.getElementById("loading-screen");
@@ -1804,6 +1795,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     let homepageNoteLastSaveError = null;
     let homepageNoteSaveLabelTimer = null;
     let homepageNoteExplicitSavePending = false;
+    let homepageNoteAdminAccessRevision = 0;
     let homepageNoteSuppressOpen = false;
     let homepageNoteSuppressOpenTimer = null;
     const maintenanceOverlay = document.getElementById('site-maintenance-overlay');
@@ -2196,12 +2188,8 @@ document.addEventListener("DOMContentLoaded", async function() {
                 return;
             }
             if (homepageNoteTarget.classList.contains('peeling') || homepageNoteTarget.classList.contains('completing')) return;
-
-            const rect = homepageNoteTarget.getBoundingClientRect();
-            const x = event.clientX - rect.left;
-            const y = event.clientY - rect.top;
-            const isPeelCorner = x >= rect.width - 82 && y >= rect.height - 92;
-            if (!isPeelCorner) beginHomepageNoteEditing();
+            if (event.target instanceof Element && event.target.closest('.note-peel-handle')) return;
+            beginHomepageNoteEditing();
         });
 
         homepageNoteEditor.addEventListener('input', () => {
@@ -2287,16 +2275,24 @@ document.addEventListener("DOMContentLoaded", async function() {
         if (homepageNoteSize) homepageNoteSize.disabled = true;
         homepageNoteSave.textContent = 'saving…';
 
-        const revisionBeforeSave = homepageNoteSaveRevision;
-        const fallbackSettings = getHomepageNoteSettingsSnapshot();
-        if (homepageNoteEditor && !homepageNoteEditor.hidden) finishHomepageNoteEditing();
-        flushHomepageNoteSizeSave();
-        if (revisionBeforeSave === homepageNoteSaveRevision) {
-            queueHomepageNoteSave(fallbackSettings);
+        try {
+            const revisionBeforeSave = homepageNoteSaveRevision;
+            const fallbackSettings = getHomepageNoteSettingsSnapshot();
+            if (homepageNoteEditor && !homepageNoteEditor.hidden) finishHomepageNoteEditing();
+            flushHomepageNoteSizeSave();
+            if (revisionBeforeSave === homepageNoteSaveRevision) {
+                queueHomepageNoteSave(fallbackSettings);
+            }
+
+            await homepageNoteSaveQueue;
+        } catch (error) {
+            homepageNoteLastSaveError = error;
+            showSubmitPopup(error?.message || 'The note could not be saved.');
+            void refreshHomepageNoteAdminAccess();
+        } finally {
+            homepageNoteExplicitSavePending = false;
         }
 
-        await homepageNoteSaveQueue;
-        homepageNoteExplicitSavePending = false;
         if (!homepageNoteCanEdit) return;
         homepageNoteSave.disabled = false;
         if (homepageNoteSize) homepageNoteSize.disabled = false;
@@ -2339,7 +2335,9 @@ document.addEventListener("DOMContentLoaded", async function() {
     }
 
     async function refreshHomepageNoteAdminAccess() {
+        const accessRevision = ++homepageNoteAdminAccessRevision;
         const client = await siteClientReady;
+        if (accessRevision !== homepageNoteAdminAccessRevision) return;
         if (!client?.auth?.getUser) {
             setHomepageNoteAdminAccess(false);
             return;
@@ -2347,8 +2345,10 @@ document.addEventListener("DOMContentLoaded", async function() {
 
         try {
             const { data, error } = await client.auth.getUser();
+            if (accessRevision !== homepageNoteAdminAccessRevision) return;
             setHomepageNoteAdminAccess(!error && data?.user?.id === HOMEPAGE_NOTE_ADMIN_UID);
         } catch (error) {
+            if (accessRevision !== homepageNoteAdminAccessRevision) return;
             setHomepageNoteAdminAccess(false);
         }
     }
@@ -2434,13 +2434,11 @@ document.addEventListener("DOMContentLoaded", async function() {
     function applyPublicLinkSettings() {
         document.body.classList.add('site-links-ready');
         renderEntryGateMode();
-        const roomsEnabled = siteLinkSettings.rooms_enabled !== false;
-        const noteRoomsTarget = document.getElementById('note-peel-target');
-        noteRoomsTarget?.classList.toggle('rooms-disabled', !roomsEnabled);
-        noteRoomsTarget?.setAttribute('aria-disabled', roomsEnabled ? 'false' : 'true');
-        noteRoomsTarget?.setAttribute('aria-label', roomsEnabled
-            ? 'Pull the note corner to peel it off'
-            : 'Rooms are currently unavailable');
+        const notePeelTarget = document.getElementById('note-peel-target');
+        notePeelTarget?.removeAttribute('aria-disabled');
+        notePeelTarget?.setAttribute('aria-label', homepageNoteCanEdit
+            ? 'Tap the note to edit it, or pull its corner to peel it off'
+            : 'Pull the note corner to peel it off');
         if (snapchatOption) {
             snapchatOption.href = getPublicLink('snapchat');
             snapchatOption.classList.toggle('site-link-hidden', !isPublicLinkEnabled('snapchat'));

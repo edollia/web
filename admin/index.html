@@ -49,7 +49,7 @@
 
             <div class="admin-alerts" aria-live="polite">
                 <p id="lockdown-banner" class="hidden">lockdown is ON — only the admin can create or join rooms.</p>
-                <p id="rooms-disabled-banner" class="hidden">rooms are OFF — the note pull and public Rooms page are disabled.</p>
+                <p id="rooms-disabled-banner" class="hidden">rooms are OFF — the public Rooms page is disabled.</p>
             </div>
 
             <section class="admin-stats" id="admin-stats"></section>
@@ -145,7 +145,7 @@
                             </label>
                         </summary>
                         <div class="admin-link-card-body">
-                            <p class="admin-tool-note">Turn this off to disable the homepage note pull and send every public Rooms visit to the 404 page.</p>
+                            <p class="admin-tool-note">Turn this off to send every public Rooms visit to the 404 page and close active rooms. The homepage note still peels independently.</p>
                         </div>
                     </details>
 
@@ -686,6 +686,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="../admin-rooms.js?v=4.5"></script>
-    <script src="../admin.js?v=5.5"></script>
+    <script src="../admin.js?v=5.6"></script>
 </body>
 </html>
