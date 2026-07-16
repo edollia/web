@@ -419,14 +419,14 @@ document.addEventListener("DOMContentLoaded", async function() {
     function initNoteRoomsPeel() {
         const noteTarget = document.getElementById('note-peel-target');
         const note = document.querySelector('.note-image');
-        if (!noteTarget || !note) return;
+        const peelHandle = noteTarget?.querySelector('.note-peel-handle');
+        if (!noteTarget || !note || !peelHandle) return;
 
-        const roomsUrl = resolveSiteRoute('rooms/');
         let startX = 0;
         let startY = 0;
         let currentProgress = 0;
         let dragging = false;
-        let opening = false;
+        let detaching = false;
         let openDistance = 190;
 
         function roomsAreEnabled() {
@@ -438,85 +438,72 @@ document.addEventListener("DOMContentLoaded", async function() {
             openDistance = Math.max(150, Math.min(245, Math.hypot(noteRect.width, noteRect.height) * 0.62));
         }
 
-        function isCornerGesture(e) {
-            const rect = noteTarget.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            const y = e.clientY - rect.top;
-            return x >= rect.width - 82 && y >= rect.height - 92;
-        }
-
         function setPeelProgress(progress) {
             currentProgress = Math.max(0, Math.min(1, progress));
             const eased = 1 - Math.pow(1 - currentProgress, 2.05);
-            const foldSize = 28 + eased * 176;
-            const foldX = eased * -96;
-            const foldY = eased * -92;
+            const foldSize = 28 + eased * 64;
+            const foldX = eased * -42;
+            const foldY = eased * -34;
 
             noteTarget.style.setProperty('--note-peel-progress', eased.toFixed(3));
             noteTarget.style.setProperty('--note-fold-size', `${foldSize.toFixed(1)}px`);
             noteTarget.style.setProperty('--note-fold-x', `${foldX.toFixed(1)}px`);
             noteTarget.style.setProperty('--note-fold-y', `${foldY.toFixed(1)}px`);
-            noteTarget.style.transform = `translateX(-50%) translateY(${-4 - eased * 6}px) rotate(${-eased * 4.2}deg) scale(${1.015 + eased * 0.012})`;
-            document.body.style.setProperty('--rooms-peel-progress', eased.toFixed(3));
-            document.body.style.setProperty('--rooms-peel-blur', `${(eased * 12).toFixed(2)}px`);
+            noteTarget.style.transform = `translateX(-50%) translate3d(${-eased * 44}px, ${-4 - eased * 30}px, 0) rotate(${-eased * 7.5}deg) scale(${1.015 + eased * 0.014})`;
         }
 
         function resetPeel() {
-            if (opening) return;
+            if (detaching) return;
             dragging = false;
-            noteTarget.classList.remove('peeling', 'completing');
+            noteTarget.classList.remove('peeling', 'completing', 'detached');
             setPeelProgress(0);
             window.setTimeout(() => {
-                if (dragging || opening || currentProgress > 0.01) return;
-                document.body.classList.remove('rooms-note-peeling');
+                if (dragging || detaching || currentProgress > 0.01) return;
                 noteTarget.style.removeProperty('transform');
-                document.body.style.removeProperty('--rooms-peel-progress');
-                document.body.style.removeProperty('--rooms-peel-blur');
             }, 320);
         }
 
-        function openRoomsPage() {
-            if (opening || !roomsAreEnabled()) return;
-            opening = true;
+        function detachNote() {
+            if (detaching || !roomsAreEnabled()) return;
+            detaching = true;
             playUiSound('link');
-            try {
-                sessionStorage.setItem('doll_rooms_from_pull', '1');
-            } catch (error) {
-                // The route still works if session storage is unavailable.
-            }
-
             noteTarget.classList.remove('peeling');
             noteTarget.classList.add('completing');
-            document.body.classList.add('rooms-note-peeling');
             window.requestAnimationFrame(() => {
                 setPeelProgress(1);
                 window.setTimeout(() => {
-                    window.location.href = roomsUrl;
-                }, 330);
+                    noteTarget.classList.add('detached');
+                    window.requestAnimationFrame(() => {
+                        noteTarget.style.transform = 'translateX(-50%) translate3d(-72px, calc(100vh + 140px), 0) rotate(-26deg) scale(0.985)';
+                    });
+                    window.setTimeout(() => {
+                        noteTarget.classList.add('peeled-away');
+                        noteTarget.setAttribute('aria-hidden', 'true');
+                    }, 860);
+                }, 190);
             });
         }
 
         updatePeelMetrics();
         window.addEventListener('resize', function() {
             updatePeelMetrics();
-            if (!dragging && !opening) resetPeel();
+            if (!dragging && !detaching) resetPeel();
         });
 
-        noteTarget.addEventListener('pointerdown', function(e) {
-            if (opening || !roomsAreEnabled() || !e.isPrimary || note.classList.contains('hidden')) return;
+        peelHandle.addEventListener('pointerdown', function(e) {
+            if (detaching || !roomsAreEnabled() || !e.isPrimary || note.classList.contains('hidden')) return;
             if (noteTarget.classList.contains('editing')) return;
-            if (!isCornerGesture(e)) return;
             dragging = true;
             startX = e.clientX;
             startY = e.clientY;
             updatePeelMetrics();
             noteTarget.classList.add('peeling');
-            document.body.classList.add('rooms-note-peeling');
-            noteTarget.setPointerCapture?.(e.pointerId);
+            peelHandle.setPointerCapture?.(e.pointerId);
+            e.preventDefault();
         });
 
-        noteTarget.addEventListener('pointermove', function(e) {
-            if (!dragging || opening) return;
+        peelHandle.addEventListener('pointermove', function(e) {
+            if (!dragging || detaching) return;
             const dx = startX - e.clientX;
             const dy = startY - e.clientY;
             const distance = Math.max(0, dx * 0.78 + dy * 0.58);
@@ -527,20 +514,20 @@ document.addEventListener("DOMContentLoaded", async function() {
         });
 
         function finishPeel(e) {
-            if (!dragging || opening) return;
+            if (!dragging || detaching) return;
             dragging = false;
-            noteTarget.releasePointerCapture?.(e.pointerId);
+            peelHandle.releasePointerCapture?.(e.pointerId);
 
-            if (currentProgress >= 0.72) {
-                openRoomsPage();
+            if (currentProgress >= 0.82) {
+                detachNote();
                 return;
             }
 
             resetPeel();
         }
 
-        noteTarget.addEventListener('pointerup', finishPeel);
-        noteTarget.addEventListener('pointercancel', resetPeel);
+        peelHandle.addEventListener('pointerup', finishPeel);
+        peelHandle.addEventListener('pointercancel', resetPeel);
     }
 
     initNoteRoomsPeel();
@@ -865,7 +852,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             const criticalResources = [
                 'background1.png',
                 'dropdown1.png',
-                'note-paper-v3.png',
+                'note-paper-v4.png',
                 'loading.gif',
                 'wishlist.png',
                 'question-bunny.png',
@@ -2333,8 +2320,8 @@ document.addEventListener("DOMContentLoaded", async function() {
             if (!canEdit) homepageNoteSave.textContent = 'save';
         }
         homepageNoteTarget?.setAttribute('aria-label', canEdit
-            ? 'Tap the note to edit it, or pull its corner to open rooms'
-            : 'Pull the note corner to open rooms');
+            ? 'Tap the note to edit it, or pull its corner to peel it off'
+            : 'Pull the note corner to peel it off');
         if (!canEdit && homepageNoteTarget?.classList.contains('editing')) {
             closeHomepageNoteEditor();
             renderHomepageNoteText();
@@ -2452,7 +2439,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         noteRoomsTarget?.classList.toggle('rooms-disabled', !roomsEnabled);
         noteRoomsTarget?.setAttribute('aria-disabled', roomsEnabled ? 'false' : 'true');
         noteRoomsTarget?.setAttribute('aria-label', roomsEnabled
-            ? 'Pull the note corner to open rooms'
+            ? 'Pull the note corner to peel it off'
             : 'Rooms are currently unavailable');
         if (snapchatOption) {
             snapchatOption.href = getPublicLink('snapchat');

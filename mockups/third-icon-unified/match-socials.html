@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>3rd icon — matched to socials</title>
+<style>
+/* ISOLATED MOCKUP — nothing live is edited.
+   Goal: the 3rd icon opens a panel that MATCHES socials + wishlist exactly.
+   The .social-link-card / panel CSS below is copied verbatim from styles.css
+   so these cards are identical to the real Snapchat/Instagram cards.
+   "Many mockups" = several content options, all in that same matched style. */
+:root{
+  --glass-pink-shadow:0 5px 14px rgba(255,145,195,.13);
+  --control:linear-gradient(to right,#fdeef5,#ffdbee);--active:linear-gradient(135deg,#fbdde9,#ff98ca);
+  --line-soft:rgba(255,199,222,.42);--sh:0 5px 14px rgba(255,145,195,.16);--sh-sm:0 2px 7px rgba(255,145,195,.14);
+  --pink:#c75e8f;--ease:cubic-bezier(.22,.61,.36,1);
+}
+*{box-sizing:border-box}html,body{margin:0}
+body{font-family:ui-rounded,"Arial Rounded MT Bold",system-ui,sans-serif;color:#7a5c69;min-height:100vh;
+  display:flex;flex-direction:column;align-items:center;
+  background:radial-gradient(circle at 50% 14%,rgba(255,255,255,.55),transparent 42%),linear-gradient(#fff0f7,#ffedf6 52%,#fff5fa)}
+.lab-head{max-width:720px;padding:22px 20px 2px;text-align:center}
+.lab-head .eyebrow{margin:0;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#d98bb4}
+.lab-head h1{margin:6px 0 4px;font-size:20px;color:#b8557f}
+.lab-head p{margin:0 auto;max-width:56ch;font-size:13px;line-height:1.5;color:rgba(122,92,105,.85)}
+.lab-head b{color:#b8557f}
+.picker{display:flex;gap:7px;flex-wrap:wrap;justify-content:center;padding:14px 12px 2px;max-width:840px}
+.tab{border:1px solid var(--line-soft);background:rgba(255,247,251,.96);border-radius:13px;padding:7px 12px;cursor:pointer;
+  display:flex;flex-direction:column;align-items:flex-start;gap:1px;box-shadow:var(--sh-sm);transition:.18s var(--ease);min-width:120px}
+.tab strong{font-size:12.5px;color:#b8557f}.tab small{font-size:10.5px;color:rgba(122,92,105,.7)}
+.tab[aria-pressed="true"]{border-color:rgba(255,174,207,.62);background:linear-gradient(#fff,#ffeef6);transform:translateY(-1px)}
+.tab.ref[aria-pressed="true"]{background:linear-gradient(#fff,#f0f7ff);border-color:#bcd8f5}
+
+.stage{margin:16px 0 22px;width:344px;max-width:92vw;border-radius:34px;padding:14px 0 24px;position:relative;overflow:hidden;
+  background:linear-gradient(#fff8fc,#fff2f9);border:1px solid rgba(255,199,222,.6);box-shadow:0 24px 60px rgba(196,93,141,.18)}
+.stage-art{width:78%;height:78px;margin:2px auto 4px;border-radius:16px;display:grid;place-items:center;color:#d98bb4;font-size:11px;
+  background:radial-gradient(circle at 30% 40%,#ffd3e7,transparent 60%),radial-gradient(circle at 72% 60%,#ffe0b8,transparent 55%),linear-gradient(120deg,#ffe4f1,#fff3d9)}
+.button-group{position:relative;z-index:5;display:flex;justify-content:center;min-height:74px;padding:7px 0}
+.rowi{display:flex;align-items:center;justify-content:center}
+.ibtn{position:relative;margin:0 10px;width:54px;height:54px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  text-decoration:none;cursor:pointer;color:var(--pink);background:var(--control);border:1px solid var(--line-soft);box-shadow:var(--sh);font-size:22px;
+  transition:transform .42s var(--ease),opacity .3s var(--ease),width .42s var(--ease),margin .42s var(--ease),background .2s var(--ease)}
+.ibtn:hover{transform:translateY(-2px)}
+.ibtn img{width:30px;height:30px;object-fit:contain}.ibtn .glyph{line-height:1;transition:opacity .2s}
+.ibtn .ic{width:26px;height:26px}.ibtn .x{position:absolute;font-size:24px;opacity:0;transition:opacity .2s}
+.stage.open .ibtn:not(.act){width:0;margin:0;opacity:0;pointer-events:none;transform:scale(.4)}
+.stage.open .ibtn.act .glyph,.stage.open .ibtn.act img,.stage.open .ibtn.act .ic{opacity:0}
+.stage.open .ibtn.act .x{opacity:1}.stage.open .ibtn.act{background:var(--active);color:#fff}
+
+.host{position:relative;width:88%;margin:2px auto 0;height:360px}
+.note{border-radius:14px;height:100%;display:grid;place-items:center;color:#c99a6a;font-size:12px;background:linear-gradient(#fffdf6,#fff6e9);
+  border:1px solid rgba(255,214,180,.6);box-shadow:0 12px 26px rgba(196,140,93,.14);transition:opacity .3s var(--ease),transform .3s var(--ease)}
+.stage.open .note{opacity:0;transform:scale(.95);position:absolute;inset:0;pointer-events:none}
+.panelwrap{position:absolute;inset:0;opacity:0;transform:translateY(14px) scale(.97);pointer-events:none;transition:.34s var(--ease)}
+.stage.open .panelwrap[data-active]{opacity:1;transform:none;pointer-events:auto}
+
+/* ===== VERBATIM FROM styles.css ===== */
+.social-links-panel{position:relative;width:100%;max-height:340px;overflow-y:auto;overflow-x:hidden;scrollbar-width:none;padding-top:26px}
+.social-links-panel::-webkit-scrollbar{display:none}
+.social-links-panel>*{margin-bottom:8px}
+.social-links-panel>*:last-child{margin-bottom:0}
+.social-link-card{position:relative;isolation:isolate;display:grid;grid-template-columns:44px minmax(0,1fr) 16px;align-items:center;
+  aspect-ratio:32/11.385;min-height:81px;gap:10px;padding:7px 12px 7px 10px;overflow:hidden;
+  border:1px solid rgba(255,174,207,.52);border-radius:18px;
+  background:linear-gradient(rgba(255,255,255,.76),rgba(255,247,252,.68)),repeating-linear-gradient(90deg,rgba(255,229,241,.14) 0 8px,rgba(255,250,253,.12) 8px 16px);
+  box-shadow:var(--glass-pink-shadow),inset 0 1px 0 rgba(255,255,255,.78);color:rgba(106,92,99,.78);text-decoration:none;
+  transition:transform .18s ease,background .2s ease,border-color .2s ease,box-shadow .2s ease}
+.social-link-card-frame{position:relative}
+.social-link-mascot{position:absolute;top:-24px;right:3px;width:56px;height:auto;pointer-events:none;z-index:3}
+.social-link-icon{display:grid;place-items:center;width:44px;height:44px;overflow:hidden}
+.social-link-icon img{display:block;width:42px;height:42px;object-fit:contain}
+.social-link-icon svg{width:38px;height:38px}
+.social-link-copy{display:flex;min-width:0;flex-direction:column;align-items:flex-start;line-height:1.1}
+.social-link-copy strong{overflow:hidden;max-width:100%;color:rgba(106,92,99,.78);font-family:"Comic Sans MS","Trebuchet MS",cursive;font-size:13px;font-weight:700;letter-spacing:.01em;text-overflow:ellipsis;white-space:nowrap}
+.social-link-copy small{overflow:hidden;max-width:100%;margin-top:3px;color:rgba(174,85,130,.62);font-family:"Trebuchet MS",Arial,sans-serif;font-size:9.5px;font-weight:600;letter-spacing:.025em;text-overflow:ellipsis;white-space:nowrap}
+.social-link-arrow{display:grid;place-items:center;width:16px;height:16px;color:rgba(174,85,130,.44);transform:translateY(-.5px) rotate(-1deg)}
+.social-link-arrow svg{display:block;width:15px;height:15px;overflow:visible}
+.social-link-arrow path{fill:none;stroke:currentColor;stroke-width:1.65;stroke-linecap:round;stroke-linejoin:round}
+@media (hover:hover) and (pointer:fine){.social-link-card:hover{border-color:rgba(255,157,201,.68);
+  background:linear-gradient(rgba(255,255,255,.84),rgba(255,242,249,.76)),repeating-linear-gradient(90deg,rgba(255,229,241,.16) 0 8px,rgba(255,250,253,.14) 8px 16px);
+  box-shadow:0 9px 22px rgba(255,145,195,.18),inset 0 1px 0 rgba(255,255,255,.84);transform:translateY(-1px)}}
+.social-link-card:active{transform:scale(.985)}
+/* icon tint so inline SVGs read like the real art */
+.si-tint{color:var(--pink)}
+.si-badge{width:42px;height:42px;border-radius:12px;display:grid;place-items:center;color:#fff;background:linear-gradient(135deg,#ff9ec7,#ff6faa)}
+.si-badge svg{width:24px;height:24px;stroke:#fff}
+
+.hint{margin:0;text-align:center;font-size:11px;color:rgba(122,92,105,.6);padding:8px 0 0}
+.notes{max-width:480px;padding:6px 20px 46px;font-size:12.5px;line-height:1.6;color:rgba(122,92,105,.85)}
+.notes b{color:#b8557f}.hidden{display:none!important}
+</style>
+</head>
+<body>
+  <div class="lab-head">
+    <p class="eyebrow">isolated mockup · nothing live is edited</p>
+    <h1>3rd icon, in the exact socials style</h1>
+    <p>Same panel, same cards as your real Snapchat/Instagram list (CSS copied verbatim). The 3rd icon just opens its own cards. Flip the variants; hit <b>socials (real)</b> to check the match.</p>
+  </div>
+
+  <nav class="picker" aria-label="Variants">
+    <button class="tab ref" aria-pressed="false" data-v="ref"><strong>socials (real)</strong><small>the thing to match</small></button>
+    <button class="tab" aria-pressed="true" data-v="1"><strong>1 · trio</strong><small>doodle · ask · posts</small></button>
+    <button class="tab" aria-pressed="false" data-v="2"><strong>2 · duo</strong><small>leave · the wall</small></button>
+    <button class="tab" aria-pressed="false" data-v="3"><strong>3 · with mascots</strong><small>bunny on first card</small></button>
+    <button class="tab" aria-pressed="false" data-v="4"><strong>4 · posts-led</strong><small>wall first, then make</small></button>
+  </nav>
+
+  <div class="stage" id="stage">
+    <div class="stage-art">header art</div>
+    <div class="button-group"><div class="rowi">
+      <div class="ibtn" data-icon="socials"><span class="glyph">꩜</span><span class="x">&times;</span></div>
+      <a class="ibtn" data-icon="wishlist" href="#" onclick="return false"><img src="../../wishlist.png" alt="Wishlist" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'glyph',textContent:'♡'}))"><span class="x">&times;</span></a>
+      <div class="ibtn" data-icon="third"><span class="glyph">𓏲ּ𝄢</span><span class="x">&times;</span></div>
+    </div></div>
+
+    <div class="host">
+      <div class="note">note</div>
+
+      <!-- REAL SOCIALS (reference) -->
+      <div class="panelwrap" id="w-ref">
+        <nav class="social-links-panel">
+          <div class="social-link-card-frame">
+            <a class="social-link-card"><span class="social-link-icon"><span class="si-badge" style="background:linear-gradient(135deg,#fff2b0,#ffe14d)"><svg viewBox="0 0 24 24" fill="none" stroke="#c79a00" stroke-width="2"><path d="M4 4h16v12H5.2L4 18z"/></svg></span></span><span class="social-link-copy"><strong>snapchat</strong><small>dumidoll</small></span><span class="social-link-arrow"><svg viewBox="0 0 16 16"><path d="M4 12 12 4M7 4h5v5"/></svg></span></a>
+          </div>
+          <a class="social-link-card"><span class="social-link-icon"><span class="si-badge" style="background:linear-gradient(135deg,#feda75,#d62976 50%,#962fbf)"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="5"/><circle cx="12" cy="12" r="3.4"/></svg></span></span><span class="social-link-copy"><strong>instagram</strong><small>@pawswirl</small></span><span class="social-link-arrow"><svg viewBox="0 0 16 16"><path d="M4 12 12 4M7 4h5v5"/></svg></span></a>
+          <a class="social-link-card"><span class="social-link-icon"><span class="si-badge" style="background:linear-gradient(135deg,#8fd3ff,#29a3e0)"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><path d="M4 12l16-8-6 16-3-6-7-2z"/></svg></span></span><span class="social-link-copy"><strong>telegram</strong><small>wuufles</small></span><span class="social-link-arrow"><svg viewBox="0 0 16 16"><path d="M4 12 12 4M7 4h5v5"/></svg></span></a>
+        </nav>
+        <p class="hint">↑ your real socials — the target</p>
+      </div>
+
+      <!-- V1 TRIO -->
+      <div class="panelwrap" id="w-1" data-active>
+        <nav class="social-links-panel">
+          <a class="social-link-card"><span class="social-link-icon"><span class="si-badge"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M4 16 14 6l4 4L8 20H4z"/></svg></span></span><span class="social-link-copy"><strong>doodle</strong><small>draw me something</small></span><span class="social-link-arrow"><svg viewBox="0 0 16 16"><path d="M4 12 12 4M7 4h5v5"/></svg></span></a>
+          <a class="social-link-card"><span class="social-link-icon"><span class="si-badge"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.2 2.4c-.7.3-.7.8-.7 1.6M12 17h.01"/></svg></span></span><span class="social-link-copy"><strong>ask</strong><small>anonymous question</small></span><span class="social-link-arrow"><svg viewBox="0 0 16 16"><path d="M4 12 12 4M7 4h5v5"/></svg></span></a>
+          <a class="social-link-card"><span class="social-link-icon"><span class="si-badge"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><rect x="4" y="5" width="16" height="14" rx="3"/><path d="M8 10h8M8 14h5"/></svg></span></span><span class="social-link-copy"><strong>posts</strong><small>doods &amp; replies</small></span><span class="social-link-arrow"><svg viewBox="0 0 16 16"><path d="M4 12 12 4M7 4h5v5"/></svg></span></a>
+        </nav>
+        <p class="hint">three cards, one per action — mirrors socials 1:1</p>
+      </div>
+
+      <!-- V2 DUO -->
+      <div class="panelwrap" id="w-2">
+        <nav class="social-links-panel">
+          <a class="social-link-card"><span class="social-link-icon"><span class="si-badge"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M4 16 14 6l4 4L8 20H4z"/></svg></span></span><span class="social-link-copy"><strong>leave a mark</strong><small>doodle or ask</small></span><span class="social-link-arrow"><svg viewBox="0 0 16 16"><path d="M4 12 12 4M7 4h5v5"/></svg></span></a>
+          <a class="social-link-card"><span class="social-link-icon"><span class="si-badge"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><rect x="4" y="5" width="16" height="14" rx="3"/><path d="M8 10h8M8 14h5"/></svg></span></span><span class="social-link-copy"><strong>the wall</strong><small>see what people left</small></span><span class="social-link-arrow"><svg viewBox="0 0 16 16"><path d="M4 12 12 4M7 4h5v5"/></svg></span></a>
+        </nav>
+        <p class="hint">two cards — make vs read, less crowded</p>
+      </div>
+
+      <!-- V3 WITH MASCOTS -->
+      <div class="panelwrap" id="w-3">
+        <nav class="social-links-panel">
+          <div class="social-link-card-frame">
+            <a class="social-link-card"><span class="social-link-icon"><span class="si-badge"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M4 16 14 6l4 4L8 20H4z"/></svg></span></span><span class="social-link-copy"><strong>doodle</strong><small>draw me something</small></span><span class="social-link-arrow"><svg viewBox="0 0 16 16"><path d="M4 12 12 4M7 4h5v5"/></svg></span></a>
+            <svg class="social-link-mascot" viewBox="0 0 64 60"><ellipse cx="20" cy="8" rx="6" ry="14" fill="#fff" stroke="#f2b6cf" stroke-width="2"/><ellipse cx="42" cy="8" rx="6" ry="14" fill="#fff" stroke="#f2b6cf" stroke-width="2"/><ellipse cx="20" cy="8" rx="2.6" ry="8" fill="#ffd0e2"/><ellipse cx="42" cy="8" rx="2.6" ry="8" fill="#ffd0e2"/><circle cx="31" cy="34" r="20" fill="#fff" stroke="#f2b6cf" stroke-width="2"/><circle cx="24" cy="32" r="2.4" fill="#7a5c69"/><circle cx="38" cy="32" r="2.4" fill="#7a5c69"/><circle cx="19" cy="38" r="3.2" fill="#ffc2d8"/><circle cx="43" cy="38" r="3.2" fill="#ffc2d8"/></svg>
+          </div>
+          <a class="social-link-card"><span class="social-link-icon"><span class="si-badge"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.2 2.4c-.7.3-.7.8-.7 1.6M12 17h.01"/></svg></span></span><span class="social-link-copy"><strong>ask</strong><small>anonymous question</small></span><span class="social-link-arrow"><svg viewBox="0 0 16 16"><path d="M4 12 12 4M7 4h5v5"/></svg></span></a>
+          <a class="social-link-card"><span class="social-link-icon"><span class="si-badge"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><rect x="4" y="5" width="16" height="14" rx="3"/><path d="M8 10h8M8 14h5"/></svg></span></span><span class="social-link-copy"><strong>posts</strong><small>doods &amp; replies</small></span><span class="social-link-arrow"><svg viewBox="0 0 16 16"><path d="M4 12 12 4M7 4h5v5"/></svg></span></a>
+        </nav>
+        <p class="hint">same trio + a peeking bunny, like the snapchat card</p>
+      </div>
+
+      <!-- V4 POSTS-LED -->
+      <div class="panelwrap" id="w-4">
+        <nav class="social-links-panel">
+          <a class="social-link-card"><span class="social-link-icon"><span class="si-badge"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><rect x="4" y="5" width="16" height="14" rx="3"/><path d="M8 10h8M8 14h5"/></svg></span></span><span class="social-link-copy"><strong>the wall</strong><small>latest doods &amp; asks</small></span><span class="social-link-arrow"><svg viewBox="0 0 16 16"><path d="M4 12 12 4M7 4h5v5"/></svg></span></a>
+          <a class="social-link-card"><span class="social-link-icon"><span class="si-badge"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M4 16 14 6l4 4L8 20H4z"/></svg></span></span><span class="social-link-copy"><strong>doodle</strong><small>draw me something</small></span><span class="social-link-arrow"><svg viewBox="0 0 16 16"><path d="M4 12 12 4M7 4h5v5"/></svg></span></a>
+          <a class="social-link-card"><span class="social-link-icon"><span class="si-badge"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.2 2.4c-.7.3-.7.8-.7 1.6M12 17h.01"/></svg></span></span><span class="social-link-copy"><strong>ask</strong><small>anonymous question</small></span><span class="social-link-arrow"><svg viewBox="0 0 16 16"><path d="M4 12 12 4M7 4h5v5"/></svg></span></a>
+        </nav>
+        <p class="hint">wall first, then the two ways to leave something</p>
+      </div>
+    </div>
+    <p class="hint">tap the 3rd icon 𓏲ּ𝄢 · tap again to close</p>
+  </div>
+
+  <div class="notes">
+    <p><b>All in your real card language</b> — same 44px icon slot, Comic-Sans title, pink subtitle, diagonal arrow, glass background, hover lift. The only difference between them is <b>how many cards and what they say</b>. Pick the card set; I can drop in your real doodle/ask/posts artwork in place of the placeholder badges.</p>
+  </div>
+
+<script>
+const stage=document.getElementById('stage');let openIcon=null;
+const V=()=>document.querySelector('.tab[aria-pressed="true"]').dataset.v;
+function show(id){document.querySelectorAll('.panelwrap').forEach(p=>p.removeAttribute('data-active'));document.getElementById(id).setAttribute('data-active','');}
+function closeAll(){stage.classList.remove('open');document.querySelectorAll('.ibtn').forEach(b=>b.classList.remove('act'));openIcon=null;}
+document.querySelectorAll('.ibtn').forEach(btn=>btn.addEventListener('click',e=>{e.preventDefault();const icon=btn.dataset.icon;
+  if(openIcon===icon){closeAll();return;}if(openIcon)closeAll();
+  if(icon==='wishlist'){btn.animate([{transform:'scale(1)'},{transform:'scale(.86)'},{transform:'scale(1)'}],{duration:220});return;}
+  if(icon==='socials'){show('w-ref');} else {show('w-'+(V()==='ref'?'1':V()));}
+  btn.classList.add('act');stage.classList.add('open');openIcon=icon;}));
+document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{
+  document.querySelectorAll('.tab').forEach(x=>x.setAttribute('aria-pressed','false'));t.setAttribute('aria-pressed','true');
+  const v=t.dataset.v;
+  if(openIcon){ // live-swap what's shown
+    if(v==='ref'){show('w-ref');document.querySelector('.ibtn[data-icon="socials"]');}
+    else{show('w-'+v);}
+  }}));
+</script>
+</body>
+</html>
