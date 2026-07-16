@@ -1194,15 +1194,50 @@ document.addEventListener("DOMContentLoaded", async function() {
     renderEntryGateMode();
 
     // ===== TOP ICON ROW COLLAPSE (shared by wishlist + socials + :3) =====
-    // The icon morph follows the first 48px of each panel's scroll. One shared
-    // progress value now drives BOTH the real upward reclaim and the equal
-    // panel-height compensation in CSS: content rises, the scroll window grows
-    // by the same amount, and the panel bottom/footer do not move. Unlike the
-    // historical version, this path performs no geometry reads, reserved-height
-    // syncs, mask-string rewrites, or trailing smoothing loop while scrolling.
-    const ICON_COLLAPSE_RANGE = 48; // px of scroll to go from fully shown to fully collapsed
+    // One shared progress value drives BOTH the real upward reclaim and the
+    // equal panel-height compensation in CSS: content rises, the scroll window
+    // grows by the same amount, and the panel bottom/footer do not move.
+    //
+    // A single 48px linear range made the content briefly travel at almost 2x
+    // finger speed on iPhone (native scroll + as much as 53px of panel rise).
+    // Give each surface roughly two scroll pixels per reclaimed pixel instead,
+    // with socials capped at 72px so its short list can still finish the morph.
+    // The eased ramp starts and ends at zero added velocity, removing the hard
+    // speed changes that made even a slow drag feel strangely unsmooth.
+    const ICON_COLLAPSE_RANGES = Object.freeze({
+        social: 72,
+        wishlist: 90,
+        posts: 106,
+    });
+    const ICON_COLLAPSE_RAMP = 0.2;
+    const ICON_COLLAPSE_PEAK_RATE = 1 / (1 - ICON_COLLAPSE_RAMP);
     let iconCollapseTweenRaf = 0;
     let iconCollapseDisplayed = 0;
+
+    function getIconCollapseRange() {
+        if (document.body.classList.contains('has-social-panel-open')) {
+            return ICON_COLLAPSE_RANGES.social;
+        }
+        if (document.body.classList.contains('has-wishlist-panel-open')) {
+            return ICON_COLLAPSE_RANGES.wishlist;
+        }
+        return ICON_COLLAPSE_RANGES.posts;
+    }
+
+    // A short linear middle with quadratic shoulders. Compared with regular
+    // smoothstep it keeps the peak added speed lower (1.25x vs 1.5x) while
+    // still joining natural scrolling with no velocity jump at either end.
+    function easeIconCollapseProgress(progress) {
+        const t = Math.max(0, Math.min(1, progress));
+        const ramp = ICON_COLLAPSE_RAMP;
+        const rate = ICON_COLLAPSE_PEAK_RATE;
+        if (t < ramp) return (rate * t * t) / (2 * ramp);
+        if (t > 1 - ramp) {
+            const remaining = 1 - t;
+            return 1 - ((rate * remaining * remaining) / (2 * ramp));
+        }
+        return ((rate * ramp) / 2) + (rate * (t - ramp));
+    }
 
     // Grow the open panel's scroll window to fill the real screen height
     // instead of its fixed cap. Each panel is position:absolute at the same
@@ -1285,7 +1320,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         if (!host || !group) return;
         // Set this on the common ancestor so the icon group and all three
         // sibling panel implementations consume the exact same progress.
-        host.style.setProperty('--dwl-collapse', clamped.toFixed(3));
+        host.style.setProperty('--dwl-collapse', clamped.toFixed(4));
         const pill = document.getElementById('dwl-icons-pill');
         if (pill) {
             const interactive = clamped > 0.6;
@@ -1323,8 +1358,8 @@ document.addEventListener("DOMContentLoaded", async function() {
     // behind Safari momentum and continue repainting after the gesture ends.
     function setIconsScrollProgress(scrollTop) {
         cancelIconCollapseTween();
-        const rawTarget = Math.max(0, Math.min(1, scrollTop / ICON_COLLAPSE_RANGE));
-        setIconCollapseProgress(rawTarget < 0.055 ? 0 : rawTarget);
+        const linearProgress = Math.max(0, Math.min(1, scrollTop / getIconCollapseRange()));
+        setIconCollapseProgress(easeIconCollapseProgress(linearProgress));
     }
 
     function resetIconsCollapse() {

@@ -942,9 +942,8 @@ button {
        gives up real flow space while the open panel inherits that exact
        distance as extra scroll-window height, so its top rises but its bottom
        (and the footer below it) stays planted. Panel-specific open states only
-       change the expanded gap/distance constants below. */
+       change the total reclaim distance below. */
     --dwl-collapse: 0;
-    --dwl-collapse-base-margin: 17px;
     --dwl-collapse-distance: 53px;
     --dwl-scroll-grow: calc(var(--dwl-collapse-distance) * var(--dwl-collapse));
     position: relative;
@@ -1385,30 +1384,42 @@ body.has-posts-panel-open .site-brand-footer {
 }
 
 .button-group {
-    /* 0 = icons shown, 1 = morphed into the 22px pill. These two linear
-       reductions reclaim the original amount of vertical room: 38px from
-       the row itself plus all but 2px of the panel-specific resting gap. */
+    /* Closed-page geometry stays exactly as it was. While a scroll panel is
+       open, the rule below combines row height + collapsible gap into ONE
+       block-size calculation. That preserves every endpoint while avoiding
+       three simultaneous height/margin/padding mutations on each iOS frame. */
     position: relative;
     top: -8px;
     display: flex;
     align-items: center;
     gap: 16px;
-    height: calc(60px - (38px * var(--dwl-collapse, 0)));
-    min-height: calc(60px - (38px * var(--dwl-collapse, 0)));
-    margin-bottom: calc(
-        var(--dwl-collapse-base-margin)
-        - ((var(--dwl-collapse-base-margin) - 2px) * var(--dwl-collapse, 0))
-    );
-    padding-block: calc(7px * (1 - var(--dwl-collapse, 0)));
+    height: 60px;
+    min-height: 60px;
+    margin-bottom: 17px;
+    padding-block: 7px;
     justify-content: center;
     flex-wrap: wrap;
     contain: layout;
 }
 
+body.has-social-panel-open .button-group,
+body.has-wishlist-panel-open .button-group,
+body.has-posts-panel-open .button-group {
+    height: calc(
+        22px
+        + (var(--dwl-collapse-distance) * (1 - var(--dwl-collapse, 0)))
+    );
+    min-height: 22px;
+    margin-bottom: 2px;
+    padding-block: 0;
+}
+
 .dwl-icons-row {
     position: absolute;
     left: 50%;
-    top: 50%;
+    /* Matches the old 60px -> 22px row center exactly, even though the open
+       group's single block-size now also absorbs its collapsible gap. */
+    top: calc(30px - (19px * var(--dwl-collapse, 0)));
     display: flex;
     align-items: center;
     gap: 16px;
@@ -1435,7 +1446,7 @@ body.has-posts-panel-open .site-brand-footer {
     box-sizing: border-box;
     position: absolute;
     left: 50%;
-    top: 50%;
+    top: calc(30px - (19px * var(--dwl-collapse, 0)));
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -1825,7 +1836,6 @@ body.has-posts-panel-open .site-brand-footer {
 /* Socials starts with the smallest expanded gap, so its 38px row reduction
    is also its full reclaim/grow distance. */
 body.has-social-panel-open .toggle-container {
-    --dwl-collapse-base-margin: 2px;
     --dwl-collapse-distance: 38px;
 }
 

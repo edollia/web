@@ -234,7 +234,6 @@
                 /* Wishlist reclaims 38px of icon-row height plus 7px of its
                    9px expanded gap. The body grows by this same 45px, keeping
                    the checkout/footer edge stationary while content rises. */
-                --dwl-collapse-base-margin: 9px;
                 --dwl-collapse-distance: 45px;
             }
 
