@@ -17,6 +17,20 @@
     --glass-pink-text-strong: rgba(255, 255, 255, 0.96);
 }
 
+/* Registered numeric edge strengths can cross-fade without introducing a
+   coloured overlay. Older engines simply keep the existing binary fallback. */
+@property --dwl-edge-top {
+    syntax: "<number>";
+    inherits: true;
+    initial-value: 1;
+}
+
+@property --dwl-edge-bottom {
+    syntax: "<number>";
+    inherits: true;
+    initial-value: 1;
+}
+
 html {
     height: 100%;
     /* KEYBOARD FIX: Prevent viewport resize on mobile */
@@ -1425,6 +1439,11 @@ body.has-posts-panel-open .button-group {
     min-height: calc(22px + var(--dwl-collapse-distance));
     margin-bottom: 2px;
     padding-block: 0;
+    /* Open surfaces overlap this reserved strip by design. Keep their empty
+       glass from intercepting the visible controls, while letting blank areas
+       of the icon group fall through to the panel beneath. */
+    z-index: 10;
+    pointer-events: none;
 }
 
 .dwl-icons-row {
@@ -1436,6 +1455,7 @@ body.has-posts-panel-open .button-group {
     gap: 16px;
     width: max-content;
     overflow: visible;
+    pointer-events: auto;
     opacity: calc(1 - var(--dwl-collapse, 0));
     transform:
         translate(-50%, calc(-50% - (26px * var(--dwl-collapse, 0))))
@@ -1478,14 +1498,10 @@ body.has-posts-panel-open .button-group {
     cursor: pointer;
     box-shadow: 0 4px 10px rgba(255, 145, 195, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.78);
     -webkit-tap-highlight-color: transparent;
-    /* Default off; JS flips this to auto only once mostly collapsed
-       (progress > 0.6) so a barely-grown pill can't steal taps. */
+    /* Default off; JS enables this only once the pill is visually settled
+       enough that it cannot steal a tap from the outgoing icon row. */
     pointer-events: none;
     will-change: transform, opacity;
-}
-
-.dwl-icons-pill:active {
-    transform: translate(-50%, calc(-50% - (19px * var(--dwl-collapse, 0)))) scale(0.9);
 }
 
 /* Pill content is a genuine mesh of the same three icons, shrunk and
@@ -1494,6 +1510,17 @@ body.has-posts-panel-open .button-group {
 .pill-mesh {
     display: flex;
     align-items: center;
+    transform: scale(1);
+    transform-origin: center;
+    transition: transform 0.12s cubic-bezier(0.2, 0.8, 0.2, 1);
+    will-change: transform;
+}
+
+/* Keep press feedback on the inner mesh. The outer pill owns the native
+   scroll-timeline transform, so competing for that transform could suppress
+   the tap response on newer Safari. */
+.dwl-icons-pill:active .pill-mesh {
+    transform: scale(0.9);
 }
 
 .pill-mini {
@@ -1854,6 +1881,9 @@ body.has-posts-panel-open .button-group {
 }
 
 .scroll-edge-bottom-mask {
+    transition:
+        --dwl-edge-top 0.12s ease-out,
+        --dwl-edge-bottom 0.12s ease-out;
     -webkit-mask-image: linear-gradient(
         to bottom,
         #000 0,
@@ -3054,6 +3084,20 @@ body.first-visit-tour-active .tour-highlight-target {
     }
 }
 
+/* Hit-testing follows the native scroll timeline independently of the visual
+   transforms. This prevents async Safari scrolling from showing restored icons
+   while a delayed JavaScript class still has their row disabled. The 72%
+   timeline point matches the JS interaction threshold after easing. */
+@keyframes dwlIconRowHitTesting {
+    0%, 72% { pointer-events: auto; }
+    72.01%, 100% { pointer-events: none; }
+}
+
+@keyframes dwlIconsPillHitTesting {
+    0%, 72% { pointer-events: none; }
+    72.01%, 100% { pointer-events: auto; }
+}
+
 @keyframes dwlPanelViewportReveal {
     from { transform: translate3d(0, var(--dwl-collapse-distance), 0); }
     to { transform: translate3d(0, 0, 0); }
@@ -3066,11 +3110,15 @@ body.first-visit-tour-active .tour-highlight-target {
 
 @supports ((animation-timeline: scroll()) and (timeline-scope: --dwl-test)) {
     body.has-dwl-scroll-motion .dwl-icons-row {
-        animation: dwlIconsRowCollapse 1ms var(--dwl-collapse-easing) both;
+        animation:
+            dwlIconsRowCollapse 1ms var(--dwl-collapse-easing) both,
+            dwlIconRowHitTesting 1ms linear both;
     }
 
     body.has-dwl-scroll-motion .dwl-icons-pill {
-        animation: dwlIconsPillCollapse 1ms var(--dwl-collapse-easing) both;
+        animation:
+            dwlIconsPillCollapse 1ms var(--dwl-collapse-easing) both,
+            dwlIconsPillHitTesting 1ms linear both;
     }
 
     body.has-dwl-scroll-motion .dwl-motion-ready > .dwl-motion-viewport {

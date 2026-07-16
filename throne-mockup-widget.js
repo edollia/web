@@ -1852,8 +1852,9 @@
             panelResizeObserver?.disconnect();
             panelResizeObserver = new ResizeObserver(() => {
                 // Motion setup keeps the panel's flow height unchanged. Never
-                // remeasure it inside Safari's active scroll transaction.
-                if (window.dollIsPanelScrolling?.()) return;
+                // remeasure a ready viewport during its open session.
+                if (window.dollIsPanelScrolling?.()
+                    || panel.querySelector('.dwl-motion-ready')) return;
                 syncReservedHeight();
             });
             panelResizeObserver.observe(panel);
@@ -2001,7 +2002,8 @@
         // chrome, set the base cap, then allocate the final viewport once.
         const body = panel.querySelector('.doll-wishlist-body');
         const shell = body?.closest('.doll-wishlist-scroll-shell');
-        if (body) {
+        const motionFrozen = shell?.classList.contains('dwl-motion-ready');
+        if (body && (!motionFrozen || force)) {
             const preShellBottom = shell?.getBoundingClientRect().bottom
                 ?? body.getBoundingClientRect().bottom;
             const prePanelBottom = panel.getBoundingClientRect().bottom;
@@ -2019,7 +2021,7 @@
     // Exposed for the shared settled-resize scheduler in script.js. It is not
     // called by the scroll-driven icon morph; that separation keeps Safari's
     // scroller geometry stable throughout momentum scrolling.
-    window.dollSyncWishlistReservedHeight = () => syncReservedHeight();
+    window.dollSyncWishlistReservedHeight = (force = false) => syncReservedHeight(force);
 
     function getActivePageIndex(scroll) {
         const pages = scroll ? Array.from(scroll.querySelectorAll('.doll-wishlist-page')) : [];
@@ -2175,11 +2177,18 @@
         if (!body) return;
         const shell = body.closest('.doll-wishlist-scroll-shell');
         if (!shell) return;
+        if (window.dollUpdateScrollEdgeState) {
+            window.dollUpdateScrollEdgeState(body, shell);
+            return;
+        }
         const scrollable = body.classList.contains('dwl-scroll-body');
         const maxScroll = scrollable ? Math.max(0, body.scrollHeight - body.clientHeight) : 0;
         const scrollTop = scrollable ? Math.max(0, Math.min(maxScroll, body.scrollTop)) : 0;
-        const hasAbove = scrollTop > 3;
-        const hasBelow = scrollTop < maxScroll - 3;
+        const remaining = Math.max(0, maxScroll - scrollTop);
+        const hadAbove = shell.classList.contains('has-content-above');
+        const hadBelow = shell.classList.contains('has-content-below');
+        const hasAbove = scrollTop > (hadAbove ? 1.5 : 6);
+        const hasBelow = remaining > (hadBelow ? 1.5 : 6);
         if (shell.classList.contains('has-content-above') !== hasAbove) {
             shell.classList.toggle('has-content-above', hasAbove);
         }
@@ -2191,6 +2200,8 @@
     function onWishlistBodyScroll(event) {
         const body = event.currentTarget;
         if (!body.classList.contains('dwl-scroll-body')) return;
+        const shell = body.closest('.doll-wishlist-scroll-shell');
+        if (window.dollQueuePanelScrollUpdate?.(body, shell)) return;
         window.dollMarkPanelScrollActivity?.();
         if (bodyScrollRaf) return;
         bodyScrollRaf = window.requestAnimationFrame(() => {
@@ -2312,6 +2323,7 @@
     function renderBody() {
         if (!panel) return;
         const body = panel.querySelector('.doll-wishlist-body');
+        window.dollClearScrollMotion?.(body.closest('.doll-wishlist-scroll-shell'));
         const readyScrollable = loadState === 'ready'
             && (wishlistViewMode === 'list' || wishlistViewMode === 'masonry');
         body.classList.toggle('dwl-scroll-body', readyScrollable);
@@ -2548,7 +2560,11 @@
         const statusEl = panel.querySelector('.doll-wishlist-status');
         if (statusEl) statusEl.textContent = checkoutStatusMessage;
         syncReservedHeight();
-        window.requestAnimationFrame(() => updateWishlistEdgeFade(panel?.querySelector('.doll-wishlist-body')));
+        window.requestAnimationFrame(() => {
+            const body = panel?.querySelector('.doll-wishlist-body');
+            window.dollRefreshPanelScrollExtent?.(body);
+            updateWishlistEdgeFade(body);
+        });
     }
 
     function toggleItem(id) {

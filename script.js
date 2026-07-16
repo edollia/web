@@ -1213,6 +1213,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     const ICON_COLLAPSE_PEAK_RATE = 1 / (1 - ICON_COLLAPSE_RAMP);
     let iconCollapseTweenRaf = 0;
     let iconCollapseDisplayed = 0;
+    const panelScrollExtents = new WeakMap();
     const hasNativeScrollCollapse = Boolean(
         window.CSS?.supports?.('animation-timeline: scroll()')
         && window.CSS?.supports?.('timeline-scope: --dwl-test')
@@ -1229,6 +1230,16 @@ document.addEventListener("DOMContentLoaded", async function() {
             return document.getElementById('posts-popup');
         }
         return null;
+    }
+
+    function getOpenPanelScroller() {
+        return document.body.classList.contains('has-social-panel-open')
+            ? document.querySelector('.social-links-panel')
+            : document.body.classList.contains('has-wishlist-panel-open')
+                ? document.querySelector('.doll-wishlist-body')
+                : document.body.classList.contains('has-posts-panel-open')
+                    ? document.querySelector('.posts-content')
+                    : null;
     }
 
     function getIconCollapseRange() {
@@ -1267,8 +1278,18 @@ document.addEventListener("DOMContentLoaded", async function() {
         );
     }
 
+    function refreshPanelScrollExtent(scroller) {
+        if (!scroller) return 0;
+        const maxScroll = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+        panelScrollExtents.set(scroller, maxScroll);
+        return maxScroll;
+    }
+    window.dollRefreshPanelScrollExtent = refreshPanelScrollExtent;
+
     function clearScrollMotion(shell) {
         if (!shell) return;
+        const scroller = shell.querySelector('.social-links-panel, .doll-wishlist-body, .posts-content');
+        if (scroller) panelScrollExtents.delete(scroller);
         shell.classList.remove('dwl-motion-ready');
         shell.style.removeProperty('--dwl-motion-base-height');
         shell.style.removeProperty('--dwl-motion-range');
@@ -1295,19 +1316,23 @@ document.addEventListener("DOMContentLoaded", async function() {
             : document.body.classList.contains('has-wishlist-panel-open')
                 ? ICON_COLLAPSE_RANGES.wishlist
                 : ICON_COLLAPSE_RANGES.posts;
+        const minimumSafeRange = Math.ceil(distance * 1.6);
+        const configuredRange = Math.min(desiredRange, Math.floor(finalOverflow));
 
-        // If the final, enlarged viewport cannot still scroll through the full
-        // conversion range, leave the ordinary panel alone. This prevents a
-        // short list from gaining unreachable clipped content or a too-fast
-        // partial morph merely for the sake of showing the pill.
-        if (!(baseHeight > 0 && distance > 0 && finalOverflow >= desiredRange - 1)) {
+        // Slightly short surfaces may use their available range, but never a
+        // range below 1.6 scroll pixels per reclaimed pixel. That removes the
+        // abrupt full-range/no-morph cutoff without bringing back the fast,
+        // unnatural content velocity that the Safari fix replaced.
+        if (!(baseHeight > 0 && distance > 0 && configuredRange >= minimumSafeRange)) {
+            refreshPanelScrollExtent(scroller);
             refreshMotionBodyState();
             return false;
         }
 
         shell.style.setProperty('--dwl-motion-base-height', `${baseHeight.toFixed(2)}px`);
-        shell.style.setProperty('--dwl-motion-range', `${desiredRange}px`);
+        shell.style.setProperty('--dwl-motion-range', `${configuredRange}px`);
         shell.classList.add('dwl-motion-ready');
+        refreshPanelScrollExtent(scroller);
         refreshMotionBodyState();
         return true;
     }
@@ -1359,47 +1384,76 @@ document.addEventListener("DOMContentLoaded", async function() {
     }
     window.dollSetPanelFillMax = setPanelFillMax;
 
-    // Safari changes visualViewport while its browser chrome retracts during
-    // a gesture. Applying those intermediate heights would resize the active
-    // scroller under the finger. Treat panel scrolling as a short transaction:
-    // viewport work is queued until 180ms after the last scroll event.
+    // Safari changes visualViewport height while its browser chrome retracts.
+    // Once a panel opens, height-only changes are ignored for that entire open
+    // session; the next open measures afresh. Width/orientation changes remain
+    // legitimate layout changes and are applied after active scrolling ends.
     let panelFillTimer = 0;
     let panelScrollIdleTimer = 0;
     let panelScrolling = false;
     let panelFillPending = false;
+    let panelFillForcePending = false;
+    let lastPanelViewportWidth = window.visualViewport?.width || window.innerWidth;
+
+    function hasOpenScrollPanel() {
+        return document.body.classList.contains('has-social-panel-open')
+            || document.body.classList.contains('has-wishlist-panel-open')
+            || document.body.classList.contains('has-posts-panel-open');
+    }
 
     function markPanelScrollActivity() {
         panelScrolling = true;
         window.clearTimeout(panelScrollIdleTimer);
         panelScrollIdleTimer = window.setTimeout(() => {
             panelScrolling = false;
-            if (panelFillPending) schedulePanelFillSync();
+            reconcilePanelScrollState();
+            if (panelFillPending) {
+                schedulePanelFillSync({ force: panelFillForcePending });
+            }
         }, 180);
     }
     window.dollMarkPanelScrollActivity = markPanelScrollActivity;
     window.dollIsPanelScrolling = () => panelScrolling;
 
-    function schedulePanelFillSync() {
+    function schedulePanelFillSync({ force = false } = {}) {
+        // Browser-toolbar height changes are intentionally frozen until the
+        // panel closes. This keeps both native and fallback scrollers immutable
+        // under a finger and during momentum.
+        if (hasOpenScrollPanel() && !force) return;
         panelFillPending = true;
+        panelFillForcePending ||= force;
         window.clearTimeout(panelFillTimer);
         if (panelScrolling) return;
         panelFillTimer = window.setTimeout(() => {
+            const forceSync = panelFillForcePending;
             panelFillPending = false;
+            panelFillForcePending = false;
             window.requestAnimationFrame(() => {
-                window.dollSyncSocialReservedHeight?.();
-                window.dollSyncWishlistReservedHeight?.();
-                syncPostsPanelSpace();
+                if (document.body.classList.contains('has-social-panel-open')) {
+                    window.dollSyncSocialReservedHeight?.(forceSync);
+                } else if (document.body.classList.contains('has-wishlist-panel-open')) {
+                    window.dollSyncWishlistReservedHeight?.(forceSync);
+                } else if (document.body.classList.contains('has-posts-panel-open')) {
+                    syncPostsPanelSpace();
+                }
             });
         }, 120);
     }
-    window.addEventListener('resize', schedulePanelFillSync);
-    window.visualViewport?.addEventListener('resize', schedulePanelFillSync);
+
+    function handlePanelViewportResize() {
+        const nextWidth = window.visualViewport?.width || window.innerWidth;
+        const widthChanged = Math.abs(nextWidth - lastPanelViewportWidth) > 2;
+        lastPanelViewportWidth = nextWidth;
+        schedulePanelFillSync({ force: widthChanged });
+    }
+    window.addEventListener('resize', handlePanelViewportResize);
+    window.visualViewport?.addEventListener('resize', handlePanelViewportResize);
 
     function setPillInteraction(progress, group = document.querySelector('.button-group')) {
         if (!group) return;
         const pill = document.getElementById('dwl-icons-pill');
         if (!pill) return;
-        const interactive = progress > 0.6;
+        const interactive = progress > 0.78;
         if (group.classList.contains('icons-pill-active') !== interactive) {
             group.classList.toggle('icons-pill-active', interactive);
             pill.style.pointerEvents = interactive ? 'auto' : 'none';
@@ -1456,6 +1510,36 @@ document.addEventListener("DOMContentLoaded", async function() {
         });
     }
 
+    const ICON_TOP_RELEASE_PX = 4;
+
+    // Safari can advance a native scroll timeline ahead of its main-thread
+    // scroll event delivery. Release hit-testing immediately near the top, then
+    // run this same reconciliation after scrollend/idle so a stale pill class
+    // can never leave fully visible icons unclickable.
+    function releaseIconHitTestingAtTop(scroller) {
+        if (!scroller || scroller.scrollTop > ICON_TOP_RELEASE_PX) return false;
+        const group = document.querySelector('.button-group');
+        const pill = document.getElementById('dwl-icons-pill');
+        const stale = group?.classList.contains('icons-pill-active')
+            || pill?.style.pointerEvents === 'auto';
+        if (stale) {
+            cancelIconCollapseTween();
+            setIconCollapseProgress(0, { writeVisual: !hasNativeScrollCollapse });
+        }
+        return true;
+    }
+
+    function reconcilePanelScrollState(scroller = getOpenPanelScroller()) {
+        if (!scroller) return;
+        if (releaseIconHitTestingAtTop(scroller)) {
+            if (!hasNativeScrollCollapse) {
+                setIconCollapseProgress(0);
+            }
+            return;
+        }
+        setIconsScrollProgress(scroller.scrollTop);
+    }
+
     function resetIconsCollapse() {
         cancelIconCollapseTween();
         setIconCollapseProgress(0);
@@ -1475,13 +1559,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     // same smooth motion as the scroll, so the pill tap and the "back to
     // top" both read as one gesture instead of two fighting ones.
     function scrollOpenPanelToTop() {
-        const panel = document.body.classList.contains('has-social-panel-open')
-            ? document.querySelector('.social-links-panel')
-            : document.body.classList.contains('has-wishlist-panel-open')
-                ? document.querySelector('.doll-wishlist-body')
-                : document.body.classList.contains('has-posts-panel-open')
-                    ? document.querySelector('.posts-content')
-                    : null;
+        const panel = getOpenPanelScroller();
         if (panel && panel.scrollTop > 0) {
             panel.scrollTo({ top: 0, behavior: 'smooth' });
             return true;
@@ -1493,14 +1571,19 @@ document.addEventListener("DOMContentLoaded", async function() {
     });
 
     // The transparency gradient is a stationary mask on the scroller shell.
-    // Its image never changes; only two binary edge-state classes can change,
-    // and only as the scroll crosses the 3px top/bottom thresholds.
+    // Two state classes cross-fade its edge strengths. Separate enter/exit
+    // thresholds stop sub-pixel Safari rubber-banding from flickering them.
     function updateScrollEdgeState(el, shell) {
         if (!el || !shell) return;
-        const maxScroll = Math.max(0, el.scrollHeight - el.clientHeight);
+        const maxScroll = panelScrollExtents.has(el)
+            ? panelScrollExtents.get(el)
+            : refreshPanelScrollExtent(el);
         const scrollTop = Math.max(0, Math.min(maxScroll, el.scrollTop));
-        const hasAbove = scrollTop > 3;
-        const hasBelow = scrollTop < maxScroll - 3;
+        const remaining = Math.max(0, maxScroll - scrollTop);
+        const hadAbove = shell.classList.contains('has-content-above');
+        const hadBelow = shell.classList.contains('has-content-below');
+        const hasAbove = scrollTop > (hadAbove ? 1.5 : 6);
+        const hasBelow = remaining > (hadBelow ? 1.5 : 6);
         if (shell.classList.contains('has-content-above') !== hasAbove) {
             shell.classList.toggle('has-content-above', hasAbove);
         }
@@ -1508,19 +1591,35 @@ document.addEventListener("DOMContentLoaded", async function() {
             shell.classList.toggle('has-content-below', hasBelow);
         }
     }
+    window.dollUpdateScrollEdgeState = updateScrollEdgeState;
 
-    let postsScrollRaf = 0;
-    const postsContentEl = document.querySelector('.posts-content');
-    const postsScrollShell = postsContentEl?.closest('.posts-scroll-shell');
-    postsContentEl?.addEventListener('scroll', (event) => {
-        const el = event.currentTarget;
+    const panelScrollRafs = new WeakMap();
+    const panelScrollEndBound = new WeakSet();
+    function queuePanelScrollUpdate(scroller, shell) {
+        if (!scroller || !shell) return false;
+        releaseIconHitTestingAtTop(scroller);
+        if (!panelScrollEndBound.has(scroller)) {
+            panelScrollEndBound.add(scroller);
+            scroller.addEventListener('scrollend', () => {
+                reconcilePanelScrollState(scroller);
+                updateScrollEdgeState(scroller, shell);
+            }, { passive: true });
+        }
         markPanelScrollActivity();
-        if (postsScrollRaf) return;
-        postsScrollRaf = window.requestAnimationFrame(() => {
-            postsScrollRaf = 0;
-            setIconsScrollProgress(el.scrollTop);
-            updateScrollEdgeState(el, postsPanel);
+        if (panelScrollRafs.has(scroller)) return true;
+        const raf = window.requestAnimationFrame(() => {
+            panelScrollRafs.delete(scroller);
+            setIconsScrollProgress(scroller.scrollTop);
+            updateScrollEdgeState(scroller, shell);
         });
+        panelScrollRafs.set(scroller, raf);
+        return true;
+    }
+    window.dollQueuePanelScrollUpdate = queuePanelScrollUpdate;
+
+    const postsContentEl = document.querySelector('.posts-content');
+    postsContentEl?.addEventListener('scroll', (event) => {
+        queuePanelScrollUpdate(event.currentTarget, postsPanel);
     }, { passive: true });
 
     // ===== TOGGLE NOTE & DRAWING WIDGET =====
@@ -2099,25 +2198,13 @@ document.addEventListener("DOMContentLoaded", async function() {
         const neededHeight = Math.max(60, Math.ceil(panelRect.bottom - hostRect.top + 4));
         host.style.setProperty('--dwl-social-height', `${neededHeight}px`);
     }
-    window.dollSyncSocialReservedHeight = () => syncSocialReservedHeight();
+    window.dollSyncSocialReservedHeight = (force = false) => syncSocialReservedHeight(force);
 
-    let socialScrollRaf = 0;
     function updateSocialEdgeFade(el) {
         updateScrollEdgeState(el, socialLinksShell);
     }
     function onSocialPanelScroll(event) {
-        const el = event.currentTarget;
-        markPanelScrollActivity();
-        if (socialScrollRaf) return;
-        socialScrollRaf = window.requestAnimationFrame(() => {
-            socialScrollRaf = 0;
-            // Reuses the exact same icon-collapse-to-pill mechanism the
-            // wishlist and :3 panel scroll already drive (see
-            // dollSetIconsScrollProgress above) -- one shared behavior, not
-            // a re-implementation.
-            setIconsScrollProgress(el.scrollTop);
-            updateSocialEdgeFade(el);
-        });
+        queuePanelScrollUpdate(event.currentTarget, socialLinksShell);
     }
     socialLinksPanel?.addEventListener('scroll', onSocialPanelScroll, { passive: true });
 
