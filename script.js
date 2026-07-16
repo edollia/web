@@ -1057,12 +1057,10 @@ document.addEventListener("DOMContentLoaded", async function() {
                 if (mainScreen) {
                     mainScreen.classList.remove('ui-ready', 'note-ready');
                     mainScreen.style.display = "block";
-                    window.dollSyncFooterBottomAnchor?.();
                     setTimeout(() => mainScreen.classList.add('ui-ready'), 780);
                     setTimeout(() => {
                         mainScreen.classList.add('note-ready');
                         scheduleFirstVisitTour();
-                        window.dollSyncFooterBottomAnchor?.();
                     }, 1080);
                 }
 
@@ -1253,41 +1251,54 @@ document.addEventListener("DOMContentLoaded", async function() {
     window.dollCaptureScrollGrowBaseline = captureScrollGrowBaseline;
     window.dollResetScrollGrow = resetScrollGrow;
 
-    // The doll.gg footer pill used to sit at a fixed margin below the
-    // content no matter the viewport height -- fine on a short screen where
-    // the content already fills it, but on a tall screen it left the footer
-    // stranded right under the content with a big dead gap wasted below it.
-    // Measure how much room is actually free between the resting content
-    // (.toggle-container's own bottom, which already accounts for whichever
-    // panel-reserved min-height is active) and the real viewport bottom, and
-    // push the footer down to use it instead of a static margin-top. Falls
-    // back to the original 56px whenever there's no slack to give (small
-    // screen, or content taller than the viewport) -- same as before.
-    const FOOTER_MIN_GAP = 56;
-    function syncFooterBottomAnchor() {
-        const mainScreen = document.getElementById('main-screen');
-        const toggleContainer = document.querySelector('.toggle-container');
+    // Grow the open panel's scroll window to fill the real screen height
+    // instead of its fixed cap. Each panel is position:absolute with a
+    // top: var(--open-surface-top) that never depends on its own max-height,
+    // so its rendered TOP is a stable, one-pass number -- growing max-height
+    // only extends its BOTTOM. That lets us compute how much room is free
+    // between the panel's top and the viewport bottom (minus the footer pill
+    // and a little breathing room) and hand it to CSS as --panel-fill-max,
+    // which the panel's cap takes via max(baseline+scroll-grow, fill-max):
+    // small screens keep the old baseline behavior, tall screens fill.
+    //
+    // visualViewport.height, NOT 100dvh: dvh resolves to the toolbar-RETRACTED
+    // (tallest) viewport, which would size the panel past what's actually
+    // visible and tuck the pill under the iOS toolbar. visualViewport tracks
+    // the currently-visible area, keeping the pill on-screen as the toolbar
+    // shows/hides. The footer's own padding-bottom already covers the safe-area
+    // inset, so footerH (a border-box height) must not add it again.
+    //
+    // extraReserve is any chrome that renders BELOW the element being grown but
+    // still inside the panel (e.g. the wishlist's checkout foot sits under its
+    // scroll body), so the grown element must stop short by that much to keep
+    // that chrome — and the pill under it — on screen.
+    function setPanelFillMax(panel, { reservedPad = 4, openMargin = 10, bottomGap = 16, extraReserve = 0 } = {}) {
+        if (!panel) return;
         const footer = document.querySelector('.site-brand-footer');
-        if (!mainScreen || !toggleContainer || !footer) return;
         const viewportHeight = window.visualViewport?.height || window.innerHeight;
-        const contentBottom = toggleContainer.getBoundingClientRect().bottom;
-        const footerHeight = footer.getBoundingClientRect().height || 0;
-        const availableBelow = viewportHeight - contentBottom - footerHeight;
-        const margin = Math.max(FOOTER_MIN_GAP, availableBelow);
-        mainScreen.style.setProperty('--footer-bottom-margin', `${Math.round(margin)}px`);
+        const panelTop = panel.getBoundingClientRect().top;
+        const footerHeight = footer ? (footer.getBoundingClientRect().height || 0) : 44;
+        const avail = viewportHeight - panelTop - (footerHeight + reservedPad + openMargin + bottomGap + extraReserve);
+        panel.style.setProperty('--panel-fill-max', `${Math.max(0, Math.floor(avail))}px`);
     }
-    window.dollSyncFooterBottomAnchor = syncFooterBottomAnchor;
+    window.dollSetPanelFillMax = setPanelFillMax;
 
-    let footerAnchorRaf = 0;
-    function scheduleFooterAnchorSync() {
-        if (footerAnchorRaf) return;
-        footerAnchorRaf = window.requestAnimationFrame(() => {
-            footerAnchorRaf = 0;
-            syncFooterBottomAnchor();
+    // On resize / orientation change / iOS toolbar toggle, recompute whichever
+    // panel is open. Each reserved-height sync now also refreshes that panel's
+    // --panel-fill-max, and each no-ops when its own panel is closed, so this
+    // one handler covers all three.
+    let panelFillRaf = 0;
+    function schedulePanelFillSync() {
+        if (panelFillRaf) return;
+        panelFillRaf = window.requestAnimationFrame(() => {
+            panelFillRaf = 0;
+            window.dollSyncSocialReservedHeight?.();
+            window.dollSyncWishlistReservedHeight?.();
+            syncPostsPanelSpace();
         });
     }
-    window.addEventListener('resize', scheduleFooterAnchorSync);
-    window.visualViewport?.addEventListener('resize', scheduleFooterAnchorSync);
+    window.addEventListener('resize', schedulePanelFillSync);
+    window.visualViewport?.addEventListener('resize', schedulePanelFillSync);
 
     function setIconCollapseProgress(progress) {
         const clamped = Math.max(0, Math.min(1, progress));
@@ -1327,13 +1338,11 @@ document.addEventListener("DOMContentLoaded", async function() {
         syncPostsPanelSpace();
         // Same issue, same fix, for the social panel's --dwl-social-height
         // (defined further down, safe to reference here since this function
-        // only ever runs later, from actual scroll/tap events).
+        // only ever runs later, from actual scroll/tap events). Each of these
+        // syncs also refreshes its panel's --panel-fill-max, so as the icon
+        // row collapses and the panel's top rises, the fill height grows to
+        // match -- keeping the panel bottom (and the pill under it) put.
         window.dollSyncSocialReservedHeight?.();
-        // Any of the above can change .toggle-container's own bottom edge
-        // (a panel's reserved height growing/shrinking, or the icon row
-        // collapsing), which changes how much room is left for the footer
-        // push below — see syncFooterBottomAnchor above.
-        syncFooterBottomAnchor();
     }
 
     function cancelIconCollapseTween() {
@@ -1483,6 +1492,10 @@ document.addEventListener("DOMContentLoaded", async function() {
         const host = postsPanel.closest('.toggle-container');
         const card = postsPanel.querySelector('.popup-content');
         if (!host || !card) return;
+        // Grow the card to fill the viewport FIRST (its top is stable, so this
+        // only extends its bottom), then measure the now-updated bottom to
+        // reserve the matching flow height beneath it.
+        setPanelFillMax(card, { reservedPad: 14, openMargin: 18, bottomGap: 16 });
         const cardRect = card.getBoundingClientRect();
         const hostRect = host.getBoundingClientRect();
         const neededHeight = Math.max(310, Math.ceil(cardRect.bottom - hostRect.top + 14));
@@ -1495,6 +1508,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         const host = postsPanel?.closest('.toggle-container');
         if (!open) {
             host?.style.removeProperty('--posts-panel-height');
+            postsPanel?.querySelector('.popup-content')?.style.removeProperty('--panel-fill-max');
             postsPanelResizeObserver?.disconnect();
             postsPanelResizeObserver = null;
             return;
@@ -2024,6 +2038,10 @@ document.addEventListener("DOMContentLoaded", async function() {
         if (!force && !socialLinksPanel.classList.contains('active')) return;
         const host = socialLinksPanel.closest('.toggle-container');
         if (!host) return;
+        // Grow the panel to fill the viewport FIRST (its top is stable, so
+        // this only extends its bottom), then measure the updated bottom to
+        // reserve the matching flow height beneath it.
+        setPanelFillMax(socialLinksPanel, { reservedPad: 4, openMargin: 10, bottomGap: 16 });
         const panelRect = socialLinksPanel.getBoundingClientRect();
         const hostRect = host.getBoundingClientRect();
         const neededHeight = Math.max(60, Math.ceil(panelRect.bottom - hostRect.top + 4));
@@ -2070,6 +2088,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             socialLinksPanel.classList.remove('has-content-above', 'has-content-below');
         }
         socialLinksPanel?.closest('.toggle-container')?.style.removeProperty('--dwl-social-height');
+        socialLinksPanel?.style.removeProperty('--panel-fill-max');
         if (wasOpen && typeof window.closeKofiOverlay === 'function') {
             window.closeKofiOverlay();
         }

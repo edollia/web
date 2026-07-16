@@ -954,6 +954,9 @@ body.has-posts-panel-open .toggle-container {
 }
 
 body.has-posts-panel-open .site-brand-footer {
+    /* Hug the panel: the panel itself now grows to fill tall screens (see
+       --panel-fill-max / setPanelFillMax), so the pill just sits snug
+       beneath it -- no viewport-based push needed. */
     margin-top: 18px;
 }
 
@@ -972,14 +975,11 @@ body.has-posts-panel-open .site-brand-footer {
 .site-brand-footer {
     display: flex;
     justify-content: center;
-    /* --footer-bottom-margin is computed in script.js
-       (syncFooterBottomAnchor): how much room is actually free between the
-       resting content and the real viewport bottom. On a tall screen this
-       pushes the footer down to use that space instead of leaving it dead;
-       on a short screen there's no slack to give and it falls back to the
-       original 56px, unchanged from before. body.has-*-panel-open still
-       overrides this directly (see below) while a panel is open. */
-    margin: var(--footer-bottom-margin, 56px) auto 0;
+    /* Resting gap under the note. When a panel is open it hugs that panel
+       instead (see body.has-*-panel-open overrides), and the open panel
+       itself grows to fill tall screens (--panel-fill-max), so no
+       viewport-based footer push is needed anywhere. */
+    margin: 56px auto 0;
     padding-bottom: max(14px, env(safe-area-inset-bottom));
     opacity: 0;
     transform: translateY(6px);
@@ -1809,8 +1809,13 @@ body.has-posts-panel-open .site-brand-footer {
        var(--dwl-scroll-grow) (set on .content-area, see setIconCollapseProgress
        in script.js) adds back however much the icon row above has shrunk by,
        so scrolling grows this panel's own window instead of just sliding a
-       fixed-size one up past the footer. */
-    max-height: calc(300px + var(--dwl-scroll-grow, 0px));
+       fixed-size one up past the footer.
+       --panel-fill-max (set by setPanelFillMax in script.js) is the height
+       needed to fill the viewport down to just above the footer pill on a
+       tall screen; max() (NOT +, which would double-count the scroll-grow
+       term) takes whichever is larger, so small screens keep the 300px+grow
+       baseline while tall screens grow to use the real estate. */
+    max-height: max(calc(300px + var(--dwl-scroll-grow, 0px)), var(--panel-fill-max, 0px));
     overflow-y: auto;
     overflow-x: hidden;
     overscroll-behavior-y: contain;
@@ -1887,10 +1892,9 @@ body.has-social-panel-open .toggle-container {
    (see body.has-wishlist-panel-open in throne-mockup-widget.js and
    body.has-posts-panel-open above) so the doll.gg pill sits tight under
    their panel instead of inheriting the resting 56px gap meant for the
-   closed page. This one was missing, which read as "the blur/fade at the
-   bottom is too far from the pill" -- it isn't the fade distance, it's
-   this dead margin sitting below the panel's already-faded bottom edge.
-   !important for the same reason as wishlist's: it must beat the
+   closed page. The panel itself grows to fill tall screens now
+   (--panel-fill-max, setPanelFillMax in script.js), so the pill just hugs
+   its bottom -- no viewport push. !important so it beats the
    @media (max-height:720px) .site-brand-footer margin-top bump. */
 body.has-social-panel-open .site-brand-footer {
     margin-top: 10px !important;
@@ -2886,8 +2890,10 @@ body.first-visit-tour-active .tour-highlight-target {
     /* var(--dwl-scroll-grow), set on .content-area (see setIconCollapseProgress
        in script.js), adds back however much the icon row above has shrunk
        by, so scrolling grows this panel instead of sliding a fixed-size one
-       up past the footer. */
-    max-height: calc(420px + var(--dwl-scroll-grow, 0px));
+       up past the footer. --panel-fill-max (setPanelFillMax in script.js)
+       fills the viewport down to the footer pill on tall screens; max()
+       (NOT +, which double-counts scroll-grow) picks the larger. */
+    max-height: max(calc(420px + var(--dwl-scroll-grow, 0px)), var(--panel-fill-max, 0px));
     position: relative;
     display: flex;
     flex-direction: column;

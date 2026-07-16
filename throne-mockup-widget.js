@@ -222,7 +222,10 @@
                (@media max-height:720px) also sets .site-brand-footer's
                margin-top, and this needs to win unconditionally so the
                throne.com pill always sits tight under the panel, never
-               inheriting that rule's much larger gap. */
+               inheriting that rule's much larger gap. The scroll body grows
+               to fill tall screens now (--panel-fill-max, setPanelFillMax in
+               script.js), so the pill just hugs the panel bottom -- no
+               viewport-based push. */
             body.has-wishlist-panel-open .site-brand-footer {
                 margin-top: 10px !important;
             }
@@ -335,8 +338,13 @@
                    setIconCollapseProgress in script.js), adds back however
                    much the icon row above has shrunk by, so scrolling
                    through the list grows this window instead of sliding a
-                   fixed-size one up past the checkout bar/footer. */
-                max-height: calc(380px + var(--dwl-scroll-grow, 0px));
+                   fixed-size one up past the checkout bar/footer.
+                   --panel-fill-max (setPanelFillMax in script.js) fills the
+                   viewport down to just above the checkout foot + pill on a
+                   tall screen; max() (NOT +, which double-counts scroll-grow)
+                   picks the larger, so small screens keep the 380px+grow
+                   baseline and tall screens grow to use the space. */
+                max-height: max(calc(380px + var(--dwl-scroll-grow, 0px)), var(--panel-fill-max, 0px));
                 overflow-y: auto;
                 overflow-x: hidden;
                 overscroll-behavior-y: contain;
@@ -2014,6 +2022,19 @@
         if (!force && !panel?.classList.contains('active')) return;
         const host = panel.closest('.toggle-container');
         if (!host) return;
+        // The scroll cap lives on .doll-wishlist-body, but the checkout foot
+        // (+ dots/status) renders BELOW it inside the panel. Measure that
+        // below-body chrome first (its height is independent of the body's
+        // max-height), then grow the body to fill the viewport minus that
+        // chrome + the footer pill. Growing the body only extends its bottom,
+        // so re-reading panelRect.bottom after gives the reserved height.
+        const body = panel.querySelector('.doll-wishlist-body');
+        if (body) {
+            const preBodyBottom = body.getBoundingClientRect().bottom;
+            const prePanelBottom = panel.getBoundingClientRect().bottom;
+            const belowBody = Math.max(0, prePanelBottom - preBodyBottom);
+            window.dollSetPanelFillMax?.(body, { reservedPad: 4, openMargin: 10, bottomGap: 16, extraReserve: belowBody });
+        }
         const panelRect = panel.getBoundingClientRect();
         const hostRect = host.getBoundingClientRect();
         const neededHeight = Math.max(60, Math.ceil(panelRect.bottom - hostRect.top + 4));
@@ -2794,6 +2815,7 @@
         document.body.classList.remove('has-wishlist-panel-open', 'has-wishlist-selection');
         window.dollResetIconsCollapse?.();
         window.dollResetScrollGrow?.();
+        panel?.querySelector('.doll-wishlist-body')?.style.removeProperty('--panel-fill-max');
         const wishlistButton = getWishlistButton();
         wishlistButton?.classList.remove('dwl-open', 'show-glitter');
         wishlistButton?.setAttribute('aria-expanded', 'false');
