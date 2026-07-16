@@ -2037,7 +2037,9 @@ document.addEventListener("DOMContentLoaded", async function() {
     }
 
     function getHomepageNoteDisplayText() {
-        return String(siteLinkSettings.homepage_note_text || '').trim();
+        return String(siteLinkSettings.homepage_note_text || '')
+            .replace(/\r\n?/g, '\n')
+            .slice(0, 220);
     }
 
     function getHomepageNoteFontSize() {
@@ -2155,7 +2157,7 @@ document.addEventListener("DOMContentLoaded", async function() {
 
     function finishHomepageNoteEditing() {
         if (!homepageNoteEditor || !homepageNoteTarget || homepageNoteEditor.hidden) return;
-        const value = getEditorPlainText().trim().slice(0, 220);
+        const value = getEditorPlainText().slice(0, 220);
         const previousSettings = getHomepageNoteSettingsSnapshot();
         closeHomepageNoteEditor();
         if (!homepageNoteCanEdit) {
@@ -2225,6 +2227,12 @@ document.addEventListener("DOMContentLoaded", async function() {
                 homepageNoteEditor.blur();
             }
         });
+
+        document.addEventListener('pointerdown', event => {
+            if (homepageNoteEditor.hidden) return;
+            if (event.target instanceof Node && homepageNoteEditor.contains(event.target)) return;
+            homepageNoteEditor.blur();
+        }, true);
     }
 
     function flushHomepageNoteSizeSave() {
