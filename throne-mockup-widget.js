@@ -232,8 +232,9 @@
 
             body.has-wishlist-panel-open .toggle-container {
                 /* Wishlist reclaims 38px of icon-row height plus 7px of its
-                   9px expanded gap. The body grows by this same 45px, keeping
-                   the checkout/footer edge stationary while content rises. */
+                   9px expanded gap. Its final viewport allocates that same
+                   45px once, keeping checkout/footer stationary as content
+                   is revealed upward. */
                 --dwl-collapse-distance: 45px;
             }
 
@@ -1850,9 +1851,8 @@
         if (typeof window.ResizeObserver === 'function') {
             panelResizeObserver?.disconnect();
             panelResizeObserver = new ResizeObserver(() => {
-                // The shared icon morph deliberately makes this panel taller
-                // by exactly as much as it moves upward. Its bottom has not
-                // changed, so do not remeasure it inside Safari's scroll path.
+                // Motion setup keeps the panel's flow height unchanged. Never
+                // remeasure it inside Safari's active scroll transaction.
                 if (window.dollIsPanelScrolling?.()) return;
                 syncReservedHeight();
             });

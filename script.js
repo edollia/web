@@ -1326,11 +1326,10 @@ document.addEventListener("DOMContentLoaded", async function() {
         return distance * progress;
     }
 
-    // Grow the open panel's scroll window to fill the real screen height
-    // instead of its fixed cap. Each panel is position:absolute at the same
-    // local top; the icon reclaim moves that containing block upward by a
-    // known CSS value. Normalizing that value below gives us one stable
-    // expanded-state top for --panel-fill-max. Small screens retain the
+    // Size the open panel's base scroll window to the real screen height
+    // instead of a fixed cap. A ready motion viewport may be visually shifted
+    // upward by a known amount; normalizing that transform below gives us one
+    // stable expanded-state top for --panel-fill-max. Small screens retain the
     // baseline cap and tall screens use their available space.
     //
     // visualViewport.height, NOT 100dvh: dvh resolves to the toolbar-RETRACTED
