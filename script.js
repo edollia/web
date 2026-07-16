@@ -1289,10 +1289,17 @@ document.addEventListener("DOMContentLoaded", async function() {
     function clearScrollMotion(shell) {
         if (!shell) return;
         const scroller = shell.querySelector('.social-links-panel, .doll-wishlist-body, .posts-content');
+        const host = shell.closest('.toggle-container');
         if (scroller) panelScrollExtents.delete(scroller);
         shell.classList.remove('dwl-motion-ready');
         shell.style.removeProperty('--dwl-motion-base-height');
         shell.style.removeProperty('--dwl-motion-range');
+        // The row and pill are siblings of the motion shell, so their native
+        // animations inherit the measured range from this common host. Keep a
+        // range owned by another ready shell; otherwise remove the stale value.
+        if (host && !host.querySelector('.dwl-motion-shell.dwl-motion-ready')) {
+            host.style.removeProperty('--dwl-motion-range');
+        }
         refreshMotionBodyState();
     }
 
@@ -1331,6 +1338,7 @@ document.addEventListener("DOMContentLoaded", async function() {
 
         shell.style.setProperty('--dwl-motion-base-height', `${baseHeight.toFixed(2)}px`);
         shell.style.setProperty('--dwl-motion-range', `${configuredRange}px`);
+        shell.closest('.toggle-container')?.style.setProperty('--dwl-motion-range', `${configuredRange}px`);
         shell.classList.add('dwl-motion-ready');
         refreshPanelScrollExtent(scroller);
         refreshMotionBodyState();
@@ -1454,10 +1462,15 @@ document.addEventListener("DOMContentLoaded", async function() {
         const pill = document.getElementById('dwl-icons-pill');
         if (!pill) return;
         const interactive = progress > 0.78;
-        if (group.classList.contains('icons-pill-active') !== interactive) {
+        const expectedPointerEvents = interactive ? 'auto' : 'none';
+        const expectedTabIndex = interactive ? 0 : -1;
+        const stateIsStale = group.classList.contains('icons-pill-active') !== interactive
+            || pill.style.pointerEvents !== expectedPointerEvents
+            || pill.tabIndex !== expectedTabIndex;
+        if (stateIsStale) {
             group.classList.toggle('icons-pill-active', interactive);
-            pill.style.pointerEvents = interactive ? 'auto' : 'none';
-            pill.tabIndex = interactive ? 0 : -1;
+            pill.style.pointerEvents = expectedPointerEvents;
+            pill.tabIndex = expectedTabIndex;
         }
     }
 
