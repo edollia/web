@@ -1805,6 +1805,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     const homepageNoteTarget = document.getElementById('note-peel-target');
     const homepageNoteAdminControls = document.getElementById('homepage-note-admin-controls');
     const homepageNoteSize = document.getElementById('homepage-note-size');
+    const homepageNoteSave = document.getElementById('homepage-note-save');
     const HOMEPAGE_NOTE_ADMIN_UID = '1b12f04e-c1a9-42c5-bd3a-04b6186245c3';
     let homepageNoteCanEdit = false;
     let homepageNoteLastValidText = '';
@@ -1813,6 +1814,8 @@ document.addEventListener("DOMContentLoaded", async function() {
     let homepageNoteSizeSaveTimer = null;
     let homepageNoteSizeRollback = null;
     let homepageNoteFitFrame = null;
+    let homepageNoteLastSaveError = null;
+    let homepageNoteSaveLabelTimer = null;
     const maintenanceOverlay = document.getElementById('site-maintenance-overlay');
     const maintenanceKicker = document.getElementById('site-maintenance-kicker');
     const maintenanceTitle = document.getElementById('site-maintenance-title');
@@ -2143,16 +2146,19 @@ document.addEventListener("DOMContentLoaded", async function() {
     function queueHomepageNoteSave(previousSettings) {
         const noteSettings = getHomepageNoteSettingsSnapshot();
         const revision = ++homepageNoteSaveRevision;
+        homepageNoteLastSaveError = null;
         homepageNoteSaveQueue = homepageNoteSaveQueue
             .catch(() => {})
             .then(() => saveHomepageNoteSettings(noteSettings, revision))
             .catch(error => {
                 if (revision !== homepageNoteSaveRevision) return;
+                homepageNoteLastSaveError = error;
                 siteLinkSettings = { ...siteLinkSettings, ...previousSettings };
                 renderHomepageNoteText();
                 showSubmitPopup(error?.message || 'The note could not be saved.');
                 void refreshHomepageNoteAdminAccess();
             });
+        return homepageNoteSaveQueue;
     }
 
     function finishHomepageNoteEditing() {
@@ -2231,6 +2237,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         document.addEventListener('pointerdown', event => {
             if (homepageNoteEditor.hidden) return;
             if (event.target instanceof Node && homepageNoteEditor.contains(event.target)) return;
+            if (event.target instanceof Element && event.target.closest('#homepage-note-save')) return;
             homepageNoteEditor.blur();
         }, true);
     }
@@ -2268,11 +2275,44 @@ document.addEventListener("DOMContentLoaded", async function() {
         homepageNoteSize.addEventListener('change', flushHomepageNoteSizeSave);
     }
 
+    async function saveHomepageNoteNow() {
+        if (!homepageNoteCanEdit || !homepageNoteSave || homepageNoteSave.disabled) return;
+        clearTimeout(homepageNoteSaveLabelTimer);
+        homepageNoteSave.disabled = true;
+        if (homepageNoteSize) homepageNoteSize.disabled = true;
+        homepageNoteSave.textContent = 'saving…';
+
+        const revisionBeforeSave = homepageNoteSaveRevision;
+        const fallbackSettings = getHomepageNoteSettingsSnapshot();
+        if (homepageNoteEditor && !homepageNoteEditor.hidden) finishHomepageNoteEditing();
+        flushHomepageNoteSizeSave();
+        if (revisionBeforeSave === homepageNoteSaveRevision) {
+            queueHomepageNoteSave(fallbackSettings);
+        }
+
+        await homepageNoteSaveQueue;
+        if (!homepageNoteCanEdit) return;
+        homepageNoteSave.disabled = false;
+        if (homepageNoteSize) homepageNoteSize.disabled = false;
+        homepageNoteSave.textContent = homepageNoteLastSaveError ? 'retry' : 'saved ✓';
+        if (!homepageNoteLastSaveError) {
+            homepageNoteSaveLabelTimer = window.setTimeout(() => {
+                if (homepageNoteSave) homepageNoteSave.textContent = 'save';
+            }, 1400);
+        }
+    }
+
+    homepageNoteSave?.addEventListener('click', saveHomepageNoteNow);
+
     function setHomepageNoteAdminAccess(canEdit) {
         homepageNoteCanEdit = canEdit;
         homepageNoteTarget?.classList.toggle('admin-editable', canEdit);
         if (homepageNoteAdminControls) homepageNoteAdminControls.hidden = !canEdit;
         if (homepageNoteSize) homepageNoteSize.disabled = !canEdit;
+        if (homepageNoteSave) {
+            homepageNoteSave.disabled = !canEdit;
+            if (!canEdit) homepageNoteSave.textContent = 'save';
+        }
         homepageNoteTarget?.setAttribute('aria-label', canEdit
             ? 'Tap the note to edit it, or pull its corner to open rooms'
             : 'Pull the note corner to open rooms');
@@ -2286,6 +2326,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                 renderHomepageNoteText();
             }
             clearTimeout(homepageNoteSizeSaveTimer);
+            clearTimeout(homepageNoteSaveLabelTimer);
             homepageNoteSizeSaveTimer = null;
             homepageNoteSizeRollback = null;
         }

@@ -1401,7 +1401,7 @@ body.has-posts-panel-open .site-brand-footer {
     display: flex;
     align-items: center;
     gap: 7px;
-    width: 138px;
+    width: 194px;
     height: 28px;
     padding: 0 10px;
     border: 1px solid rgba(255, 176, 211, 0.3);
@@ -1432,7 +1432,7 @@ body.has-posts-panel-open .site-brand-footer {
 }
 
 .note-admin-controls input[type="range"] {
-    width: 86px;
+    width: 72px;
     height: 18px;
     margin: 0;
     padding: 0;
@@ -1475,6 +1475,23 @@ body.has-posts-panel-open .site-brand-footer {
     border-radius: 50%;
     background: rgba(224, 132, 176, 0.82);
     box-shadow: 0 2px 5px rgba(154, 81, 115, 0.2);
+}
+
+.note-admin-controls button {
+    min-width: 47px;
+    height: 20px;
+    padding: 0 8px;
+    border: 1px solid rgba(220, 124, 170, 0.25);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.72);
+    color: rgba(132, 77, 108, 0.76);
+    font: 600 10px/1 "Noteworthy", "Chalkboard SE", sans-serif;
+    cursor: pointer;
+}
+
+.note-admin-controls button:disabled {
+    cursor: wait;
+    opacity: 0.62;
 }
 
 .note-peel-corner,
