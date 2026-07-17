@@ -3245,7 +3245,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         }
     });
 
-    const SOCIAL_CARD_POP_ACTION_DELAY = 620;
+    const SOCIAL_CARD_POP_ACTION_DELAY = 300;
     const SOCIAL_CARD_POP_RESET_DELAY = 1080;
     let socialCardPopPending = false;
 
@@ -3308,6 +3308,17 @@ document.addEventListener("DOMContentLoaded", async function() {
 
     window.addEventListener('pageshow', resetSocialCardPopState);
 
+    function openSocialDestinationInNewTab(destination) {
+        const link = document.createElement('a');
+        link.href = destination;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        link.hidden = true;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+    }
+
     socialCardDefinitions
         .filter(({ key }) => key !== 'kofi')
         .forEach(({ key, option }) => option?.addEventListener('click', function(e) {
@@ -3316,7 +3327,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             if (siteLinkSettings.maintenance_enabled === true) return;
             if (!isPublicLinkEnabled(key)) return;
             const destination = getPublicLink(key);
-            popSocialCardThen(option, () => window.location.assign(destination));
+            popSocialCardThen(option, () => openSocialDestinationInNewTab(destination));
         }));
 
     function handleWishlistButtonActivate(e) {
