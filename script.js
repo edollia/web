@@ -442,8 +442,32 @@ document.addEventListener("DOMContentLoaded", async function() {
         let pointerScaleX = 1;
         let pointerScaleY = 1;
         let detachDistance = 280;
-        let corner = { x: 253, y: 213 };
+        let corner = { x: 246, y: 200 };
+        let paperOutline = [];
         let renderedPoint = { ...corner };
+
+        // Normalized from the note PNG's real alpha contour. The visible
+        // lower-right tip is inset from its transparent rectangular bounds,
+        // so the fold must originate from this contour rather than 100%/100%.
+        const NOTE_TIP = { x: 579 / 599, y: 471 / 504 };
+        const NOTE_OUTLINE = [
+            { x: 6 / 599, y: 1 / 504 },
+            { x: 596 / 599, y: 1 / 504 },
+            { x: 598 / 599, y: 420 / 504 },
+            { x: 594 / 599, y: 440 / 504 },
+            { x: 587 / 599, y: 460 / 504 },
+            { ...NOTE_TIP },
+            { x: 574 / 599, y: 475 / 504 },
+            { x: 555 / 599, y: 485 / 504 },
+            { x: 520 / 599, y: 492 / 504 },
+            { x: 480 / 599, y: 496 / 504 },
+            { x: 400 / 599, y: 499 / 504 },
+            { x: 300 / 599, y: 500 / 504 },
+            { x: 200 / 599, y: 501 / 504 },
+            { x: 100 / 599, y: 501 / 504 },
+            { x: 25 / 599, y: 502 / 504 },
+            { x: 3 / 599, y: 500 / 504 }
+        ];
 
         const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
         const dot = (a, b) => a.x * b.x + a.y * b.y;
@@ -522,8 +546,12 @@ document.addEventListener("DOMContentLoaded", async function() {
         function updatePeelMetrics() {
             noteWidth = frontFace.offsetWidth;
             noteHeight = frontFace.offsetHeight;
-            corner = { x: Math.max(1, noteWidth - 1), y: Math.max(1, noteHeight - 1) };
-            detachDistance = Math.hypot(corner.x - 1, corner.y - 1) * 0.84;
+            corner = { x: NOTE_TIP.x * noteWidth, y: NOTE_TIP.y * noteHeight };
+            paperOutline = NOTE_OUTLINE.map(point => ({
+                x: point.x * noteWidth,
+                y: point.y * noteHeight
+            }));
+            detachDistance = Math.hypot(corner.x - paperOutline[0].x, corner.y - paperOutline[0].y) * 0.84;
             foldLayer.setAttribute('viewBox', `0 0 ${noteWidth} ${noteHeight}`);
         }
 
@@ -547,24 +575,18 @@ document.addEventListener("DOMContentLoaded", async function() {
                 return;
             }
 
-            const rectangle = [
-                { x: 1, y: 1 },
-                { x: corner.x, y: 1 },
-                { ...corner },
-                { x: 1, y: corner.y }
-            ];
             const normal = { x: corner.x - point.x, y: corner.y - point.y };
             const normalLengthSquared = dot(normal, normal);
             const boundary = (dot(corner, corner) - dot(point, point)) / 2;
-            const front = clipPolygon(rectangle, normal, boundary, true);
-            const folded = clipPolygon(rectangle, normal, boundary, false).map(original => {
+            const front = clipPolygon(paperOutline, normal, boundary, true);
+            const folded = clipPolygon(paperOutline, normal, boundary, false).map(original => {
                 const distanceFromCrease = (dot(normal, original) - boundary) / normalLengthSquared;
                 return {
                     x: original.x - 2 * distanceFromCrease * normal.x,
                     y: original.y - 2 * distanceFromCrease * normal.y
                 };
             });
-            const crease = getCreasePoints(rectangle, normal, boundary);
+            const crease = getCreasePoints(paperOutline, normal, boundary);
 
             if (front.length >= 3) {
                 frontFace.style.clipPath = `polygon(${front.map(vertex => `${vertex.x.toFixed(2)}px ${vertex.y.toFixed(2)}px`).join(', ')})`;
