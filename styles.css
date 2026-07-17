@@ -2743,6 +2743,7 @@ body.first-visit-tour-active .tour-highlight-target {
         0 8px 20px rgba(255, 145, 195, 0.28),
         0 0 0 4px rgba(255, 255, 255, 0.46),
         inset 0 1px 0 rgba(255, 255, 255, 0.78);
+    animation: tourHighlightBreathe 1.9s ease-in-out 0.3s both;
 }
 
 .first-visit-tour {
@@ -2783,7 +2784,7 @@ body.first-visit-tour-active .tour-highlight-target {
 }
 
 .first-visit-tour.leaving .tour-step-layer {
-    animation: tourStepOut 0.1125s ease forwards;
+    animation: tourStepOut 0.34s ease forwards;
 }
 
 @keyframes tourStepOut {
@@ -2900,10 +2901,11 @@ body.first-visit-tour-active .tour-highlight-target {
     line-height: 0.96;
     letter-spacing: 0.8px;
     text-align: center;
-    opacity: 1;
-    transform: translate(-50%, -50%) scale(1) rotate(var(--tour-label-rotation));
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.88) rotate(var(--tour-label-rotation));
     pointer-events: none;
     white-space: nowrap;
+    animation: tourLabelSoftPop 0.38s cubic-bezier(0.18, 0.88, 0.24, 1.08) 0.46s forwards;
 }
 
 .tour-label-text {
@@ -2934,10 +2936,7 @@ body.first-visit-tour-active .tour-highlight-target {
     transform: translateY(var(--tour-letter-lift)) rotate(var(--tour-letter-turn));
     transform-origin: center bottom;
     margin-right: -1px;
-    opacity: 0;
-    animation: tourLabelLetterDraw 0.1125s cubic-bezier(0.18, 0.9, 0.24, 1) forwards;
-    /* The first letter becomes visible as the 0.5s arrow draw completes. */
-    animation-delay: calc(0.7375s + var(--tour-letter-delay));
+    opacity: 1;
 }
 
 .tour-label-letter.space {
@@ -2961,23 +2960,46 @@ body.first-visit-tour-active .tour-highlight-target {
     }
 }
 
+@keyframes tourHighlightBreathe {
+    0%,
+    100% {
+        box-shadow:
+            0 8px 20px rgba(255, 145, 195, 0.28),
+            0 0 0 4px rgba(255, 255, 255, 0.46),
+            inset 0 1px 0 rgba(255, 255, 255, 0.78);
+    }
+
+    48% {
+        box-shadow:
+            0 10px 24px rgba(255, 145, 195, 0.34),
+            0 0 0 6px rgba(255, 255, 255, 0.32),
+            inset 0 1px 0 rgba(255, 255, 255, 0.84);
+    }
+}
+
 @keyframes tourArrowDraw {
     to {
         stroke-dashoffset: 0;
     }
 }
 
-@keyframes tourLabelLetterDraw {
-    from {
+@keyframes tourLabelSoftPop {
+    0% {
         opacity: 0;
-        filter: blur(0.5px);
-        transform: translateY(calc(var(--tour-letter-lift) + 4px)) rotate(var(--tour-letter-turn)) scale(0.58);
+        filter: blur(1px);
+        transform: translate(-50%, -50%) scale(0.88) rotate(var(--tour-label-rotation));
     }
 
-    to {
+    68% {
         opacity: 1;
         filter: blur(0);
-        transform: translateY(var(--tour-letter-lift)) rotate(var(--tour-letter-turn)) scale(1);
+        transform: translate(-50%, -50%) scale(1.035) rotate(var(--tour-label-rotation));
+    }
+
+    100% {
+        opacity: 1;
+        filter: blur(0);
+        transform: translate(-50%, -50%) scale(1) rotate(var(--tour-label-rotation));
     }
 }
 

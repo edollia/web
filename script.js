@@ -3085,11 +3085,10 @@ document.addEventListener("DOMContentLoaded", async function() {
         document.body.classList.add('first-visit-tour-active');
         steps.forEach(step => step.element.classList.add('tour-highlight-target'));
 
-        let index = 0;
-        let stepTimer = null;
+        let tourEndTimer = null;
         let tourFinished = false;
-        const tourStepDuration = 1281;
-        const finalTourHoldDuration = 1938;
+        const tourTotalDuration = 2000;
+        const tourExitDuration = 425;
         const veilLayer = overlay.querySelector('.tour-veil-layer');
         const stepLayer = overlay.querySelector('.tour-step-layer');
 
@@ -3102,8 +3101,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                 }
                 const turn = letterTurns[letterIndex % letterTurns.length];
                 const lift = letterLifts[letterIndex % letterLifts.length];
-                const delay = letterIndex * 0.028125;
-                return `<span class="tour-label-letter" style="--tour-letter-turn:${turn}deg;--tour-letter-lift:${lift}px;--tour-letter-delay:${delay}s">${letter}</span>`;
+                return `<span class="tour-label-letter" style="--tour-letter-turn:${turn}deg;--tour-letter-lift:${lift}px">${letter}</span>`;
             }).join('');
         }
 
@@ -3118,13 +3116,15 @@ document.addEventListener("DOMContentLoaded", async function() {
         function finishTour() {
             if (tourFinished) return;
             tourFinished = true;
-            window.clearTimeout(stepTimer);
+            window.clearTimeout(tourEndTimer);
             document.removeEventListener('keydown', handleTourKeydown);
-            window.removeEventListener('resize', updateTourVeil);
+            window.removeEventListener('resize', renderTourScene);
             overlay.classList.add('leaving');
-            document.body.classList.remove('first-visit-tour-active');
-            steps.forEach(step => step.element.classList.remove('tour-highlight-target'));
-            window.setTimeout(() => overlay.remove(), 225);
+            window.setTimeout(() => {
+                document.body.classList.remove('first-visit-tour-active');
+                steps.forEach(step => step.element.classList.remove('tour-highlight-target'));
+                overlay.remove();
+            }, tourExitDuration);
         }
 
         function handleTourKeydown(event) {
@@ -3134,54 +3134,46 @@ document.addEventListener("DOMContentLoaded", async function() {
         }
 
         document.addEventListener('keydown', handleTourKeydown);
-        window.addEventListener('resize', updateTourVeil);
         updateTourVeil();
 
-        function showStep() {
-            const step = steps[index];
-            if (!step) {
-                finishTour();
-                return;
-            }
+        function renderTourScene() {
+            if (!stepLayer || tourFinished) return;
+            stepLayer.innerHTML = steps.map((step, index) => {
+                const rect = step.element.getBoundingClientRect();
+                const targetX = rect.left + rect.width / 2;
+                const labelAbove = step.placement !== 'down';
+                const labelX = Math.max(58, Math.min(window.innerWidth - 58, targetX + (index - 1) * 14));
+                const labelY = labelAbove
+                    ? Math.max(54, rect.top - 72)
+                    : Math.min(window.innerHeight - 54, rect.bottom + 68);
+                // Start just beyond each highlighted button's circular ring so
+                // all three arrowheads stay crisp when the scene draws together.
+                const arrowTargetGap = 14;
+                const startY = labelAbove ? rect.top - arrowTargetGap : rect.bottom + arrowTargetGap;
+                const endY = labelAbove ? labelY + 24 : labelY - 24;
+                const curveY = labelAbove ? (startY + endY) / 2 - 26 : (startY + endY) / 2 + 26;
 
-            const rect = step.element.getBoundingClientRect();
-            const targetX = rect.left + rect.width / 2;
-            const labelAbove = step.placement !== 'down';
-            const labelX = Math.max(58, Math.min(window.innerWidth - 58, targetX + (index - 1) * 14));
-            const labelY = labelAbove
-                ? Math.max(54, rect.top - 72)
-                : Math.min(window.innerHeight - 54, rect.bottom + 68);
-            // Start just beyond the highlighted button's circular ring, rather
-            // than underneath it, so the arrowhead stays clearly visible.
-            const arrowTargetGap = 14;
-            const startY = labelAbove ? rect.top - arrowTargetGap : rect.bottom + arrowTargetGap;
-            const endY = labelAbove ? labelY + 24 : labelY - 24;
-            const curveY = labelAbove ? (startY + endY) / 2 - 26 : (startY + endY) / 2 + 26;
-
-            stepLayer.insertAdjacentHTML('beforeend', `
-                <svg class="tour-arrow-svg" viewBox="0 0 ${window.innerWidth} ${window.innerHeight}" aria-hidden="true">
-                    <defs>
-                        <marker id="tour-arrow-head-${index}" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="4" markerHeight="4" orient="auto-start-reverse">
-                            <path d="M0.75 1.25 L4.75 3 L0.75 4.75" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
-                        </marker>
-                    </defs>
-                    <path class="tour-arrow-line" pathLength="1" d="M ${targetX} ${startY} C ${targetX - 32} ${curveY}, ${labelX + 28} ${curveY}, ${labelX} ${endY}" marker-start="url(#tour-arrow-head-${index})"/>
-                </svg>
-                <div class="tour-label tour-label-${index + 1}" style="left:${labelX}px; top:${labelY}px">
-                    <span class="tour-label-text">${makeHandwrittenLabel(step.label)}</span>
-                </div>
-            `);
-
-            index += 1;
-            // Let each arrow finish, its label finish drawing, and the last
-            // scene linger before the existing gentle tour fade-out begins.
-            stepTimer = window.setTimeout(
-                showStep,
-                index >= steps.length ? finalTourHoldDuration : tourStepDuration
-            );
+                return `
+                    <svg class="tour-arrow-svg" viewBox="0 0 ${window.innerWidth} ${window.innerHeight}" aria-hidden="true">
+                        <defs>
+                            <marker id="tour-arrow-head-${index}" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="4" markerHeight="4" orient="auto-start-reverse">
+                                <path d="M0.75 1.25 L4.75 3 L0.75 4.75" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
+                            </marker>
+                        </defs>
+                        <path class="tour-arrow-line" pathLength="1" d="M ${targetX} ${startY} C ${targetX - 32} ${curveY}, ${labelX + 28} ${curveY}, ${labelX} ${endY}" marker-start="url(#tour-arrow-head-${index})"/>
+                    </svg>
+                    <div class="tour-label tour-label-${index + 1}" style="left:${labelX}px; top:${labelY}px">
+                        <span class="tour-label-text">${makeHandwrittenLabel(step.label)}</span>
+                    </div>
+                `;
+            }).join('');
         }
 
-        showStep();
+        window.addEventListener('resize', renderTourScene);
+        renderTourScene();
+        // Begin the gentle 425ms exit soon enough that the overlay is fully
+        // gone exactly three seconds after the simultaneous scene begins.
+        tourEndTimer = window.setTimeout(finishTour, tourTotalDuration - tourExitDuration);
     }
 
     latestNoteToggle?.addEventListener('click', () => {
