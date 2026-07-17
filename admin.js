@@ -3,7 +3,20 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 const ADMIN_UID = '1b12f04e-c1a9-42c5-bd3a-04b6186245c3';
 const ADMIN_PASSCODE_HASH = 'ce157a63c5af6bc69d076f5cc7acd1c18a8b44933f907e682f24914a63e9939e';
 const SOCIAL_CARD_VIDEO_BUCKET = 'social-card-videos';
-const SOCIAL_CARD_VIDEO_KEYS = ['snapchat', 'instagram', 'kofi', 'telegram'];
+const DEFAULT_SOCIAL_CARD_ORDER = ['snapchat', 'instagram', 'kofi', 'telegram', 'x', 'tiktok', 'twitch', 'discord', 'onlyfans', 'spotify'];
+const SOCIAL_CARD_KEYS = [...DEFAULT_SOCIAL_CARD_ORDER];
+const SOCIAL_CARD_VIDEO_KEYS = [...SOCIAL_CARD_KEYS];
+const SOCIAL_USERNAME_URL_BUILDERS = Object.freeze({
+    snapchat: username => `https://www.snapchat.com/add/${encodeURIComponent(username)}`,
+    instagram: username => `https://www.instagram.com/${encodeURIComponent(username)}`,
+    kofi: username => `https://ko-fi.com/${encodeURIComponent(username)}`,
+    telegram: username => `https://t.me/${encodeURIComponent(username)}`,
+    x: username => `https://x.com/${encodeURIComponent(username)}`,
+    tiktok: username => `https://www.tiktok.com/@${encodeURIComponent(username)}`,
+    twitch: username => `https://www.twitch.tv/${encodeURIComponent(username)}`,
+    onlyfans: username => `https://onlyfans.com/${encodeURIComponent(username)}`,
+    spotify: username => `https://open.spotify.com/user/${encodeURIComponent(username)}`
+});
 const MAX_SOCIAL_CARD_VIDEO_BYTES = 20 * 1024 * 1024;
 const SOCIAL_CARD_VIDEO_TYPES = new Set(['video/mp4', 'video/webm', 'video/x-m4v', 'video/quicktime', 'image/gif']);
 const socialVideoObjectUrls = new Map();
@@ -19,21 +32,56 @@ async function hashPin(pin) {
 const WISHLIST_VIEW_MODES = ['grid', 'list', 'masonry'];
 const DEFAULT_LINK_SETTINGS = {
     snapchat_url: 'https://www.snapchat.com/add/dumidoll',
+    snapchat_username: 'dumidoll',
     snapchat_enabled: true,
     snapchat_card_video_url: '',
     snapchat_card_video_path: '',
     instagram_url: 'https://www.instagram.com/pawswirl',
+    instagram_username: 'pawswirl',
     instagram_enabled: true,
     instagram_card_video_url: '',
     instagram_card_video_path: '',
     kofi_url: 'https://ko-fi.com/edoll',
+    kofi_username: 'edoll',
     kofi_enabled: true,
     kofi_card_video_url: '',
     kofi_card_video_path: '',
     telegram_url: 'https://t.me/wuufles',
+    telegram_username: 'wuufles',
     telegram_enabled: true,
     telegram_card_video_url: '',
     telegram_card_video_path: '',
+    x_url: 'https://x.com/pawswirl',
+    x_username: 'pawswirl',
+    x_enabled: true,
+    x_card_video_url: '',
+    x_card_video_path: '',
+    tiktok_url: 'https://www.tiktok.com/@pawswirl',
+    tiktok_username: 'pawswirl',
+    tiktok_enabled: true,
+    tiktok_card_video_url: '',
+    tiktok_card_video_path: '',
+    twitch_url: 'https://www.twitch.tv/pawswirl',
+    twitch_username: 'pawswirl',
+    twitch_enabled: true,
+    twitch_card_video_url: '',
+    twitch_card_video_path: '',
+    discord_url: 'https://discord.com/',
+    discord_username: 'pawswirl',
+    discord_enabled: true,
+    discord_card_video_url: '',
+    discord_card_video_path: '',
+    onlyfans_url: 'https://onlyfans.com/pawswirl',
+    onlyfans_username: 'pawswirl',
+    onlyfans_enabled: true,
+    onlyfans_card_video_url: '',
+    onlyfans_card_video_path: '',
+    spotify_url: 'https://open.spotify.com/user/pawswirl',
+    spotify_username: 'pawswirl',
+    spotify_enabled: true,
+    spotify_card_video_url: '',
+    spotify_card_video_path: '',
+    social_card_order: [...DEFAULT_SOCIAL_CARD_ORDER],
     throne_url: 'https://throne.com/edoll',
     throne_enabled: true,
     throne_checkout_mode: 'mockup',
@@ -118,17 +166,45 @@ const els = {
     linkSettingsReset: document.getElementById('link-settings-reset'),
     snapchatEnabled: document.getElementById('snapchat-enabled'),
     snapchatUrl: document.getElementById('snapchat-url'),
+    snapchatUsername: document.getElementById('snapchat-username'),
     snapchatState: document.getElementById('snapchat-state'),
     instagramEnabled: document.getElementById('instagram-enabled'),
     instagramUrl: document.getElementById('instagram-url'),
+    instagramUsername: document.getElementById('instagram-username'),
     instagramState: document.getElementById('instagram-state'),
     kofiEnabled: document.getElementById('kofi-enabled'),
     kofiUrl: document.getElementById('kofi-url'),
+    kofiUsername: document.getElementById('kofi-username'),
     kofiState: document.getElementById('kofi-state'),
     kofiUrlPreview: document.getElementById('kofi-url-preview'),
     telegramEnabled: document.getElementById('telegram-enabled'),
     telegramUrl: document.getElementById('telegram-url'),
+    telegramUsername: document.getElementById('telegram-username'),
     telegramState: document.getElementById('telegram-state'),
+    xEnabled: document.getElementById('x-enabled'),
+    xUrl: document.getElementById('x-url'),
+    xUsername: document.getElementById('x-username'),
+    xState: document.getElementById('x-state'),
+    tiktokEnabled: document.getElementById('tiktok-enabled'),
+    tiktokUrl: document.getElementById('tiktok-url'),
+    tiktokUsername: document.getElementById('tiktok-username'),
+    tiktokState: document.getElementById('tiktok-state'),
+    twitchEnabled: document.getElementById('twitch-enabled'),
+    twitchUrl: document.getElementById('twitch-url'),
+    twitchUsername: document.getElementById('twitch-username'),
+    twitchState: document.getElementById('twitch-state'),
+    discordEnabled: document.getElementById('discord-enabled'),
+    discordUrl: document.getElementById('discord-url'),
+    discordUsername: document.getElementById('discord-username'),
+    discordState: document.getElementById('discord-state'),
+    onlyfansEnabled: document.getElementById('onlyfans-enabled'),
+    onlyfansUrl: document.getElementById('onlyfans-url'),
+    onlyfansUsername: document.getElementById('onlyfans-username'),
+    onlyfansState: document.getElementById('onlyfans-state'),
+    spotifyEnabled: document.getElementById('spotify-enabled'),
+    spotifyUrl: document.getElementById('spotify-url'),
+    spotifyUsername: document.getElementById('spotify-username'),
+    spotifyState: document.getElementById('spotify-state'),
     throneEnabled: document.getElementById('throne-enabled'),
     throneUrl: document.getElementById('throne-url'),
     throneState: document.getElementById('throne-state'),
@@ -279,16 +355,17 @@ function renderStats() {
     const publishedDrawings = state.drawings.filter(item => item.approved).length;
     const pendingQuestions = state.questions.filter(item => !hasAnswer(item)).length;
     const publishedQuestions = state.questions.filter(hasAnswer).length;
-    const activeLinks = ['snapchat', 'instagram', 'kofi', 'telegram', 'throne']
+    const publicLinkKeys = [...SOCIAL_CARD_KEYS, 'throne'];
+    const activeLinks = publicLinkKeys
         .filter(key => state.linkSettings[`${key}_enabled`] !== false).length;
     if (els.reviewTabCount) els.reviewTabCount.textContent = String(pendingDrawings + pendingQuestions);
     if (els.publishedTabCount) els.publishedTabCount.textContent = String(publishedDrawings + publishedQuestions);
-    if (els.linksTabCount) els.linksTabCount.textContent = `${activeLinks}/5`;
+    if (els.linksTabCount) els.linksTabCount.textContent = `${activeLinks}/${publicLinkKeys.length}`;
 
     els.stats.innerHTML = `
         <div class="admin-stat"><strong>${pendingDrawings + pendingQuestions}</strong><span>waiting review</span></div>
         <div class="admin-stat"><strong>${publishedDrawings + publishedQuestions}</strong><span>published posts</span></div>
-        <div class="admin-stat"><strong>${activeLinks}/5</strong><span>public links</span></div>
+        <div class="admin-stat"><strong>${activeLinks}/${publicLinkKeys.length}</strong><span>public links</span></div>
     `;
 }
 
@@ -339,25 +416,109 @@ function renderQuestions(list, container, published) {
     `).join('');
 }
 
+function normalizeSocialCardOrder(value) {
+    const requested = Array.isArray(value) ? value : [];
+    const valid = requested.filter((key, index) =>
+        SOCIAL_CARD_KEYS.includes(key) && requested.indexOf(key) === index
+    );
+    return [...valid, ...SOCIAL_CARD_KEYS.filter(key => !valid.includes(key))];
+}
+
+function normalizeSocialUsername(value) {
+    return String(value ?? '').trim().replace(/^@+/, '').slice(0, 80);
+}
+
+function readSocialUsernameSetting(settings, key) {
+    const settingKey = `${key}_username`;
+    return Object.prototype.hasOwnProperty.call(settings, settingKey)
+        ? normalizeSocialUsername(settings[settingKey])
+        : DEFAULT_LINK_SETTINGS[settingKey];
+}
+
+function getDraftSocialUsername(key, input) {
+    if (input) return normalizeSocialUsername(input.value);
+    return readSocialUsernameSetting(state.linkSettings, key);
+}
+
+function getSocialUsernameControls() {
+    return [
+        { key: 'snapchat', username: els.snapchatUsername, url: els.snapchatUrl },
+        { key: 'instagram', username: els.instagramUsername, url: els.instagramUrl },
+        { key: 'kofi', username: els.kofiUsername, url: els.kofiUrl },
+        { key: 'telegram', username: els.telegramUsername, url: els.telegramUrl },
+        { key: 'x', username: els.xUsername, url: els.xUrl },
+        { key: 'tiktok', username: els.tiktokUsername, url: els.tiktokUrl },
+        { key: 'twitch', username: els.twitchUsername, url: els.twitchUrl },
+        { key: 'discord', username: els.discordUsername, url: els.discordUrl },
+        { key: 'onlyfans', username: els.onlyfansUsername, url: els.onlyfansUrl },
+        { key: 'spotify', username: els.spotifyUsername, url: els.spotifyUrl }
+    ];
+}
+
+function syncSocialUrlFromUsername(key, usernameInput, urlInput) {
+    const username = normalizeSocialUsername(usernameInput?.value);
+    const buildUrl = SOCIAL_USERNAME_URL_BUILDERS[key];
+    if (!username || !buildUrl || !urlInput) return false;
+    const nextUrl = buildUrl(username);
+    if (urlInput.value === nextUrl) return false;
+    urlInput.value = nextUrl;
+    return true;
+}
+
 function normalizeLinkSettings(value) {
     const settings = value && typeof value === 'object' ? value : {};
     return {
         snapchat_url: String(settings.snapchat_url || DEFAULT_LINK_SETTINGS.snapchat_url),
+        snapchat_username: readSocialUsernameSetting(settings, 'snapchat'),
         snapchat_enabled: settings.snapchat_enabled !== false,
         snapchat_card_video_url: String(settings.snapchat_card_video_url || ''),
         snapchat_card_video_path: String(settings.snapchat_card_video_path || ''),
         instagram_url: String(settings.instagram_url || DEFAULT_LINK_SETTINGS.instagram_url),
+        instagram_username: readSocialUsernameSetting(settings, 'instagram'),
         instagram_enabled: settings.instagram_enabled !== false,
         instagram_card_video_url: String(settings.instagram_card_video_url || ''),
         instagram_card_video_path: String(settings.instagram_card_video_path || ''),
         kofi_url: String(settings.kofi_url || DEFAULT_LINK_SETTINGS.kofi_url),
+        kofi_username: readSocialUsernameSetting(settings, 'kofi'),
         kofi_enabled: settings.kofi_enabled !== false,
         kofi_card_video_url: String(settings.kofi_card_video_url || ''),
         kofi_card_video_path: String(settings.kofi_card_video_path || ''),
         telegram_url: String(settings.telegram_url || DEFAULT_LINK_SETTINGS.telegram_url),
+        telegram_username: readSocialUsernameSetting(settings, 'telegram'),
         telegram_enabled: settings.telegram_enabled !== false,
         telegram_card_video_url: String(settings.telegram_card_video_url || ''),
         telegram_card_video_path: String(settings.telegram_card_video_path || ''),
+        x_url: String(settings.x_url || DEFAULT_LINK_SETTINGS.x_url),
+        x_username: readSocialUsernameSetting(settings, 'x'),
+        x_enabled: settings.x_enabled !== false,
+        x_card_video_url: String(settings.x_card_video_url || ''),
+        x_card_video_path: String(settings.x_card_video_path || ''),
+        tiktok_url: String(settings.tiktok_url || DEFAULT_LINK_SETTINGS.tiktok_url),
+        tiktok_username: readSocialUsernameSetting(settings, 'tiktok'),
+        tiktok_enabled: settings.tiktok_enabled !== false,
+        tiktok_card_video_url: String(settings.tiktok_card_video_url || ''),
+        tiktok_card_video_path: String(settings.tiktok_card_video_path || ''),
+        twitch_url: String(settings.twitch_url || DEFAULT_LINK_SETTINGS.twitch_url),
+        twitch_username: readSocialUsernameSetting(settings, 'twitch'),
+        twitch_enabled: settings.twitch_enabled !== false,
+        twitch_card_video_url: String(settings.twitch_card_video_url || ''),
+        twitch_card_video_path: String(settings.twitch_card_video_path || ''),
+        discord_url: String(settings.discord_url || DEFAULT_LINK_SETTINGS.discord_url),
+        discord_username: readSocialUsernameSetting(settings, 'discord'),
+        discord_enabled: settings.discord_enabled !== false,
+        discord_card_video_url: String(settings.discord_card_video_url || ''),
+        discord_card_video_path: String(settings.discord_card_video_path || ''),
+        onlyfans_url: String(settings.onlyfans_url || DEFAULT_LINK_SETTINGS.onlyfans_url),
+        onlyfans_username: readSocialUsernameSetting(settings, 'onlyfans'),
+        onlyfans_enabled: settings.onlyfans_enabled !== false,
+        onlyfans_card_video_url: String(settings.onlyfans_card_video_url || ''),
+        onlyfans_card_video_path: String(settings.onlyfans_card_video_path || ''),
+        spotify_url: String(settings.spotify_url || DEFAULT_LINK_SETTINGS.spotify_url),
+        spotify_username: readSocialUsernameSetting(settings, 'spotify'),
+        spotify_enabled: settings.spotify_enabled !== false,
+        spotify_card_video_url: String(settings.spotify_card_video_url || ''),
+        spotify_card_video_path: String(settings.spotify_card_video_path || ''),
+        social_card_order: normalizeSocialCardOrder(settings.social_card_order),
         throne_url: String(settings.throne_url || DEFAULT_LINK_SETTINGS.throne_url),
         throne_enabled: settings.throne_enabled !== false,
         throne_checkout_mode: settings.throne_checkout_mode === 'widget' ? 'widget' : 'mockup',
@@ -381,11 +542,65 @@ function normalizeLinkSettings(value) {
     };
 }
 
+function ensureSocialOrderControls() {
+    SOCIAL_CARD_KEYS.forEach(key => {
+        const card = document.querySelector(`[data-link-card="${key}"]`);
+        const actions = card?.querySelector('.admin-link-card-actions');
+        if (!actions || actions.querySelector('.admin-social-order-controls')) return;
+        card.classList.add('has-social-order');
+        const controls = document.createElement('span');
+        controls.className = 'admin-social-order-controls';
+        controls.innerHTML = `
+            <button class="admin-social-move" type="button" data-social-move="up" data-social-key="${key}" aria-label="Move ${key} card up">↑</button>
+            <span class="admin-social-position" aria-label="Card position"></span>
+            <button class="admin-social-move" type="button" data-social-move="down" data-social-key="${key}" aria-label="Move ${key} card down">↓</button>
+        `;
+        actions.prepend(controls);
+    });
+}
+
+function applyAdminSocialCardOrder(settings = state.linkSettings) {
+    ensureSocialOrderControls();
+    const order = normalizeSocialCardOrder(settings.social_card_order);
+    const grid = document.querySelector('#links-panel .admin-link-grid');
+    const throneCard = grid?.querySelector('[data-link-card="throne"]');
+    if (!grid) return;
+
+    order.forEach(key => {
+        const card = grid.querySelector(`[data-link-card="${key}"]`);
+        if (card) grid.insertBefore(card, throneCard || null);
+    });
+
+    order.forEach((key, index) => {
+        const card = grid.querySelector(`[data-link-card="${key}"]`);
+        const position = card?.querySelector('.admin-social-position');
+        const up = card?.querySelector('[data-social-move="up"]');
+        const down = card?.querySelector('[data-social-move="down"]');
+        if (position) position.textContent = `${index + 1}·${order.length}`;
+        if (up) up.disabled = index === 0;
+        if (down) down.disabled = index === order.length - 1;
+    });
+}
+
+function moveSocialCard(key, direction) {
+    const order = normalizeSocialCardOrder(state.linkSettings.social_card_order);
+    const currentIndex = order.indexOf(key);
+    const nextIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+    if (currentIndex < 0 || nextIndex < 0 || nextIndex >= order.length) return;
+    [order[currentIndex], order[nextIndex]] = [order[nextIndex], order[currentIndex]];
+    state.linkSettings.social_card_order = order;
+    settingsDraftDirty = true;
+    applyAdminSocialCardOrder(state.linkSettings);
+    renderLinkPreview();
+    scheduleAutoSave();
+}
+
 function renderLinkSettings({ preserveDraft = false } = {}) {
     const settings = state.linkSettings;
     if (els.linkSettingsForm) {
         els.linkSettingsForm.classList.toggle('settings-unavailable', !state.linkSettingsAvailable);
     }
+    applyAdminSocialCardOrder(settings);
     renderAllSocialVideoControls();
     if (preserveDraft && settingsDraftDirty) {
         renderLinkPreview();
@@ -393,17 +608,45 @@ function renderLinkSettings({ preserveDraft = false } = {}) {
     }
     if (els.snapchatEnabled) els.snapchatEnabled.checked = settings.snapchat_enabled !== false;
     if (els.snapchatUrl) els.snapchatUrl.value = settings.snapchat_url || '';
+    if (els.snapchatUsername) els.snapchatUsername.value = settings.snapchat_username ?? '';
     if (els.snapchatState) els.snapchatState.textContent = settings.snapchat_enabled !== false ? 'visible' : 'hidden';
     if (els.instagramEnabled) els.instagramEnabled.checked = settings.instagram_enabled !== false;
     if (els.instagramUrl) els.instagramUrl.value = settings.instagram_url || '';
+    if (els.instagramUsername) els.instagramUsername.value = settings.instagram_username ?? '';
     if (els.instagramState) els.instagramState.textContent = settings.instagram_enabled !== false ? 'visible' : 'hidden';
     if (els.kofiEnabled) els.kofiEnabled.checked = settings.kofi_enabled !== false;
     if (els.kofiUrl) els.kofiUrl.value = settings.kofi_url || '';
+    if (els.kofiUsername) els.kofiUsername.value = settings.kofi_username ?? '';
     if (els.kofiState) els.kofiState.textContent = settings.kofi_enabled !== false ? 'visible' : 'hidden';
     if (els.kofiUrlPreview) els.kofiUrlPreview.textContent = settings.kofi_url || DEFAULT_LINK_SETTINGS.kofi_url;
     if (els.telegramEnabled) els.telegramEnabled.checked = settings.telegram_enabled !== false;
     if (els.telegramUrl) els.telegramUrl.value = settings.telegram_url || '';
+    if (els.telegramUsername) els.telegramUsername.value = settings.telegram_username ?? '';
     if (els.telegramState) els.telegramState.textContent = settings.telegram_enabled !== false ? 'visible' : 'hidden';
+    if (els.xEnabled) els.xEnabled.checked = settings.x_enabled !== false;
+    if (els.xUrl) els.xUrl.value = settings.x_url || '';
+    if (els.xUsername) els.xUsername.value = settings.x_username ?? '';
+    if (els.xState) els.xState.textContent = settings.x_enabled !== false ? 'visible' : 'hidden';
+    if (els.tiktokEnabled) els.tiktokEnabled.checked = settings.tiktok_enabled !== false;
+    if (els.tiktokUrl) els.tiktokUrl.value = settings.tiktok_url || '';
+    if (els.tiktokUsername) els.tiktokUsername.value = settings.tiktok_username ?? '';
+    if (els.tiktokState) els.tiktokState.textContent = settings.tiktok_enabled !== false ? 'visible' : 'hidden';
+    if (els.twitchEnabled) els.twitchEnabled.checked = settings.twitch_enabled !== false;
+    if (els.twitchUrl) els.twitchUrl.value = settings.twitch_url || '';
+    if (els.twitchUsername) els.twitchUsername.value = settings.twitch_username ?? '';
+    if (els.twitchState) els.twitchState.textContent = settings.twitch_enabled !== false ? 'visible' : 'hidden';
+    if (els.discordEnabled) els.discordEnabled.checked = settings.discord_enabled !== false;
+    if (els.discordUrl) els.discordUrl.value = settings.discord_url || '';
+    if (els.discordUsername) els.discordUsername.value = settings.discord_username ?? '';
+    if (els.discordState) els.discordState.textContent = settings.discord_enabled !== false ? 'visible' : 'hidden';
+    if (els.onlyfansEnabled) els.onlyfansEnabled.checked = settings.onlyfans_enabled !== false;
+    if (els.onlyfansUrl) els.onlyfansUrl.value = settings.onlyfans_url || '';
+    if (els.onlyfansUsername) els.onlyfansUsername.value = settings.onlyfans_username ?? '';
+    if (els.onlyfansState) els.onlyfansState.textContent = settings.onlyfans_enabled !== false ? 'visible' : 'hidden';
+    if (els.spotifyEnabled) els.spotifyEnabled.checked = settings.spotify_enabled !== false;
+    if (els.spotifyUrl) els.spotifyUrl.value = settings.spotify_url || '';
+    if (els.spotifyUsername) els.spotifyUsername.value = settings.spotify_username ?? '';
+    if (els.spotifyState) els.spotifyState.textContent = settings.spotify_enabled !== false ? 'visible' : 'hidden';
     if (els.throneEnabled) els.throneEnabled.checked = settings.throne_enabled !== false;
     if (els.throneUrl) els.throneUrl.value = settings.throne_url || '';
     if (els.throneState) els.throneState.textContent = settings.throne_enabled !== false ? 'visible' : 'hidden';
@@ -438,21 +681,56 @@ function renderLinkSettings({ preserveDraft = false } = {}) {
 function getDraftLinkSettings() {
     return {
         snapchat_url: els.snapchatUrl?.value.trim() || state.linkSettings.snapchat_url || DEFAULT_LINK_SETTINGS.snapchat_url,
+        snapchat_username: getDraftSocialUsername('snapchat', els.snapchatUsername),
         snapchat_enabled: els.snapchatEnabled?.checked !== false,
         snapchat_card_video_url: state.linkSettings.snapchat_card_video_url || '',
         snapchat_card_video_path: state.linkSettings.snapchat_card_video_path || '',
         instagram_url: els.instagramUrl?.value.trim() || state.linkSettings.instagram_url || DEFAULT_LINK_SETTINGS.instagram_url,
+        instagram_username: getDraftSocialUsername('instagram', els.instagramUsername),
         instagram_enabled: els.instagramEnabled?.checked !== false,
         instagram_card_video_url: state.linkSettings.instagram_card_video_url || '',
         instagram_card_video_path: state.linkSettings.instagram_card_video_path || '',
         kofi_url: els.kofiUrl?.value.trim() || state.linkSettings.kofi_url || DEFAULT_LINK_SETTINGS.kofi_url,
+        kofi_username: getDraftSocialUsername('kofi', els.kofiUsername),
         kofi_enabled: els.kofiEnabled?.checked !== false,
         kofi_card_video_url: state.linkSettings.kofi_card_video_url || '',
         kofi_card_video_path: state.linkSettings.kofi_card_video_path || '',
         telegram_url: els.telegramUrl?.value.trim() || state.linkSettings.telegram_url || DEFAULT_LINK_SETTINGS.telegram_url,
+        telegram_username: getDraftSocialUsername('telegram', els.telegramUsername),
         telegram_enabled: els.telegramEnabled?.checked !== false,
         telegram_card_video_url: state.linkSettings.telegram_card_video_url || '',
         telegram_card_video_path: state.linkSettings.telegram_card_video_path || '',
+        x_url: els.xUrl?.value.trim() || state.linkSettings.x_url || DEFAULT_LINK_SETTINGS.x_url,
+        x_username: getDraftSocialUsername('x', els.xUsername),
+        x_enabled: els.xEnabled?.checked !== false,
+        x_card_video_url: state.linkSettings.x_card_video_url || '',
+        x_card_video_path: state.linkSettings.x_card_video_path || '',
+        tiktok_url: els.tiktokUrl?.value.trim() || state.linkSettings.tiktok_url || DEFAULT_LINK_SETTINGS.tiktok_url,
+        tiktok_username: getDraftSocialUsername('tiktok', els.tiktokUsername),
+        tiktok_enabled: els.tiktokEnabled?.checked !== false,
+        tiktok_card_video_url: state.linkSettings.tiktok_card_video_url || '',
+        tiktok_card_video_path: state.linkSettings.tiktok_card_video_path || '',
+        twitch_url: els.twitchUrl?.value.trim() || state.linkSettings.twitch_url || DEFAULT_LINK_SETTINGS.twitch_url,
+        twitch_username: getDraftSocialUsername('twitch', els.twitchUsername),
+        twitch_enabled: els.twitchEnabled?.checked !== false,
+        twitch_card_video_url: state.linkSettings.twitch_card_video_url || '',
+        twitch_card_video_path: state.linkSettings.twitch_card_video_path || '',
+        discord_url: els.discordUrl?.value.trim() || state.linkSettings.discord_url || DEFAULT_LINK_SETTINGS.discord_url,
+        discord_username: getDraftSocialUsername('discord', els.discordUsername),
+        discord_enabled: els.discordEnabled?.checked !== false,
+        discord_card_video_url: state.linkSettings.discord_card_video_url || '',
+        discord_card_video_path: state.linkSettings.discord_card_video_path || '',
+        onlyfans_url: els.onlyfansUrl?.value.trim() || state.linkSettings.onlyfans_url || DEFAULT_LINK_SETTINGS.onlyfans_url,
+        onlyfans_username: getDraftSocialUsername('onlyfans', els.onlyfansUsername),
+        onlyfans_enabled: els.onlyfansEnabled?.checked !== false,
+        onlyfans_card_video_url: state.linkSettings.onlyfans_card_video_url || '',
+        onlyfans_card_video_path: state.linkSettings.onlyfans_card_video_path || '',
+        spotify_url: els.spotifyUrl?.value.trim() || state.linkSettings.spotify_url || DEFAULT_LINK_SETTINGS.spotify_url,
+        spotify_username: getDraftSocialUsername('spotify', els.spotifyUsername),
+        spotify_enabled: els.spotifyEnabled?.checked !== false,
+        spotify_card_video_url: state.linkSettings.spotify_card_video_url || '',
+        spotify_card_video_path: state.linkSettings.spotify_card_video_path || '',
+        social_card_order: normalizeSocialCardOrder(state.linkSettings.social_card_order),
         throne_url: els.throneUrl?.value.trim() || state.linkSettings.throne_url || DEFAULT_LINK_SETTINGS.throne_url,
         throne_enabled: els.throneEnabled?.checked !== false,
         throne_checkout_mode: els.throneCheckoutMode?.value === 'widget' ? 'widget' : 'mockup',
@@ -490,6 +768,12 @@ function syncLinkDraftLabels(settings = getDraftLinkSettings()) {
     if (els.kofiState) els.kofiState.textContent = settings.kofi_enabled !== false ? 'visible' : 'hidden';
     if (els.kofiUrlPreview) els.kofiUrlPreview.textContent = settings.kofi_url || DEFAULT_LINK_SETTINGS.kofi_url;
     if (els.telegramState) els.telegramState.textContent = settings.telegram_enabled !== false ? 'visible' : 'hidden';
+    if (els.xState) els.xState.textContent = settings.x_enabled !== false ? 'visible' : 'hidden';
+    if (els.tiktokState) els.tiktokState.textContent = settings.tiktok_enabled !== false ? 'visible' : 'hidden';
+    if (els.twitchState) els.twitchState.textContent = settings.twitch_enabled !== false ? 'visible' : 'hidden';
+    if (els.discordState) els.discordState.textContent = settings.discord_enabled !== false ? 'visible' : 'hidden';
+    if (els.onlyfansState) els.onlyfansState.textContent = settings.onlyfans_enabled !== false ? 'visible' : 'hidden';
+    if (els.spotifyState) els.spotifyState.textContent = settings.spotify_enabled !== false ? 'visible' : 'hidden';
     if (els.throneState) els.throneState.textContent = settings.throne_enabled !== false ? 'visible' : 'hidden';
     const homepageNoteText = String(settings.homepage_note_text || '');
     if (els.homepageNoteState) els.homepageNoteState.textContent = homepageNoteText ? 'visible' : 'blank';
@@ -507,7 +791,7 @@ function syncLinkDraftLabels(settings = getDraftLinkSettings()) {
     if (els.seoDescriptionCount) els.seoDescriptionCount.textContent = `${settings.seo_description.length}/180`;
     if (els.siteTaglineCount) els.siteTaglineCount.textContent = `${settings.site_tagline.length}/120`;
     if (els.seoState) els.seoState.textContent = settingsDraftDirty ? 'editing' : 'ready';
-    ['snapchat', 'instagram', 'kofi', 'telegram', 'throne', 'latest-note', 'maintenance', 'submissions'].forEach(key => {
+    [...SOCIAL_CARD_KEYS, 'throne', 'latest-note', 'maintenance', 'submissions'].forEach(key => {
         const settingKey = key.replace('-', '_');
         let disabled = settings[`${settingKey}_enabled`] === false;
         if (key === 'submissions') {
@@ -1389,21 +1673,56 @@ async function saveLinkSettingsNow() {
     try {
         nextSettings = {
             snapchat_url: cleanUrl(els.snapchatUrl?.value || state.linkSettings.snapchat_url, 'Snapchat'),
+            snapchat_username: getDraftSocialUsername('snapchat', els.snapchatUsername),
             snapchat_enabled: els.snapchatEnabled?.checked !== false,
             snapchat_card_video_url: String(state.linkSettings.snapchat_card_video_url || ''),
             snapchat_card_video_path: String(state.linkSettings.snapchat_card_video_path || ''),
             instagram_url: cleanUrl(els.instagramUrl?.value || state.linkSettings.instagram_url, 'Instagram'),
+            instagram_username: getDraftSocialUsername('instagram', els.instagramUsername),
             instagram_enabled: els.instagramEnabled?.checked !== false,
             instagram_card_video_url: String(state.linkSettings.instagram_card_video_url || ''),
             instagram_card_video_path: String(state.linkSettings.instagram_card_video_path || ''),
             kofi_url: cleanUrl(els.kofiUrl?.value || state.linkSettings.kofi_url, 'Ko-fi'),
+            kofi_username: getDraftSocialUsername('kofi', els.kofiUsername),
             kofi_enabled: els.kofiEnabled?.checked !== false,
             kofi_card_video_url: String(state.linkSettings.kofi_card_video_url || ''),
             kofi_card_video_path: String(state.linkSettings.kofi_card_video_path || ''),
             telegram_url: cleanUrl(els.telegramUrl?.value || state.linkSettings.telegram_url, 'Telegram'),
+            telegram_username: getDraftSocialUsername('telegram', els.telegramUsername),
             telegram_enabled: els.telegramEnabled?.checked !== false,
             telegram_card_video_url: String(state.linkSettings.telegram_card_video_url || ''),
             telegram_card_video_path: String(state.linkSettings.telegram_card_video_path || ''),
+            x_url: cleanUrl(els.xUrl?.value || state.linkSettings.x_url, 'X'),
+            x_username: getDraftSocialUsername('x', els.xUsername),
+            x_enabled: els.xEnabled?.checked !== false,
+            x_card_video_url: String(state.linkSettings.x_card_video_url || ''),
+            x_card_video_path: String(state.linkSettings.x_card_video_path || ''),
+            tiktok_url: cleanUrl(els.tiktokUrl?.value || state.linkSettings.tiktok_url, 'TikTok'),
+            tiktok_username: getDraftSocialUsername('tiktok', els.tiktokUsername),
+            tiktok_enabled: els.tiktokEnabled?.checked !== false,
+            tiktok_card_video_url: String(state.linkSettings.tiktok_card_video_url || ''),
+            tiktok_card_video_path: String(state.linkSettings.tiktok_card_video_path || ''),
+            twitch_url: cleanUrl(els.twitchUrl?.value || state.linkSettings.twitch_url, 'Twitch'),
+            twitch_username: getDraftSocialUsername('twitch', els.twitchUsername),
+            twitch_enabled: els.twitchEnabled?.checked !== false,
+            twitch_card_video_url: String(state.linkSettings.twitch_card_video_url || ''),
+            twitch_card_video_path: String(state.linkSettings.twitch_card_video_path || ''),
+            discord_url: cleanUrl(els.discordUrl?.value || state.linkSettings.discord_url, 'Discord'),
+            discord_username: getDraftSocialUsername('discord', els.discordUsername),
+            discord_enabled: els.discordEnabled?.checked !== false,
+            discord_card_video_url: String(state.linkSettings.discord_card_video_url || ''),
+            discord_card_video_path: String(state.linkSettings.discord_card_video_path || ''),
+            onlyfans_url: cleanUrl(els.onlyfansUrl?.value || state.linkSettings.onlyfans_url, 'OnlyFans'),
+            onlyfans_username: getDraftSocialUsername('onlyfans', els.onlyfansUsername),
+            onlyfans_enabled: els.onlyfansEnabled?.checked !== false,
+            onlyfans_card_video_url: String(state.linkSettings.onlyfans_card_video_url || ''),
+            onlyfans_card_video_path: String(state.linkSettings.onlyfans_card_video_path || ''),
+            spotify_url: cleanUrl(els.spotifyUrl?.value || state.linkSettings.spotify_url, 'Spotify'),
+            spotify_username: getDraftSocialUsername('spotify', els.spotifyUsername),
+            spotify_enabled: els.spotifyEnabled?.checked !== false,
+            spotify_card_video_url: String(state.linkSettings.spotify_card_video_url || ''),
+            spotify_card_video_path: String(state.linkSettings.spotify_card_video_path || ''),
+            social_card_order: normalizeSocialCardOrder(state.linkSettings.social_card_order),
             throne_url: cleanUrl(els.throneUrl?.value || state.linkSettings.throne_url, 'Throne'),
             throne_enabled: els.throneEnabled?.checked !== false,
             throne_checkout_mode: els.throneCheckoutMode?.value === 'widget' ? 'widget' : 'mockup',
@@ -1800,6 +2119,13 @@ async function init() {
             openPublicLinkPreview(button.dataset.linkOpen);
         });
     });
+    document.querySelector('#links-panel .admin-link-grid')?.addEventListener('click', event => {
+        const button = event.target.closest('[data-social-move]');
+        if (!button) return;
+        event.preventDefault();
+        event.stopPropagation();
+        moveSocialCard(button.dataset.socialKey, button.dataset.socialMove);
+    });
     document.querySelectorAll('.admin-switch').forEach(toggle => {
         toggle.addEventListener('click', e => e.stopPropagation());
         toggle.addEventListener('keydown', e => e.stopPropagation());
@@ -1814,6 +2140,12 @@ async function init() {
         els.instagramUrl,
         els.kofiUrl,
         els.telegramUrl,
+        els.xUrl,
+        els.tiktokUrl,
+        els.twitchUrl,
+        els.discordUrl,
+        els.onlyfansUrl,
+        els.spotifyUrl,
         els.throneUrl,
         els.throneCheckoutMode,
         els.wishlistViewMode,
@@ -1829,6 +2161,14 @@ async function init() {
         els.siteTagline
     ].forEach(input => {
         input?.addEventListener('input', () => {
+            settingsDraftDirty = true;
+            renderLinkPreview();
+            scheduleAutoSave();
+        });
+    });
+    getSocialUsernameControls().forEach(({ key, username, url }) => {
+        username?.addEventListener('input', () => {
+            syncSocialUrlFromUsername(key, username, url);
             settingsDraftDirty = true;
             renderLinkPreview();
             scheduleAutoSave();

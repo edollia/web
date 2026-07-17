@@ -6,7 +6,7 @@
     <meta name="robots" content="noindex, nofollow">
     <meta name="referrer" content="strict-origin-when-cross-origin">
     <title>Lia Admin</title>
-    <link rel="stylesheet" href="../admin.css?v=5.3">
+    <link rel="stylesheet" href="../admin.css?v=5.4">
 </head>
 <body>
     <main class="admin-shell">
@@ -382,6 +382,8 @@
                         <button class="soft" type="button" id="link-settings-reset">restore defaults</button>
                     </div>
 
+                    <p class="admin-social-order-note">use the little ↑ and ↓ controls to choose which social appears first, last, or anywhere between. changes save automatically.</p>
+
                     <div class="admin-link-grid">
                         <details class="admin-link-card" data-link-card="snapchat" open>
                             <summary>
@@ -404,6 +406,10 @@
                                 <label class="admin-url-field">
                                     <span>destination URL</span>
                                     <input id="snapchat-url" type="url" inputmode="url" placeholder="https://www.snapchat.com/add/name">
+                                </label>
+                                <label class="admin-url-field admin-username-field">
+                                    <span>display username <small>updates URL · blank hides it</small></span>
+                                    <input id="snapchat-username" type="text" maxlength="80" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="leave blank to hide">
                                 </label>
                                 <div class="admin-card-video-control" data-social-video="snapchat">
                                     <div class="admin-card-video-heading">
@@ -446,6 +452,10 @@
                                 <label class="admin-url-field">
                                     <span>destination URL</span>
                                     <input id="instagram-url" type="url" inputmode="url" placeholder="https://www.instagram.com/name">
+                                </label>
+                                <label class="admin-url-field admin-username-field">
+                                    <span>display username <small>updates URL · blank hides it</small></span>
+                                    <input id="instagram-username" type="text" maxlength="80" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="leave blank to hide">
                                 </label>
                                 <div class="admin-card-video-control" data-social-video="instagram">
                                     <div class="admin-card-video-heading">
@@ -490,6 +500,10 @@
                                     <span>destination URL</span>
                                     <input id="kofi-url" type="url" inputmode="url" placeholder="https://ko-fi.com/name">
                                 </label>
+                                <label class="admin-url-field admin-username-field">
+                                    <span>display username <small>updates URL · blank hides it</small></span>
+                                    <input id="kofi-username" type="text" maxlength="80" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="leave blank to hide">
+                                </label>
                                 <div class="admin-card-video-control" data-social-video="kofi">
                                     <div class="admin-card-video-heading">
                                         <span>animated card background</span>
@@ -532,6 +546,10 @@
                                     <span>destination URL</span>
                                     <input id="telegram-url" type="url" inputmode="url" placeholder="https://t.me/name">
                                 </label>
+                                <label class="admin-url-field admin-username-field">
+                                    <span>display username <small>updates URL · blank hides it</small></span>
+                                    <input id="telegram-username" type="text" maxlength="80" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="leave blank to hide">
+                                </label>
                                 <div class="admin-card-video-control" data-social-video="telegram">
                                     <div class="admin-card-video-heading">
                                         <span>animated card background</span>
@@ -546,6 +564,282 @@
                                         </label>
                                         <button class="soft" type="button" data-video-upload="telegram" disabled>upload</button>
                                         <button class="soft" type="button" data-video-remove="telegram" disabled>remove</button>
+                                    </div>
+                                    <small class="admin-card-video-note">MP4, M4V, MOV, WebM, or GIF · max 20 MB</small>
+                                </div>
+                            </div>
+                        </details>
+
+                        <details class="admin-link-card" data-link-card="x" open>
+                            <summary>
+                                <div class="admin-link-card-title">
+                                    <span class="admin-link-icon">X</span>
+                                    <div>
+                                        <strong>X</strong>
+                                        <small id="x-state">visible</small>
+                                    </div>
+                                </div>
+                                <div class="admin-link-card-actions">
+                                    <button class="soft admin-link-open" type="button" data-link-open="x">open</button>
+                                    <label class="admin-switch">
+                                        <input id="x-enabled" type="checkbox">
+                                        <span></span>
+                                    </label>
+                                </div>
+                            </summary>
+                            <div class="admin-link-card-body">
+                                <label class="admin-url-field">
+                                    <span>destination URL</span>
+                                    <input id="x-url" type="url" inputmode="url" placeholder="https://x.com/pawswirl">
+                                </label>
+                                <label class="admin-url-field admin-username-field">
+                                    <span>display username <small>updates URL · blank hides it</small></span>
+                                    <input id="x-username" type="text" maxlength="80" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="leave blank to hide">
+                                </label>
+                                <div class="admin-card-video-control" data-social-video="x">
+                                    <div class="admin-card-video-heading">
+                                        <span>animated card background</span>
+                                        <small data-video-status aria-live="polite">no background</small>
+                                    </div>
+                                    <video data-video-preview muted loop playsinline controls preload="metadata" hidden></video>
+                                    <img data-image-preview alt="" hidden>
+                                    <div class="admin-card-video-actions">
+                                        <label class="admin-video-picker">
+                                            <input data-video-file type="file" accept="video/*,image/gif,.mp4,.m4v,.mov,.webm,.gif">
+                                            <span>choose media</span>
+                                        </label>
+                                        <button class="soft" type="button" data-video-upload="x" disabled>upload</button>
+                                        <button class="soft" type="button" data-video-remove="x" disabled>remove</button>
+                                    </div>
+                                    <small class="admin-card-video-note">MP4, M4V, MOV, WebM, or GIF · max 20 MB</small>
+                                </div>
+                            </div>
+                        </details>
+
+                        <details class="admin-link-card" data-link-card="tiktok" open>
+                            <summary>
+                                <div class="admin-link-card-title">
+                                    <span class="admin-link-icon">TT</span>
+                                    <div>
+                                        <strong>TikTok</strong>
+                                        <small id="tiktok-state">visible</small>
+                                    </div>
+                                </div>
+                                <div class="admin-link-card-actions">
+                                    <button class="soft admin-link-open" type="button" data-link-open="tiktok">open</button>
+                                    <label class="admin-switch">
+                                        <input id="tiktok-enabled" type="checkbox">
+                                        <span></span>
+                                    </label>
+                                </div>
+                            </summary>
+                            <div class="admin-link-card-body">
+                                <label class="admin-url-field">
+                                    <span>destination URL</span>
+                                    <input id="tiktok-url" type="url" inputmode="url" placeholder="https://www.tiktok.com/@pawswirl">
+                                </label>
+                                <label class="admin-url-field admin-username-field">
+                                    <span>display username <small>updates URL · blank hides it</small></span>
+                                    <input id="tiktok-username" type="text" maxlength="80" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="leave blank to hide">
+                                </label>
+                                <div class="admin-card-video-control" data-social-video="tiktok">
+                                    <div class="admin-card-video-heading">
+                                        <span>animated card background</span>
+                                        <small data-video-status aria-live="polite">no background</small>
+                                    </div>
+                                    <video data-video-preview muted loop playsinline controls preload="metadata" hidden></video>
+                                    <img data-image-preview alt="" hidden>
+                                    <div class="admin-card-video-actions">
+                                        <label class="admin-video-picker">
+                                            <input data-video-file type="file" accept="video/*,image/gif,.mp4,.m4v,.mov,.webm,.gif">
+                                            <span>choose media</span>
+                                        </label>
+                                        <button class="soft" type="button" data-video-upload="tiktok" disabled>upload</button>
+                                        <button class="soft" type="button" data-video-remove="tiktok" disabled>remove</button>
+                                    </div>
+                                    <small class="admin-card-video-note">MP4, M4V, MOV, WebM, or GIF · max 20 MB</small>
+                                </div>
+                            </div>
+                        </details>
+
+                        <details class="admin-link-card" data-link-card="twitch" open>
+                            <summary>
+                                <div class="admin-link-card-title">
+                                    <span class="admin-link-icon">TW</span>
+                                    <div>
+                                        <strong>Twitch</strong>
+                                        <small id="twitch-state">visible</small>
+                                    </div>
+                                </div>
+                                <div class="admin-link-card-actions">
+                                    <button class="soft admin-link-open" type="button" data-link-open="twitch">open</button>
+                                    <label class="admin-switch">
+                                        <input id="twitch-enabled" type="checkbox">
+                                        <span></span>
+                                    </label>
+                                </div>
+                            </summary>
+                            <div class="admin-link-card-body">
+                                <label class="admin-url-field">
+                                    <span>destination URL</span>
+                                    <input id="twitch-url" type="url" inputmode="url" placeholder="https://www.twitch.tv/pawswirl">
+                                </label>
+                                <label class="admin-url-field admin-username-field">
+                                    <span>display username <small>updates URL · blank hides it</small></span>
+                                    <input id="twitch-username" type="text" maxlength="80" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="leave blank to hide">
+                                </label>
+                                <div class="admin-card-video-control" data-social-video="twitch">
+                                    <div class="admin-card-video-heading">
+                                        <span>animated card background</span>
+                                        <small data-video-status aria-live="polite">no background</small>
+                                    </div>
+                                    <video data-video-preview muted loop playsinline controls preload="metadata" hidden></video>
+                                    <img data-image-preview alt="" hidden>
+                                    <div class="admin-card-video-actions">
+                                        <label class="admin-video-picker">
+                                            <input data-video-file type="file" accept="video/*,image/gif,.mp4,.m4v,.mov,.webm,.gif">
+                                            <span>choose media</span>
+                                        </label>
+                                        <button class="soft" type="button" data-video-upload="twitch" disabled>upload</button>
+                                        <button class="soft" type="button" data-video-remove="twitch" disabled>remove</button>
+                                    </div>
+                                    <small class="admin-card-video-note">MP4, M4V, MOV, WebM, or GIF · max 20 MB</small>
+                                </div>
+                            </div>
+                        </details>
+
+                        <details class="admin-link-card" data-link-card="discord" open>
+                            <summary>
+                                <div class="admin-link-card-title">
+                                    <span class="admin-link-icon">D</span>
+                                    <div>
+                                        <strong>Discord</strong>
+                                        <small id="discord-state">visible</small>
+                                    </div>
+                                </div>
+                                <div class="admin-link-card-actions">
+                                    <button class="soft admin-link-open" type="button" data-link-open="discord">open</button>
+                                    <label class="admin-switch">
+                                        <input id="discord-enabled" type="checkbox">
+                                        <span></span>
+                                    </label>
+                                </div>
+                            </summary>
+                            <div class="admin-link-card-body">
+                                <label class="admin-url-field">
+                                    <span>destination URL</span>
+                                    <input id="discord-url" type="url" inputmode="url" placeholder="https://discord.gg/invite">
+                                </label>
+                                <label class="admin-url-field admin-username-field">
+                                    <span>display username <small>label only · invite URL stays separate</small></span>
+                                    <input id="discord-username" type="text" maxlength="80" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="leave blank to hide">
+                                </label>
+                                <div class="admin-card-video-control" data-social-video="discord">
+                                    <div class="admin-card-video-heading">
+                                        <span>animated card background</span>
+                                        <small data-video-status aria-live="polite">no background</small>
+                                    </div>
+                                    <video data-video-preview muted loop playsinline controls preload="metadata" hidden></video>
+                                    <img data-image-preview alt="" hidden>
+                                    <div class="admin-card-video-actions">
+                                        <label class="admin-video-picker">
+                                            <input data-video-file type="file" accept="video/*,image/gif,.mp4,.m4v,.mov,.webm,.gif">
+                                            <span>choose media</span>
+                                        </label>
+                                        <button class="soft" type="button" data-video-upload="discord" disabled>upload</button>
+                                        <button class="soft" type="button" data-video-remove="discord" disabled>remove</button>
+                                    </div>
+                                    <small class="admin-card-video-note">MP4, M4V, MOV, WebM, or GIF · max 20 MB</small>
+                                </div>
+                            </div>
+                        </details>
+
+                        <details class="admin-link-card" data-link-card="onlyfans" open>
+                            <summary>
+                                <div class="admin-link-card-title">
+                                    <span class="admin-link-icon">OF</span>
+                                    <div>
+                                        <strong>OnlyFans</strong>
+                                        <small id="onlyfans-state">visible</small>
+                                    </div>
+                                </div>
+                                <div class="admin-link-card-actions">
+                                    <button class="soft admin-link-open" type="button" data-link-open="onlyfans">open</button>
+                                    <label class="admin-switch">
+                                        <input id="onlyfans-enabled" type="checkbox">
+                                        <span></span>
+                                    </label>
+                                </div>
+                            </summary>
+                            <div class="admin-link-card-body">
+                                <label class="admin-url-field">
+                                    <span>destination URL</span>
+                                    <input id="onlyfans-url" type="url" inputmode="url" placeholder="https://onlyfans.com/pawswirl">
+                                </label>
+                                <label class="admin-url-field admin-username-field">
+                                    <span>display username <small>updates URL · blank hides it</small></span>
+                                    <input id="onlyfans-username" type="text" maxlength="80" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="leave blank to hide">
+                                </label>
+                                <div class="admin-card-video-control" data-social-video="onlyfans">
+                                    <div class="admin-card-video-heading">
+                                        <span>animated card background</span>
+                                        <small data-video-status aria-live="polite">no background</small>
+                                    </div>
+                                    <video data-video-preview muted loop playsinline controls preload="metadata" hidden></video>
+                                    <img data-image-preview alt="" hidden>
+                                    <div class="admin-card-video-actions">
+                                        <label class="admin-video-picker">
+                                            <input data-video-file type="file" accept="video/*,image/gif,.mp4,.m4v,.mov,.webm,.gif">
+                                            <span>choose media</span>
+                                        </label>
+                                        <button class="soft" type="button" data-video-upload="onlyfans" disabled>upload</button>
+                                        <button class="soft" type="button" data-video-remove="onlyfans" disabled>remove</button>
+                                    </div>
+                                    <small class="admin-card-video-note">MP4, M4V, MOV, WebM, or GIF · max 20 MB</small>
+                                </div>
+                            </div>
+                        </details>
+
+                        <details class="admin-link-card" data-link-card="spotify" open>
+                            <summary>
+                                <div class="admin-link-card-title">
+                                    <span class="admin-link-icon">SP</span>
+                                    <div>
+                                        <strong>Spotify</strong>
+                                        <small id="spotify-state">visible</small>
+                                    </div>
+                                </div>
+                                <div class="admin-link-card-actions">
+                                    <button class="soft admin-link-open" type="button" data-link-open="spotify">open</button>
+                                    <label class="admin-switch">
+                                        <input id="spotify-enabled" type="checkbox">
+                                        <span></span>
+                                    </label>
+                                </div>
+                            </summary>
+                            <div class="admin-link-card-body">
+                                <label class="admin-url-field">
+                                    <span>destination URL</span>
+                                    <input id="spotify-url" type="url" inputmode="url" placeholder="https://open.spotify.com/user/pawswirl">
+                                </label>
+                                <label class="admin-url-field admin-username-field">
+                                    <span>display username <small>updates URL · blank hides it</small></span>
+                                    <input id="spotify-username" type="text" maxlength="80" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="leave blank to hide">
+                                </label>
+                                <div class="admin-card-video-control" data-social-video="spotify">
+                                    <div class="admin-card-video-heading">
+                                        <span>animated card background</span>
+                                        <small data-video-status aria-live="polite">no background</small>
+                                    </div>
+                                    <video data-video-preview muted loop playsinline controls preload="metadata" hidden></video>
+                                    <img data-image-preview alt="" hidden>
+                                    <div class="admin-card-video-actions">
+                                        <label class="admin-video-picker">
+                                            <input data-video-file type="file" accept="video/*,image/gif,.mp4,.m4v,.mov,.webm,.gif">
+                                            <span>choose media</span>
+                                        </label>
+                                        <button class="soft" type="button" data-video-upload="spotify" disabled>upload</button>
+                                        <button class="soft" type="button" data-video-remove="spotify" disabled>remove</button>
                                     </div>
                                     <small class="admin-card-video-note">MP4, M4V, MOV, WebM, or GIF · max 20 MB</small>
                                 </div>
@@ -686,6 +980,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="../admin-rooms.js?v=4.5"></script>
-    <script src="../admin.js?v=5.6"></script>
+    <script src="../admin.js?v=5.9"></script>
 </body>
 </html>

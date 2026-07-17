@@ -2120,7 +2120,6 @@ body.has-posts-panel-open .button-group {
     overscroll-behavior-y: contain;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
-    padding-top: 26px;
 }
 
 .social-links-panel::-webkit-scrollbar {
@@ -2339,6 +2338,10 @@ body.has-social-panel-open .site-brand-footer {
    free to spill above the card's top edge uncropped. */
 .social-link-card-frame {
     position: relative;
+    /* The admin can place Snapchat anywhere in the list. Keep the bunny's
+       breathing room attached to its own card instead of assuming this
+       wrapper is always the first child of the panel. */
+    padding-top: 26px;
 }
 
 /* Replaces the old grid `gap: 8px` between cards (see .social-links-panel)
@@ -2355,7 +2358,7 @@ body.has-social-panel-open .site-brand-footer {
 
 .social-link-mascot {
     position: absolute;
-    top: -24px;
+    top: 2px;
     /* Was -3px (a deliberate small overshoot past the card's own right edge,
        matching the original hand-drawn mockup). That was harmless while the
        panel had no clipping, but the panel now scrolls (overflow-y: auto
@@ -2406,7 +2409,7 @@ body.has-social-panel-open .site-brand-footer {
 }
 
 #snapchat-option .social-link-icon img {
-    transform: scale(0.98) translateY(0.5px);
+    transform: scale(0.96) translateY(0.5px);
 }
 
 #instagram-option .social-link-icon img {
@@ -2415,6 +2418,24 @@ body.has-social-panel-open .site-brand-footer {
 
 #telegram-option .social-link-icon img {
     transform: scale(0.91);
+}
+
+#x-option .social-link-icon img {
+    transform: scale(0.94);
+}
+
+/* OnlyFans' wide mark carries less dark edge per square than the compact
+   icons. These very small subpixel offsets strengthen its outside contour
+   without repeating the heavy 0.45px treatment Discord briefly had. */
+#onlyfans-option .social-link-icon img {
+    filter:
+        saturate(0.92)
+        brightness(1.015)
+        contrast(0.98)
+        drop-shadow(0.18px 0 0 rgba(55, 12, 10, 0.58))
+        drop-shadow(-0.18px 0 0 rgba(55, 12, 10, 0.58))
+        drop-shadow(0 0.18px 0 rgba(55, 12, 10, 0.58))
+        drop-shadow(0 -0.18px 0 rgba(55, 12, 10, 0.58));
 }
 
 .social-link-copy {
@@ -2497,6 +2518,54 @@ body.has-social-panel-open .site-brand-footer {
 
 .social-link-card:active {
     transform: scale(0.985);
+}
+
+/* Social links rupture as full cards before their action runs. A fixed clone
+   keeps the swelling card outside the panel's required scroll clipping, while
+   the real card continues holding its place in the list underneath. */
+.social-link-card.social-card-source-popping {
+    opacity: 0 !important;
+    pointer-events: none;
+}
+
+.social-link-card.social-card-pop-clone {
+    position: fixed !important;
+    left: var(--social-pop-left) !important;
+    top: var(--social-pop-top) !important;
+    z-index: 12001;
+    width: var(--social-pop-width) !important;
+    height: var(--social-pop-height) !important;
+    min-height: 0;
+    margin: 0 !important;
+    pointer-events: none;
+    transform: none;
+    transform-origin: center;
+    transition: none !important;
+}
+
+.social-link-card.social-card-pop-clone.popping {
+    animation: socialCardBubblePop 0.31s cubic-bezier(0.12, 0.84, 0.2, 1) forwards;
+}
+
+.entry-bubble-burst.social-card-bubble-burst {
+    z-index: 12002;
+}
+
+@keyframes socialCardBubblePop {
+    0% {
+        opacity: 1;
+        transform: scale(1);
+    }
+
+    48% {
+        opacity: 1;
+        transform: scale(1.16);
+    }
+
+    to {
+        opacity: 0;
+        transform: scale(1.28, 1.2);
+    }
 }
 
 @media (prefers-reduced-motion: reduce) {

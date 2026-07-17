@@ -1,21 +1,58 @@
 document.addEventListener("DOMContentLoaded", async function() {
+    const DEFAULT_SOCIAL_CARD_ORDER = ['snapchat', 'instagram', 'kofi', 'telegram', 'x', 'tiktok', 'twitch', 'discord', 'onlyfans', 'spotify'];
+    const SOCIAL_CARD_KEYS = [...DEFAULT_SOCIAL_CARD_ORDER];
     const DEFAULT_LINK_SETTINGS = {
         snapchat_url: 'https://www.snapchat.com/add/dumidoll',
+        snapchat_username: 'dumidoll',
         snapchat_enabled: true,
         snapchat_card_video_url: '',
         snapchat_card_video_path: '',
         instagram_url: 'https://www.instagram.com/pawswirl',
+        instagram_username: 'pawswirl',
         instagram_enabled: true,
         instagram_card_video_url: '',
         instagram_card_video_path: '',
         kofi_url: 'https://ko-fi.com/edoll',
+        kofi_username: 'edoll',
         kofi_enabled: true,
         kofi_card_video_url: '',
         kofi_card_video_path: '',
         telegram_url: 'https://t.me/wuufles',
+        telegram_username: 'wuufles',
         telegram_enabled: true,
         telegram_card_video_url: '',
         telegram_card_video_path: '',
+        x_url: 'https://x.com/pawswirl',
+        x_username: 'pawswirl',
+        x_enabled: true,
+        x_card_video_url: '',
+        x_card_video_path: '',
+        tiktok_url: 'https://www.tiktok.com/@pawswirl',
+        tiktok_username: 'pawswirl',
+        tiktok_enabled: true,
+        tiktok_card_video_url: '',
+        tiktok_card_video_path: '',
+        twitch_url: 'https://www.twitch.tv/pawswirl',
+        twitch_username: 'pawswirl',
+        twitch_enabled: true,
+        twitch_card_video_url: '',
+        twitch_card_video_path: '',
+        discord_url: 'https://discord.com/',
+        discord_username: 'pawswirl',
+        discord_enabled: true,
+        discord_card_video_url: '',
+        discord_card_video_path: '',
+        onlyfans_url: 'https://onlyfans.com/pawswirl',
+        onlyfans_username: 'pawswirl',
+        onlyfans_enabled: true,
+        onlyfans_card_video_url: '',
+        onlyfans_card_video_path: '',
+        spotify_url: 'https://open.spotify.com/user/pawswirl',
+        spotify_username: 'pawswirl',
+        spotify_enabled: true,
+        spotify_card_video_url: '',
+        spotify_card_video_path: '',
+        social_card_order: [...DEFAULT_SOCIAL_CARD_ORDER],
         throne_url: 'https://throne.com/edoll',
         throne_enabled: true,
         throne_checkout_mode: 'mockup',
@@ -973,25 +1010,79 @@ document.addEventListener("DOMContentLoaded", async function() {
         }
     }
 
+    function normalizeSocialCardOrder(value) {
+        const requested = Array.isArray(value) ? value : [];
+        const valid = requested.filter((key, index) =>
+            SOCIAL_CARD_KEYS.includes(key) && requested.indexOf(key) === index
+        );
+        return [...valid, ...SOCIAL_CARD_KEYS.filter(key => !valid.includes(key))];
+    }
+
+    function normalizeSocialUsername(value) {
+        return String(value ?? '').trim().replace(/^@+/, '').slice(0, 80);
+    }
+
+    function readSocialUsernameSetting(settings, key) {
+        const settingKey = `${key}_username`;
+        return Object.prototype.hasOwnProperty.call(settings, settingKey)
+            ? normalizeSocialUsername(settings[settingKey])
+            : DEFAULT_LINK_SETTINGS[settingKey];
+    }
+
     function normalizeSiteLinkSettings(value) {
         const settings = value && typeof value === 'object' ? value : {};
         return {
             snapchat_url: String(settings.snapchat_url || DEFAULT_LINK_SETTINGS.snapchat_url),
+            snapchat_username: readSocialUsernameSetting(settings, 'snapchat'),
             snapchat_enabled: settings.snapchat_enabled !== false,
             snapchat_card_video_url: String(settings.snapchat_card_video_url || ''),
             snapchat_card_video_path: String(settings.snapchat_card_video_path || ''),
             instagram_url: String(settings.instagram_url || DEFAULT_LINK_SETTINGS.instagram_url),
+            instagram_username: readSocialUsernameSetting(settings, 'instagram'),
             instagram_enabled: settings.instagram_enabled !== false,
             instagram_card_video_url: String(settings.instagram_card_video_url || ''),
             instagram_card_video_path: String(settings.instagram_card_video_path || ''),
             kofi_url: String(settings.kofi_url || DEFAULT_LINK_SETTINGS.kofi_url),
+            kofi_username: readSocialUsernameSetting(settings, 'kofi'),
             kofi_enabled: settings.kofi_enabled !== false,
             kofi_card_video_url: String(settings.kofi_card_video_url || ''),
             kofi_card_video_path: String(settings.kofi_card_video_path || ''),
             telegram_url: String(settings.telegram_url || DEFAULT_LINK_SETTINGS.telegram_url),
+            telegram_username: readSocialUsernameSetting(settings, 'telegram'),
             telegram_enabled: settings.telegram_enabled !== false,
             telegram_card_video_url: String(settings.telegram_card_video_url || ''),
             telegram_card_video_path: String(settings.telegram_card_video_path || ''),
+            x_url: String(settings.x_url || DEFAULT_LINK_SETTINGS.x_url),
+            x_username: readSocialUsernameSetting(settings, 'x'),
+            x_enabled: settings.x_enabled !== false,
+            x_card_video_url: String(settings.x_card_video_url || ''),
+            x_card_video_path: String(settings.x_card_video_path || ''),
+            tiktok_url: String(settings.tiktok_url || DEFAULT_LINK_SETTINGS.tiktok_url),
+            tiktok_username: readSocialUsernameSetting(settings, 'tiktok'),
+            tiktok_enabled: settings.tiktok_enabled !== false,
+            tiktok_card_video_url: String(settings.tiktok_card_video_url || ''),
+            tiktok_card_video_path: String(settings.tiktok_card_video_path || ''),
+            twitch_url: String(settings.twitch_url || DEFAULT_LINK_SETTINGS.twitch_url),
+            twitch_username: readSocialUsernameSetting(settings, 'twitch'),
+            twitch_enabled: settings.twitch_enabled !== false,
+            twitch_card_video_url: String(settings.twitch_card_video_url || ''),
+            twitch_card_video_path: String(settings.twitch_card_video_path || ''),
+            discord_url: String(settings.discord_url || DEFAULT_LINK_SETTINGS.discord_url),
+            discord_username: readSocialUsernameSetting(settings, 'discord'),
+            discord_enabled: settings.discord_enabled !== false,
+            discord_card_video_url: String(settings.discord_card_video_url || ''),
+            discord_card_video_path: String(settings.discord_card_video_path || ''),
+            onlyfans_url: String(settings.onlyfans_url || DEFAULT_LINK_SETTINGS.onlyfans_url),
+            onlyfans_username: readSocialUsernameSetting(settings, 'onlyfans'),
+            onlyfans_enabled: settings.onlyfans_enabled !== false,
+            onlyfans_card_video_url: String(settings.onlyfans_card_video_url || ''),
+            onlyfans_card_video_path: String(settings.onlyfans_card_video_path || ''),
+            spotify_url: String(settings.spotify_url || DEFAULT_LINK_SETTINGS.spotify_url),
+            spotify_username: readSocialUsernameSetting(settings, 'spotify'),
+            spotify_enabled: settings.spotify_enabled !== false,
+            spotify_card_video_url: String(settings.spotify_card_video_url || ''),
+            spotify_card_video_path: String(settings.spotify_card_video_path || ''),
+            social_card_order: normalizeSocialCardOrder(settings.social_card_order),
             throne_url: String(settings.throne_url || DEFAULT_LINK_SETTINGS.throne_url),
             throne_enabled: settings.throne_enabled !== false,
             throne_checkout_mode: settings.throne_checkout_mode === 'widget' ? 'widget' : 'mockup',
@@ -1304,14 +1395,14 @@ document.addEventListener("DOMContentLoaded", async function() {
         entryBubbleRemaining = 0;
     }
 
-    function createEntryBubbleBurst(bubble) {
-        if (!entryBubbleField) return;
+    function createEntryBubbleBurst(bubble, host = entryBubbleField, extraClass = '') {
+        if (!host) return;
         const rect = bubble.getBoundingClientRect();
         const burst = document.createElement('span');
         const fragment = document.createDocumentFragment();
         const particleCount = 18;
         const fragmentCount = 6;
-        burst.className = 'entry-bubble-burst';
+        burst.className = `entry-bubble-burst ${extraClass}`.trim();
         burst.setAttribute('aria-hidden', 'true');
         burst.style.cssText = `--burst-size:${Math.max(rect.width, rect.height)}px;left:${rect.left + rect.width / 2}px;top:${rect.top + rect.height / 2}px;`;
 
@@ -1334,7 +1425,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         }
 
         burst.appendChild(fragment);
-        entryBubbleField.appendChild(burst);
+        host.appendChild(burst);
         window.setTimeout(() => burst.remove(), 1080);
     }
 
@@ -1992,6 +2083,12 @@ document.addEventListener("DOMContentLoaded", async function() {
     const snapchatOption = document.getElementById('snapchat-option');
     const instagramOption = document.getElementById('instagram-option');
     const telegramOption = document.getElementById('telegram-option');
+    const xOption = document.getElementById('x-option');
+    const tiktokOption = document.getElementById('tiktok-option');
+    const twitchOption = document.getElementById('twitch-option');
+    const discordOption = document.getElementById('discord-option');
+    const onlyfansOption = document.getElementById('onlyfans-option');
+    const spotifyOption = document.getElementById('spotify-option');
     const supportMenuButton = document.getElementById('support-menu-button');
     const actionMenuButton = document.getElementById('action-menu-button');
     const actionOptions = actionMenuButton?.querySelector('.action-options');
@@ -2032,13 +2129,31 @@ document.addEventListener("DOMContentLoaded", async function() {
     const FIRST_VISIT_TOUR_FORCE = new URLSearchParams(window.location.search).get('previewTour') === '1';
     let activeKofiWidgetHandle = 'edoll';
 
+    const socialCardDefinitions = [
+        { key: 'snapchat', option: snapchatOption, label: 'Snapchat' },
+        { key: 'instagram', option: instagramOption, label: 'Instagram', withAt: true },
+        { key: 'kofi', option: donateOption, label: 'Ko-fi' },
+        { key: 'telegram', option: telegramOption, label: 'Telegram' },
+        { key: 'x', option: xOption, label: 'X', withAt: true },
+        { key: 'tiktok', option: tiktokOption, label: 'TikTok', withAt: true },
+        { key: 'twitch', option: twitchOption, label: 'Twitch', withAt: true },
+        { key: 'discord', option: discordOption, label: 'Discord', withAt: true },
+        { key: 'onlyfans', option: onlyfansOption, label: 'OnlyFans', withAt: true },
+        { key: 'spotify', option: spotifyOption, label: 'Spotify' }
+    ];
+
     function getSocialCardVideoEntries() {
-        return [
-            ['snapchat', snapchatOption],
-            ['instagram', instagramOption],
-            ['kofi', donateOption],
-            ['telegram', telegramOption]
-        ];
+        return socialCardDefinitions.map(({ key, option }) => [key, option]);
+    }
+
+    function applySocialCardOrder() {
+        if (!socialLinksPanel) return;
+        const byKey = new Map(socialCardDefinitions.map(({ key, option }) => [key, option]));
+        normalizeSocialCardOrder(siteLinkSettings.social_card_order).forEach(key => {
+            const option = byKey.get(key);
+            const cardNode = option?.closest('.social-link-card-frame') || option;
+            if (cardNode) socialLinksPanel.append(cardNode);
+        });
     }
 
     function isGifSocialCardMedia(url) {
@@ -2143,27 +2258,17 @@ document.addEventListener("DOMContentLoaded", async function() {
         return siteLinkSettings[`${key}_enabled`] !== false;
     }
 
-    // The card's handle (the <small> line, and the "Open X: handle" aria-label)
-    // used to be static markup, so changing a link in the admin dashboard
-    // updated the href but left the old handle showing -- this derives it
-    // fresh from whatever URL is currently active instead.
-    function getSocialCardHandle(urlString) {
-        try {
-            const url = new URL(urlString);
-            const segment = url.pathname.split('/').filter(Boolean).pop() || '';
-            return segment.replace(/^@/, '');
-        } catch (error) {
-            return '';
-        }
-    }
-
     function updateSocialCardDisplay(option, key, platformLabel, withAt = false) {
         if (!option) return;
-        const handle = getSocialCardHandle(getPublicLink(key));
-        if (!handle) return;
+        const handle = normalizeSocialUsername(siteLinkSettings[`${key}_username`]);
         const small = option.querySelector('.social-link-copy small');
-        if (small) small.textContent = withAt ? `@${handle}` : handle;
-        option.setAttribute('aria-label', `Open ${platformLabel}: ${handle}`);
+        if (small) {
+            small.textContent = handle ? (withAt ? `@${handle}` : handle) : '';
+            small.hidden = !handle;
+        }
+        option.setAttribute('aria-label', handle
+            ? `Open ${platformLabel}: ${handle}`
+            : `Open ${platformLabel}`);
     }
 
     function getVisibleSocialOptions() {
@@ -2181,7 +2286,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             const websiteNode = graph.find(node => node['@type'] === 'WebSite');
             const pageTitle = siteLinkSettings.seo_title || DEFAULT_LINK_SETTINGS.seo_title;
             const pageDescription = siteLinkSettings.seo_description || DEFAULT_LINK_SETTINGS.seo_description;
-            const sameAs = ['instagram', 'snapchat', 'kofi', 'telegram', 'throne']
+            const sameAs = [...SOCIAL_CARD_KEYS, 'throne']
                 .filter(isPublicLinkEnabled)
                 .map(getPublicLink)
                 .filter(Boolean);
@@ -2664,35 +2769,21 @@ document.addEventListener("DOMContentLoaded", async function() {
         notePeelTarget?.setAttribute('aria-label', homepageNoteCanEdit
             ? 'Tap the note to edit it, or pull its corner to peel it off'
             : 'Pull the note corner to peel it off');
-        if (snapchatOption) {
-            snapchatOption.href = getPublicLink('snapchat');
-            snapchatOption.classList.toggle('site-link-hidden', !isPublicLinkEnabled('snapchat'));
-            snapchatOption.setAttribute('aria-hidden', isPublicLinkEnabled('snapchat') ? 'false' : 'true');
-            snapchatOption.setAttribute('tabindex', '-1');
-            updateSocialCardDisplay(snapchatOption, 'snapchat', 'Snapchat');
-        }
-        if (instagramOption) {
-            instagramOption.href = getPublicLink('instagram');
-            instagramOption.classList.toggle('site-link-hidden', !isPublicLinkEnabled('instagram'));
-            instagramOption.setAttribute('aria-hidden', isPublicLinkEnabled('instagram') ? 'false' : 'true');
-            instagramOption.setAttribute('tabindex', '-1');
-            updateSocialCardDisplay(instagramOption, 'instagram', 'Instagram', true);
-        }
+        applySocialCardOrder();
+        socialCardDefinitions.forEach(({ key, option, label, withAt = false }) => {
+            if (!option) return;
+            const enabled = isPublicLinkEnabled(key);
+            option.href = getPublicLink(key);
+            option.classList.toggle('site-link-hidden', !enabled);
+            const cardNode = option.closest('.social-link-card-frame') || option;
+            if (cardNode !== option) cardNode.classList.toggle('site-link-hidden', !enabled);
+            option.setAttribute('aria-hidden', enabled ? 'false' : 'true');
+            option.setAttribute('tabindex', '-1');
+            updateSocialCardDisplay(option, key, label, withAt);
+        });
         if (donateOption) {
-            donateOption.href = getPublicLink('kofi');
-            donateOption.classList.toggle('site-link-hidden', !isPublicLinkEnabled('kofi'));
-            donateOption.setAttribute('aria-hidden', isPublicLinkEnabled('kofi') ? 'false' : 'true');
-            donateOption.setAttribute('tabindex', '-1');
-            updateSocialCardDisplay(donateOption, 'kofi', 'Ko-fi');
             syncKofiWidgetHandle();
             setKofiWidgetVisibility(isPublicLinkEnabled('kofi'));
-        }
-        if (telegramOption) {
-            telegramOption.href = getPublicLink('telegram');
-            telegramOption.classList.toggle('site-link-hidden', !isPublicLinkEnabled('telegram'));
-            telegramOption.setAttribute('aria-hidden', isPublicLinkEnabled('telegram') ? 'false' : 'true');
-            telegramOption.setAttribute('tabindex', '-1');
-            updateSocialCardDisplay(telegramOption, 'telegram', 'Telegram');
         }
         syncSocialCardVideos();
         if (supportMenuButton) {
@@ -3154,32 +3245,79 @@ document.addEventListener("DOMContentLoaded", async function() {
         }
     });
 
-    snapchatOption?.addEventListener('click', function(e) {
-        e.preventDefault();
-        e.stopPropagation();
-        if (siteLinkSettings.maintenance_enabled === true) return;
-        if (!isPublicLinkEnabled('snapchat')) return;
-        playUiSound('link');
-        window.open(getPublicLink('snapchat'), '_blank', 'noopener,noreferrer');
-    });
+    const SOCIAL_CARD_POP_ACTION_DELAY = 620;
+    const SOCIAL_CARD_POP_RESET_DELAY = 1080;
+    let socialCardPopPending = false;
 
-    instagramOption?.addEventListener('click', function(e) {
-        e.preventDefault();
-        e.stopPropagation();
-        if (siteLinkSettings.maintenance_enabled === true) return;
-        if (!isPublicLinkEnabled('instagram')) return;
-        playUiSound('link');
-        window.open(getPublicLink('instagram'), '_blank', 'noopener,noreferrer');
-    });
+    function resetSocialCardPopState() {
+        socialCardPopPending = false;
+        document.querySelectorAll('.social-card-source-popping').forEach(card => {
+            card.classList.remove('social-card-source-popping');
+            card.removeAttribute('aria-busy');
+        });
+        document.querySelectorAll('.social-card-pop-clone').forEach(clone => clone.remove());
+        document.querySelectorAll('.social-card-bubble-burst').forEach(burst => burst.remove());
+    }
 
-    telegramOption?.addEventListener('click', function(e) {
-        e.preventDefault();
-        e.stopPropagation();
-        if (siteLinkSettings.maintenance_enabled === true) return;
-        if (!isPublicLinkEnabled('telegram')) return;
+    function createSocialCardPopClone(option) {
+        const rect = option.getBoundingClientRect();
+        const clone = option.cloneNode(true);
+        clone.removeAttribute('id');
+        clone.removeAttribute('href');
+        clone.removeAttribute('target');
+        clone.removeAttribute('rel');
+        clone.removeAttribute('tabindex');
+        clone.setAttribute('aria-hidden', 'true');
+        clone.querySelectorAll('[id]').forEach(element => element.removeAttribute('id'));
+        // A cloned <video> does not retain the source element's decoded frame
+        // reliably on iPhone. The card's own glass background is a cleaner pop
+        // than a clone that flashes black for one frame.
+        clone.querySelector('.social-link-preview')?.remove();
+        clone.classList.remove('has-social-preview', 'site-link-hidden');
+        clone.classList.add('social-card-pop-clone');
+        clone.style.setProperty('--social-pop-left', `${rect.left}px`);
+        clone.style.setProperty('--social-pop-top', `${rect.top}px`);
+        clone.style.setProperty('--social-pop-width', `${rect.width}px`);
+        clone.style.setProperty('--social-pop-height', `${rect.height}px`);
+        document.body.appendChild(clone);
+        return clone;
+    }
+
+    function popSocialCardThen(option, action) {
+        if (!option || socialCardPopPending) return false;
+        socialCardPopPending = true;
+        const clone = createSocialCardPopClone(option);
+        option.classList.add('social-card-source-popping');
+        option.setAttribute('aria-busy', 'true');
+        createEntryBubbleBurst(option, document.body, 'social-card-bubble-burst');
+        // Start both parts together so the whole card swells and ruptures with
+        // the exact loading-bubble ring, flash, droplets, and film fragments.
+        window.requestAnimationFrame(() => clone.classList.add('popping'));
         playUiSound('link');
-        window.open(getPublicLink('telegram'), '_blank', 'noopener,noreferrer');
-    });
+
+        window.setTimeout(() => {
+            try {
+                action();
+            } catch (error) {
+                resetSocialCardPopState();
+            }
+        }, SOCIAL_CARD_POP_ACTION_DELAY);
+        window.setTimeout(resetSocialCardPopState, SOCIAL_CARD_POP_RESET_DELAY);
+        return true;
+    }
+
+    window.addEventListener('pageshow', resetSocialCardPopState);
+
+    socialCardDefinitions
+        .filter(({ key }) => key !== 'kofi')
+        .forEach(({ key, option }) => option?.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (siteLinkSettings.maintenance_enabled === true) return;
+            if (!isPublicLinkEnabled(key)) return;
+            const destination = getPublicLink(key);
+            popSocialCardThen(option, () => window.location.assign(destination));
+        }));
 
     function handleWishlistButtonActivate(e) {
         e.preventDefault();
@@ -3219,8 +3357,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         e.stopPropagation();
         if (siteLinkSettings.maintenance_enabled === true) return;
         if (!isPublicLinkEnabled('kofi')) return;
-        playUiSound('link');
-        openKofiOverlay();
+        popSocialCardThen(donateOption, openKofiOverlay);
     });
 
     function handleActionMenuActivate(e) {
@@ -3256,7 +3393,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         }
     });
 
-    [snapchatOption, instagramOption, donateOption, toggleButton].forEach(option => {
+    [...socialCardDefinitions.map(({ option }) => option), toggleButton].forEach(option => {
         option?.addEventListener('keydown', function(e) {
             if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
