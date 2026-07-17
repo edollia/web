@@ -1234,9 +1234,9 @@ body.has-posts-panel-open .site-brand-footer {
     margin: 0;
     border-radius: 16px;
     filter:
-        saturate(1.03)
-        drop-shadow(0 12px 13px rgba(126, 82, 103, 0.14))
-        drop-shadow(0 3px 4px rgba(116, 74, 95, 0.1));
+        saturate(1.025)
+        drop-shadow(0 7px 10px rgba(126, 82, 103, 0.115))
+        drop-shadow(0 1.5px 2.5px rgba(116, 74, 95, 0.095));
     cursor: default;
     overflow: visible;
     isolation: isolate;
@@ -1244,6 +1244,28 @@ body.has-posts-panel-open .site-brand-footer {
     touch-action: pan-y;
     user-select: none;
     -webkit-user-select: none;
+}
+
+.note-peel-target::before {
+    position: absolute;
+    right: 2.5%;
+    bottom: -9px;
+    left: 7%;
+    z-index: 0;
+    height: 21px;
+    border-radius: 50%;
+    background: radial-gradient(
+        ellipse at 54% 0%,
+        rgba(113, 70, 92, 0.145) 0%,
+        rgba(113, 70, 92, 0.072) 38%,
+        rgba(113, 70, 92, 0) 73%
+    );
+    content: "";
+    opacity: 0.82;
+    pointer-events: none;
+    transform: scaleX(0.96);
+    transform-origin: 50% 0;
+    transition: opacity 0.2s ease, transform 0.24s ease;
 }
 
 .note-peel-target.editing {
@@ -1259,9 +1281,9 @@ body.has-posts-panel-open .site-brand-footer {
     .note-peel-target:hover,
     .note-peel-target:focus-visible {
         filter:
-            saturate(1.04)
-            drop-shadow(0 14px 15px rgba(126, 82, 103, 0.16))
-            drop-shadow(0 3px 4px rgba(116, 74, 95, 0.1));
+            saturate(1.035)
+            drop-shadow(0 8px 11px rgba(126, 82, 103, 0.13))
+            drop-shadow(0 2px 3px rgba(116, 74, 95, 0.1));
     }
 }
 
@@ -1271,6 +1293,17 @@ body.has-posts-panel-open .site-brand-footer {
     transition: none;
     z-index: 4;
     will-change: filter;
+    filter: saturate(1.025);
+}
+
+.note-peel-target.resetting {
+    filter: saturate(1.025);
+}
+
+.note-peel-target.peeling::before,
+.note-peel-target.resetting::before {
+    opacity: 0;
+    transform: translateY(1px) scaleX(0.9);
 }
 
 .note-peel-target.completing {
@@ -1284,6 +1317,12 @@ body.has-posts-panel-open .site-brand-footer {
         saturate(1.035)
         drop-shadow(0 19px 17px rgba(126, 82, 103, 0.19))
         drop-shadow(0 5px 6px rgba(116, 74, 95, 0.1));
+}
+
+.note-peel-target.completing::before,
+.note-peel-target.detached::before {
+    opacity: 0;
+    transform: translateY(4px) scaleX(0.82);
 }
 
 .main-screen.note-ready .note-peel-target.active-content.detached {
@@ -1306,6 +1345,51 @@ body.has-posts-panel-open .site-brand-footer {
     z-index: 1;
     width: 100%;
     clip-path: polygon(1px 1px, calc(100% - 1px) 1px, calc(100% - 1px) calc(100% - 1px), 1px calc(100% - 1px));
+}
+
+.note-front-face::before {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    background:
+        radial-gradient(
+            ellipse 45% 39% at 91% 87%,
+            rgba(158, 94, 127, 0.052) 0%,
+            rgba(158, 94, 127, 0.025) 36%,
+            rgba(158, 94, 127, 0) 70%
+        ),
+        linear-gradient(
+            148deg,
+            rgba(255, 255, 255, 0.105) 0%,
+            rgba(255, 255, 255, 0.025) 42%,
+            rgba(158, 94, 127, 0.034) 100%
+        ),
+        linear-gradient(
+            180deg,
+            rgba(255, 255, 255, 0.024) 0%,
+            rgba(255, 255, 255, 0) 58%,
+            rgba(138, 80, 111, 0.022) 100%
+        );
+    clip-path: polygon(
+        1% 0.2%,
+        99.5% 0.2%,
+        99.83% 83.33%,
+        99.17% 87.3%,
+        98% 91.27%,
+        96.66% 93.45%,
+        95.83% 94.25%,
+        92.65% 96.23%,
+        86.81% 97.62%,
+        80.13% 98.41%,
+        66.78% 99.01%,
+        50.08% 99.21%,
+        33.39% 99.4%,
+        16.69% 99.4%,
+        4.17% 99.6%,
+        0.5% 99.21%
+    );
+    content: "";
+    pointer-events: none;
 }
 
 .note-image {
