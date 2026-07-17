@@ -91,7 +91,7 @@
     }
     </script>
 
-    <link rel="stylesheet" href="styles.css?v=12.55">
+    <link rel="stylesheet" href="styles.css?v=12.56">
 </head>
 <body>
     <!-- Loading Screen -->
@@ -166,10 +166,19 @@
                         <p class="note-copy" id="homepage-note-text" hidden></p>
                         <div class="note-editor" id="homepage-note-editor" contenteditable="plaintext-only" role="textbox" aria-label="Write on the note" aria-multiline="true" inputmode="text" autocapitalize="sentences" spellcheck="true" data-placeholder="write here…" hidden></div>
                     </div>
-                    <span class="note-fold-flap" aria-hidden="true">
-                        <img src="note-paper-v4.png" alt="" class="note-fold-art" width="599" height="504">
-                    </span>
-                    <span class="note-fold-seam" aria-hidden="true"></span>
+                    <svg class="note-fold-layer" aria-hidden="true" focusable="false" preserveAspectRatio="none">
+                        <defs>
+                            <linearGradient id="note-paper-back-gradient" x1="0" y1="0" x2="1" y2="1">
+                                <stop offset="0" stop-color="#fff9fc"></stop>
+                                <stop offset="0.52" stop-color="#fcebf3"></stop>
+                                <stop offset="1" stop-color="#f7dce9"></stop>
+                            </linearGradient>
+                        </defs>
+                        <polygon class="note-fold-shadow"></polygon>
+                        <polygon class="note-fold-back" fill="url(#note-paper-back-gradient)"></polygon>
+                        <line class="note-fold-crease-shadow"></line>
+                        <line class="note-fold-crease-highlight"></line>
+                    </svg>
                     <span class="note-peel-handle" aria-hidden="true"></span>
                     <div class="note-admin-controls" id="homepage-note-admin-controls" hidden>
                         <span class="note-size-small" aria-hidden="true">a</span>
@@ -376,7 +385,7 @@
     </script>
     <script src="throne-overlay-widget.js?v=3.7"></script>
     <script src="throne-mockup-widget.js?v=38"></script>
-    <script src="script.js?v=10.38"></script>
+    <script src="script.js?v=10.39"></script>
     
     <!-- GoatCounter Analytics -->
     <script data-goatcounter="https://dollia.goatcounter.com/count"

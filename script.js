@@ -420,59 +420,239 @@ document.addEventListener("DOMContentLoaded", async function() {
         const noteTarget = document.getElementById('note-peel-target');
         const note = document.querySelector('.note-image');
         const peelHandle = noteTarget?.querySelector('.note-peel-handle');
-        const foldArt = noteTarget?.querySelector('.note-fold-art');
-        if (!noteTarget || !note || !peelHandle || !foldArt) return;
+        const frontFace = noteTarget?.querySelector('.note-front-face');
+        const foldLayer = noteTarget?.querySelector('.note-fold-layer');
+        const foldBack = foldLayer?.querySelector('.note-fold-back');
+        const foldShadow = foldLayer?.querySelector('.note-fold-shadow');
+        const creaseShadow = foldLayer?.querySelector('.note-fold-crease-shadow');
+        const creaseHighlight = foldLayer?.querySelector('.note-fold-crease-highlight');
+        if (!noteTarget || !note || !peelHandle || !frontFace || !foldLayer
+            || !foldBack || !foldShadow || !creaseShadow || !creaseHighlight) return;
 
         let startX = 0;
         let startY = 0;
         let currentProgress = 0;
         let dragging = false;
         let detaching = false;
-        let openDistance = 190;
-        let maxFoldSpan = 190;
-        let foldConstant = 460;
+        let foldFrame = 0;
+        let motionFrame = 0;
+        let queuedPoint = null;
+        let noteWidth = 254;
+        let noteHeight = 214;
+        let pointerScaleX = 1;
+        let pointerScaleY = 1;
+        let detachDistance = 280;
+        let corner = { x: 253, y: 213 };
+        let renderedPoint = { ...corner };
 
-        function updatePeelMetrics() {
-            const noteWidth = noteTarget.offsetWidth;
-            const noteHeight = noteTarget.offsetHeight;
-            maxFoldSpan = Math.min(noteWidth, noteHeight) * 0.94;
-            foldConstant = noteWidth + noteHeight;
-            openDistance = Math.max(150, Math.min(225, maxFoldSpan * 1.04));
+        const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+        const dot = (a, b) => a.x * b.x + a.y * b.y;
+
+        function setSvgLine(line, points) {
+            if (points.length < 2) {
+                line.removeAttribute('x1');
+                line.removeAttribute('y1');
+                line.removeAttribute('x2');
+                line.removeAttribute('y2');
+                return;
+            }
+            line.setAttribute('x1', points[0].x.toFixed(2));
+            line.setAttribute('y1', points[0].y.toFixed(2));
+            line.setAttribute('x2', points[1].x.toFixed(2));
+            line.setAttribute('y2', points[1].y.toFixed(2));
         }
 
-        function setPeelProgress(progress) {
-            currentProgress = Math.max(0, Math.min(1, progress));
-            const eased = 1 - Math.pow(1 - currentProgress, 2.05);
-            const foldSpan = eased * maxFoldSpan;
-            const reflectionOffset = foldConstant - foldSpan;
-            noteTarget.style.setProperty('--note-fold-span', `${foldSpan.toFixed(2)}px`);
-            noteTarget.style.setProperty('--note-fold-opacity', Math.min(1, eased * 4).toFixed(3));
-            foldArt.style.transform = `matrix(0, -1, -1, 0, ${reflectionOffset.toFixed(2)}, ${reflectionOffset.toFixed(2)})`;
+        function polygonPoints(points) {
+            return points.map(point => `${point.x.toFixed(2)},${point.y.toFixed(2)}`).join(' ');
+        }
+
+        function clipPolygon(points, normal, boundary, keepFront) {
+            const clipped = [];
+            const isInside = point => {
+                const side = dot(normal, point) - boundary;
+                return keepFront ? side <= 0.01 : side >= -0.01;
+            };
+
+            for (let index = 0; index < points.length; index += 1) {
+                const start = points[index];
+                const end = points[(index + 1) % points.length];
+                const startInside = isInside(start);
+                const endInside = isInside(end);
+
+                if (startInside) clipped.push(start);
+                if (startInside === endInside) continue;
+
+                const startDistance = dot(normal, start) - boundary;
+                const endDistance = dot(normal, end) - boundary;
+                const denominator = startDistance - endDistance;
+                if (Math.abs(denominator) < 0.0001) continue;
+                const amount = clamp(startDistance / denominator, 0, 1);
+                clipped.push({
+                    x: start.x + (end.x - start.x) * amount,
+                    y: start.y + (end.y - start.y) * amount
+                });
+            }
+            return clipped;
+        }
+
+        function getCreasePoints(rectangle, normal, boundary) {
+            const points = [];
+            const addPoint = point => {
+                if (!points.some(existing => Math.hypot(existing.x - point.x, existing.y - point.y) < 0.2)) {
+                    points.push(point);
+                }
+            };
+
+            for (let index = 0; index < rectangle.length; index += 1) {
+                const start = rectangle[index];
+                const end = rectangle[(index + 1) % rectangle.length];
+                const startDistance = dot(normal, start) - boundary;
+                const endDistance = dot(normal, end) - boundary;
+                if (Math.abs(startDistance) < 0.01) addPoint(start);
+                if (startDistance * endDistance >= 0) continue;
+                const amount = startDistance / (startDistance - endDistance);
+                addPoint({
+                    x: start.x + (end.x - start.x) * amount,
+                    y: start.y + (end.y - start.y) * amount
+                });
+            }
+            return points.slice(0, 2);
+        }
+
+        function updatePeelMetrics() {
+            noteWidth = frontFace.offsetWidth;
+            noteHeight = frontFace.offsetHeight;
+            corner = { x: Math.max(1, noteWidth - 1), y: Math.max(1, noteHeight - 1) };
+            detachDistance = Math.hypot(corner.x - 1, corner.y - 1) * 0.84;
+            foldLayer.setAttribute('viewBox', `0 0 ${noteWidth} ${noteHeight}`);
+        }
+
+        function clearFoldGeometry() {
+            frontFace.style.removeProperty('clip-path');
+            foldBack.removeAttribute('points');
+            foldShadow.removeAttribute('points');
+            setSvgLine(creaseShadow, []);
+            setSvgLine(creaseHighlight, []);
+            noteTarget.classList.remove('fold-active');
+            currentProgress = 0;
+            renderedPoint = { ...corner };
+        }
+
+        function renderFold(point) {
+            const distance = Math.hypot(corner.x - point.x, corner.y - point.y);
+            renderedPoint = { ...point };
+            currentProgress = clamp(distance / detachDistance, 0, 1);
+            if (distance < 0.75) {
+                clearFoldGeometry();
+                return;
+            }
+
+            const rectangle = [
+                { x: 1, y: 1 },
+                { x: corner.x, y: 1 },
+                { ...corner },
+                { x: 1, y: corner.y }
+            ];
+            const normal = { x: corner.x - point.x, y: corner.y - point.y };
+            const normalLengthSquared = dot(normal, normal);
+            const boundary = (dot(corner, corner) - dot(point, point)) / 2;
+            const front = clipPolygon(rectangle, normal, boundary, true);
+            const folded = clipPolygon(rectangle, normal, boundary, false).map(original => {
+                const distanceFromCrease = (dot(normal, original) - boundary) / normalLengthSquared;
+                return {
+                    x: original.x - 2 * distanceFromCrease * normal.x,
+                    y: original.y - 2 * distanceFromCrease * normal.y
+                };
+            });
+            const crease = getCreasePoints(rectangle, normal, boundary);
+
+            if (front.length >= 3) {
+                frontFace.style.clipPath = `polygon(${front.map(vertex => `${vertex.x.toFixed(2)}px ${vertex.y.toFixed(2)}px`).join(', ')})`;
+            } else {
+                frontFace.style.clipPath = 'polygon(0 0, 0 0, 0 0)';
+            }
+            const foldedPoints = polygonPoints(folded);
+            foldBack.setAttribute('points', foldedPoints);
+            foldShadow.setAttribute('points', foldedPoints);
+            setSvgLine(creaseShadow, crease);
+            setSvgLine(creaseHighlight, crease);
+            noteTarget.classList.add('fold-active');
+        }
+
+        function queueFold(point) {
+            queuedPoint = point;
+            if (foldFrame) return;
+            foldFrame = window.requestAnimationFrame(() => {
+                foldFrame = 0;
+                const nextPoint = queuedPoint;
+                queuedPoint = null;
+                if (nextPoint) renderFold(nextPoint);
+            });
+        }
+
+        function flushQueuedFold() {
+            if (foldFrame) window.cancelAnimationFrame(foldFrame);
+            foldFrame = 0;
+            if (!queuedPoint) return;
+            const nextPoint = queuedPoint;
+            queuedPoint = null;
+            renderFold(nextPoint);
+        }
+
+        function animateFold(from, to, duration, onComplete) {
+            if (motionFrame) window.cancelAnimationFrame(motionFrame);
+            const startedAt = performance.now();
+            const tick = now => {
+                const elapsed = clamp((now - startedAt) / duration, 0, 1);
+                const eased = 1 - Math.pow(1 - elapsed, 3);
+                renderFold({
+                    x: from.x + (to.x - from.x) * eased,
+                    y: from.y + (to.y - from.y) * eased
+                });
+                if (elapsed < 1) {
+                    motionFrame = window.requestAnimationFrame(tick);
+                    return;
+                }
+                motionFrame = 0;
+                onComplete?.();
+            };
+            motionFrame = window.requestAnimationFrame(tick);
         }
 
         function resetPeel() {
             if (detaching) return;
             dragging = false;
+            flushQueuedFold();
             noteTarget.classList.remove('peeling', 'completing', 'detached');
-            setPeelProgress(0);
-            window.setTimeout(() => {
-                if (dragging || detaching || currentProgress > 0.01) return;
-                noteTarget.style.removeProperty('--note-fold-span');
-                noteTarget.style.removeProperty('--note-fold-opacity');
+            noteTarget.classList.add('resetting');
+            const from = { ...renderedPoint };
+            animateFold(from, corner, 260, () => {
+                if (dragging || detaching) return;
+                clearFoldGeometry();
+                noteTarget.classList.remove('resetting');
                 noteTarget.style.removeProperty('transform');
-                foldArt.style.removeProperty('transform');
-            }, 420);
+            });
         }
 
         function detachNote() {
             if (detaching) return;
             detaching = true;
+            flushQueuedFold();
             playUiSound('link');
             noteTarget.classList.remove('peeling');
             noteTarget.classList.add('completing');
-            window.requestAnimationFrame(() => {
-                setPeelProgress(1);
-                window.setTimeout(() => {
+            const from = { ...renderedPoint };
+            const pullX = corner.x - from.x;
+            const pullY = corner.y - from.y;
+            const pullLength = Math.max(1, Math.hypot(pullX, pullY));
+            const completionDistance = Math.max(pullLength, detachDistance * 1.12);
+            const to = {
+                x: corner.x - (pullX / pullLength) * completionDistance,
+                y: corner.y - (pullY / pullLength) * completionDistance
+            };
+            animateFold(from, to, 170, () => {
+                if (!detaching) return;
+                window.requestAnimationFrame(() => {
                     noteTarget.classList.add('detached');
                     window.requestAnimationFrame(() => {
                         noteTarget.style.transform = 'translateX(-50%) translate3d(-52px, calc(100vh + 140px), 0) rotate(-18deg) scale(0.985)';
@@ -481,7 +661,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                         noteTarget.classList.add('peeled-away');
                         noteTarget.setAttribute('aria-hidden', 'true');
                     }, 860);
-                }, 190);
+                });
             });
         }
 
@@ -498,6 +678,13 @@ document.addEventListener("DOMContentLoaded", async function() {
             startX = e.clientX;
             startY = e.clientY;
             updatePeelMetrics();
+            const noteRect = frontFace.getBoundingClientRect();
+            pointerScaleX = noteWidth / Math.max(1, noteRect.width);
+            pointerScaleY = noteHeight / Math.max(1, noteRect.height);
+            if (motionFrame) window.cancelAnimationFrame(motionFrame);
+            motionFrame = 0;
+            clearFoldGeometry();
+            noteTarget.classList.remove('resetting');
             noteTarget.classList.add('peeling');
             peelHandle.setPointerCapture?.(e.pointerId);
             e.preventDefault();
@@ -505,21 +692,21 @@ document.addEventListener("DOMContentLoaded", async function() {
 
         peelHandle.addEventListener('pointermove', function(e) {
             if (!dragging || detaching) return;
-            const dx = startX - e.clientX;
-            const dy = startY - e.clientY;
-            const distance = Math.max(0, dx * 0.78 + dy * 0.58);
-            if (distance > 5) {
-                e.preventDefault();
-            }
-            setPeelProgress(distance / openDistance);
+            const point = {
+                x: clamp(corner.x + (e.clientX - startX) * pointerScaleX, -noteWidth * 0.35, corner.x),
+                y: clamp(corner.y + (e.clientY - startY) * pointerScaleY, -noteHeight * 0.35, corner.y)
+            };
+            if (Math.hypot(corner.x - point.x, corner.y - point.y) > 3) e.preventDefault();
+            queueFold(point);
         });
 
         function finishPeel(e) {
             if (!dragging || detaching) return;
             dragging = false;
-            peelHandle.releasePointerCapture?.(e.pointerId);
+            flushQueuedFold();
+            if (peelHandle.hasPointerCapture?.(e.pointerId)) peelHandle.releasePointerCapture(e.pointerId);
 
-            if (currentProgress >= 0.82) {
+            if (currentProgress >= 1) {
                 detachNote();
                 return;
             }
