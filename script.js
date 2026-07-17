@@ -562,6 +562,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             setSvgLine(creaseShadow, []);
             setSvgLine(creaseHighlight, []);
             noteTarget.classList.remove('fold-active');
+            noteTarget.style.removeProperty('--note-shadow-strength');
             currentProgress = 0;
             renderedPoint = { ...corner };
         }
@@ -570,6 +571,8 @@ document.addEventListener("DOMContentLoaded", async function() {
             const distance = Math.hypot(corner.x - point.x, corner.y - point.y);
             renderedPoint = { ...point };
             currentProgress = clamp(distance / detachDistance, 0, 1);
+            const shadowStrength = Math.pow(1 - currentProgress, 1.55);
+            noteTarget.style.setProperty('--note-shadow-strength', shadowStrength.toFixed(4));
             if (distance < 0.75) {
                 clearFoldGeometry();
                 return;

@@ -1222,6 +1222,7 @@ body.has-posts-panel-open .site-brand-footer {
 }
 
 .note-peel-target {
+    --note-shadow-strength: 1;
     transition: opacity 0.46s ease, transform 0.42s cubic-bezier(0.2, 0.86, 0.24, 1), filter 0.32s ease;
     position: absolute;
     /* The small 4px compensation keeps the visible paper edge aligned with
@@ -1235,8 +1236,18 @@ body.has-posts-panel-open .site-brand-footer {
     border-radius: 16px;
     filter:
         saturate(1.025)
-        drop-shadow(0 7px 10px rgba(126, 82, 103, 0.115))
-        drop-shadow(0 1.5px 2.5px rgba(116, 74, 95, 0.095));
+        drop-shadow(
+            0
+            calc(7px * var(--note-shadow-strength))
+            calc(10px * var(--note-shadow-strength))
+            rgb(126 82 103 / calc(0.115 * var(--note-shadow-strength)))
+        )
+        drop-shadow(
+            0
+            calc(1.5px * var(--note-shadow-strength))
+            calc(2.5px * var(--note-shadow-strength))
+            rgb(116 74 95 / calc(0.095 * var(--note-shadow-strength)))
+        );
     cursor: default;
     overflow: visible;
     isolation: isolate;
@@ -1261,7 +1272,7 @@ body.has-posts-panel-open .site-brand-footer {
         rgba(113, 70, 92, 0) 73%
     );
     content: "";
-    opacity: 0.82;
+    opacity: calc(0.82 * var(--note-shadow-strength));
     pointer-events: none;
     transform: scaleX(0.96);
     transform-origin: 50% 0;
@@ -1293,17 +1304,15 @@ body.has-posts-panel-open .site-brand-footer {
     transition: none;
     z-index: 4;
     will-change: filter;
-    filter: saturate(1.025);
 }
 
 .note-peel-target.resetting {
-    filter: saturate(1.025);
+    transition: none;
 }
 
 .note-peel-target.peeling::before,
 .note-peel-target.resetting::before {
-    opacity: 0;
-    transform: translateY(1px) scaleX(0.9);
+    transition: none;
 }
 
 .note-peel-target.completing {
