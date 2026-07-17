@@ -420,7 +420,8 @@ document.addEventListener("DOMContentLoaded", async function() {
         const noteTarget = document.getElementById('note-peel-target');
         const note = document.querySelector('.note-image');
         const peelHandle = noteTarget?.querySelector('.note-peel-handle');
-        if (!noteTarget || !note || !peelHandle) return;
+        const foldArt = noteTarget?.querySelector('.note-fold-art');
+        if (!noteTarget || !note || !peelHandle || !foldArt) return;
 
         let startX = 0;
         let startY = 0;
@@ -428,16 +429,25 @@ document.addEventListener("DOMContentLoaded", async function() {
         let dragging = false;
         let detaching = false;
         let openDistance = 190;
+        let maxFoldSpan = 190;
+        let foldConstant = 460;
 
         function updatePeelMetrics() {
-            const noteRect = noteTarget.getBoundingClientRect();
-            openDistance = Math.max(150, Math.min(245, Math.hypot(noteRect.width, noteRect.height) * 0.62));
+            const noteWidth = noteTarget.offsetWidth;
+            const noteHeight = noteTarget.offsetHeight;
+            maxFoldSpan = Math.min(noteWidth, noteHeight) * 0.94;
+            foldConstant = noteWidth + noteHeight;
+            openDistance = Math.max(150, Math.min(225, maxFoldSpan * 1.04));
         }
 
         function setPeelProgress(progress) {
             currentProgress = Math.max(0, Math.min(1, progress));
             const eased = 1 - Math.pow(1 - currentProgress, 2.05);
-            noteTarget.style.transform = `translateX(-50%) translate3d(${-eased * 38}px, ${-eased * 30}px, 0) rotate(${-eased * 5.25}deg) scale(${1.015 + eased * 0.008})`;
+            const foldSpan = eased * maxFoldSpan;
+            const reflectionOffset = foldConstant - foldSpan;
+            noteTarget.style.setProperty('--note-fold-span', `${foldSpan.toFixed(2)}px`);
+            noteTarget.style.setProperty('--note-fold-opacity', Math.min(1, eased * 4).toFixed(3));
+            foldArt.style.transform = `matrix(0, -1, -1, 0, ${reflectionOffset.toFixed(2)}, ${reflectionOffset.toFixed(2)})`;
         }
 
         function resetPeel() {
@@ -447,8 +457,11 @@ document.addEventListener("DOMContentLoaded", async function() {
             setPeelProgress(0);
             window.setTimeout(() => {
                 if (dragging || detaching || currentProgress > 0.01) return;
+                noteTarget.style.removeProperty('--note-fold-span');
+                noteTarget.style.removeProperty('--note-fold-opacity');
                 noteTarget.style.removeProperty('transform');
-            }, 320);
+                foldArt.style.removeProperty('transform');
+            }, 420);
         }
 
         function detachNote() {

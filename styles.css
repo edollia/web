@@ -1222,6 +1222,8 @@ body.has-posts-panel-open .site-brand-footer {
 }
 
 .note-peel-target {
+    --note-fold-span: 0px;
+    --note-fold-opacity: 0;
     transition: opacity 0.46s ease, transform 0.42s cubic-bezier(0.2, 0.86, 0.24, 1), filter 0.32s ease;
     position: absolute;
     /* The small 4px compensation keeps the visible paper edge aligned with
@@ -1240,7 +1242,7 @@ body.has-posts-panel-open .site-brand-footer {
     cursor: default;
     overflow: visible;
     isolation: isolate;
-    transform-origin: 22% 18%;
+    transform-origin: 50% 50%;
     touch-action: pan-y;
     user-select: none;
     -webkit-user-select: none;
@@ -1268,13 +1270,9 @@ body.has-posts-panel-open .site-brand-footer {
 .note-peel-target.peeling {
     cursor: grabbing;
     animation: none !important;
-    transition: filter 0.14s ease;
+    transition: none;
     z-index: 4;
-    will-change: transform, filter;
-    filter:
-        saturate(1.035)
-        drop-shadow(0 17px 16px rgba(126, 82, 103, 0.18))
-        drop-shadow(0 4px 5px rgba(116, 74, 95, 0.1));
+    will-change: filter;
 }
 
 .note-peel-target.completing {
@@ -1305,6 +1303,20 @@ body.has-posts-panel-open .site-brand-footer {
     visibility: hidden;
 }
 
+.note-front-face {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    clip-path: polygon(
+        1px 1px,
+        calc(100% - 1px) 1px,
+        calc(100% - 1px) calc(100% - var(--note-fold-span)),
+        calc(100% - var(--note-fold-span)) calc(100% - 1px),
+        1px calc(100% - 1px)
+    );
+    transition: clip-path 0.38s cubic-bezier(0.2, 0.86, 0.24, 1);
+}
+
 .note-image {
     position: relative;
     z-index: 1;
@@ -1312,7 +1324,6 @@ body.has-posts-panel-open .site-brand-footer {
     width: 100%;
     height: auto;
     border-radius: 0 0 16px 16px;
-    clip-path: inset(1px 1px 0 1px);
     transition: opacity 0.46s ease;
     pointer-events: none;
     user-select: none;
@@ -1481,14 +1492,80 @@ body.has-posts-panel-open .site-brand-footer {
     opacity: 0.62;
 }
 
+.note-fold-flap,
+.note-fold-seam,
 .note-peel-handle {
     position: absolute;
-    right: 0;
-    bottom: 0;
     pointer-events: none;
 }
 
+.note-fold-flap {
+    z-index: 3;
+    inset: 0;
+    overflow: hidden;
+    clip-path: polygon(
+        calc(100% - 1px) calc(100% - var(--note-fold-span)),
+        calc(100% - var(--note-fold-span)) calc(100% - 1px),
+        calc(100% - var(--note-fold-span)) calc(100% - var(--note-fold-span))
+    );
+    opacity: var(--note-fold-opacity);
+    filter: drop-shadow(-3px -3px 4px rgba(124, 79, 102, 0.17));
+    transition:
+        clip-path 0.38s cubic-bezier(0.2, 0.86, 0.24, 1),
+        opacity 0.18s ease;
+}
+
+.note-fold-art {
+    position: absolute;
+    top: 0;
+    left: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+    transform-origin: 0 0;
+    filter: brightness(1.045) saturate(0.82) opacity(0.94);
+    pointer-events: none;
+    user-select: none;
+    -webkit-user-drag: none;
+    transition: transform 0.38s cubic-bezier(0.2, 0.86, 0.24, 1);
+}
+
+.note-fold-seam {
+    z-index: 4;
+    top: calc(100% - 1px);
+    left: calc(100% - var(--note-fold-span));
+    width: calc(var(--note-fold-span) * 1.414214);
+    height: 1.5px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, rgba(128, 83, 105, 0.06), rgba(128, 83, 105, 0.2) 48%, rgba(255, 255, 255, 0.48));
+    box-shadow: 0 -2px 4px rgba(128, 83, 105, 0.1);
+    opacity: var(--note-fold-opacity);
+    transform: rotate(-45deg);
+    transform-origin: 0 50%;
+    transition:
+        left 0.38s cubic-bezier(0.2, 0.86, 0.24, 1),
+        width 0.38s cubic-bezier(0.2, 0.86, 0.24, 1),
+        opacity 0.18s ease;
+}
+
+.note-peel-target.peeling .note-front-face,
+.note-peel-target.peeling .note-fold-flap,
+.note-peel-target.peeling .note-fold-art,
+.note-peel-target.peeling .note-fold-seam {
+    transition: none;
+    will-change: clip-path, transform, opacity;
+}
+
+.note-peel-target.completing .note-front-face,
+.note-peel-target.completing .note-fold-flap,
+.note-peel-target.completing .note-fold-art,
+.note-peel-target.completing .note-fold-seam {
+    transition-duration: 0.22s;
+}
+
 .note-peel-handle {
+    right: 0;
+    bottom: 0;
     z-index: 4;
     width: 64px;
     height: 70px;
@@ -1508,7 +1585,11 @@ body.has-posts-panel-open .site-brand-footer {
 
 @media (prefers-reduced-motion: reduce) {
     .note-peel-target,
+    .note-front-face,
     .note-image,
+    .note-fold-flap,
+    .note-fold-art,
+    .note-fold-seam,
     .note-peel-handle {
         animation: none;
         transition: none;

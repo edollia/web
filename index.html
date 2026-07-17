@@ -91,7 +91,7 @@
     }
     </script>
 
-    <link rel="stylesheet" href="styles.css?v=12.54">
+    <link rel="stylesheet" href="styles.css?v=12.55">
 </head>
 <body>
     <!-- Loading Screen -->
@@ -161,9 +161,15 @@
             <div class="content-area">
                 <!-- Note Image -->
                 <div class="note-peel-target active-content" id="note-peel-target" aria-label="Pull the note corner to peel it off">
-                    <img src="note-paper-v4.png" alt="" class="note-image" width="599" height="504">
-                    <p class="note-copy" id="homepage-note-text" hidden></p>
-                    <div class="note-editor" id="homepage-note-editor" contenteditable="plaintext-only" role="textbox" aria-label="Write on the note" aria-multiline="true" inputmode="text" autocapitalize="sentences" spellcheck="true" data-placeholder="write here…" hidden></div>
+                    <div class="note-front-face">
+                        <img src="note-paper-v4.png" alt="" class="note-image" width="599" height="504">
+                        <p class="note-copy" id="homepage-note-text" hidden></p>
+                        <div class="note-editor" id="homepage-note-editor" contenteditable="plaintext-only" role="textbox" aria-label="Write on the note" aria-multiline="true" inputmode="text" autocapitalize="sentences" spellcheck="true" data-placeholder="write here…" hidden></div>
+                    </div>
+                    <span class="note-fold-flap" aria-hidden="true">
+                        <img src="note-paper-v4.png" alt="" class="note-fold-art" width="599" height="504">
+                    </span>
+                    <span class="note-fold-seam" aria-hidden="true"></span>
                     <span class="note-peel-handle" aria-hidden="true"></span>
                     <div class="note-admin-controls" id="homepage-note-admin-controls" hidden>
                         <span class="note-size-small" aria-hidden="true">a</span>
@@ -370,7 +376,7 @@
     </script>
     <script src="throne-overlay-widget.js?v=3.7"></script>
     <script src="throne-mockup-widget.js?v=38"></script>
-    <script src="script.js?v=10.37"></script>
+    <script src="script.js?v=10.38"></script>
     
     <!-- GoatCounter Analytics -->
     <script data-goatcounter="https://dollia.goatcounter.com/count"

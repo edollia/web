@@ -1,0 +1,371 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>3rd icon — 20 new (deeper research)</title>
+<style>
+/* ISOLATED MOCKUP — nothing live is edited.
+   KEEP: your 8. NEW: 20 fresh paradigms, several with signature micro-
+   interactions (shake, pop, open, scratch, play). Ideas pulled from creative
+   digital-guestbook + playful/skeuomorphic UI research (see footer links). */
+:root{
+  --surface:rgba(255,247,251,.96);--control:linear-gradient(to right,#fdeef5,#ffdbee);
+  --active:linear-gradient(135deg,#fbdde9,#ff98ca);--line:rgba(255,174,207,.62);
+  --line-soft:rgba(255,199,222,.42);--sh:0 5px 14px rgba(255,145,195,.16);
+  --sh-sm:0 2px 7px rgba(255,145,195,.16);--pink:#c75e8f;--ink:#8a6675;
+  --paper:linear-gradient(#fffdf4,#fff6e6);--ease:cubic-bezier(.22,.61,.36,1);--spring:cubic-bezier(.34,1.56,.64,1);
+}
+*{box-sizing:border-box}html,body{margin:0}
+body{font-family:ui-rounded,"Arial Rounded MT Bold",system-ui,sans-serif;color:#7a5c69;min-height:100vh;display:flex;flex-direction:column;align-items:center;
+  background:radial-gradient(circle at 50% 12%,rgba(255,255,255,.55),transparent 42%),linear-gradient(#fff0f7,#ffedf6 52%,#fff5fa)}
+.lab-head{max-width:760px;padding:22px 20px 2px;text-align:center}
+.lab-head .eyebrow{margin:0;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#d98bb4}
+.lab-head h1{margin:6px 0 4px;font-size:20px;color:#b8557f}
+.lab-head p{margin:0 auto;max-width:60ch;font-size:13px;line-height:1.5;color:rgba(122,92,105,.85)}.lab-head b{color:#b8557f}
+.picker{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;padding:12px;max-width:940px}
+.grp{display:flex;flex-direction:column;gap:5px;padding:8px;border-radius:14px;border:1px solid var(--line-soft);background:rgba(255,255,255,.5)}
+.grp-h{font-size:10px;letter-spacing:.1em;text-transform:uppercase;text-align:center;color:rgba(122,92,105,.6)}
+.grp-row{display:flex;gap:5px;flex-wrap:wrap;justify-content:center;max-width:640px}
+.tab{border:1px solid var(--line-soft);background:var(--surface);border-radius:11px;padding:6px 9px;cursor:pointer;box-shadow:var(--sh-sm);transition:.15s var(--ease);font-size:11px;color:#a8517a;white-space:nowrap}
+.tab[aria-pressed="true"]{border-color:var(--line);background:var(--active);color:#fff}
+.grp.keep{border-color:#bcd8f5;background:rgba(240,247,255,.5)}.grp.keep .tab[aria-pressed="true"]{background:linear-gradient(135deg,#8fbdf0,#5f9be0)}
+.stage{margin:14px 0 20px;width:344px;max-width:92vw;border-radius:34px;padding:14px 0 24px;position:relative;overflow:hidden;background:linear-gradient(#fff8fc,#fff2f9);border:1px solid rgba(255,199,222,.6);box-shadow:0 24px 60px rgba(196,93,141,.18)}
+.stage-art{width:78%;height:62px;margin:2px auto 4px;border-radius:16px;display:grid;place-items:center;color:#d98bb4;font-size:11px;background:radial-gradient(circle at 30% 40%,#ffd3e7,transparent 60%),radial-gradient(circle at 72% 60%,#ffe0b8,transparent 55%),linear-gradient(120deg,#ffe4f1,#fff3d9)}
+.button-group{position:relative;z-index:5;display:flex;justify-content:center;min-height:70px;padding:7px 0}
+.rowi{display:flex;align-items:center;justify-content:center}
+.ibtn{position:relative;margin:0 10px;width:54px;height:54px;border-radius:50%;display:flex;align-items:center;justify-content:center;text-decoration:none;cursor:pointer;color:var(--pink);background:var(--control);border:1px solid var(--line-soft);box-shadow:var(--sh);font-size:22px;transition:transform .42s var(--ease),opacity .3s var(--ease),width .42s var(--ease),margin .42s var(--ease),background .2s var(--ease)}
+.ibtn:hover{transform:translateY(-2px)}.ibtn img{width:30px;height:30px;object-fit:contain}.ibtn .glyph{transition:opacity .2s}.ibtn .ic{width:26px;height:26px}.ibtn .x{position:absolute;font-size:24px;opacity:0;transition:opacity .2s}
+.stage.open .ibtn:not(.act){width:0;margin:0;opacity:0;pointer-events:none;transform:scale(.4)}
+.stage.open .ibtn.act .glyph,.stage.open .ibtn.act img,.stage.open .ibtn.act .ic{opacity:0}.stage.open .ibtn.act .x{opacity:1}.stage.open .ibtn.act{background:var(--active);color:#fff}
+.host{position:relative;width:88%;margin:2px auto 0;height:396px}
+.note{border-radius:14px;height:100%;display:grid;place-items:center;color:#c99a6a;font-size:12px;background:var(--paper);border:1px solid rgba(255,214,180,.6);box-shadow:0 12px 26px rgba(196,140,93,.14);transition:opacity .3s var(--ease),transform .3s var(--ease)}
+.stage.open .note{opacity:0;transform:scale(.95);position:absolute;inset:0;pointer-events:none}
+.panel{position:absolute;inset:0;border-radius:18px;padding:11px;display:flex;flex-direction:column;gap:8px;overflow:hidden;background:var(--surface);border:1px solid var(--line);box-shadow:0 16px 34px rgba(196,93,141,.18);opacity:0;transform:translateY(14px) scale(.97);pointer-events:none;transition:.34s var(--ease)}
+.stage.open .panel[data-active]{opacity:1;transform:none;pointer-events:auto}
+.p-title{display:flex;align-items:center;gap:7px;font-size:13.5px;color:#a8517a;font-weight:bold;flex:none}.p-title svg{width:16px;height:16px}.p-title .vname{margin-left:auto;font-size:10.5px;font-weight:normal;color:rgba(122,92,105,.62)}
+.compose{flex:none;display:flex;gap:6px;align-items:center;background:var(--paper);border:1px solid rgba(255,214,180,.7);border-radius:12px;padding:7px}
+.pens{display:flex;gap:4px;background:#fff8ee;border:1px solid rgba(255,214,180,.6);border-radius:999px;padding:3px}
+.pen{border:none;background:transparent;font:inherit;font-size:11px;color:rgba(150,110,60,.75);padding:5px 8px;border-radius:999px;cursor:pointer;display:flex;align-items:center;gap:4px}.pen svg{width:14px;height:14px}.pen.active{background:var(--active);color:#fff}
+.compose input{flex:1;min-width:0;border:1px dashed rgba(200,150,90,.4);border-radius:8px;background:#fffef9;padding:7px 9px;font:inherit;font-size:13px;color:#6a5340;outline:none}.compose input::placeholder{color:rgba(150,110,60,.45)}
+.pinbtn{border:none;border-radius:999px;padding:8px 13px;font:inherit;font-size:12px;font-weight:bold;color:#fff;background:var(--active);box-shadow:var(--sh);cursor:pointer;white-space:nowrap}.pinbtn:active{transform:scale(.94)}
+.feed-h{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:rgba(122,92,105,.55);flex:none;display:flex;align-items:center;gap:6px}.feed-h::after{content:"";flex:1;height:1px;background:var(--line-soft)}
+.wall{flex:1;position:relative;border-radius:12px;overflow:hidden}
+.readtip{position:fixed;z-index:60;background:#fff;border:1px solid var(--line);border-radius:10px;padding:7px 10px;font-size:12px;color:var(--ink);box-shadow:var(--sh);pointer-events:none;transform:translate(-50%,-120%);max-width:170px;text-align:center}
+.hint{margin:0;text-align:center;font-size:11px;color:rgba(122,92,105,.6);padding:8px 0 0}
+.notes{max-width:520px;padding:6px 20px 12px;font-size:12.5px;line-height:1.6;color:rgba(122,92,105,.85)}.notes b{color:#b8557f}
+.src{max-width:520px;padding:0 20px 44px;font-size:11px;color:rgba(122,92,105,.6)}.src a{color:#b8557f}
+
+/* keepers */
+.feed{position:absolute;inset:0;overflow:auto;display:flex;flex-direction:column;gap:7px;padding:2px}
+.post{display:flex;gap:9px;align-items:center;padding:8px 9px;border-radius:11px;background:linear-gradient(#fff,#fff5fb);border:1px solid var(--line-soft)}
+.thumb{width:32px;height:32px;border-radius:9px;flex:none;display:grid;place-items:center;background:linear-gradient(135deg,#ffe1ef,#ffd0e6);color:var(--pink)}.thumb svg{width:17px;height:17px}
+.post .t{font-size:12.5px;color:var(--ink)}
+.cork{position:absolute;inset:0;overflow:auto;padding:12px 4px 2px;columns:2;column-gap:10px;background:radial-gradient(circle at 20% 30%,rgba(212,160,110,.1),transparent 8%),linear-gradient(#f4e2c8,#efd9ba);border:1px solid rgba(198,150,96,.35)}
+.pin{break-inside:avoid;margin-bottom:11px;border-radius:9px;padding:9px 10px 10px;position:relative;font-size:11.5px;color:var(--ink);background:var(--paper);border:1px solid rgba(255,214,180,.8);box-shadow:0 5px 12px rgba(120,80,40,.18);animation:drop .5s var(--spring) both}
+.pin:nth-child(3n){transform:rotate(-2.4deg)}.pin:nth-child(3n+1){transform:rotate(1.8deg)}.pin img{width:100%;border-radius:6px;margin-bottom:4px}
+@keyframes drop{0%{opacity:0;transform:translateY(-24px) scale(.7)}100%{opacity:1}}
+@keyframes floatUpIn{0%{opacity:0;transform:translateY(90px) scale(.6)}70%{transform:translateY(-6px)}100%{opacity:1}}
+.pin.pushpin::before{content:"";position:absolute;top:5px;left:50%;transform:translateX(-50%);width:9px;height:9px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#8fd3ff,#3a97d6)}
+.pin .hsticker{position:absolute;width:26px;height:26px;top:-11px;right:-7px;filter:drop-shadow(0 3px 4px rgba(120,40,80,.28))}
+.floaty{position:absolute;inset:0;overflow:hidden;background:linear-gradient(#fff3fb,#ffe6f3)}
+.fh{position:absolute;bottom:-46px;cursor:pointer;animation:rise linear infinite}.fh svg{width:100%;height:100%}
+@keyframes rise{0%{transform:translateY(0) rotate(0)}100%{transform:translateY(-482px) rotate(18deg)}}
+.wtip{position:absolute;top:8px;left:0;right:0;text-align:center;font-size:11px;color:rgba(122,92,105,.6);pointer-events:none}
+.bento{position:absolute;inset:0;overflow:auto;padding:4px;display:grid;grid-template-columns:repeat(3,1fr);grid-auto-rows:56px;gap:7px}
+.bt{border-radius:14px;padding:8px;font-size:11px;color:var(--ink);display:flex;flex-direction:column;justify-content:flex-end;gap:2px;border:1px solid var(--line-soft);background:linear-gradient(#fff,#fff5fb);box-shadow:var(--sh-sm);animation:drop .4s var(--spring) both;overflow:hidden}
+.bt.big{grid-column:span 2;grid-row:span 2;background:linear-gradient(135deg,#ffd9ec,#ff9fca);color:#fff;justify-content:space-between}.bt b{font-size:13px;color:#a8517a}.bt.big b{color:#fff}.bt svg{width:20px;height:20px;color:var(--pink)}.bt.big svg{color:#fff}.bt.stat{background:linear-gradient(135deg,#e8f3ff,#cfe6ff);color:#4a7bb0}.bt.stat b{color:#3a6ba0;font-size:18px}.bt img{width:100%;height:100%;object-fit:cover;border-radius:8px}
+.dockwrap{position:absolute;inset:0;display:flex;align-items:flex-end;justify-content:center;padding-bottom:12px;background:linear-gradient(#fff6fb,#ffe9f4)}
+.dockwall{position:absolute;top:8px;left:8px;right:8px;bottom:72px;overflow:auto;display:flex;flex-wrap:wrap;gap:6px;align-content:flex-start;justify-content:center}
+.dchip{font-size:11px;color:var(--ink);background:#fff;border:1px solid var(--line-soft);border-radius:10px;padding:6px 9px;animation:drop .35s var(--spring) both}
+.dock{display:flex;gap:8px;align-items:flex-end;padding:8px 12px;border-radius:20px;background:rgba(255,255,255,.7);border:1px solid var(--line);box-shadow:0 8px 22px rgba(196,93,141,.2)}
+.dico{width:44px;height:44px;border-radius:13px;display:grid;place-items:center;color:#fff;background:linear-gradient(135deg,#ff9ec7,#ff6faa);transition:transform .18s var(--spring),margin .18s;cursor:pointer}.dico svg{width:22px;height:22px}.dico:hover{transform:translateY(-14px) scale(1.35);margin:0 8px}
+.mapwrap{position:absolute;inset:0;overflow:hidden;background:linear-gradient(#bfe3f5,#a9d6ee)}
+.blob{position:absolute;background:#bfe6b8;border-radius:44% 56% 60% 40%/50% 45% 55% 50%}
+.mpin{position:absolute;width:16px;height:16px;transform:translate(-50%,-100%);cursor:pointer;color:#e0327f;filter:drop-shadow(0 2px 2px rgba(0,0,0,.25));animation:drop .4s var(--spring) both}.mpin svg{width:100%;height:100%}
+.maptip{position:absolute;top:8px;left:0;right:0;text-align:center;font-size:11px;color:#3a6a8a;pointer-events:none}
+
+/* ===== 20 NEW ===== */
+/* 1 wish tree */
+.tree{position:absolute;inset:0;overflow:hidden;background:linear-gradient(#eaf6ff,#f6fbff)}
+.trunk{position:absolute;bottom:0;left:50%;transform:translateX(-50%);width:26px;height:120px;background:linear-gradient(#c79a6a,#a97c4e)}
+.crown{position:absolute;top:6px;left:50%;transform:translateX(-50%);width:250px;height:210px;border-radius:50%;background:radial-gradient(circle at 40% 35%,#bfe6a8,#8fca77)}
+.ema{position:absolute;width:46px;padding:5px 4px 6px;border-radius:4px 4px 6px 6px;font-size:8.5px;text-align:center;color:#5a3f2a;cursor:pointer;
+  background:linear-gradient(#f6d9b0,#e9c088);border:1px solid #cfa25f;box-shadow:0 3px 6px rgba(120,80,40,.25);animation:sway 3s ease-in-out infinite;transform-origin:top center}
+.ema::before{content:"";position:absolute;top:-6px;left:50%;transform:translateX(-50%);width:1px;height:6px;background:#a97c4e}
+@keyframes sway{0%,100%{rotate:-5deg}50%{rotate:5deg}}
+/* 2 aquarium */
+.aqua{position:absolute;inset:0;overflow:hidden;background:linear-gradient(#8fd0ee,#4aa3d4)}
+.fish{position:absolute;padding:5px 9px;border-radius:50% 40% 40% 50%;font-size:9px;color:#fff;white-space:nowrap;cursor:pointer;background:linear-gradient(135deg,#ff9ec7,#ff6faa);box-shadow:0 3px 6px rgba(0,60,90,.25);animation:swim linear infinite}
+.fish::after{content:"";position:absolute;right:-7px;top:50%;transform:translateY(-50%);border:6px solid transparent;border-left-color:#ff6faa}
+@keyframes swim{0%{transform:translateX(-120px)}100%{transform:translateX(360px)}}
+.bub{position:absolute;bottom:-10px;width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.5);animation:rise2 linear infinite}
+@keyframes rise2{to{transform:translateY(-420px)}}
+/* 3 snow globe */
+.globewrap{position:absolute;inset:0;display:grid;place-items:center;background:linear-gradient(#fff6fb,#ffe9f4)}
+.globe{position:relative;width:210px;height:210px;border-radius:50%;overflow:hidden;background:radial-gradient(circle at 40% 30%,rgba(255,255,255,.8),rgba(210,235,255,.4));border:4px solid rgba(255,255,255,.7);box-shadow:inset 0 0 30px rgba(150,200,235,.4),0 10px 20px rgba(150,180,210,.3);cursor:pointer}
+.globe .base{position:absolute;bottom:-14px;left:50%;transform:translateX(-50%);width:150px;height:34px;border-radius:8px;background:linear-gradient(#e79ac0,#c76a9a)}
+.flake{position:absolute;font-size:8px;color:#7a5c69;background:#fff;padding:2px 5px;border-radius:8px;box-shadow:var(--sh-sm);transition:transform 1.4s var(--ease)}
+.globe.shake{animation:shk .5s ease}@keyframes shk{0%,100%{transform:none}25%{transform:translateX(-5px) rotate(-2deg)}75%{transform:translateX(5px) rotate(2deg)}}
+.gtip{position:absolute;bottom:8px;left:0;right:0;text-align:center;font-size:11px;color:rgba(122,92,105,.6)}
+/* 4 gumball */
+.gum{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;background:linear-gradient(#fff6fb,#ffe9f4)}
+.gumglobe{width:150px;height:150px;border-radius:50%;position:relative;overflow:hidden;background:radial-gradient(circle at 38% 32%,rgba(255,255,255,.6),rgba(255,255,255,.12));border:5px solid #e2b0cf}
+.gball{position:absolute;width:22px;height:22px;border-radius:50%}
+.gumbase{width:120px;height:60px;background:linear-gradient(#ff8fbe,#e0559a);border-radius:0 0 14px 14px;position:relative;color:#fff;display:grid;place-items:center;font-size:10px;cursor:pointer}
+.gumbase .knob{position:absolute;top:-9px;left:50%;transform:translateX(-50%);width:22px;height:22px;border-radius:50%;background:#ffd94f;border:2px solid #fff}
+.tray{margin-top:6px;min-height:26px;display:flex;gap:5px;flex-wrap:wrap;justify-content:center;max-width:230px}
+.gout{font-size:10px;color:var(--ink);background:#fff;border:1px solid var(--line-soft);border-radius:12px;padding:4px 8px;animation:drop .4s var(--spring) both}
+/* 5 advent doors */
+.advent{position:absolute;inset:0;overflow:auto;padding:6px;display:grid;grid-template-columns:repeat(4,1fr);gap:6px;background:linear-gradient(135deg,#c9426f,#8f2f57)}
+.door{aspect-ratio:1;position:relative;perspective:300px;cursor:pointer}
+.doorf{position:absolute;inset:0;border-radius:6px;background:linear-gradient(135deg,#ffd9ec,#ff9fca);border:1px solid rgba(255,255,255,.6);display:grid;place-items:center;color:#fff;font-size:13px;font-weight:bold;transform-origin:left;transition:transform .5s var(--spring);backface-visibility:hidden}
+.door.open .doorf{transform:rotateY(-115deg)}
+.doorb{position:absolute;inset:0;border-radius:6px;background:#fff;display:grid;place-items:center;font-size:8.5px;text-align:center;color:var(--ink);padding:3px}
+/* 6 split-flap */
+.flapwrap{position:absolute;inset:0;display:flex;flex-direction:column;gap:6px;padding:12px;justify-content:center;background:#1a1622}
+.flaprow{display:flex;justify-content:center;gap:2px;cursor:pointer}
+.flap{background:#111;color:#ffe08f;font-family:ui-monospace,monospace;font-weight:bold;font-size:15px;width:15px;height:24px;display:grid;place-items:center;border-radius:2px;box-shadow:inset 0 -1px 0 #333;animation:flip .4s var(--ease)}
+@keyframes flip{0%{transform:rotateX(90deg)}100%{transform:rotateX(0)}}
+.flaptip{position:absolute;bottom:8px;left:0;right:0;text-align:center;font-size:10px;color:#888}
+/* 7 scratch */
+.scratchwall{position:absolute;inset:0;overflow:auto;padding:8px;display:grid;grid-template-columns:1fr 1fr;gap:9px;background:linear-gradient(#fff6fb,#ffeef6)}
+.scr{position:relative;aspect-ratio:16/10;border-radius:12px;overflow:hidden;cursor:pointer;border:1px solid var(--line-soft)}
+.scrback{position:absolute;inset:0;display:grid;place-items:center;background:linear-gradient(135deg,#fff,#ffeff7);color:var(--ink);font-size:11px;text-align:center;padding:6px}
+.scrfoil{position:absolute;inset:0;background:linear-gradient(135deg,#c0c0c0,#e8e8e8 40%,#b8b8b8);display:grid;place-items:center;color:#8a8a8a;font-size:10px;transition:opacity .4s,transform .4s}
+.scr.done .scrfoil{opacity:0;transform:scale(1.1)}
+/* 8 bubble wrap */
+.bwrap{position:absolute;inset:0;overflow:auto;padding:8px;display:grid;grid-template-columns:repeat(5,1fr);gap:6px;align-content:start;background:linear-gradient(#eef7fb,#e2eff5)}
+.bubc{aspect-ratio:1;border-radius:50%;background:radial-gradient(circle at 35% 30%,rgba(255,255,255,.9),rgba(190,225,240,.6));border:1px solid rgba(160,200,220,.6);cursor:pointer;transition:transform .12s;position:relative}
+.bubc:hover{transform:scale(1.05)}
+.bubc.pop{background:radial-gradient(circle at 50% 50%,rgba(200,225,235,.25),transparent);transform:scale(.9);box-shadow:inset 0 0 6px rgba(150,190,210,.5)}
+.bubc.pop::after{content:attr(data-t);position:absolute;inset:0;display:grid;place-items:center;font-size:7px;color:var(--pink);text-align:center;padding:2px}
+/* 9 vending */
+.vend{position:absolute;inset:0;display:flex;background:#d94f86;padding:8px;gap:8px}
+.vglass{flex:1;background:linear-gradient(#fff6fb,#ffeef6);border:3px solid rgba(255,255,255,.5);border-radius:8px;overflow:auto;padding:7px;display:grid;grid-template-columns:1fr 1fr;gap:6px;align-content:start}
+.vitem{background:#fff;border-radius:6px;font-size:9.5px;color:var(--ink);padding:7px 6px;text-align:center;box-shadow:var(--sh-sm);animation:drop .35s var(--spring) both}
+.vside{width:56px;display:flex;flex-direction:column;gap:6px;color:#fff;font-size:9px;align-items:center}
+.vscreen{width:100%;height:34px;background:#2a1220;border-radius:4px;color:#7bff9e;font-family:monospace;font-size:8px;display:grid;place-items:center;text-align:center}
+.vslot{width:30px;height:8px;background:#3a1a2a;border-radius:3px}
+.vbtns{display:grid;grid-template-columns:1fr 1fr;gap:3px}.vbtn{width:16px;height:12px;background:#fff;border-radius:2px}
+/* 10 claw */
+.clawm{position:absolute;inset:0;background:linear-gradient(#ffe1ef,#ffd0e6);overflow:hidden}
+.clawbar{position:absolute;top:0;left:0;right:0;height:14px;background:#e0559a}
+.claw{position:absolute;top:14px;left:50%;width:22px;height:22px;transform:translateX(-50%);color:#7a5c69;transition:top .8s var(--ease),left .8s var(--ease)}
+.claw svg{width:100%;height:100%}
+.clawpit{position:absolute;bottom:0;left:0;right:0;height:120px;overflow:auto;display:flex;flex-wrap:wrap;gap:5px;align-content:flex-end;padding:8px;justify-content:center}
+.plush{font-size:9px;color:#fff;background:linear-gradient(135deg,#ff9ec7,#ff6faa);border-radius:12px;padding:6px 9px;box-shadow:var(--sh-sm);animation:drop .4s var(--spring) both}
+.clawbtn{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);z-index:2;border:none;background:#fff;color:var(--pink);font:inherit;font-weight:bold;font-size:11px;border-radius:999px;padding:6px 14px;box-shadow:var(--sh);cursor:pointer}
+/* 11 voicemail */
+.vm{position:absolute;inset:0;overflow:auto;padding:8px;display:flex;flex-direction:column;gap:8px;background:linear-gradient(#fff6fb,#ffeef6)}
+.vmrow{display:flex;align-items:center;gap:9px;background:#fff;border:1px solid var(--line-soft);border-radius:14px;padding:8px 10px;animation:drop .35s var(--spring) both}
+.vmplay{width:32px;height:32px;flex:none;border-radius:50%;border:none;background:var(--active);color:#fff;cursor:pointer;display:grid;place-items:center}.vmplay svg{width:14px;height:14px}
+.vmwave{flex:1;height:22px;display:flex;align-items:center;gap:2px;overflow:hidden}
+.vmwave i{width:3px;background:#ffb0d4;border-radius:2px}
+.vmrow.playing .vmwave i{animation:eq .8s ease-in-out infinite}
+@keyframes eq{0%,100%{transform:scaleY(.4)}50%{transform:scaleY(1)}}
+.vmlen{font-size:10px;color:rgba(122,92,105,.6)}
+/* 12 prompt Q&A */
+.qa{position:absolute;inset:0;overflow:auto;padding:10px;display:flex;flex-direction:column;gap:8px;background:linear-gradient(#fff6fb,#ffeef6)}
+.qprompt{background:linear-gradient(135deg,#ffd9ec,#ff9fca);color:#fff;border-radius:14px;padding:11px 12px;font-size:13px;font-weight:bold;text-align:center;flex:none}
+.qans{background:#fff;border:1px solid var(--line-soft);border-radius:12px;padding:8px 11px;font-size:12px;color:var(--ink);animation:drop .35s var(--spring) both}.qans b{color:#a8517a}
+/* 13 sticky board */
+.sticky{position:absolute;inset:0;overflow:auto;padding:10px;background:#f4efe6;background-image:radial-gradient(rgba(0,0,0,.05) 1px,transparent 1px);background-size:12px 12px;display:flex;flex-wrap:wrap;gap:9px;align-content:flex-start}
+.stky{width:82px;min-height:70px;padding:9px 8px;font-size:10.5px;color:#5a5030;box-shadow:2px 3px 7px rgba(0,0,0,.15);animation:drop .4s var(--spring) both}
+.stky:nth-child(4n){background:#fff6a8;rotate:-3deg}.stky:nth-child(4n+1){background:#bdf0c4;rotate:2deg}.stky:nth-child(4n+2){background:#bfe3ff;rotate:-2deg}.stky:nth-child(4n+3){background:#ffc9e0;rotate:3deg}
+/* 14 flower garden */
+.garden{position:absolute;inset:0;overflow:hidden;background:linear-gradient(#dff2ff 55%,#bfe6a8 55%)}
+.flower{position:absolute;bottom:32%;cursor:pointer;transform-origin:bottom center;animation:grow .6s var(--spring) both}
+@keyframes grow{0%{transform:scaleY(0)}100%{transform:scaleY(1)}}
+.flower .stem{width:3px;height:46px;background:#6bb85a;margin:0 auto}
+.flower .bloom{width:30px;height:30px;border-radius:50%;margin-top:-8px;position:relative;background:radial-gradient(circle,#ffe08f 32%,transparent 33%)}
+.flower .bloom::before{content:"";position:absolute;inset:0;border-radius:50%;background:conic-gradient(#ff9ec7 0 20%,#ff86b9 20% 40%,#ff9ec7 40% 60%,#ff86b9 60% 80%,#ff9ec7 80% 100%);mask:radial-gradient(circle,transparent 30%,#000 32%)}
+/* 15 neon */
+.neon{position:absolute;inset:0;overflow:auto;padding:12px;display:flex;flex-direction:column;gap:11px;background:#160f22;align-items:center}
+.neonh{font-size:15px;color:#ff7fd0;text-shadow:0 0 6px #ff7fd0,0 0 14px #ff3fae;letter-spacing:1px}
+.neont{font-size:12px;color:#8ff0ff;text-shadow:0 0 5px #8ff0ff;border:1px solid rgba(140,240,255,.4);border-radius:12px;padding:7px 12px;box-shadow:0 0 10px rgba(140,240,255,.25) inset;animation:drop .35s var(--spring) both}
+/* 16 clay */
+.claywall{position:absolute;inset:0;overflow:auto;padding:9px;display:grid;grid-template-columns:1fr 1fr;gap:11px;background:linear-gradient(#ffeaf4,#ffe0ee)}
+.clay{border-radius:20px;padding:12px;font-size:12px;color:#a8517a;background:#ffd9ec;box-shadow:6px 6px 12px rgba(210,140,175,.5),-6px -6px 12px rgba(255,255,255,.9),inset 2px 2px 4px rgba(255,255,255,.6);animation:drop .4s var(--spring) both;min-height:64px;display:flex;align-items:center}
+.clay svg{width:20px;height:20px;margin-right:6px;color:#ff86b9}
+/* 17 bottle */
+.beach{position:absolute;inset:0;overflow:hidden;background:linear-gradient(#bfe3f5 60%,#f3e2b0 60%)}
+.bottle{position:absolute;cursor:pointer;width:26px;height:56px;animation:bobb 3s ease-in-out infinite}
+.bottle .body{width:26px;height:44px;border-radius:8px 8px 10px 10px;background:linear-gradient(120deg,rgba(180,220,200,.7),rgba(150,200,180,.5));border:1px solid rgba(120,170,150,.6);position:relative}
+.bottle .cork2{width:10px;height:10px;background:#c79a6a;border-radius:2px;margin:0 auto -2px}
+.bottle .scroll{position:absolute;bottom:6px;left:50%;transform:translateX(-50%);width:12px;height:20px;background:#fff6e0;border-radius:2px}
+@keyframes bobb{0%,100%{transform:translateY(0) rotate(-4deg)}50%{transform:translateY(-5px) rotate(4deg)}}
+/* 18 notebook */
+.book{position:absolute;inset:0;overflow:auto;padding:14px 12px 12px 30px;background:linear-gradient(#fffdf6,#fef7ea);background-image:linear-gradient(#fffdf6,#fef7ea),repeating-linear-gradient(0deg,transparent,transparent 23px,rgba(160,150,190,.3) 23px,rgba(160,150,190,.3) 24px);border:1px solid rgba(200,180,140,.5)}
+.book::before{content:"";position:absolute;top:0;bottom:0;left:20px;width:2px;background:rgba(230,120,120,.45)}
+.book .ring{position:absolute;left:6px;width:10px;height:10px;border:2px solid #b9a6d0;border-radius:50%}
+.entry{position:relative;padding:2px 0 6px;font-size:13px;color:#5a5a80;font-family:"Segoe Script","Comic Sans MS",cursive;animation:drop .35s var(--spring) both}.entry .who{color:#c07a9a;font-size:11px}
+/* 19 jukebox */
+.juke{position:absolute;inset:0;background:linear-gradient(#b0308f,#7a1f66);padding:10px;display:flex;flex-direction:column;gap:8px}
+.juketop{height:52px;border-radius:10px 10px 4px 4px;background:linear-gradient(#ffd94f,#ff8f4f);display:grid;place-items:center;color:#7a1f66;font-weight:bold;font-size:13px;box-shadow:inset 0 -4px 8px rgba(160,60,20,.3)}
+.jukelist{flex:1;overflow:auto;background:#2a1030;border-radius:8px;padding:7px;display:flex;flex-direction:column;gap:5px}
+.track{display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.08);border-radius:8px;padding:6px 9px;color:#ffd6f0;font-size:11px;cursor:pointer;animation:drop .3s var(--spring) both}
+.track .num{color:#ffd94f;font-family:monospace;font-size:10px}.track:hover{background:rgba(255,255,255,.16)}
+/* 20 magic 8 ball */
+.eight{position:absolute;inset:0;display:grid;place-items:center;background:linear-gradient(#fff6fb,#ffe9f4)}
+.ball{width:200px;height:200px;border-radius:50%;background:radial-gradient(circle at 36% 30%,#5a5a6a,#111 70%);display:grid;place-items:center;cursor:pointer;box-shadow:0 12px 24px rgba(0,0,0,.35)}
+.ball.shake{animation:shk .5s ease}
+.window8{width:92px;height:92px;border-radius:50%;background:radial-gradient(circle at 40% 35%,#3a5bbf,#1b2b6b);display:grid;place-items:center;text-align:center;color:#dfe6ff;font-size:10px;padding:10px;box-shadow:inset 0 0 12px rgba(0,0,0,.6)}
+.e8tip{position:absolute;bottom:8px;left:0;right:0;text-align:center;font-size:11px;color:rgba(122,92,105,.6)}
+.hidden{display:none!important}
+</style>
+</head>
+<body>
+  <svg width="0" height="0" style="position:absolute"><defs><linearGradient id="hg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff8fc0"/><stop offset="1" stop-color="#e0327f"/></linearGradient></defs></svg>
+
+  <div class="lab-head">
+    <p class="eyebrow">isolated mockup · nothing live is edited</p>
+    <h1>8 keepers · + 20 all-new (deeper research)</h1>
+    <p>Blue = your keepers. Then 20 fresh paradigms — several with real signature interactions. Tap the book, pick write/doodle, hit <b>pin</b>. Look for the hints: some walls you <b>shake / pop / open / scratch / play</b>.</p>
+  </div>
+
+  <nav class="picker" id="picker"></nav>
+
+  <div class="stage" id="stage">
+    <div class="stage-art">header art</div>
+    <div class="button-group"><div class="rowi">
+      <div class="ibtn" data-icon="socials"><span class="glyph">꩜</span><span class="x">&times;</span></div>
+      <a class="ibtn" data-icon="wishlist" href="#" onclick="return false"><img src="../../wishlist.png" alt="Wishlist" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'glyph',textContent:'♡'}))"><span class="x">&times;</span></a>
+      <div class="ibtn" data-icon="third"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3V4z"/><path d="M9 8h6M9 12h6M9 16h3"/></svg><span class="x">&times;</span></div>
+    </div></div>
+    <div class="host">
+      <div class="note">note</div>
+      <div class="panel" id="panel">
+        <div class="p-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3V4z"/><path d="M9 8h6M9 12h6"/></svg> guestbook <span class="vname" id="vname"></span></div>
+        <div class="compose">
+          <div class="pens" id="pens">
+            <button class="pen active" data-pen="write"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20l4-1L20 7l-3-3L5 16z"/></svg>write</button>
+            <button class="pen" data-pen="draw"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 16 14 6l4 4L8 20H4z"/></svg>doodle</button>
+          </div>
+          <input id="msg" placeholder="leave a lil note…" maxlength="42">
+          <button class="pinbtn" id="pinBtn">pin ♡</button>
+        </div>
+        <div class="feed-h">the wall</div>
+        <div class="wall" id="wall"></div>
+      </div>
+    </div>
+    <p class="hint" id="stageHint">tap the little book · pin a few to fill each wall</p>
+  </div>
+
+  <div class="notes" id="notes"></div>
+  <p class="src">Deeper research: <a href="https://blog.camdeed.com/digital-guestbook-ideas/" target="_blank">20 digital-guestbook ideas (Camdeed)</a> · <a href="https://www.wallble.com/ideas/digital-guestbook" target="_blank">multimedia guest walls (Wallble)</a> · <a href="https://www.awwwards.com/awwwards/collections/minigames-playful-interactions/" target="_blank">playful interactions (Awwwards)</a> · <a href="https://think.design/blog/complete-guide-to-skeumorphic-design/" target="_blank">skeuomorphic UI guide</a></p>
+
+<script>
+const HSVG='<svg viewBox="0 0 24 22"><path fill="url(#hg)" stroke="#fff" stroke-width="1.5" d="M12 21S2 14.5 2 8.2C2 4.6 5 2.8 8 4.2 10 5 12 7.5 12 7.5S14 5 16 4.2C19 2.8 22 4.6 22 8.2 22 14.5 12 21 12 21z"/></svg>';
+const DOOD='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 16 14 6l4 4L8 20H4z"/></svg>';
+const PIN='<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6a2.5 2.5 0 0 1 0 5.5z"/></svg>';
+const PLAY='<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5l12 7-12 7z"/></svg>';
+const seed=['so cute!!','hi lia ♡','fav game?','stay cozy','love it here','cat or dog?','ur the best','hehe :3','pretty site','miss u','marry me jk','from brazil'];
+const places=['brazil','japan','texas','london','berlin','seoul','paris','sydney'];
+const colors=['#ff9ec7','#ffb84d','#7bcbe0','#a7e388','#c9a7ff','#ff86b9'];
+function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
+let tip;function showTip(el,t){hideTip();tip=document.createElement('div');tip.className='readtip';tip.textContent=t;document.body.appendChild(tip);const r=el.getBoundingClientRect();tip.style.left=(r.left+r.width/2)+'px';tip.style.top=r.top+'px';setTimeout(hideTip,1700);}
+function hideTip(){if(tip){tip.remove();tip=null;}}
+function rnd(a){return a[Math.floor(Math.random()*a.length)];}
+
+const B={
+  feed(h){h.innerHTML='<div class="feed"></div>';const f=h.firstChild;const a=it=>{const p=document.createElement('div');p.className='post';p.innerHTML='<span class="thumb">'+DOOD+'</span><span class="t">'+esc(it.text)+'</span>';f.prepend(p);};seed.forEach(s=>a({text:s}));return a;},
+  cork(h,o={}){h.innerHTML='<div class="cork"></div>';const w=h.firstChild;const a=it=>{const p=document.createElement('div');p.className='pin'+(o.pushpin?' pushpin':'');p.innerHTML=it.img?'<img src="'+it.img+'">':esc(it.text);if(o.heart)p.insertAdjacentHTML('beforeend','<span class="hsticker">'+HSVG+'</span>');if(o.floatIn)p.style.animation='floatUpIn .6s cubic-bezier(.34,1.56,.64,1) both';w.prepend(p);};seed.forEach(s=>a({text:s}));return a;},
+  floaty(h){h.innerHTML='<div class="floaty"><span class="wtip">tap a floating heart ♡</span></div>';const w=h.firstChild;const sp=it=>{const d=document.createElement('div');d.className='fh';const s=24+Math.random()*20;d.style.cssText='width:'+s+'px;height:'+s+'px;left:'+(6+Math.random()*80)+'%;animation-duration:'+(8+Math.random()*5)+'s';d.innerHTML=HSVG;d.onclick=()=>showTip(d,it.text);w.appendChild(d);return d;};for(let i=0;i<8;i++){const d=sp({text:seed[i]});d.style.animationDelay=(-Math.random()*11)+'s';}return it=>sp(it);},
+  bento(h){h.innerHTML='<div class="bento"><div class="bt big">'+DOOD.replace('stroke="currentColor"','stroke="#fff"')+'<div><small>tap to</small><br><b>leave a doodle</b></div></div><div class="bt stat"><b>128</b><small>notes</small></div><div class="bt"><b>ask</b></div></div>';const w=h.firstChild;const a=it=>{const t=document.createElement('div');t.className='bt';t.innerHTML='<b>♡</b><span>'+esc(it.text)+'</span>';w.appendChild(t);};seed.forEach(s=>a({text:s}));return a;},
+  dock(h){h.innerHTML='<div class="dockwrap"><div class="dockwall"></div><div class="dock"><div class="dico">'+DOOD.replace('currentColor','#fff')+'</div><div class="dico" style="background:linear-gradient(135deg,#9ec7ff,#6aa6ff)">?</div><div class="dico" style="background:linear-gradient(135deg,#b6e3a8,#7bcb8a)">▤</div></div></div>';const wall=h.querySelector('.dockwall');const a=it=>{const c=document.createElement('div');c.className='dchip';c.innerHTML='♡ '+esc(it.text);wall.prepend(c);};seed.forEach(s=>a({text:s}));return a;},
+  map(h){h.innerHTML='<div class="mapwrap"><span class="maptip">notes from around the world 🌐</span></div>';const w=h.firstChild;[[6,30,120,90],[30,20,90,70],[46,44,70,60],[62,30,80,120],[72,58,60,50]].forEach(b=>{const d=document.createElement('div');d.className='blob';d.style.cssText='left:'+b[0]+'%;top:'+b[1]+'%;width:'+b[2]+'px;height:'+b[3]+'px';w.appendChild(d);});let i=0;const a=it=>{const p=document.createElement('div');p.className='mpin';p.style.cssText='left:'+(12+Math.random()*74)+'%;top:'+(24+Math.random()*56)+'%';p.innerHTML=PIN;const pl=places[i++%places.length];p.onclick=()=>showTip(p,it.text+' — '+pl);w.appendChild(p);};seed.forEach(s=>a({text:s}));return a;},
+
+  // 1 wish tree
+  tree(h){h.innerHTML='<div class="tree"><div class="crown"></div><div class="trunk"></div></div>';const w=h.firstChild;let i=0;const a=it=>{const e=document.createElement('div');e.className='ema';const x=[18,34,50,66,80,26,42,58,72][i%9],y=[26,44,30,50,36,60,64,58,44][i%9];i++;e.style.cssText='left:'+x+'%;top:'+y+'%;animation-delay:'+(-Math.random()*3)+'s';e.textContent=it.text.slice(0,18);e.onclick=()=>showTip(e,it.text);w.appendChild(e);};seed.forEach(s=>a({text:s}));return a;},
+  // 2 aquarium
+  aqua(h){h.innerHTML='<div class="aqua"></div>';const w=h.firstChild;for(let i=0;i<6;i++){const b=document.createElement('div');b.className='bub';b.style.cssText='left:'+(10+Math.random()*80)+'%;width:'+(6+Math.random()*8)+'px;height:'+(6+Math.random()*8)+'px;animation-duration:'+(4+Math.random()*4)+'s;animation-delay:'+(-Math.random()*4)+'s';w.appendChild(b);}const sp=it=>{const f=document.createElement('div');f.className='fish';f.style.cssText='top:'+(12+Math.random()*70)+'%;background:linear-gradient(135deg,'+rnd(colors)+','+rnd(colors)+');animation-duration:'+(9+Math.random()*6)+'s;animation-delay:'+(-Math.random()*8)+'s';f.textContent=it.text.slice(0,12);f.onclick=()=>showTip(f,it.text);w.appendChild(f);return f;};seed.forEach(s=>sp({text:s}));return it=>sp(it);},
+  // 3 snow globe
+  globe(h){h.innerHTML='<div class="globewrap"><div class="globe"><div class="base"></div></div><span class="gtip">tap the globe to shake ✧</span></div>';const g=h.querySelector('.globe');function scatter(){g.querySelectorAll('.flake').forEach(f=>{f.style.left=(12+Math.random()*66)+'%';f.style.top=(12+Math.random()*60)+'%';});}g.onclick=()=>{g.classList.remove('shake');void g.offsetWidth;g.classList.add('shake');scatter();};const a=it=>{const f=document.createElement('div');f.className='flake';f.style.left=(12+Math.random()*66)+'%';f.style.top=(12+Math.random()*60)+'%';f.textContent=it.text.slice(0,14);g.appendChild(f);};seed.slice(0,7).forEach(s=>a({text:s}));return a;},
+  // 4 gumball
+  gum(h){h.innerHTML='<div class="gum"><div class="gumglobe"></div><div class="gumbase"><div class="knob"></div>twist ↻</div><div class="tray"></div></div>';const globe=h.querySelector('.gumglobe'),base=h.querySelector('.gumbase'),tray=h.querySelector('.tray');const q=[];for(let i=0;i<22;i++){const b=document.createElement('div');b.className='gball';b.style.cssText='background:'+rnd(colors)+';left:'+(8+Math.random()*76)+'%;top:'+(8+Math.random()*76)+'%';globe.appendChild(b);}base.onclick=()=>{if(!q.length)return;const it=q.shift();const g=document.createElement('div');g.className='gout';g.textContent='♡ '+it.text.slice(0,16);tray.prepend(g);};const a=it=>{q.push(it);};seed.forEach(s=>a({text:s}));return a;},
+  // 5 advent
+  advent(h){h.innerHTML='<div class="advent"></div>';const w=h.firstChild;let n=0;const a=it=>{n++;const d=document.createElement('div');d.className='door';d.innerHTML='<div class="doorb">'+esc(it.text)+'</div><div class="doorf">'+n+'</div>';d.onclick=()=>d.classList.toggle('open');w.appendChild(d);};seed.forEach(s=>a({text:s}));return a;},
+  // 6 split-flap
+  flap(h){h.innerHTML='<div class="flapwrap"><div class="flaprow"></div><span class="flaptip">tap to flip to the next note</span></div>';const row=h.querySelector('.flaprow');const list=[...seed];let idx=0;function render(t){row.innerHTML='';(t.toUpperCase().slice(0,14).padEnd(10,' ')).split('').forEach(ch=>{const f=document.createElement('div');f.className='flap';f.textContent=ch;row.appendChild(f);});}render(list[0]);row.parentElement.onclick=()=>{idx=(idx+1)%list.length;render(list[idx]);};const a=it=>{list.unshift(it.text);idx=0;render(list[0]);};return a;},
+  // 7 scratch
+  scratch(h){h.innerHTML='<div class="scratchwall"></div>';const w=h.firstChild;const a=it=>{const c=document.createElement('div');c.className='scr';c.innerHTML='<div class="scrback">'+(it.img?'<img src="'+it.img+'" style="width:100%">':esc(it.text))+'</div><div class="scrfoil">scratch ✦</div>';c.onclick=()=>c.classList.add('done');w.prepend(c);};seed.forEach(s=>a({text:s}));return a;},
+  // 8 bubble wrap
+  bwrap(h){h.innerHTML='<div class="bwrap"></div>';const w=h.firstChild;const a=it=>{const b=document.createElement('div');b.className='bubc';b.dataset.t=it.text.slice(0,14);b.onclick=()=>b.classList.add('pop');w.prepend(b);};for(let i=0;i<20;i++)a({text:seed[i%seed.length]});return a;},
+  // 9 vending
+  vend(h){h.innerHTML='<div class="vend"><div class="vglass"></div><div class="vside"><div class="vscreen">PICK A<br>NOTE</div><div class="vbtns"><div class="vbtn"></div><div class="vbtn"></div><div class="vbtn"></div><div class="vbtn"></div></div><div class="vslot"></div></div></div>';const g=h.querySelector('.vglass');const a=it=>{const v=document.createElement('div');v.className='vitem';v.innerHTML='♡<br>'+esc(it.text.slice(0,16));g.prepend(v);};seed.forEach(s=>a({text:s}));return a;},
+  // 10 claw
+  claw(h){h.innerHTML='<div class="clawm"><div class="clawbar"></div><div class="claw"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v8M8 10l-3 6M16 10l3 6M12 10v9"/></svg></div><div class="clawpit"></div><button class="clawbtn">grab ♡</button></div>';const claw=h.querySelector('.claw'),pit=h.querySelector('.clawpit');const a=it=>{const p=document.createElement('div');p.className='plush';p.textContent=it.text.slice(0,14);pit.prepend(p);};seed.forEach(s=>a({text:s}));h.querySelector('.clawbtn').onclick=()=>{claw.style.left=(30+Math.random()*40)+'%';setTimeout(()=>claw.style.top='150px',300);setTimeout(()=>{claw.style.top='14px';const f=pit.querySelector('.plush');if(f)showTip(claw,f.textContent);},1200);};return a;},
+  // 11 voicemail
+  vm(h){h.innerHTML='<div class="vm"></div>';const w=h.firstChild;const a=it=>{const r=document.createElement('div');r.className='vmrow';let bars='';for(let i=0;i<20;i++)bars+='<i style="height:'+(6+Math.random()*16)+'px;animation-delay:'+(i*.05)+'s"></i>';r.innerHTML='<button class="vmplay">'+PLAY+'</button><div class="vmwave">'+bars+'</div><span class="vmlen">0:0'+(2+Math.floor(Math.random()*7))+'</span>';r.querySelector('.vmplay').onclick=()=>{r.classList.toggle('playing');showTip(r,'"'+it.text+'"');};w.prepend(r);};seed.slice(0,6).forEach(s=>a({text:s}));return a;},
+  // 12 prompt Q&A
+  qa(h){h.innerHTML='<div class="qa"><div class="qprompt">today: what game are you playing? ♡</div></div>';const w=h.firstChild;const a=it=>{const d=document.createElement('div');d.className='qans';d.innerHTML='<b>'+rnd(['anon','bun','kai','lulu'])+':</b> '+esc(it.text);w.appendChild(d);};seed.forEach(s=>a({text:s}));return a;},
+  // 13 sticky board
+  sticky(h){h.innerHTML='<div class="sticky"></div>';const w=h.firstChild;const a=it=>{const s=document.createElement('div');s.className='stky';s.textContent=it.text;w.prepend(s);};seed.forEach(s=>a({text:s}));return a;},
+  // 14 garden
+  garden(h){h.innerHTML='<div class="garden"></div>';const w=h.firstChild;let i=0;const a=it=>{const f=document.createElement('div');f.className='flower';f.style.left=(6+((i*13)%86))+'%';f.style.bottom=(28+((i*7)%14))+'%';i++;f.innerHTML='<div class="bloom" style="filter:hue-rotate('+(Math.random()*60-20)+'deg)"></div><div class="stem"></div>';f.onclick=()=>showTip(f,it.text);w.appendChild(f);};seed.forEach(s=>a({text:s}));return a;},
+  // 15 neon
+  neon(h){h.innerHTML='<div class="neon"><div class="neonh">♡ guestbook ♡</div></div>';const w=h.firstChild;const a=it=>{const t=document.createElement('div');t.className='neont';t.textContent=it.text;w.appendChild(t);};seed.forEach(s=>a({text:s}));return a;},
+  // 16 clay
+  clay(h){h.innerHTML='<div class="claywall"></div>';const w=h.firstChild;const a=it=>{const c=document.createElement('div');c.className='clay';c.innerHTML=DOOD+'<span>'+esc(it.text)+'</span>';w.prepend(c);};seed.forEach(s=>a({text:s}));return a;},
+  // 17 bottle
+  bottle(h){h.innerHTML='<div class="beach"></div>';const w=h.firstChild;const a=it=>{const b=document.createElement('div');b.className='bottle';b.style.cssText='left:'+(8+Math.random()*78)+'%;top:'+(30+Math.random()*40)+'%;animation-delay:'+(-Math.random()*3)+'s';b.innerHTML='<div class="cork2"></div><div class="body"><div class="scroll"></div></div>';b.onclick=()=>showTip(b,it.text);w.appendChild(b);};seed.forEach(s=>a({text:s}));return a;},
+  // 18 notebook
+  book(h){h.innerHTML='<div class="book"></div>';const w=h.firstChild;for(let i=0;i<12;i++){const r=document.createElement('div');r.className='ring';r.style.top=(10+i*30)+'px';w.appendChild(r);}const a=it=>{const e=document.createElement('div');e.className='entry';e.innerHTML=esc(it.text)+' <span class="who">— '+rnd(['anon','bun','kai','lulu','moon'])+'</span>';w.appendChild(e);};seed.forEach(s=>a({text:s}));return a;},
+  // 19 jukebox
+  juke(h){h.innerHTML='<div class="juke"><div class="juketop">♪ doll.gg jukebox ♪</div><div class="jukelist"></div></div>';const list=h.querySelector('.jukelist');let n=0;const a=it=>{n++;const t=document.createElement('div');t.className='track';t.innerHTML='<span class="num">'+String(n).padStart(2,'0')+'</span> '+PLAY.replace('24','14')+' '+esc(it.text);t.onclick=()=>showTip(t,it.text);list.appendChild(t);};seed.forEach(s=>a({text:s}));return a;},
+  // 20 magic 8-ball
+  eight(h){h.innerHTML='<div class="eight"><div class="ball"><div class="window8">shake me ✧</div></div><span class="e8tip">tap to surface a random note</span></div>';const ball=h.querySelector('.ball'),win=h.querySelector('.window8');const notes=[...seed];ball.onclick=()=>{ball.classList.remove('shake');void ball.offsetWidth;ball.classList.add('shake');setTimeout(()=>{win.textContent='"'+rnd(notes)+'"';},250);};const a=it=>{notes.unshift(it.text);win.textContent='"'+it.text+'"';};return a;},
+};
+
+const variants=[
+  {g:'keep',id:'a',name:'A · feed',build:h=>B.feed(h),note:'<b>Keeper.</b>'},
+  {g:'keep',id:'pin',name:'pin-a-note',build:h=>B.cork(h,{pushpin:true}),note:'<b>Keeper.</b>'},
+  {g:'keep',id:'heart',name:'heart wall',build:h=>B.cork(h,{heart:true}),note:'<b>Keeper.</b>'},
+  {g:'keep',id:'floaty',name:'floaty',build:h=>B.floaty(h),note:'<b>Keeper.</b>'},
+  {g:'keep',id:'fc',name:'float-in cork',build:h=>B.cork(h,{heart:true,floatIn:true}),note:'<b>Keeper.</b>'},
+  {g:'keep',id:'bento',name:'bento',build:h=>B.bento(h),note:'<b>Keeper.</b>'},
+  {g:'keep',id:'dock',name:'dock',build:h=>B.dock(h),note:'<b>Keeper.</b>'},
+  {g:'keep',id:'map',name:'world map',build:h=>B.map(h),note:'<b>Keeper.</b>'},
+
+  {g:'new',id:'tree',name:'1 wish tree',build:h=>B.tree(h),note:'<b>1 · Wish tree</b> — hang little ema wish-tablets on a tree; they sway. Tap to read. (shrine-guestbook energy)'},
+  {g:'new',id:'aqua',name:'2 aquarium',build:h=>B.aqua(h),note:'<b>2 · Aquarium</b> — notes swim across as fish with bubbles rising. Tap a fish. Ambient + alive.'},
+  {g:'new',id:'globe',name:'3 snow globe',build:h=>B.globe(h),note:'<b>3 · Snow globe</b> — <i>tap the globe to shake</i>; notes swirl like snow and resettle.'},
+  {g:'new',id:'gum',name:'4 gumball',build:h=>B.gum(h),note:'<b>4 · Gumball machine</b> — <i>twist the base</i> to dispense a random note into the tray.'},
+  {g:'new',id:'advent',name:'5 advent doors',build:h=>B.advent(h),note:'<b>5 · Advent doors</b> — a grid of numbered doors; <i>tap one to open</i> and read the note inside.'},
+  {g:'new',id:'flap',name:'6 split-flap',build:h=>B.flap(h),note:'<b>6 · Split-flap board</b> — an airport departure board; <i>tap to flip</i> to the next note.'},
+  {g:'new',id:'scratch',name:'7 scratch-off',build:h=>B.scratch(h),note:'<b>7 · Scratch-off</b> — each note hides under foil; <i>tap to scratch</i> and reveal. (from the research)'},
+  {g:'new',id:'bwrap',name:'8 bubble wrap',build:h=>B.bwrap(h),note:'<b>8 · Bubble wrap</b> — <i>pop a bubble</i> to reveal the note under it. Weirdly satisfying minigame.'},
+  {g:'new',id:'vend',name:'9 vending',build:h=>B.vend(h),note:'<b>9 · Vending machine</b> — notes sit behind glass like snacks, coin slot + keypad. Skeuomorphic.'},
+  {g:'new',id:'claw',name:'10 claw machine',build:h=>B.claw(h),note:'<b>10 · Claw machine</b> — <i>hit grab</i>; the claw drops and lifts a plush note out of the pit.'},
+  {g:'new',id:'vm',name:'11 voice notes',build:h=>B.vm(h),note:'<b>11 · Voice wall</b> — visitors leave <i>audio</i> notes; playable waveforms. (research pushed multimedia hard)'},
+  {g:'new',id:'qa',name:'12 prompt Q&A',build:h=>B.qa(h),note:'<b>12 · Prompt of the day</b> — you pose a question, answers stack beneath. Sparks better notes.'},
+  {g:'new',id:'sticky',name:'13 sticky board',build:h=>B.sticky(h),note:'<b>13 · Sticky board</b> — a messy FigJam/Miro wall of colourful sticky notes.'},
+  {g:'new',id:'garden',name:'14 flower garden',build:h=>B.garden(h),note:'<b>14 · Garden</b> — every note grows a flower in a little meadow. The wall literally blooms.'},
+  {g:'new',id:'neon',name:'15 neon sign',build:h=>B.neon(h),note:'<b>15 · Neon</b> — glowing neon-sign notes on a dark wall. Nightlife vibe.'},
+  {g:'new',id:'clay',name:'16 clay cards',build:h=>B.clay(h),note:'<b>16 · Claymorphism</b> — soft, puffy 3D clay cards (2025 trend). Squishy and tactile.'},
+  {g:'new',id:'bottle',name:'17 message bottle',build:h=>B.bottle(h),note:'<b>17 · Message in a bottle</b> — corked bottles bob on a beach; tap one to read the scroll.'},
+  {g:'new',id:'book',name:'18 spiral notebook',build:h=>B.book(h),note:'<b>18 · Spiral notebook</b> — handwritten entries on lined diary pages with a spiral binding.'},
+  {g:'new',id:'juke',name:'19 jukebox',build:h=>B.juke(h),note:'<b>19 · Jukebox</b> — notes as a retro jukebox track list; tap a track to "play" one.'},
+  {g:'new',id:'eight',name:'20 magic 8-ball',build:h=>B.eight(h),note:'<b>20 · Magic 8-ball</b> — <i>tap to shake</i>; a random past note surfaces in the window.'},
+];
+
+const groups={keep:'♥ keeping (8)',new:'20 new — deeper research'};
+const picker=document.getElementById('picker');
+Object.keys(groups).forEach(g=>{const box=document.createElement('div');box.className='grp'+(g==='keep'?' keep':'');box.innerHTML='<span class="grp-h">'+groups[g]+'</span>';const row=document.createElement('div');row.className='grp-row';variants.filter(v=>v.g===g).forEach(v=>{const b=document.createElement('button');b.className='tab';b.textContent=v.name;b.dataset.id=v.id;b.setAttribute('aria-pressed','false');b.onclick=()=>select(v.id);row.appendChild(b);});box.appendChild(row);picker.appendChild(box);});
+
+let current,addFn;
+function select(id){current=variants.find(v=>v.id===id);document.querySelectorAll('.tab').forEach(t=>t.setAttribute('aria-pressed',t.dataset.id===id?'true':'false'));document.getElementById('vname').textContent=current.name;document.getElementById('notes').innerHTML=current.note;addFn=current.build(document.getElementById('wall'));}
+select('tree');
+
+const stage=document.getElementById('stage');let openIcon=null;
+function closeAll(){stage.classList.remove('open');document.querySelectorAll('.ibtn').forEach(b=>b.classList.remove('act'));document.getElementById('panel').removeAttribute('data-active');openIcon=null;}
+document.querySelectorAll('.ibtn').forEach(btn=>btn.addEventListener('click',e=>{e.preventDefault();const icon=btn.dataset.icon;if(openIcon===icon){closeAll();return;}if(openIcon)closeAll();if(icon!=='third'){btn.animate([{transform:'scale(1)'},{transform:'scale(.86)'},{transform:'scale(1)'}],{duration:220});return;}document.getElementById('panel').setAttribute('data-active','');btn.classList.add('act');stage.classList.add('open');openIcon='third';}));
+
+let mode='write';
+document.querySelectorAll('#pens .pen').forEach(p=>p.addEventListener('click',()=>{document.querySelectorAll('#pens .pen').forEach(x=>x.classList.remove('active'));p.classList.add('active');mode=p.dataset.pen;document.getElementById('msg').placeholder=mode==='draw'?'(doodle mode — pin a lil drawing)':'leave a lil note…';}));
+function fakeDoodle(){const c=document.createElement('canvas');c.width=120;c.height=80;const x=c.getContext('2d');x.strokeStyle=rnd(['#c75e8f','#6aa6ff','#7bcb8a','#f0a63a']);x.lineWidth=4;x.lineCap='round';x.beginPath();for(let i=0;i<5;i++)x.lineTo(15+Math.random()*90,12+Math.random()*54);x.stroke();return c.toDataURL();}
+document.getElementById('pinBtn').addEventListener('click',()=>{const inp=document.getElementById('msg');const it=mode==='draw'?{text:inp.value.trim()||'a doodle',img:fakeDoodle()}:{text:(inp.value.trim()||'hi lia ♡').slice(0,42),img:null};addFn&&addFn(it);inp.value='';document.getElementById('pinBtn').animate([{transform:'scale(1)'},{transform:'scale(.9)'},{transform:'scale(1)'}],{duration:200});});
+</script>
+</body>
+</html>
