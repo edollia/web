@@ -71,6 +71,11 @@ function safeAccent(value, fallback = ACCENT_COLORS[0]) {
 
 const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
 const MAX_IMG_BYTES = 15 * 1024 * 1024; // 15 MB
+// Chat attachments retain their original File objects until the batch sends.
+// Bound both dimensions so a picker action cannot pin an unsafe amount of
+// full-resolution image data in memory on mobile Safari.
+const MAX_STAGED_IMAGES = 8;
+const MAX_STAGED_BYTES = 40 * 1024 * 1024; // 40 MB across the whole batch
 
 const ADJECTIVES = ['soft','rosy','velvet','hazy','lunar','dewy','misty','coral','dusty','silky'];
 const NOUNS      = ['echo','bloom','drift','glow','mist','haze','petal','wisp','veil','lace'];
@@ -3912,13 +3917,46 @@ async function sendChatImage(file, { replyTo = null, skipGate = false } = {}) {
 // ── Multi-image staging: pick several, preview them, send all on ✈ ──────────
 let _stagedImages = [];   // { file, url } — object URLs revoked on clear
 function stageImageFiles(fileList) {
-  const files = [...(fileList || [])].filter(f => f && f.type.startsWith('image/'));
+  const files = [...(fileList || [])].filter(Boolean);
   if (!files.length) return;
-  const room = 12 - _stagedImages.length;      // sane cap so previews stay usable
-  for (const file of files.slice(0, Math.max(0, room))) {
+
+  let stagedBytes = _stagedImages.reduce((sum, staged) => sum + staged.file.size, 0);
+  let unsupported = 0;
+  let tooLarge = 0;
+  let overCount = 0;
+  let overTotal = 0;
+
+  for (const file of files) {
+    // Match send-time validation here so a file that can never send is not
+    // retained as a full-resolution preview first.
+    if (!ALLOWED_IMAGE_TYPES.has(file.type)) {
+      unsupported++;
+      continue;
+    }
+    if (file.size > MAX_IMG_BYTES) {
+      tooLarge++;
+      continue;
+    }
+    if (_stagedImages.length >= MAX_STAGED_IMAGES) {
+      overCount++;
+      continue;
+    }
+    if (stagedBytes + file.size > MAX_STAGED_BYTES) {
+      overTotal++;
+      continue;
+    }
+
     _stagedImages.push({ file, url: URL.createObjectURL(file) });
+    stagedBytes += file.size;
   }
-  if (files.length > room) showChatImgError('You can attach up to 12 images at once.');
+
+  const notices = [];
+  if (tooLarge) notices.push(`${tooLarge} ${tooLarge === 1 ? 'image is' : 'images are'} over the 15 MB per-image limit.`);
+  if (unsupported) notices.push(`${unsupported} unsupported ${unsupported === 1 ? 'image was' : 'images were'} skipped (use JPEG, PNG, WebP, or GIF).`);
+  if (overCount) notices.push(`${overCount} ${overCount === 1 ? 'image was' : 'images were'} skipped because a batch can hold up to ${MAX_STAGED_IMAGES}.`);
+  if (overTotal) notices.push(`${overTotal} ${overTotal === 1 ? 'image was' : 'images were'} skipped because a batch can total up to ${MAX_STAGED_BYTES / 1024 / 1024} MB.`);
+  if (notices.length) showChatImgError(notices.join(' '));
+
   renderImgPreview();
 }
 function removeStagedImage(idx) {
@@ -3943,6 +3981,10 @@ function renderImgPreview() {
   strip.querySelectorAll('.chat-img-rm').forEach(b =>
     b.addEventListener('click', () => removeStagedImage(Number(b.dataset.i))));
 }
+
+// pagehide also fires when Safari places the page in bfcache. Clear the strip
+// in every mode so cached Rooms pages cannot retain full-resolution originals.
+window.addEventListener('pagehide', clearStagedImages);
 
 // Grow the chat textarea with its content, up to ~4 lines, then let it scroll.
 const CHAT_INPUT_MAX_H = 112;
