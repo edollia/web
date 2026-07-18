@@ -1266,6 +1266,10 @@ body.has-posts-panel-open .site-brand-footer {
         transform 0.46s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
+.note-under-sign[hidden] {
+    display: none !important;
+}
+
 .main-screen.note-ready .note-under-sign {
     opacity: 0.94;
     transform: translateX(-50%) translateY(0) scale(1);
