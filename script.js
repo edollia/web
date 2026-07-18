@@ -2051,6 +2051,63 @@ document.addEventListener("DOMContentLoaded", async function() {
     const postsButton = document.getElementById('posts-button');
     let postsPanelResizeObserver = null;
 
+    function shouldPlayPostsMedia() {
+        return Boolean(
+            postsPanel?.classList.contains('active')
+            && postsPanel.querySelector('#questions-tab')?.classList.contains('active')
+            && !document.hidden
+        );
+    }
+
+    function pausePostsMedia() {
+        if (!postsPanel) return;
+        postsPanel.querySelectorAll('video').forEach(video => video.pause());
+        postsPanel.querySelectorAll('img.answer-gif[src]').forEach(image => {
+            const src = image.getAttribute('src');
+            if (!src || image.dataset.postsPausedSrc) return;
+            image.dataset.postsPausedSrc = src;
+            if (image.naturalWidth > 0 && image.naturalHeight > 0) {
+                image.style.aspectRatio = `${image.naturalWidth} / ${image.naturalHeight}`;
+            }
+            image.removeAttribute('src');
+        });
+        postsPanel.querySelectorAll('.answer-media-frame iframe[src]').forEach(frame => {
+            const src = frame.getAttribute('src');
+            if (!src || src === 'about:blank' || frame.dataset.postsPausedSrc) return;
+            frame.dataset.postsPausedSrc = src;
+            frame.src = 'about:blank';
+        });
+    }
+
+    function resumePostsMedia() {
+        if (!shouldPlayPostsMedia() || !postsPanel) return;
+        postsPanel.querySelectorAll('img.answer-gif[data-posts-paused-src]').forEach(image => {
+            const src = image.dataset.postsPausedSrc;
+            if (!src) return;
+            delete image.dataset.postsPausedSrc;
+            image.src = src;
+        });
+        postsPanel.querySelectorAll('.answer-media-frame iframe[data-posts-paused-src]').forEach(frame => {
+            const src = frame.dataset.postsPausedSrc;
+            if (!src) return;
+            delete frame.dataset.postsPausedSrc;
+            frame.src = src;
+        });
+        postsPanel.querySelectorAll('video').forEach(video => video.play().catch(() => {}));
+    }
+
+    function syncPostsMediaPlayback() {
+        if (shouldPlayPostsMedia()) resumePostsMedia();
+        else pausePostsMedia();
+    }
+
+    if (postsPanel && typeof window.MutationObserver === 'function') {
+        const postsMediaObserver = new MutationObserver(() => {
+            if (!shouldPlayPostsMedia()) pausePostsMedia();
+        });
+        postsMediaObserver.observe(postsPanel, { childList: true, subtree: true });
+    }
+
     function syncPostsPanelSpace() {
         if (!postsPanel?.classList.contains('active')) return;
         const host = postsPanel.closest('.toggle-container');
@@ -2112,6 +2169,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     }
 
     function closePostsPanel() {
+        pausePostsMedia();
         setPostsPanelLayoutOpen(false);
         // Match the wishlist's own close behavior exactly: snap the icons back
         // instantly (resetIconsCollapse), not the eased scroll-tracking path
@@ -2200,7 +2258,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         option.setAttribute('aria-hidden', 'true');
         option.innerHTML = `
             <span class="social-link-icon" aria-hidden="true">
-                <img src="onlyfans-social-v4.png" alt="" width="1160" height="1160" decoding="async">
+                <img data-social-src="social-icons/onlyfans.png" alt="" width="192" height="192" decoding="async">
             </span>
             <span class="social-link-copy">
                 <strong>onlyfans</strong>
@@ -2397,6 +2455,25 @@ document.addEventListener("DOMContentLoaded", async function() {
     function getVisibleSocialOptions() {
         return Array.from(socialLinksPanel?.querySelectorAll('.social-link-card') || [])
             .filter(option => !option.classList.contains('site-link-hidden'));
+    }
+
+    function loadDeferredSocialImage(image) {
+        if (!(image instanceof HTMLImageElement) || image.dataset.socialLoadStarted === 'true') return;
+        const src = String(image.dataset.socialSrc || '').trim();
+        if (!src) return;
+
+        image.dataset.socialLoadStarted = 'true';
+        const markLoaded = () => image.classList.add('is-social-image-loaded');
+        image.addEventListener('load', markLoaded, { once: true });
+        image.src = src;
+        if (image.complete && image.naturalWidth > 0) markLoaded();
+    }
+
+    function loadVisibleSocialImages() {
+        getVisibleSocialOptions().forEach(option => {
+            const cardNode = option.closest('.social-link-card-frame') || option;
+            cardNode.querySelectorAll('img[data-social-src]').forEach(loadDeferredSocialImage);
+        });
     }
 
     function syncStructuredDataLinks() {
@@ -2917,6 +2994,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             getVisibleSocialOptions().forEach(option => {
                 option.setAttribute('tabindex', socialsButton.classList.contains('open') ? '0' : '-1');
             });
+            if (socialsButton.classList.contains('open')) loadVisibleSocialImages();
         }
         syncStructuredDataLinks();
         renderSeoSettings();
@@ -3103,6 +3181,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         closePostsPanel();
         hideNoteImage();
         resetIconsCollapse();
+        loadVisibleSocialImages();
         socialsButton.classList.remove('show-glitter');
         socialsButton.classList.add('open');
         socialsButton.setAttribute('aria-expanded', 'true');
@@ -3145,6 +3224,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         } else if (socialsButton?.classList.contains('open')) {
             playSocialCardVideos();
         }
+        syncPostsMediaPlayback();
     });
 
     function hasSeenFirstVisitTour() {
@@ -3565,6 +3645,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     startGlitterCycle();
 
     // ===== DRAWING WIDGET =====
+    const MAX_DRAWING_HISTORY_STATES = 40;
     let canvas, ctx, drawingHistory = [], historyIndex = -1, currentColor = "#000000", brushSize = 5;
     let isDrawing = false;
     let lastX = 0;
@@ -3589,11 +3670,14 @@ document.addEventListener("DOMContentLoaded", async function() {
         }
 
         function saveState() {
-            historyIndex++;
-            if (historyIndex < drawingHistory.length) {
-                drawingHistory.length = historyIndex;
+            if (historyIndex < drawingHistory.length - 1) {
+                drawingHistory.splice(historyIndex + 1);
             }
             drawingHistory.push(canvas.toDataURL());
+            if (drawingHistory.length > MAX_DRAWING_HISTORY_STATES) {
+                drawingHistory.splice(0, drawingHistory.length - MAX_DRAWING_HISTORY_STATES);
+            }
+            historyIndex = drawingHistory.length - 1;
         }
 
         function getCursorPos(e) {
@@ -3972,6 +4056,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                     setPostsPanelLayoutOpen(true);
                     postsButton.textContent = '×';
                     await renderSubmissions();
+                    syncPostsMediaPlayback();
                     syncPostsPanelSpace();
                 }
             });
@@ -3994,6 +4079,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                 this.classList.add('active');
                 document.getElementById(this.dataset.tab).classList.add('active');
                 this.closest('.posts-tabs')?.classList.toggle('questions-active', this.dataset.tab === 'questions-tab');
+                syncPostsMediaPlayback();
             });
         });
 
@@ -4109,7 +4195,7 @@ document.addEventListener("DOMContentLoaded", async function() {
 
         function renderAnswerVideo(href) {
             const safeHref = escapeHtml(href);
-            return `<span class="answer-video-frame"><video src="${safeHref}" autoplay muted loop playsinline preload="metadata" aria-label="Video reply" data-media-url="${safeHref}"></video></span>`;
+            return `<span class="answer-video-frame"><video src="${safeHref}" muted loop playsinline preload="metadata" aria-label="Video reply" data-media-url="${safeHref}"></video></span>`;
         }
 
         function linkifyText(str) {
@@ -4247,6 +4333,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                         frame.replaceWith(replacement);
                     }, { once: true });
                 });
+                syncPostsMediaPlayback();
             } catch (error) {
                 console.error("Error loading questions:", error);
                 questionsList.innerHTML = '<p>Error loading Mi. Please refresh.</p>';

@@ -10,6 +10,9 @@
     const NAME_MAX = 60;
     const CARD_GAP = 10;
     const PAGE_SIZE = 4;
+    const IMAGE_PRELOAD_CONCURRENCY = 3;
+    const IMAGE_PRELOAD_BUDGET_MS = 1100;
+    const IMAGE_PROBE_TIMEOUT_MS = 6000;
     const SWIPE_HINT_INITIAL_DELAY_MS = 3000;
     const SWIPE_HINT_FIRST_VISIBLE_MS = 3000;
     const SWIPE_HINT_REPEAT_DELAY_MS = 5000;
@@ -118,37 +121,85 @@
     // lay out at zero height and visibly re-balance the instant the photos
     // decode — that split-second "the wishlist reorganizes itself" jump.
     const imageDims = new Map();
+    const imageProbePromises = new Map();
 
-    async function preloadVisibleItemImages(list) {
-        // Preload EVERY featured item, not just the first page: masonry
-        // balances the whole set into two columns at once, so a single
-        // unmeasured photo further down still shoves everything above it
-        // when it finally decodes. Measuring them all up front is what lets
-        // the grid appear already-aligned instead of settling into place.
-        const urls = list.map(item => String(item?.image_url || '')).filter(Boolean);
-        if (!urls.length) return;
-        const loads = urls.map(url => new Promise(resolve => {
+    function probeImageDimensions(url, priority = 'low') {
+        if (imageDims.has(url)) return Promise.resolve();
+        const existingProbe = imageProbePromises.get(url);
+        if (existingProbe) return existingProbe;
+
+        const probe = new Promise(resolve => {
             const image = new Image();
+            let settled = false;
+            let timeoutId = 0;
+
             image.decoding = 'async';
-            const capture = () => {
+            // Supported in current Chromium/Safari and safely ignored by
+            // older engines. The first visible cards win bandwidth while
+            // the rest of the queue remains deliberately low priority.
+            try { image.fetchPriority = priority; } catch (err) {}
+
+            const finish = () => {
+                if (settled) return;
+                settled = true;
+                window.clearTimeout(timeoutId);
+                image.onload = null;
+                image.onerror = null;
                 if (image.naturalWidth && image.naturalHeight) {
                     imageDims.set(url, { w: image.naturalWidth, h: image.naturalHeight });
                 }
                 resolve();
             };
-            image.onload = capture;
-            image.onerror = resolve;
+
+            image.onload = finish;
+            image.onerror = finish;
+            timeoutId = window.setTimeout(() => {
+                // Release a stalled worker so one broken CDN response cannot
+                // prevent every later wishlist photo from being measured.
+                image.src = '';
+                finish();
+            }, IMAGE_PROBE_TIMEOUT_MS);
             image.src = url;
-            if (image.complete) capture();
-        }));
+            if (image.complete) finish();
+        });
+        imageProbePromises.set(url, probe);
+        void probe.then(() => {
+            if (imageProbePromises.get(url) === probe) imageProbePromises.delete(url);
+        });
+        return probe;
+    }
+
+    async function preloadVisibleItemImages(list) {
+        // Masonry needs each photo's natural ratio before it paints or its
+        // two columns visibly rebalance. Keep that measurement pass, but run
+        // it as a small queue instead of starting as many as 30 full image
+        // requests in one burst. The browser reuses these responses for the
+        // real lazy <img> elements rendered below.
+        const urls = Array.from(new Set(
+            list
+                .map(item => String(item?.image_url || '').trim())
+                .filter(url => url && !imageDims.has(url))
+        ));
+        if (!urls.length) return;
+
+        let cursor = 0;
+        const runWorker = async () => {
+            while (cursor < urls.length) {
+                const index = cursor++;
+                await probeImageDimensions(urls[index], index < PAGE_SIZE ? 'high' : 'low');
+            }
+        };
+        const workerCount = Math.min(IMAGE_PRELOAD_CONCURRENCY, urls.length);
+        const queue = Promise.all(Array.from({ length: workerCount }, runWorker));
+
         try {
-            // Slightly longer cap than before since we now wait on the whole
-            // set, but still hard-capped so one slow photo can never strand
-            // the entire wishlist behind the loader.
-            await withTimeout(Promise.all(loads), 1100);
+            // Preserve the existing short loader ceiling. If the queue is
+            // still running after it, rendering proceeds while the SAME
+            // three workers continue filling the cache progressively; no
+            // second 30-request fan-out is created by this code.
+            await withTimeout(queue, IMAGE_PRELOAD_BUDGET_MS);
         } catch (err) {
-            // The loader has already bought enough visual stability; never
-            // hold the actual wishlist hostage to a slow product image.
+            // Best effort only: product media must never strand the panel.
         }
     }
 
