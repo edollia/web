@@ -24,32 +24,32 @@ document.addEventListener("DOMContentLoaded", async function() {
         telegram_card_video_path: '',
         x_url: 'https://x.com/pawswirl',
         x_username: 'pawswirl',
-        x_enabled: true,
+        x_enabled: false,
         x_card_video_url: '',
         x_card_video_path: '',
         tiktok_url: 'https://www.tiktok.com/@pawswirl',
         tiktok_username: 'pawswirl',
-        tiktok_enabled: true,
+        tiktok_enabled: false,
         tiktok_card_video_url: '',
         tiktok_card_video_path: '',
         twitch_url: 'https://www.twitch.tv/pawswirl',
         twitch_username: 'pawswirl',
-        twitch_enabled: true,
+        twitch_enabled: false,
         twitch_card_video_url: '',
         twitch_card_video_path: '',
         discord_url: 'https://discord.com/',
         discord_username: 'pawswirl',
-        discord_enabled: true,
+        discord_enabled: false,
         discord_card_video_url: '',
         discord_card_video_path: '',
         onlyfans_url: 'https://onlyfans.com/pawswirl',
         onlyfans_username: 'pawswirl',
-        onlyfans_enabled: true,
+        onlyfans_enabled: false,
         onlyfans_card_video_url: '',
         onlyfans_card_video_path: '',
         spotify_url: 'https://open.spotify.com/user/pawswirl',
         spotify_username: 'pawswirl',
-        spotify_enabled: true,
+        spotify_enabled: false,
         spotify_card_video_url: '',
         spotify_card_video_path: '',
         social_card_order: [...DEFAULT_SOCIAL_CARD_ORDER],
@@ -66,10 +66,10 @@ document.addEventListener("DOMContentLoaded", async function() {
         entrance_mode: 'paw',
         drawings_enabled: true,
         questions_enabled: true,
-        rooms_enabled: true,
-        seo_title: 'Lia | doll.gg',
-        seo_description: "Lia's little space for messages, posts, socials and more.",
-        site_tagline: "Lia's little space for messages, posts, socials and more."
+        rooms_enabled: false,
+        seo_title: 'Lia ⋆౨ৎ˚⟡',
+        seo_description: "Lia's little space",
+        site_tagline: "Lia's little space."
     };
     let siteLinkSettings = { ...DEFAULT_LINK_SETTINGS };
     let applySiteLinkSettingsToDom = null;
@@ -2081,7 +2081,33 @@ document.addEventListener("DOMContentLoaded", async function() {
     const tiktokOption = document.getElementById('tiktok-option');
     const twitchOption = document.getElementById('twitch-option');
     const discordOption = document.getElementById('discord-option');
-    const onlyfansOption = document.getElementById('onlyfans-option');
+    function createOnlyFansOption() {
+        if (!socialLinksPanel) return null;
+        const option = document.createElement('a');
+        option.id = 'onlyfans-option';
+        option.className = 'social-link-card site-link-hidden';
+        option.target = '_blank';
+        option.rel = 'noopener noreferrer';
+        option.tabIndex = -1;
+        option.setAttribute('aria-label', 'Open OnlyFans');
+        option.setAttribute('aria-hidden', 'true');
+        option.innerHTML = `
+            <span class="social-link-icon" aria-hidden="true">
+                <img src="onlyfans-social-v4.png" alt="" width="1160" height="1160" decoding="async">
+            </span>
+            <span class="social-link-copy">
+                <strong>onlyfans</strong>
+                <small hidden></small>
+            </span>
+            <span class="social-link-arrow" aria-hidden="true">
+                <svg viewBox="0 0 16 16" focusable="false">
+                    <path d="M4 12 12 4M7 4h5v5"></path>
+                </svg>
+            </span>`;
+        socialLinksPanel.append(option);
+        return option;
+    }
+    const onlyfansOption = document.getElementById('onlyfans-option') || createOnlyFansOption();
     const spotifyOption = document.getElementById('spotify-option');
     const supportMenuButton = document.getElementById('support-menu-button');
     const actionMenuButton = document.getElementById('action-menu-button');

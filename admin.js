@@ -53,32 +53,32 @@ const DEFAULT_LINK_SETTINGS = {
     telegram_card_video_path: '',
     x_url: 'https://x.com/pawswirl',
     x_username: 'pawswirl',
-    x_enabled: true,
+    x_enabled: false,
     x_card_video_url: '',
     x_card_video_path: '',
     tiktok_url: 'https://www.tiktok.com/@pawswirl',
     tiktok_username: 'pawswirl',
-    tiktok_enabled: true,
+    tiktok_enabled: false,
     tiktok_card_video_url: '',
     tiktok_card_video_path: '',
     twitch_url: 'https://www.twitch.tv/pawswirl',
     twitch_username: 'pawswirl',
-    twitch_enabled: true,
+    twitch_enabled: false,
     twitch_card_video_url: '',
     twitch_card_video_path: '',
     discord_url: 'https://discord.com/',
     discord_username: 'pawswirl',
-    discord_enabled: true,
+    discord_enabled: false,
     discord_card_video_url: '',
     discord_card_video_path: '',
     onlyfans_url: 'https://onlyfans.com/pawswirl',
     onlyfans_username: 'pawswirl',
-    onlyfans_enabled: true,
+    onlyfans_enabled: false,
     onlyfans_card_video_url: '',
     onlyfans_card_video_path: '',
     spotify_url: 'https://open.spotify.com/user/pawswirl',
     spotify_username: 'pawswirl',
-    spotify_enabled: true,
+    spotify_enabled: false,
     spotify_card_video_url: '',
     spotify_card_video_path: '',
     social_card_order: [...DEFAULT_SOCIAL_CARD_ORDER],
@@ -95,10 +95,10 @@ const DEFAULT_LINK_SETTINGS = {
     entrance_mode: 'paw',
     drawings_enabled: true,
     questions_enabled: true,
-    rooms_enabled: true,
-    seo_title: 'Lia | doll.gg',
-    seo_description: "Lia's little space for messages, posts, socials and more.",
-    site_tagline: "Lia's little space for messages, posts, socials and more."
+    rooms_enabled: false,
+    seo_title: 'Lia ⋆౨ৎ˚⟡',
+    seo_description: "Lia's little space",
+    site_tagline: "Lia's little space."
 };
 
 const adminClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -1255,13 +1255,13 @@ function renderStaticSeoStatus(settings = getDraftLinkSettings()) {
         ['schema description', staticSeoSnapshot.structuredDescription, settings.seo_description]
     ];
     const allMatch = rows.every(([, actual, expected]) => actual === expected);
-    if (els.staticSeoState) els.staticSeoState.textContent = allMatch ? 'crawler copy matches' : 'live only · deploy needed';
+    if (els.staticSeoState) els.staticSeoState.textContent = allMatch ? 'crawler copy matches' : 'GitHub publish needed';
     els.staticSeoRows.innerHTML = rows.map(([label, actual, expected]) => {
         const ok = actual === expected;
         return `
             <div class="admin-health-row admin-static-row ${ok ? 'is-ok' : 'is-bad'}">
                 <span>${escapeHtml(label)}</span>
-                <strong>${ok ? 'ok' : 'deploy'}</strong>
+                <strong>${ok ? 'ok' : 'push'}</strong>
                 <small>${escapeHtml(actual || 'missing')}</small>
             </div>
         `;
