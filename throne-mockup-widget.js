@@ -13,6 +13,11 @@
     const IMAGE_PRELOAD_CONCURRENCY = 3;
     const IMAGE_PRELOAD_BUDGET_MS = 1100;
     const IMAGE_PROBE_TIMEOUT_MS = 6000;
+    const IMAGE_EAGER_COUNT = PAGE_SIZE;
+    const IMAGE_HYDRATE_CONCURRENCY = 3;
+    const IMAGE_HYDRATE_MARGIN_PX = 180;
+    const IMAGE_HYDRATE_TIMEOUT_MS = 8000;
+    const IMAGE_RELEASE_DELAY_MS = 480;
     const SWIPE_HINT_INITIAL_DELAY_MS = 3000;
     const SWIPE_HINT_FIRST_VISIBLE_MS = 3000;
     const SWIPE_HINT_REPEAT_DELAY_MS = 5000;
@@ -58,7 +63,20 @@
     let previewOverlay = null;
     let previewOpenCount = 0;
     let previewItemId = null;
+    let previewImageGeneration = 0;
+    let previewImageReleaseTimer = 0;
     let marqueeRuleCounter = 0;
+    let imageProbeRun = 0;
+    let imageHydrationRun = 0;
+    let imageHydrationObserver = null;
+    let imageHydrationRoot = null;
+    let imageHydrationFallbackHandler = null;
+    let imageReleaseTimer = 0;
+    let itemsLoadRun = 0;
+    let itemsFetchPromise = null;
+    const imageHydrationQueue = [];
+    const imageHydrationQueued = new Set();
+    const activeImageHydrations = new Map();
 
     function formatPrice(cents) {
         if (typeof cents !== 'number' || !cents) return '';
@@ -121,14 +139,21 @@
     // lay out at zero height and visibly re-balance the instant the photos
     // decode — that split-second "the wishlist reorganizes itself" jump.
     const imageDims = new Map();
-    const imageProbePromises = new Map();
+    const imageProbeRequests = new Map();
+
+    function cancelImageDimensionProbes() {
+        imageProbeRun += 1;
+        imageProbeRequests.forEach(request => request.cancel());
+        imageProbeRequests.clear();
+    }
 
     function probeImageDimensions(url, priority = 'low') {
         if (imageDims.has(url)) return Promise.resolve();
-        const existingProbe = imageProbePromises.get(url);
-        if (existingProbe) return existingProbe;
+        const existingProbe = imageProbeRequests.get(url);
+        if (existingProbe) return existingProbe.promise;
 
-        const probe = new Promise(resolve => {
+        let cancel = () => {};
+        const promise = new Promise(resolve => {
             const image = new Image();
             let settled = false;
             let timeoutId = 0;
@@ -139,13 +164,13 @@
             // the rest of the queue remains deliberately low priority.
             try { image.fetchPriority = priority; } catch (err) {}
 
-            const finish = () => {
+            const finish = (rememberDimensions = true) => {
                 if (settled) return;
                 settled = true;
                 window.clearTimeout(timeoutId);
                 image.onload = null;
                 image.onerror = null;
-                if (image.naturalWidth && image.naturalHeight) {
+                if (rememberDimensions && image.naturalWidth && image.naturalHeight) {
                     imageDims.set(url, { w: image.naturalWidth, h: image.naturalHeight });
                 }
                 resolve();
@@ -156,27 +181,36 @@
             timeoutId = window.setTimeout(() => {
                 // Release a stalled worker so one broken CDN response cannot
                 // prevent every later wishlist photo from being measured.
-                image.src = '';
-                finish();
+                image.removeAttribute('src');
+                finish(false);
             }, IMAGE_PROBE_TIMEOUT_MS);
+            cancel = () => {
+                image.removeAttribute('src');
+                finish(false);
+            };
             image.src = url;
             if (image.complete) finish();
         });
-        imageProbePromises.set(url, probe);
-        void probe.then(() => {
-            if (imageProbePromises.get(url) === probe) imageProbePromises.delete(url);
+        const request = { promise, cancel };
+        imageProbeRequests.set(url, request);
+        void promise.then(() => {
+            if (imageProbeRequests.get(url) === request) imageProbeRequests.delete(url);
         });
-        return probe;
+        return promise;
     }
 
     async function preloadVisibleItemImages(list) {
-        // Masonry needs each photo's natural ratio before it paints or its
-        // two columns visibly rebalance. Keep that measurement pass, but run
-        // it as a small queue instead of starting as many as 30 full image
-        // requests in one burst. The browser reuses these responses for the
-        // real lazy <img> elements rendered below.
+        // Masonry needs the initially-visible photos' natural ratios before
+        // it paints or its two columns visibly rebalance. Only measure the
+        // first page: everything after it stays URL-only until it approaches
+        // the viewport (setupProgressiveItemImages below). The previous queue
+        // kept walking all 30 URLs after the short UI timeout had elapsed,
+        // which made it progressive in appearance but not on the network.
+        cancelImageDimensionProbes();
+        const run = imageProbeRun;
         const urls = Array.from(new Set(
             list
+                .slice(0, IMAGE_EAGER_COUNT)
                 .map(item => String(item?.image_url || '').trim())
                 .filter(url => url && !imageDims.has(url))
         ));
@@ -184,19 +218,17 @@
 
         let cursor = 0;
         const runWorker = async () => {
-            while (cursor < urls.length) {
+            while (run === imageProbeRun && cursor < urls.length) {
                 const index = cursor++;
-                await probeImageDimensions(urls[index], index < PAGE_SIZE ? 'high' : 'low');
+                await probeImageDimensions(urls[index], 'high');
             }
         };
         const workerCount = Math.min(IMAGE_PRELOAD_CONCURRENCY, urls.length);
         const queue = Promise.all(Array.from({ length: workerCount }, runWorker));
 
         try {
-            // Preserve the existing short loader ceiling. If the queue is
-            // still running after it, rendering proceeds while the SAME
-            // three workers continue filling the cache progressively; no
-            // second 30-request fan-out is created by this code.
+            // Preserve the existing short loader ceiling. At most the four
+            // initially visible requests can continue after it.
             await withTimeout(queue, IMAGE_PRELOAD_BUDGET_MS);
         } catch (err) {
             // Best effort only: product media must never strand the panel.
@@ -210,6 +242,243 @@
     function imageDimsAttr(url) {
         const dims = imageDims.get(String(url || ''));
         return dims ? ` width="${dims.w}" height="${dims.h}"` : '';
+    }
+
+    function imageRatioStyle(url) {
+        const dims = imageDims.get(String(url || ''));
+        return dims ? ` style="--dwl-image-ratio:${dims.w} / ${dims.h}"` : '';
+    }
+
+    function isWishlistPanelVisible() {
+        return Boolean(panel && (panelOpening || panel.classList.contains('active')));
+    }
+
+    function clearImageReleaseTimer() {
+        if (!imageReleaseTimer) return;
+        window.clearTimeout(imageReleaseTimer);
+        imageReleaseTimer = 0;
+    }
+
+    function beginProductImageHydration(img, run, url) {
+        const timeoutId = window.setTimeout(() => {
+            // A CDN request can neither resolve nor reject on a broken mobile
+            // connection. Treat that exactly like an image error so it cannot
+            // occupy one of the three hydration slots forever.
+            finishProductImageError(img);
+        }, IMAGE_HYDRATE_TIMEOUT_MS);
+        activeImageHydrations.set(img, { run, url, timeoutId });
+        img.dataset.dwlLoading = '1';
+    }
+
+    function drainProductImageQueue() {
+        const run = imageHydrationRun;
+        while (activeImageHydrations.size < IMAGE_HYDRATE_CONCURRENCY && imageHydrationQueue.length) {
+            const entry = imageHydrationQueue.shift();
+            imageHydrationQueued.delete(entry.img);
+            const { img, url } = entry;
+            if (entry.run !== run
+                || !isWishlistPanelVisible()
+                || !img.isConnected
+                || img.dataset.dwlNear !== 'true'
+                || img.dataset.src !== url
+                || img.dataset.dwlFailed === url
+                || img.hasAttribute('src')) continue;
+
+            beginProductImageHydration(img, run, url);
+            img.loading = 'eager';
+            try { img.fetchPriority = 'low'; } catch (err) {}
+            img.src = url;
+
+            // A memory-cache hit may be complete before the load event can
+            // run. Settle it explicitly without waiting for another task.
+            if (img.complete) {
+                if (img.naturalWidth) finishProductImageLoad(img);
+                else finishProductImageError(img);
+            }
+        }
+    }
+
+    function finishProductImageLoad(img) {
+        const request = activeImageHydrations.get(img);
+        if (!request || request.run !== imageHydrationRun) return;
+        window.clearTimeout(request.timeoutId);
+
+        if (img.naturalWidth && img.naturalHeight) {
+            imageDims.set(request.url, { w: img.naturalWidth, h: img.naturalHeight });
+            img.width = img.naturalWidth;
+            img.height = img.naturalHeight;
+            const media = img.closest('.doll-wishlist-media');
+            media?.style.setProperty('--dwl-image-ratio', `${img.naturalWidth} / ${img.naturalHeight}`);
+            media?.classList.remove('dwl-media-pending', 'dwl-media-error');
+        }
+        delete img.dataset.dwlLoading;
+        activeImageHydrations.delete(img);
+        drainProductImageQueue();
+    }
+
+    function finishProductImageError(img) {
+        const request = activeImageHydrations.get(img);
+        if (!request || request.run !== imageHydrationRun) return;
+        window.clearTimeout(request.timeoutId);
+
+        img.dataset.dwlFailed = request.url;
+        delete img.dataset.dwlLoading;
+        img.removeAttribute('src');
+        img.closest('.doll-wishlist-media')?.classList.add('dwl-media-pending', 'dwl-media-error');
+        activeImageHydrations.delete(img);
+        drainProductImageQueue();
+    }
+
+    function queueProductImage(img) {
+        const url = String(img?.dataset?.src || '').trim();
+        if (!url
+            || !isWishlistPanelVisible()
+            || img.dataset.dwlNear !== 'true'
+            || img.hasAttribute('src')
+            || img.dataset.dwlFailed === url
+            || imageHydrationQueued.has(img)
+            || activeImageHydrations.has(img)) return;
+
+        imageHydrationQueued.add(img);
+        imageHydrationQueue.push({ img, url, run: imageHydrationRun });
+        drainProductImageQueue();
+    }
+
+    function releaseOffscreenProductImage(img) {
+        if (!img) return;
+        imageHydrationQueued.delete(img);
+        const request = activeImageHydrations.get(img);
+        if (request) {
+            window.clearTimeout(request.timeoutId);
+            activeImageHydrations.delete(img);
+        }
+        if (img.hasAttribute('src')) img.removeAttribute('src');
+        img.removeAttribute('fetchpriority');
+        img.loading = 'lazy';
+        delete img.dataset.dwlLoading;
+        img.closest('.doll-wishlist-media')?.classList.add('dwl-media-pending');
+        drainProductImageQueue();
+    }
+
+    function disconnectProductImageObserver() {
+        imageHydrationObserver?.disconnect();
+        imageHydrationObserver = null;
+        if (imageHydrationRoot && imageHydrationFallbackHandler) {
+            imageHydrationRoot.removeEventListener('scroll', imageHydrationFallbackHandler);
+            window.removeEventListener('resize', imageHydrationFallbackHandler);
+        }
+        imageHydrationRoot = null;
+        imageHydrationFallbackHandler = null;
+    }
+
+    function stopProgressiveItemImages({ releaseLoaded = false } = {}) {
+        imageHydrationRun += 1;
+        disconnectProductImageObserver();
+        imageHydrationQueue.length = 0;
+        imageHydrationQueued.clear();
+
+        activeImageHydrations.forEach((request, img) => {
+            // Removing src is the only browser-level cancellation available
+            // for an <img>; browsers may still finish a response already in
+            // flight, but it will no longer decode or paint into this panel.
+            window.clearTimeout(request.timeoutId);
+            img.removeAttribute('src');
+            img.removeAttribute('fetchpriority');
+            img.loading = 'lazy';
+            delete img.dataset.dwlLoading;
+            img.closest('.doll-wishlist-media')?.classList.add('dwl-media-pending');
+        });
+        activeImageHydrations.clear();
+        panel?.querySelectorAll('.doll-wishlist-product-img[data-dwl-near]').forEach(img => {
+            delete img.dataset.dwlNear;
+        });
+
+        if (releaseLoaded) {
+            panel?.querySelectorAll('.doll-wishlist-product-img[src]').forEach(img => {
+                img.removeAttribute('src');
+                img.removeAttribute('fetchpriority');
+                img.loading = 'lazy';
+                img.closest('.doll-wishlist-media')?.classList.add('dwl-media-pending');
+            });
+        }
+    }
+
+    function scheduleProductImageRelease() {
+        clearImageReleaseTimer();
+        imageReleaseTimer = window.setTimeout(() => {
+            imageReleaseTimer = 0;
+            if (!isWishlistPanelVisible()) stopProgressiveItemImages({ releaseLoaded: true });
+        }, IMAGE_RELEASE_DELAY_MS);
+    }
+
+    function setupProgressiveItemImages(body) {
+        stopProgressiveItemImages();
+        clearImageReleaseTimer();
+        const run = imageHydrationRun;
+        const productImages = Array.from(body.querySelectorAll('.doll-wishlist-product-img[data-src]'));
+        if (!productImages.length) return;
+
+        productImages.forEach(img => {
+            img.addEventListener('load', () => finishProductImageLoad(img));
+            img.addEventListener('error', () => finishProductImageError(img));
+            if (!img.hasAttribute('src')) return;
+
+            const url = String(img.dataset.src || img.currentSrc || img.src || '').trim();
+            beginProductImageHydration(img, run, url);
+            if (img.complete) {
+                if (img.naturalWidth) finishProductImageLoad(img);
+                else finishProductImageError(img);
+            }
+        });
+
+        imageHydrationRoot = wishlistViewMode === 'grid'
+            ? body.querySelector('.doll-wishlist-scroll')
+            : body;
+        if (!imageHydrationRoot) return;
+
+        if (typeof window.IntersectionObserver === 'function') {
+            imageHydrationObserver = new IntersectionObserver(entries => {
+                entries.forEach(entry => {
+                    const img = entry.target;
+                    if (entry.isIntersecting) {
+                        img.dataset.dwlNear = 'true';
+                        queueProductImage(img);
+                        return;
+                    }
+                    img.dataset.dwlNear = 'false';
+                    releaseOffscreenProductImage(img);
+                });
+            }, {
+                root: imageHydrationRoot,
+                rootMargin: `${IMAGE_HYDRATE_MARGIN_PX}px`,
+                threshold: 0.01,
+            });
+            // Keep observing after a load: when a card moves well outside the
+            // scroll root, release its decoded original and rehydrate it only
+            // if the visitor comes back. This bounds a full 30-card traversal.
+            productImages.forEach(img => imageHydrationObserver.observe(img));
+            return;
+        }
+
+        // Old Safari fallback: scan only the nearby portion on scroll rather
+        // than degrading to assigning every URL at once.
+        imageHydrationFallbackHandler = () => {
+            if (run !== imageHydrationRun || !imageHydrationRoot) return;
+            const rootRect = imageHydrationRoot.getBoundingClientRect();
+            productImages.forEach(img => {
+                const rect = img.getBoundingClientRect();
+                const nearby = rect.bottom >= rootRect.top - IMAGE_HYDRATE_MARGIN_PX
+                    && rect.top <= rootRect.bottom + IMAGE_HYDRATE_MARGIN_PX
+                    && rect.right >= rootRect.left - IMAGE_HYDRATE_MARGIN_PX
+                    && rect.left <= rootRect.right + IMAGE_HYDRATE_MARGIN_PX;
+                img.dataset.dwlNear = nearby ? 'true' : 'false';
+                if (nearby) queueProductImage(img);
+                else releaseOffscreenProductImage(img);
+            });
+        };
+        imageHydrationRoot.addEventListener('scroll', imageHydrationFallbackHandler, { passive: true });
+        window.addEventListener('resize', imageHydrationFallbackHandler, { passive: true });
+        imageHydrationFallbackHandler();
     }
 
     function injectStyles() {
@@ -620,7 +889,19 @@
                 object-fit: cover;
                 object-position: center;
                 display: block;
-                transition: transform 0.36s cubic-bezier(0.2, 0.82, 0.24, 1), filter 0.3s ease;
+                opacity: 1;
+                transition: transform 0.36s cubic-bezier(0.2, 0.82, 0.24, 1), filter 0.3s ease, opacity 0.2s ease;
+            }
+            .doll-wishlist-media.dwl-media-pending {
+                aspect-ratio: var(--dwl-image-ratio, 11 / 8);
+            }
+            .doll-wishlist-media.dwl-media-pending img {
+                opacity: 0;
+            }
+            .doll-wishlist-media.dwl-media-error {
+                background:
+                    radial-gradient(circle at 48% 38%, rgba(255, 255, 255, 0.92), transparent 48%),
+                    rgba(255, 214, 235, 0.72);
             }
 
             /* Title and price are a plain, tight text stack — two lines,
@@ -884,6 +1165,13 @@
             .doll-wishlist-item.dwl-pin .doll-wishlist-media {
                 aspect-ratio: auto;
             }
+            .doll-wishlist-item.dwl-pin .doll-wishlist-media.dwl-media-pending {
+                aspect-ratio: var(--dwl-image-ratio, var(--dwl-fallback-image-ratio, 4 / 5));
+                max-height: 220px;
+            }
+            .doll-wishlist-item.dwl-pin .doll-wishlist-media.dwl-media-pending img {
+                height: 100%;
+            }
             .doll-wishlist-item.dwl-pin .doll-wishlist-media img {
                 height: auto;
                 max-height: 220px;
@@ -903,10 +1191,10 @@
                 pointer-events: none;
                 z-index: 5;
             }
-            .doll-wishlist-masonry .doll-wishlist-item.dwl-pin:nth-child(4n+1) { --dwl-tilt: -1.35deg; }
-            .doll-wishlist-masonry .doll-wishlist-item.dwl-pin:nth-child(4n+2) { --dwl-tilt: 1.1deg; }
-            .doll-wishlist-masonry .doll-wishlist-item.dwl-pin:nth-child(4n+3) { --dwl-tilt: 1.35deg; }
-            .doll-wishlist-masonry .doll-wishlist-item.dwl-pin:nth-child(4n+4) { --dwl-tilt: -1.1deg; }
+            .doll-wishlist-masonry .doll-wishlist-item.dwl-pin:nth-child(4n+1) { --dwl-tilt: -1.35deg; --dwl-fallback-image-ratio: 4 / 5; }
+            .doll-wishlist-masonry .doll-wishlist-item.dwl-pin:nth-child(4n+2) { --dwl-tilt: 1.1deg; --dwl-fallback-image-ratio: 7 / 8; }
+            .doll-wishlist-masonry .doll-wishlist-item.dwl-pin:nth-child(4n+3) { --dwl-tilt: 1.35deg; --dwl-fallback-image-ratio: 3 / 4; }
+            .doll-wishlist-masonry .doll-wishlist-item.dwl-pin:nth-child(4n+4) { --dwl-tilt: -1.1deg; --dwl-fallback-image-ratio: 1 / 1; }
             .doll-wishlist-more-card.dwl-pin {
                 break-inside: avoid;
                 margin-bottom: 16px;
@@ -1815,16 +2103,49 @@
         return previewOverlay;
     }
 
+    function releasePreviewImage() {
+        window.clearTimeout(previewImageReleaseTimer);
+        previewImageReleaseTimer = 0;
+        previewImageGeneration += 1;
+        const previewImg = previewOverlay?.querySelector('.doll-wishlist-preview-img');
+        if (!previewImg) return;
+        previewImg.onload = null;
+        previewImg.onerror = null;
+        previewImg.classList.remove('is-loaded');
+        previewImg.removeAttribute('src');
+    }
+
+    function schedulePreviewImageRelease() {
+        window.clearTimeout(previewImageReleaseTimer);
+        const releaseGeneration = ++previewImageGeneration;
+        const previewImg = previewOverlay?.querySelector('.doll-wishlist-preview-img');
+        if (!previewImg) return;
+        // Keep the current pixels for the 280ms overlay fade, but detach its
+        // handlers immediately so a late response cannot revive a closed view.
+        previewImg.onload = null;
+        previewImg.onerror = null;
+        previewImageReleaseTimer = window.setTimeout(() => {
+            if (releaseGeneration !== previewImageGeneration) return;
+            previewImageReleaseTimer = 0;
+            previewImg.classList.remove('is-loaded');
+            previewImg.removeAttribute('src');
+        }, 320);
+    }
+
     function openPreview(item) {
         if (!item) return;
         const overlay = ensurePreviewOverlay();
+        releasePreviewImage();
+        const imageGeneration = previewImageGeneration;
         previewItemId = item.throne_item_id;
         const fullLabel = String(item.name || '').trim() || 'wishlist item';
         // Reveal the photo only once its OWN pixels have decoded, so a newly
         // opened item never flashes the previously-previewed photo first.
         const previewImg = overlay.querySelector('.doll-wishlist-preview-img');
         previewImg.classList.remove('is-loaded');
-        previewImg.onload = () => previewImg.classList.add('is-loaded');
+        previewImg.onload = () => {
+            if (imageGeneration === previewImageGeneration) previewImg.classList.add('is-loaded');
+        };
         previewImg.src = item.image_url || '';
         if (previewImg.complete && previewImg.naturalWidth) previewImg.classList.add('is-loaded');
         overlay.querySelector('.doll-wishlist-preview-name').textContent = fullLabel;
@@ -1863,9 +2184,14 @@
     }
 
     function closePreview() {
-        if (!previewOverlay || !previewOverlay.classList.contains('active')) return;
+        if (!previewOverlay) return;
+        const wasActive = previewOverlay.classList.contains('active');
         previewOverlay.classList.remove('active');
         previewOverlay.setAttribute('aria-hidden', 'true');
+        // A full-size product image can be much larger than its thumbnail.
+        // Preserve it only long enough for the visible close transition.
+        if (wasActive) schedulePreviewImageRelease();
+        else if (!previewImageReleaseTimer) releasePreviewImage();
         previewItemId = null;
     }
 
@@ -1892,7 +2218,7 @@
                 <span class="doll-wishlist-count"><b>0 items</b><small>+ fees at checkout</small></span>
                 <span class="doll-wishlist-checkout-wrap">
                     <button type="button" class="doll-wishlist-checkout" disabled>checkout</button>
-                    <img src="checkout.png" class="doll-wishlist-checkout-art" alt="" aria-hidden="true" draggable="false" decoding="async">
+                    <img data-checkout-src="site-images/checkout.png" class="doll-wishlist-checkout-art" alt="" aria-hidden="true" draggable="false" decoding="async" width="320" height="320">
                 </span>
             </div>
         `;
@@ -2307,7 +2633,7 @@
         // final page can ever come up short (every earlier page is a full
         // PAGE_SIZE); if it lands on an odd count, CSS makes its last tile
         // span the full row instead of leaving a blank cell beside it.
-        const slots = [...list, null];
+        const slots = [...list.map((item, index) => ({ item, index })), { item: null, index: list.length }];
         const pageItems = [];
         for (let index = 0; index < slots.length; index += PAGE_SIZE) {
             pageItems.push(slots.slice(index, index + PAGE_SIZE));
@@ -2315,7 +2641,7 @@
 
         return pageItems.map(page => `
             <div class="doll-wishlist-page">
-                ${page.map(item => item ? cardMarkup(item, 'grid') : seeMoreMarkup('grid')).join('')}
+                ${page.map(slot => slot.item ? cardMarkup(slot.item, 'grid', slot.index) : seeMoreMarkup('grid')).join('')}
             </div>
         `).join('');
     }
@@ -2326,11 +2652,11 @@
     // marquee behavior is identical in all three — only the container flow
     // (and the card's own row/pin CSS modifier) differs.
     function listMarkup(list) {
-        return `<div class="doll-wishlist-list">${list.map(item => cardMarkup(item, 'list')).join('')}${seeMoreMarkup('list')}</div>`;
+        return `<div class="doll-wishlist-list">${list.map((item, index) => cardMarkup(item, 'list', index)).join('')}${seeMoreMarkup('list')}</div>`;
     }
 
     function masonryMarkup(list) {
-        return `<div class="doll-wishlist-masonry">${list.map(item => cardMarkup(item, 'masonry')).join('')}${seeMoreMarkup('masonry', list.length)}</div>`;
+        return `<div class="doll-wishlist-masonry">${list.map((item, index) => cardMarkup(item, 'masonry', index)).join('')}${seeMoreMarkup('masonry', list.length)}</div>`;
     }
 
     function seeMoreMarkup(mode = wishlistViewMode, featuredCount = items.length) {
@@ -2348,17 +2674,21 @@
         </a>`;
     }
 
-    function cardMarkup(item, mode = wishlistViewMode) {
+    function cardMarkup(item, mode = wishlistViewMode, itemIndex = 0) {
         const selected = selectedIds.has(item.throne_item_id);
         const fullLabel = String(item.name || '').trim() || 'wishlist item';
         const label = capName(fullLabel);
         const modeClass = mode === 'list' ? ' dwl-row' : mode === 'masonry' ? ' dwl-pin' : '';
+        const imageUrl = String(item.image_url || '').trim();
+        const eager = itemIndex < IMAGE_EAGER_COUNT;
+        const sourceAttr = eager && imageUrl ? ` src="${escapeHtml(imageUrl)}"` : '';
+        const priorityAttr = eager ? ' loading="eager" fetchpriority="high"' : ' loading="lazy"';
         return `
         <article class="doll-wishlist-item${modeClass}${selected ? ' selected' : ''}" data-item-id="${escapeHtml(item.throne_item_id)}">
             <div class="dwl-glow" aria-hidden="true"></div>
             <div class="dwl-burst-clip" aria-hidden="true"><div class="dwl-burst"></div></div>
-            <div class="doll-wishlist-media">
-                <img src="${escapeHtml(item.image_url)}" alt="" loading="lazy"${imageDimsAttr(item.image_url)} onerror="this.onerror=null;this.removeAttribute('src');this.parentNode.style.background='rgba(255,214,235,0.6)';">
+            <div class="doll-wishlist-media dwl-media-pending"${imageRatioStyle(imageUrl)}>
+                <img class="doll-wishlist-product-img"${sourceAttr} data-src="${escapeHtml(imageUrl)}" alt="" decoding="async"${priorityAttr}${imageDimsAttr(imageUrl)}>
             </div>
             <div class="doll-wishlist-info">
                 <p class="doll-wishlist-name" title="${escapeHtml(fullLabel)}">${escapeHtml(label)}</p>
@@ -2373,6 +2703,7 @@
     function renderBody() {
         if (!panel) return;
         const body = panel.querySelector('.doll-wishlist-body');
+        stopProgressiveItemImages();
         window.dollClearScrollMotion?.(body.closest('.doll-wishlist-scroll-shell'));
         const readyScrollable = loadState === 'ready'
             && (wishlistViewMode === 'list' || wishlistViewMode === 'masonry');
@@ -2431,6 +2762,8 @@
         } else {
             body.innerHTML = `<div class="doll-wishlist-scroll">${pagesMarkup(items)}</div>`;
         }
+
+        setupProgressiveItemImages(body);
 
         const scroll = body.querySelector('.doll-wishlist-scroll');
         scroll?.addEventListener('scroll', onScroll, { passive: true });
@@ -2685,22 +3018,15 @@
         }
     }
 
-    async function loadItems({ bodyPrepared = false } = {}) {
-        loadState = 'loading';
-        if (!bodyPrepared) renderBody();
+    function fetchWishlistItemsShared() {
+        if (itemsFetchPromise) return itemsFetchPromise;
 
-        // script.js lazy-loads the Supabase client after first paint, so it
-        // may not exist yet if the widget is opened right away — wait a bit
-        // rather than treating "not ready yet" as a hard failure.
-        const client = await waitForSupabaseClient(30);
-        if (!client) {
-            loadState = 'failed';
-            renderBody();
-            window.setTimeout(fallbackToLegacy, 900);
-            return;
-        }
+        const request = (async () => {
+            // script.js lazy-loads the Supabase client after first paint, so
+            // the first opener may need to wait briefly for it.
+            const client = await waitForSupabaseClient(30);
+            if (!client) throw new Error('supabase client unavailable');
 
-        try {
             const [itemsResult] = await Promise.all([
                 withTimeout(
                     client.from('wishlist_items')
@@ -2715,18 +3041,54 @@
             ]);
             const { data, error } = itemsResult;
             if (error) throw error;
-            items = Array.isArray(data) ? data : [];
-            await preloadVisibleItemImages(items);
+            return Array.isArray(data) ? data : [];
+        })();
+
+        // Closing and quickly reopening while this request is pending now
+        // attaches to the same promise instead of issuing a second Supabase
+        // query. Once it settles, a later explicit refresh can start anew.
+        const sharedRequest = request.finally(() => {
+            if (itemsFetchPromise === sharedRequest) itemsFetchPromise = null;
+        });
+        itemsFetchPromise = sharedRequest;
+        return sharedRequest;
+    }
+
+    async function loadItems({ bodyPrepared = false } = {}) {
+        const run = ++itemsLoadRun;
+        cancelImageDimensionProbes();
+        loadState = 'loading';
+        if (!bodyPrepared) renderBody();
+
+        try {
+            const nextItems = await fetchWishlistItemsShared();
+            if (run !== itemsLoadRun) return;
+            items = nextItems;
+            // The data itself is now cached even while the optional first-
+            // page dimension pass is still finishing. A close/reopen during
+            // that short pass can render these cached cards immediately and
+            // must not start a second Supabase request.
             loadState = 'ready';
-            renderBody();
-            renderFoot();
-            if (!items.length) {
-                window.setTimeout(fallbackToLegacy, 900);
+            if (isWishlistPanelVisible()) await preloadVisibleItemImages(items);
+            if (run !== itemsLoadRun) return;
+            if (isWishlistPanelVisible()) {
+                renderBody();
+                renderFoot();
+            }
+            if (!items.length && isWishlistPanelVisible()) {
+                window.setTimeout(() => {
+                    if (isWishlistPanelVisible()) fallbackToLegacy();
+                }, 900);
             }
         } catch (err) {
+            if (run !== itemsLoadRun) return;
             loadState = 'failed';
-            renderBody();
-            window.setTimeout(fallbackToLegacy, 900);
+            if (isWishlistPanelVisible()) {
+                renderBody();
+                window.setTimeout(() => {
+                    if (isWishlistPanelVisible()) fallbackToLegacy();
+                }, 900);
+            }
         }
     }
 
@@ -2794,6 +3156,24 @@
         if (!el) return;
         if (hasConflictingLayer()) return;
         if (el.classList.contains('active') || panelOpening) return;
+        clearImageReleaseTimer();
+
+        const checkoutArt = el.querySelector('.doll-wishlist-checkout-art[data-checkout-src]');
+        if (checkoutArt && !checkoutArt.getAttribute('src') && checkoutArt.dataset.checkoutLoadStarted !== 'true') {
+            checkoutArt.dataset.checkoutLoadStarted = 'true';
+            const finishCheckoutArtLoad = () => {
+                checkoutArt.removeEventListener('error', retryCheckoutArtLoad);
+                delete checkoutArt.dataset.checkoutLoadStarted;
+            };
+            const retryCheckoutArtLoad = () => {
+                checkoutArt.removeEventListener('load', finishCheckoutArtLoad);
+                delete checkoutArt.dataset.checkoutLoadStarted;
+                checkoutArt.removeAttribute('src');
+            };
+            checkoutArt.addEventListener('load', finishCheckoutArtLoad, { once: true });
+            checkoutArt.addEventListener('error', retryCheckoutArtLoad, { once: true });
+            checkoutArt.src = checkoutArt.dataset.checkoutSrc;
+        }
 
         panelOpening = true;
         closeOtherContentPanels();
@@ -2823,8 +3203,11 @@
         // Reuse already-fetched items on repeat opens. First opens get one
         // stable paw loader rather than a fake card layout that can morph
         // when the saved view mode arrives from Supabase.
-        const hasCachedItems = loadState === 'ready' && items.length > 0;
-        if (!hasCachedItems) loadState = 'loading';
+        // A successful empty result is cached too. Treating `items.length`
+        // as the cache flag would re-query Supabase on every quick reopen of
+        // a legitimately empty wishlist.
+        const hasCachedResult = loadState === 'ready';
+        if (!hasCachedResult) loadState = 'loading';
         renderBody();
         renderFoot();
         el.classList.add('dwl-measure-open');
@@ -2843,7 +3226,13 @@
             el.setAttribute('aria-hidden', 'false');
             resetSwipeHintSequence();
 
-            if (!hasCachedItems) loadItems({ bodyPrepared: true });
+            if (!hasCachedResult) {
+                loadItems({ bodyPrepared: true });
+            } else if (!items.length) {
+                window.setTimeout(() => {
+                    if (isWishlistPanelVisible()) fallbackToLegacy();
+                }, 900);
+            }
             triggerBackgroundSync();
         });
     }
@@ -2856,6 +3245,8 @@
             panelOpenRaf = 0;
         }
         panelOpening = false;
+        cancelImageDimensionProbes();
+        stopProgressiveItemImages();
         closePreview();
         cancelSwipeHintSequence();
         document.body.classList.remove('has-wishlist-panel-open', 'has-wishlist-selection');
@@ -2873,6 +3264,7 @@
         panel.classList.remove('active');
         panel.setAttribute('aria-hidden', 'true');
         showNoteImage();
+        scheduleProductImageRelease();
     }
 
     document.addEventListener('keydown', event => {

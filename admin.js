@@ -127,12 +127,15 @@ const adminDateFormatter = new Intl.DateTimeFormat(undefined, {
 const ADMIN_FUTURE_DATE_TOLERANCE_MS = 2 * 60 * 1000;
 
 const state = {
-    drawings: [],
-    questions: [],
-    wishlistItems: [],
+    adminListItems: {},
+    adminListTotals: {},
     wishlistItemsAvailable: true,
+    wishlistFeaturedCount: 0,
+    wishlistFirstFeaturedId: '',
+    wishlistLastFeaturedId: '',
     wishlistSyncedAt: null,
     wishlistSearch: '',
+    wishlistLoadedSearch: '',
     linkSettings: { ...DEFAULT_LINK_SETTINGS },
     linkSettingsAvailable: true
 };
@@ -145,12 +148,17 @@ const ADMIN_LIST_PAGINATION = Object.freeze({
     'wishlist-items-list': { pageSize: 20, label: 'wishlist items' }
 });
 const adminListPages = new Map(Object.keys(ADMIN_LIST_PAGINATION).map(listId => [listId, 1]));
+const adminListCommittedPages = new Map(Object.keys(ADMIN_LIST_PAGINATION).map(listId => [listId, 1]));
 const adminListSelections = new Map(
     Object.entries(ADMIN_LIST_PAGINATION)
         .filter(([, config]) => config.selectable)
-        .map(([listId]) => [listId, new Set()])
+        .map(([listId]) => [listId, { ids: new Set(), snapshotCutoff: '' }])
 );
 const adminQuestionDrafts = new Map();
+const adminListLoadTokens = new Map();
+const adminListErrors = new Map();
+let wishlistSearchTimer = null;
+let adminFullLoadGeneration = 0;
 
 const els = {
     gatePanel: document.getElementById('gate-panel'),
@@ -276,10 +284,6 @@ function hasGateAccess() {
     return sessionStorage.getItem('doll_admin_gate') === 'open';
 }
 
-function hasAnswer(question) {
-    return Boolean(question.answer && question.answer.trim());
-}
-
 function parseAdminDate(value) {
     if (!value) return null;
     // The legacy questions/drawings columns return a PostgreSQL timestamp
@@ -370,10 +374,10 @@ function renderShortMeta(item) {
 }
 
 function renderStats() {
-    const pendingDrawings = state.drawings.filter(item => !item.approved).length;
-    const publishedDrawings = state.drawings.filter(item => item.approved).length;
-    const pendingQuestions = state.questions.filter(item => !hasAnswer(item)).length;
-    const publishedQuestions = state.questions.filter(hasAnswer).length;
+    const pendingDrawings = state.adminListTotals['pending-drawings-list'] || 0;
+    const publishedDrawings = state.adminListTotals['published-drawings-list'] || 0;
+    const pendingQuestions = state.adminListTotals['pending-questions-list'] || 0;
+    const publishedQuestions = state.adminListTotals['published-questions-list'] || 0;
     const publicLinkKeys = [...SOCIAL_CARD_KEYS, 'throne'];
     const activeLinks = publicLinkKeys
         .filter(key => state.linkSettings[`${key}_enabled`] !== false).length;
@@ -393,12 +397,7 @@ function emptyMessage(text) {
 }
 
 function getAdminListItems(listId) {
-    if (listId === 'pending-drawings-list') return state.drawings.filter(item => !item.approved);
-    if (listId === 'published-drawings-list') return state.drawings.filter(item => item.approved);
-    if (listId === 'pending-questions-list') return state.questions.filter(item => !hasAnswer(item));
-    if (listId === 'published-questions-list') return state.questions.filter(hasAnswer);
-    if (listId === 'wishlist-items-list') return getVisibleWishlistItems();
-    return [];
+    return state.adminListItems[listId] || [];
 }
 
 function ensureAdminPagination(container) {
@@ -420,13 +419,13 @@ function ensureAdminPagination(container) {
         <button type="button" class="soft" data-page-step="1" aria-label="next ${escapeHtml(config.label)} page">&rarr;</button>
     `;
     container.insertAdjacentElement('afterend', controls);
-    controls.addEventListener('click', event => {
+    controls.addEventListener('click', async event => {
         const button = event.target.closest('button[data-page-step]');
         if (!button || button.disabled) return;
         const step = Number(button.dataset.pageStep);
         if (!Number.isFinite(step)) return;
         adminListPages.set(listId, (adminListPages.get(listId) || 1) + step);
-        renderAdminListById(listId);
+        await loadAdminList(listId);
     });
     return controls;
 }
@@ -437,7 +436,7 @@ function paginateAdminList(list, container) {
     if (!config) return list;
 
     const controls = ensureAdminPagination(container);
-    const totalItems = list.length;
+    const totalItems = state.adminListTotals[listId] || 0;
     const totalPages = Math.max(1, Math.ceil(totalItems / config.pageSize));
     const requestedPage = adminListPages.get(listId) || 1;
     const currentPage = Math.max(1, Math.min(requestedPage, totalPages));
@@ -459,7 +458,7 @@ function paginateAdminList(list, container) {
         }
     }
 
-    return list.slice(start, end);
+    return list;
 }
 
 function renderAdminListById(listId) {
@@ -482,28 +481,23 @@ function renderAdminListById(listId) {
     if (listId === 'wishlist-items-list') renderWishlistItems();
 }
 
-function pruneAdminListSelections(listId, list) {
-    const selected = adminListSelections.get(listId);
-    if (!selected) return;
-    const validIds = new Set(list.map(item => String(item.id)));
-    selected.forEach(id => {
-        if (!validIds.has(id)) selected.delete(id);
-    });
+function isAdminListItemSelected(listId, id) {
+    const selection = adminListSelections.get(listId);
+    if (!selection) return false;
+    return selection.ids.has(String(id));
 }
 
 function renderDrawings(list, container, published) {
-    pruneAdminListSelections(container.id, list);
     const pageItems = paginateAdminList(list, container);
-    if (!list.length) {
+    if (!(state.adminListTotals[container.id] || 0)) {
         container.innerHTML = emptyMessage(published ? 'no posted doods' : 'nothing waiting');
         return;
     }
 
-    const selected = adminListSelections.get(container.id);
     container.innerHTML = pageItems.map(item => `
         <article class="admin-card" data-id="${escapeHtml(item.id)}">
             <label class="admin-select">
-                <input type="checkbox" data-select-id="${escapeHtml(item.id)}"${selected?.has(String(item.id)) ? ' checked' : ''}>
+                <input type="checkbox" data-select-id="${escapeHtml(item.id)}"${isAdminListItemSelected(container.id, item.id) ? ' checked' : ''}>
                 <span></span>
             </label>
             <img src="${getDrawingSrc(item.imageData)}" alt="" loading="lazy" decoding="async">
@@ -520,7 +514,7 @@ function renderDrawings(list, container, published) {
 
 function renderQuestions(list, container, published) {
     const pageItems = paginateAdminList(list, container);
-    if (!list.length) {
+    if (!(state.adminListTotals[container.id] || 0)) {
         container.innerHTML = emptyMessage(published ? 'no answered asks' : 'no asks waiting');
         return;
     }
@@ -555,6 +549,13 @@ function readSocialUsernameSetting(settings, key) {
     return Object.prototype.hasOwnProperty.call(settings, settingKey)
         ? normalizeSocialUsername(settings[settingKey])
         : DEFAULT_LINK_SETTINGS[settingKey];
+}
+
+function readBooleanSetting(settings, key) {
+    return Object.prototype.hasOwnProperty.call(settings, key)
+        && typeof settings[key] === 'boolean'
+        ? settings[key]
+        : DEFAULT_LINK_SETTINGS[key];
 }
 
 function getDraftSocialUsername(key, input) {
@@ -592,69 +593,69 @@ function normalizeLinkSettings(value) {
     return {
         snapchat_url: String(settings.snapchat_url || DEFAULT_LINK_SETTINGS.snapchat_url),
         snapchat_username: readSocialUsernameSetting(settings, 'snapchat'),
-        snapchat_enabled: settings.snapchat_enabled !== false,
+        snapchat_enabled: readBooleanSetting(settings, 'snapchat_enabled'),
         snapchat_card_video_url: String(settings.snapchat_card_video_url || ''),
         snapchat_card_video_path: String(settings.snapchat_card_video_path || ''),
         instagram_url: String(settings.instagram_url || DEFAULT_LINK_SETTINGS.instagram_url),
         instagram_username: readSocialUsernameSetting(settings, 'instagram'),
-        instagram_enabled: settings.instagram_enabled !== false,
+        instagram_enabled: readBooleanSetting(settings, 'instagram_enabled'),
         instagram_card_video_url: String(settings.instagram_card_video_url || ''),
         instagram_card_video_path: String(settings.instagram_card_video_path || ''),
         kofi_url: String(settings.kofi_url || DEFAULT_LINK_SETTINGS.kofi_url),
         kofi_username: readSocialUsernameSetting(settings, 'kofi'),
-        kofi_enabled: settings.kofi_enabled !== false,
+        kofi_enabled: readBooleanSetting(settings, 'kofi_enabled'),
         kofi_card_video_url: String(settings.kofi_card_video_url || ''),
         kofi_card_video_path: String(settings.kofi_card_video_path || ''),
         telegram_url: String(settings.telegram_url || DEFAULT_LINK_SETTINGS.telegram_url),
         telegram_username: readSocialUsernameSetting(settings, 'telegram'),
-        telegram_enabled: settings.telegram_enabled !== false,
+        telegram_enabled: readBooleanSetting(settings, 'telegram_enabled'),
         telegram_card_video_url: String(settings.telegram_card_video_url || ''),
         telegram_card_video_path: String(settings.telegram_card_video_path || ''),
         x_url: String(settings.x_url || DEFAULT_LINK_SETTINGS.x_url),
         x_username: readSocialUsernameSetting(settings, 'x'),
-        x_enabled: settings.x_enabled !== false,
+        x_enabled: readBooleanSetting(settings, 'x_enabled'),
         x_card_video_url: String(settings.x_card_video_url || ''),
         x_card_video_path: String(settings.x_card_video_path || ''),
         tiktok_url: String(settings.tiktok_url || DEFAULT_LINK_SETTINGS.tiktok_url),
         tiktok_username: readSocialUsernameSetting(settings, 'tiktok'),
-        tiktok_enabled: settings.tiktok_enabled !== false,
+        tiktok_enabled: readBooleanSetting(settings, 'tiktok_enabled'),
         tiktok_card_video_url: String(settings.tiktok_card_video_url || ''),
         tiktok_card_video_path: String(settings.tiktok_card_video_path || ''),
         twitch_url: String(settings.twitch_url || DEFAULT_LINK_SETTINGS.twitch_url),
         twitch_username: readSocialUsernameSetting(settings, 'twitch'),
-        twitch_enabled: settings.twitch_enabled !== false,
+        twitch_enabled: readBooleanSetting(settings, 'twitch_enabled'),
         twitch_card_video_url: String(settings.twitch_card_video_url || ''),
         twitch_card_video_path: String(settings.twitch_card_video_path || ''),
         discord_url: String(settings.discord_url || DEFAULT_LINK_SETTINGS.discord_url),
         discord_username: readSocialUsernameSetting(settings, 'discord'),
-        discord_enabled: settings.discord_enabled !== false,
+        discord_enabled: readBooleanSetting(settings, 'discord_enabled'),
         discord_card_video_url: String(settings.discord_card_video_url || ''),
         discord_card_video_path: String(settings.discord_card_video_path || ''),
         onlyfans_url: String(settings.onlyfans_url || DEFAULT_LINK_SETTINGS.onlyfans_url),
         onlyfans_username: readSocialUsernameSetting(settings, 'onlyfans'),
-        onlyfans_enabled: settings.onlyfans_enabled !== false,
+        onlyfans_enabled: readBooleanSetting(settings, 'onlyfans_enabled'),
         onlyfans_card_video_url: String(settings.onlyfans_card_video_url || ''),
         onlyfans_card_video_path: String(settings.onlyfans_card_video_path || ''),
         spotify_url: String(settings.spotify_url || DEFAULT_LINK_SETTINGS.spotify_url),
         spotify_username: readSocialUsernameSetting(settings, 'spotify'),
-        spotify_enabled: settings.spotify_enabled !== false,
+        spotify_enabled: readBooleanSetting(settings, 'spotify_enabled'),
         spotify_card_video_url: String(settings.spotify_card_video_url || ''),
         spotify_card_video_path: String(settings.spotify_card_video_path || ''),
         social_card_order: normalizeSocialCardOrder(settings.social_card_order),
         throne_url: String(settings.throne_url || DEFAULT_LINK_SETTINGS.throne_url),
-        throne_enabled: settings.throne_enabled !== false,
+        throne_enabled: readBooleanSetting(settings, 'throne_enabled'),
         throne_checkout_mode: settings.throne_checkout_mode === 'widget' ? 'widget' : 'mockup',
         wishlist_view_mode: WISHLIST_VIEW_MODES.includes(settings.wishlist_view_mode) ? settings.wishlist_view_mode : 'masonry',
         homepage_note_text: String(settings.homepage_note_text || '').slice(0, 220),
         homepage_note_font_size: Math.min(17, Math.max(9, Number(settings.homepage_note_font_size) || 13.25)),
-        maintenance_enabled: settings.maintenance_enabled === true,
+        maintenance_enabled: readBooleanSetting(settings, 'maintenance_enabled'),
         maintenance_title: String(settings.maintenance_title || DEFAULT_LINK_SETTINGS.maintenance_title),
         maintenance_message: String(settings.maintenance_message || DEFAULT_LINK_SETTINGS.maintenance_message),
         maintenance_eta: String(settings.maintenance_eta || ''),
         entrance_mode: settings.entrance_mode === 'bubbles' ? 'bubbles' : 'paw',
-        drawings_enabled: settings.drawings_enabled !== false,
-        questions_enabled: settings.questions_enabled !== false,
-        rooms_enabled: settings.rooms_enabled !== false,
+        drawings_enabled: readBooleanSetting(settings, 'drawings_enabled'),
+        questions_enabled: readBooleanSetting(settings, 'questions_enabled'),
+        rooms_enabled: readBooleanSetting(settings, 'rooms_enabled'),
         seo_title: String(settings.seo_title || DEFAULT_LINK_SETTINGS.seo_title),
         seo_description: String(settings.seo_description || DEFAULT_LINK_SETTINGS.seo_description),
         site_tagline: String(settings.site_tagline || DEFAULT_LINK_SETTINGS.site_tagline)
@@ -1438,18 +1439,11 @@ async function checkStaticSeoStatus() {
     renderStaticSeoStatus();
 }
 
-function renderAll({ preserveDrafts = false } = {}) {
-    const validQuestionIds = new Set(state.questions.map(item => String(item.id)));
-    adminQuestionDrafts.forEach((value, id) => {
-        if (!validQuestionIds.has(id)) adminQuestionDrafts.delete(id);
-    });
+function renderAll({ preserveDrafts = false, listIds = Object.keys(ADMIN_LIST_PAGINATION) } = {}) {
+    if (!preserveDrafts) adminQuestionDrafts.clear();
     renderStats();
-    renderDrawings(state.drawings.filter(item => !item.approved), els.pendingDrawings, false);
-    renderDrawings(state.drawings.filter(item => item.approved), els.publishedDrawings, true);
-    renderQuestions(state.questions.filter(item => !hasAnswer(item)), els.pendingQuestions, false);
-    renderQuestions(state.questions.filter(hasAnswer), els.publishedQuestions, true);
+    listIds.forEach(renderAdminListById);
     renderLinkSettings({ preserveDraft: preserveDrafts });
-    renderWishlistItems();
 }
 
 const WISHLIST_FEATURED_CAP = 30;
@@ -1458,13 +1452,9 @@ const WISHLIST_POSITION_ACTIONS = new Set([
     'feature-wishlist-item', 'unfeature-wishlist-item',
     'move-wishlist-item-up', 'move-wishlist-item-down',
 ]);
-// feature/unfeature/move all compute their next `position` from the
-// in-memory state.wishlistItems snapshot, then write it and reload. Without
-// this lock, clicking a second wishlist action before the first one's reload
-// lands reads the same stale positions twice, so both writes can land on the
-// same position — the second one silently overwrites/collides with the
-// first instead of appending after it, which reads as "featuring stopped
-// doing anything" even though nothing errored.
+// Keep position-changing writes serialized. Their ordering data is fetched
+// directly from Supabase immediately before each action so pagination never
+// makes the calculation depend on an incomplete client-side page.
 let wishlistActionBusy = false;
 
 function formatWishlistPrice(cents) {
@@ -1490,13 +1480,6 @@ function renderWishlistSyncStatus() {
     }
 }
 
-function getVisibleWishlistItems() {
-    const query = state.wishlistSearch.trim().toLowerCase();
-    return query
-        ? state.wishlistItems.filter(item => (item.name || '').toLowerCase().includes(query))
-        : state.wishlistItems;
-}
-
 function renderWishlistItems() {
     const container = els.wishlistItemsList;
     if (!container) return;
@@ -1508,32 +1491,31 @@ function renderWishlistItems() {
         container.innerHTML = emptyMessage('wishlist_items table not set up yet');
         return;
     }
-    if (!state.wishlistItems.length) {
+    const totalItems = state.adminListTotals['wishlist-items-list'] || 0;
+    if (!totalItems && !state.wishlistSearch.trim()) {
         paginateAdminList([], container);
         container.innerHTML = emptyMessage('nothing synced yet — hit "sync now"');
         return;
     }
 
-    const featuredCount = state.wishlistItems.filter(item => item.featured).length;
+    const featuredCount = state.wishlistFeaturedCount || 0;
     if (els.wishlistFeaturedWarning) {
         els.wishlistFeaturedWarning.textContent = featuredCount > WISHLIST_FEATURED_CAP
             ? `${featuredCount} items featured — only the first ${WISHLIST_FEATURED_CAP} by position show on the site.`
             : '';
     }
 
-    const visible = getVisibleWishlistItems();
+    const visible = getAdminListItems('wishlist-items-list');
 
-    if (!visible.length) {
+    if (!totalItems) {
         paginateAdminList([], container);
         container.innerHTML = emptyMessage('no items match your search');
         return;
     }
 
-    const featuredIds = state.wishlistItems.filter(item => item.featured).map(item => item.throne_item_id);
     const pageItems = paginateAdminList(visible, container);
 
     container.innerHTML = pageItems.map(item => {
-        const featuredIndex = featuredIds.indexOf(item.throne_item_id);
         const isNew = item.first_synced_at && (Date.now() - new Date(item.first_synced_at).getTime()) < WISHLIST_NEW_WINDOW_MS;
         return `
         <article class="admin-card${item.featured ? ' is-featured' : ''}${item.is_available ? '' : ' is-unavailable'}" data-id="${escapeHtml(item.throne_item_id)}">
@@ -1549,8 +1531,8 @@ function renderWishlistItems() {
             </div>
             <div class="admin-actions">
                 ${item.featured ? `
-                    <button data-action="move-wishlist-item-up" ${featuredIndex <= 0 ? 'disabled' : ''} aria-label="move up">&uarr;</button>
-                    <button data-action="move-wishlist-item-down" ${featuredIndex === featuredIds.length - 1 ? 'disabled' : ''} aria-label="move down">&darr;</button>
+                    <button data-action="move-wishlist-item-up" ${String(item.throne_item_id) === state.wishlistFirstFeaturedId ? 'disabled' : ''} aria-label="move up">&uarr;</button>
+                    <button data-action="move-wishlist-item-down" ${String(item.throne_item_id) === state.wishlistLastFeaturedId ? 'disabled' : ''} aria-label="move down">&darr;</button>
                 ` : ''}
                 <button data-action="${item.featured ? 'unfeature-wishlist-item' : 'feature-wishlist-item'}">${item.featured ? 'unfeature' : 'feature'}</button>
             </div>
@@ -1584,27 +1566,73 @@ async function syncWishlistNow() {
 
 async function featureAllWishlistItems() {
     if (!els.wishlistFeatureAll) return;
-    const targets = getVisibleWishlistItems().filter(item => !item.featured);
-    if (!targets.length) {
+    let countQuery = adminClient.from('wishlist_items')
+        .select('throne_item_id', { count: 'exact', head: true })
+        .eq('featured', false);
+    countQuery = applyWishlistSearchFilter(countQuery);
+    const countResult = await countQuery;
+    if (countResult.error) {
+        setStatus(els.adminStatus, countResult.error.message || 'could not count wishlist items');
+        return;
+    }
+    const targetCount = countResult.count || 0;
+    if (!targetCount) {
         setStatus(els.adminStatus, 'nothing to feature');
         return;
     }
-    if (!window.confirm(`Feature ${targets.length} item${targets.length === 1 ? '' : 's'}? They'll go live on the site (only the first ${WISHLIST_FEATURED_CAP} by position show).`)) return;
+    if (!window.confirm(`Feature ${targetCount} item${targetCount === 1 ? '' : 's'}? They'll go live on the site (only the first ${WISHLIST_FEATURED_CAP} by position show).`)) return;
     if (wishlistActionBusy) return;
     wishlistActionBusy = true;
 
     els.wishlistFeatureAll.disabled = true;
     setStatus(els.adminStatus, 'featuring...');
+    let featuredCount = 0;
     try {
-        let nextPosition = state.wishlistItems.reduce((max, item) => item.featured ? Math.max(max, item.position ?? 0) : max, -1) + 1;
-        const results = await Promise.all(targets.map(item =>
-            adminClient.from('wishlist_items').update({ featured: true, position: nextPosition++ }).eq('throne_item_id', item.throne_item_id)
-        ));
-        const failed = results.find(result => result.error);
-        if (failed) throw failed.error;
+        const targets = [];
+        const batchSize = 500;
+        for (let start = 0; start < targetCount; start += batchSize) {
+            let targetQuery = adminClient.from('wishlist_items')
+                .select('throne_item_id')
+                .eq('featured', false);
+            targetQuery = applyWishlistSearchFilter(targetQuery);
+            const targetResult = await targetQuery
+                .order('position', { ascending: true })
+                .order('name', { ascending: true })
+                .order('throne_item_id', { ascending: true })
+                .range(start, Math.min(start + batchSize - 1, targetCount - 1));
+            if (targetResult.error) throw targetResult.error;
+            targets.push(...(targetResult.data || []));
+        }
+
+        let nextPosition = await getNextWishlistPosition();
+        const updateBatchSize = 12;
+        for (let start = 0; start < targets.length; start += updateBatchSize) {
+            const batch = targets.slice(start, start + updateBatchSize);
+            const results = await Promise.all(batch.map(item =>
+                adminClient.from('wishlist_items')
+                    .update({ featured: true, position: nextPosition++ })
+                    .eq('throne_item_id', item.throne_item_id)
+                    .select('throne_item_id')
+            ));
+            featuredCount += results.reduce((count, result) => count + (result.error ? 0 : (result.data || []).length), 0);
+            const failed = results.find(result => result.error);
+            if (failed) throw failed.error;
+        }
         await loadAdminData();
     } catch (error) {
-        setStatus(els.adminStatus, error.message || 'could not feature items');
+        let reloadFailed = false;
+        try {
+            await loadAdminData();
+        } catch (reloadError) {
+            reloadFailed = true;
+        }
+        if (featuredCount) {
+            setStatus(els.adminStatus, `${featuredCount} of ${targetCount} featured before the error; ${reloadFailed ? 'refresh failed too.' : 'list refreshed.'}`);
+        } else {
+            setStatus(els.adminStatus, reloadFailed
+                ? `${error.message || 'could not feature items'}; refresh failed too.`
+                : (error.message || 'could not feature items'));
+        }
     } finally {
         els.wishlistFeatureAll.disabled = false;
         wishlistActionBusy = false;
@@ -1613,23 +1641,31 @@ async function featureAllWishlistItems() {
 
 async function unfeatureAllWishlistItems() {
     if (!els.wishlistUnfeatureAll) return;
-    const targets = getVisibleWishlistItems().filter(item => item.featured);
-    if (!targets.length) {
+    let countQuery = adminClient.from('wishlist_items')
+        .select('throne_item_id', { count: 'exact', head: true })
+        .eq('featured', true);
+    countQuery = applyWishlistSearchFilter(countQuery);
+    const countResult = await countQuery;
+    if (countResult.error) {
+        setStatus(els.adminStatus, countResult.error.message || 'could not count wishlist items');
+        return;
+    }
+    const targetCount = countResult.count || 0;
+    if (!targetCount) {
         setStatus(els.adminStatus, 'nothing to unfeature');
         return;
     }
-    if (!window.confirm(`Unfeature ${targets.length} item${targets.length === 1 ? '' : 's'}? They'll disappear from the site grid immediately.`)) return;
+    if (!window.confirm(`Unfeature ${targetCount} item${targetCount === 1 ? '' : 's'}? They'll disappear from the site grid immediately.`)) return;
     if (wishlistActionBusy) return;
     wishlistActionBusy = true;
 
     els.wishlistUnfeatureAll.disabled = true;
     setStatus(els.adminStatus, 'unfeaturing...');
     try {
-        const results = await Promise.all(targets.map(item =>
-            adminClient.from('wishlist_items').update({ featured: false }).eq('throne_item_id', item.throne_item_id)
-        ));
-        const failed = results.find(result => result.error);
-        if (failed) throw failed.error;
+        let updateQuery = adminClient.from('wishlist_items').update({ featured: false }).eq('featured', true);
+        updateQuery = applyWishlistSearchFilter(updateQuery);
+        const { error } = await updateQuery;
+        if (error) throw error;
         await loadAdminData();
     } catch (error) {
         setStatus(els.adminStatus, error.message || 'could not unfeature items');
@@ -1652,32 +1688,279 @@ async function ensureAdminSession() {
     return true;
 }
 
-async function loadAdminData({ preserveDrafts = true } = {}) {
-    setStatus(els.adminStatus, 'loading...');
+const ADMIN_LIST_COLUMNS = Object.freeze({
+    'pending-drawings-list': 'id,imageData,created_at,ip_address',
+    'published-drawings-list': 'id,imageData,created_at,ip_address',
+    'pending-questions-list': 'id,question,answer,created_at,ip_address',
+    'published-questions-list': 'id,question,answer,created_at,ip_address',
+    'wishlist-items-list': 'throne_item_id,name,price_cents,image_url,quantity,is_available,featured,position,first_synced_at'
+});
+const WHITESPACE_ONLY_ANSWER_PATTERN = '^[[:space:]]*$';
+// Raw PostgREST logic strings reserve punctuation used by POSIX character
+// classes. Double-quoting the value keeps the regex intact instead of
+// letting the URL grammar treat its colons as filter syntax.
+const QUOTED_WHITESPACE_ONLY_ANSWER_PATTERN = `"${WHITESPACE_ONLY_ANSWER_PATTERN}"`;
+const PENDING_ANSWER_FILTER = `answer.is.null,answer.match.${QUOTED_WHITESPACE_ONLY_ANSWER_PATTERN}`;
 
-    const [drawingsResult, questionsResult, linkSettingsResult, wishlistItemsResult, wishlistSyncResult] = await Promise.all([
-        adminClient.from('drawings').select('*').order('created_at', { ascending: false }),
-        adminClient.from('questions').select('*').order('created_at', { ascending: false }),
-        adminClient.from('site_settings').select('value').eq('id', 'links').maybeSingle(),
-        adminClient.from('wishlist_items').select('*').order('featured', { ascending: false }).order('position').order('name'),
-        adminClient.from('wishlist_sync_state').select('last_synced_at').eq('id', true).maybeSingle()
+function applyAdminListFilter(query, listId) {
+    if (listId === 'pending-drawings-list') return query.or('approved.is.null,approved.eq.false');
+    if (listId === 'published-drawings-list') return query.eq('approved', true);
+    if (listId === 'pending-questions-list') return query.or(PENDING_ANSWER_FILTER);
+    if (listId === 'published-questions-list') {
+        return query
+            .not('answer', 'is', null)
+            .not('answer', 'match', QUOTED_WHITESPACE_ONLY_ANSWER_PATTERN);
+    }
+    return query;
+}
+
+function getWishlistSearchPattern(searchValue = state.wishlistSearch) {
+    const search = String(searchValue || '').trim();
+    if (!search) return '';
+    return `%${search.replace(/[\\%_]/g, value => `\\${value}`)}%`;
+}
+
+function applyWishlistSearchFilter(query, searchValue = state.wishlistSearch) {
+    const pattern = getWishlistSearchPattern(searchValue);
+    if (!pattern) return query;
+    // `.ilike()` accepts PostgREST's raw filter-value syntax. Quote arbitrary
+    // user text so commas, colons, parentheses and quotes in item names cannot
+    // turn a harmless dashboard search into a malformed request.
+    const quotedPattern = `"${pattern.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+    return query.ilike('name', quotedPattern);
+}
+
+function buildAdminListQuery(listId, { wishlistSearch = state.wishlistSearch } = {}) {
+    const columns = ADMIN_LIST_COLUMNS[listId];
+    if (!columns) throw new Error(`Unknown admin list: ${listId}`);
+
+    if (listId === 'wishlist-items-list') {
+        let query = adminClient
+            .from('wishlist_items')
+            .select(columns, { count: 'exact' });
+        query = applyWishlistSearchFilter(query, wishlistSearch);
+        return query
+            .order('featured', { ascending: false })
+            .order('position', { ascending: true })
+            .order('name', { ascending: true })
+            .order('throne_item_id', { ascending: true });
+    }
+
+    const table = listId.includes('drawings') ? 'drawings' : 'questions';
+    let query = adminClient.from(table).select(columns, { count: 'exact' });
+    query = applyAdminListFilter(query, listId);
+    return query
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: false });
+}
+
+async function fetchAdminListPage(listId) {
+    const config = ADMIN_LIST_PAGINATION[listId];
+    if (!config) throw new Error(`Unknown admin list: ${listId}`);
+
+    const queryWishlistSearch = listId === 'wishlist-items-list' ? state.wishlistSearch : '';
+    const runPage = page => {
+        const start = (page - 1) * config.pageSize;
+        return buildAdminListQuery(listId, { wishlistSearch: queryWishlistSearch })
+            .range(start, start + config.pageSize - 1);
+    };
+
+    let page = Math.max(1, adminListPages.get(listId) || 1);
+    let result = await runPage(page);
+    if (result.error) {
+        if (listId === 'wishlist-items-list' && result.error.code === '42P01') {
+            return { items: [], total: 0, page: 1, wishlistSearch: queryWishlistSearch, available: false };
+        }
+        throw result.error;
+    }
+
+    let total = result.count || 0;
+    const totalPages = Math.max(1, Math.ceil(total / config.pageSize));
+    const validPage = Math.min(page, totalPages);
+    if (validPage !== page) {
+        page = validPage;
+        result = await runPage(page);
+        if (result.error) throw result.error;
+        total = result.count ?? total;
+    }
+
+    return {
+        items: result.data || [],
+        total,
+        page,
+        wishlistSearch: queryWishlistSearch,
+        available: true
+    };
+}
+
+function applyAdminListPage(listId, result) {
+    state.adminListItems[listId] = result.items;
+    state.adminListTotals[listId] = result.total;
+    adminListPages.set(listId, result.page);
+    adminListCommittedPages.set(listId, result.page);
+    if (listId === 'wishlist-items-list') {
+        state.wishlistItemsAvailable = result.available !== false;
+        state.wishlistLoadedSearch = result.wishlistSearch || '';
+    }
+}
+
+function setAdminListBusy(listId, busy) {
+    const container = document.getElementById(listId);
+    if (container) {
+        container.setAttribute('aria-busy', busy ? 'true' : 'false');
+        container.toggleAttribute('inert', busy);
+        container.style.pointerEvents = busy ? 'none' : '';
+    }
+    const controls = ensureAdminPagination(container);
+    document.querySelectorAll(`[data-list="${listId}"]`).forEach(button => {
+        if (busy) {
+            if (!button.disabled) button.dataset.adminBusyDisabled = 'true';
+            button.disabled = true;
+        } else if (button.dataset.adminBusyDisabled === 'true') {
+            button.disabled = false;
+            delete button.dataset.adminBusyDisabled;
+        }
+    });
+    if (busy) {
+        controls?.querySelectorAll('button').forEach(button => {
+            button.disabled = true;
+        });
+    } else if (container) {
+        paginateAdminList(getAdminListItems(listId), container);
+    }
+}
+
+function setAdminListError(listId, message) {
+    const cleanMessage = String(message || `Could not load ${ADMIN_LIST_PAGINATION[listId]?.label || 'items'}.`);
+    adminListErrors.set(listId, cleanMessage);
+    setStatus(els.adminStatus, cleanMessage);
+}
+
+function clearAdminListError(listId) {
+    const previousError = adminListErrors.get(listId);
+    adminListErrors.delete(listId);
+    if (previousError && els.adminStatus?.textContent === previousError) {
+        setStatus(els.adminStatus, '');
+    }
+}
+
+function rollbackAdminListRequest(listId) {
+    adminListPages.set(listId, adminListCommittedPages.get(listId) || 1);
+    if (listId === 'wishlist-items-list') {
+        state.wishlistSearch = state.wishlistLoadedSearch;
+        if (els.wishlistSearch) els.wishlistSearch.value = state.wishlistLoadedSearch;
+    }
+    renderAdminListById(listId);
+}
+
+async function loadAdminList(listId) {
+    const token = (adminListLoadTokens.get(listId) || 0) + 1;
+    adminListLoadTokens.set(listId, token);
+    setAdminListBusy(listId, true);
+    try {
+        const result = await fetchAdminListPage(listId);
+        if (adminListLoadTokens.get(listId) !== token) return;
+        applyAdminListPage(listId, result);
+        clearAdminListError(listId);
+        renderAdminListById(listId);
+        renderStats();
+    } catch (error) {
+        if (adminListLoadTokens.get(listId) === token) {
+            rollbackAdminListRequest(listId);
+            setAdminListError(listId, error.message);
+        }
+    } finally {
+        if (adminListLoadTokens.get(listId) === token) setAdminListBusy(listId, false);
+    }
+}
+
+async function fetchWishlistFeatureMeta() {
+    const [countResult, firstResult, lastResult] = await Promise.all([
+        adminClient.from('wishlist_items').select('throne_item_id', { count: 'exact', head: true }).eq('featured', true),
+        adminClient.from('wishlist_items').select('throne_item_id').eq('featured', true)
+            .order('position', { ascending: true }).order('name', { ascending: true })
+            .order('throne_item_id', { ascending: true }).limit(1).maybeSingle(),
+        adminClient.from('wishlist_items').select('throne_item_id').eq('featured', true)
+            .order('position', { ascending: false }).order('name', { ascending: false })
+            .order('throne_item_id', { ascending: false }).limit(1).maybeSingle()
     ]);
+    const error = countResult.error || firstResult.error || lastResult.error;
+    if (error) {
+        if (error.code === '42P01') return { count: 0, firstId: '', lastId: '', available: false };
+        throw error;
+    }
+    return {
+        count: countResult.count || 0,
+        firstId: String(firstResult.data?.throne_item_id || ''),
+        lastId: String(lastResult.data?.throne_item_id || ''),
+        available: true
+    };
+}
 
-    if (drawingsResult.error) throw drawingsResult.error;
-    if (questionsResult.error) throw questionsResult.error;
-    if (linkSettingsResult.error && linkSettingsResult.error.code !== '42P01' && linkSettingsResult.error.code !== 'PGRST116') throw linkSettingsResult.error;
-    if (wishlistItemsResult.error && wishlistItemsResult.error.code !== '42P01') throw wishlistItemsResult.error;
+async function loadAdminData({ preserveDrafts = true } = {}) {
+    const loadGeneration = ++adminFullLoadGeneration;
+    clearTimeout(wishlistSearchTimer);
+    wishlistSearchTimer = null;
+    const loadingMessage = 'loading...';
+    setStatus(els.adminStatus, loadingMessage);
 
-    state.drawings = drawingsResult.data || [];
-    state.questions = questionsResult.data || [];
-    state.wishlistItemsAvailable = !wishlistItemsResult.error;
-    state.wishlistItems = wishlistItemsResult.data || [];
-    state.wishlistSyncedAt = wishlistSyncResult.data?.last_synced_at || null;
-    state.linkSettingsAvailable = !linkSettingsResult.error || linkSettingsResult.error.code === 'PGRST116';
-    state.linkSettings = normalizeLinkSettings(linkSettingsResult.data?.value);
-    renderAll({ preserveDrafts });
-    reportInterruptedSocialVideoPicker();
-    setStatus(els.adminStatus, '');
+    const listIds = Object.keys(ADMIN_LIST_PAGINATION);
+    const requestTokens = new Map(listIds.map(listId => {
+        const token = (adminListLoadTokens.get(listId) || 0) + 1;
+        adminListLoadTokens.set(listId, token);
+        setAdminListBusy(listId, true);
+        return [listId, token];
+    }));
+
+    try {
+        const [listResults, linkSettingsResult, wishlistSyncResult, wishlistFeatureMeta] = await Promise.all([
+            Promise.all(listIds.map(fetchAdminListPage)),
+            adminClient.from('site_settings').select('value').eq('id', 'links').maybeSingle(),
+            adminClient.from('wishlist_sync_state').select('last_synced_at').eq('id', true).maybeSingle(),
+            fetchWishlistFeatureMeta()
+        ]);
+
+        // A newer refresh/action owns every shared dashboard field now. The
+        // older request may finish, but it must not repaint settings, counts,
+        // sync timestamps, or status with stale data.
+        if (loadGeneration !== adminFullLoadGeneration) return;
+
+        if (linkSettingsResult.error && linkSettingsResult.error.code !== '42P01' && linkSettingsResult.error.code !== 'PGRST116') throw linkSettingsResult.error;
+        const renderedListIds = [];
+        listResults.forEach((result, index) => {
+            const listId = listIds[index];
+            if (adminListLoadTokens.get(listId) !== requestTokens.get(listId)) return;
+            applyAdminListPage(listId, result);
+            clearAdminListError(listId);
+            renderedListIds.push(listId);
+        });
+        state.wishlistItemsAvailable = wishlistFeatureMeta.available !== false
+            && state.wishlistItemsAvailable;
+        state.wishlistFeaturedCount = wishlistFeatureMeta.count;
+        state.wishlistFirstFeaturedId = wishlistFeatureMeta.firstId;
+        state.wishlistLastFeaturedId = wishlistFeatureMeta.lastId;
+        state.wishlistSyncedAt = wishlistSyncResult.data?.last_synced_at || null;
+        state.linkSettingsAvailable = !linkSettingsResult.error || linkSettingsResult.error.code === 'PGRST116';
+        state.linkSettings = normalizeLinkSettings(linkSettingsResult.data?.value);
+        renderAll({ preserveDrafts, listIds: renderedListIds });
+        reportInterruptedSocialVideoPicker();
+        if (els.adminStatus?.textContent === loadingMessage) setStatus(els.adminStatus, '');
+    } catch (error) {
+        if (loadGeneration !== adminFullLoadGeneration) return;
+        listIds.forEach(listId => {
+            if (adminListLoadTokens.get(listId) !== requestTokens.get(listId)) return;
+            rollbackAdminListRequest(listId);
+            adminListErrors.set(listId, error.message || 'Could not refresh admin data.');
+        });
+        setStatus(els.adminStatus, error.message || 'Could not refresh admin data.');
+        throw error;
+    } finally {
+        listIds.forEach(listId => {
+            if (adminListLoadTokens.get(listId) === requestTokens.get(listId)) {
+                setAdminListBusy(listId, false);
+            }
+        });
+    }
 }
 
 function confirmDangerAction(message) {
@@ -1726,6 +2009,37 @@ async function handleLogin(e) {
     await openDashboard();
 }
 
+async function getNextWishlistPosition() {
+    const { data, error } = await adminClient.from('wishlist_items')
+        .select('position')
+        .eq('featured', true)
+        .order('position', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+    if (error) throw error;
+    const currentMax = Number(data?.position);
+    return Number.isFinite(currentMax) ? currentMax + 1 : 0;
+}
+
+async function getOrderedFeaturedWishlistItems() {
+    const items = [];
+    const batchSize = 500;
+    for (let start = 0; ; start += batchSize) {
+        const { data, error } = await adminClient.from('wishlist_items')
+            .select('throne_item_id,position')
+            .eq('featured', true)
+            .order('position', { ascending: true })
+            .order('name', { ascending: true })
+            .order('throne_item_id', { ascending: true })
+            .range(start, start + batchSize - 1);
+        if (error) throw error;
+        const batch = data || [];
+        items.push(...batch);
+        if (batch.length < batchSize) break;
+    }
+    return items;
+}
+
 async function runAction(button) {
     const card = button.closest('.admin-card');
     const id = card?.dataset.id;
@@ -1769,26 +2083,61 @@ async function runAction(button) {
             const featured = action === 'feature-wishlist-item';
             const update = { featured };
             if (featured) {
-                update.position = state.wishlistItems.reduce((max, item) => item.featured ? Math.max(max, item.position ?? 0) : max, -1) + 1;
+                update.position = await getNextWishlistPosition();
             }
             const { error } = await adminClient.from('wishlist_items').update(update).eq('throne_item_id', id);
             if (error) throw error;
         }
 
         if (action === 'move-wishlist-item-up' || action === 'move-wishlist-item-down') {
-            const featuredItems = state.wishlistItems.filter(item => item.featured);
+            const featuredItems = await getOrderedFeaturedWishlistItems();
             const index = featuredItems.findIndex(item => item.throne_item_id === id);
             const neighborIndex = action === 'move-wishlist-item-up' ? index - 1 : index + 1;
             const current = featuredItems[index];
             const neighbor = featuredItems[neighborIndex];
             if (current && neighbor) {
-                const { error: err1 } = await adminClient.from('wishlist_items').update({ position: neighbor.position }).eq('throne_item_id', current.throne_item_id);
-                if (err1) throw err1;
-                const { error: err2 } = await adminClient.from('wishlist_items').update({ position: current.position }).eq('throne_item_id', neighbor.throne_item_id);
-                if (err2) throw err2;
+                const { data: firstWrite, error: err1 } = await adminClient.from('wishlist_items')
+                    .update({ position: neighbor.position })
+                    .eq('throne_item_id', current.throne_item_id)
+                    .select('throne_item_id')
+                    .maybeSingle();
+                if (err1 || !firstWrite) {
+                    let reloadFailed = false;
+                    try {
+                        await loadAdminData();
+                    } catch (reloadError) {
+                        reloadFailed = true;
+                    }
+                    throw new Error(`${err1?.message || 'move failed before any change'}; ${reloadFailed ? 'refresh failed too' : 'list refreshed'}`);
+                }
+                const { data: secondWrite, error: err2 } = await adminClient.from('wishlist_items')
+                    .update({ position: current.position })
+                    .eq('throne_item_id', neighbor.throne_item_id)
+                    .select('throne_item_id')
+                    .maybeSingle();
+                if (err2 || !secondWrite) {
+                    const { data: rollbackWrite, error: rollbackError } = await adminClient.from('wishlist_items')
+                        .update({ position: current.position })
+                        .eq('throne_item_id', current.throne_item_id)
+                        .select('throne_item_id')
+                        .maybeSingle();
+                    let reloadFailed = false;
+                    try {
+                        await loadAdminData();
+                    } catch (reloadError) {
+                        reloadFailed = true;
+                    }
+                    const recovery = rollbackError || !rollbackWrite
+                        ? 'first half may still be saved'
+                        : 'first half was rolled back';
+                    throw new Error(`${err2?.message || 'move failed halfway'}; ${recovery}; ${reloadFailed ? 'refresh failed too' : 'list refreshed'}`);
+                }
             }
         }
 
+        if (action === 'approve-drawing' || action === 'delete-drawing') {
+            forgetAdminSelectionId(id);
+        }
         await loadAdminData();
     } catch (error) {
         setStatus(els.adminStatus, error.message || 'Could not save.');
@@ -2054,8 +2403,8 @@ async function runSiteHealthCheck() {
 }
 
 function getSelectedIds(listId) {
-    const selected = adminListSelections.get(listId);
-    if (selected) return Array.from(selected);
+    const selection = adminListSelections.get(listId);
+    if (selection) return Array.from(selection.ids);
     const list = document.getElementById(listId);
     if (!list) return [];
     return Array.from(list.querySelectorAll('input[data-select-id]:checked'))
@@ -2063,19 +2412,104 @@ function getSelectedIds(listId) {
         .filter(Boolean);
 }
 
-function setListSelected(listId, selected) {
+function getAdminSelectionCount(listId) {
+    const selection = adminListSelections.get(listId);
+    if (!selection) return getSelectedIds(listId).length;
+    return selection.ids.size;
+}
+
+function clearAdminListSelection(listId) {
+    const selection = adminListSelections.get(listId);
+    if (!selection) return;
+    selection.ids.clear();
+    selection.snapshotCutoff = '';
+}
+
+function forgetAdminSelectionId(id) {
+    const cleanId = String(id);
+    adminListSelections.forEach(selection => {
+        selection.ids.delete(cleanId);
+    });
+}
+
+function refreshVisibleListSelection(listId) {
     const list = document.getElementById(listId);
     if (!list) return;
-    const storedSelection = adminListSelections.get(listId);
-    if (storedSelection) {
-        storedSelection.clear();
-        if (selected) {
-            getAdminListItems(listId).forEach(item => storedSelection.add(String(item.id)));
-        }
-    }
+    const selection = adminListSelections.get(listId);
     list.querySelectorAll('input[data-select-id]').forEach(input => {
-        input.checked = selected;
+        input.checked = Boolean(selection?.ids.has(String(input.dataset.selectId)));
     });
+}
+
+async function snapshotDrawingSelection(listId) {
+    const selection = adminListSelections.get(listId);
+    if (!selection) return 0;
+
+    // Freeze the result set at the start of the explicit select-all action.
+    // Only IDs are transferred, in bounded pages; rows created afterward can
+    // never silently join a later bulk mutation.
+    let anchorQuery = adminClient.from('drawings')
+        .select('id,created_at');
+    anchorQuery = applyAdminListFilter(anchorQuery, listId);
+    const { data: anchor, error: anchorError } = await anchorQuery
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+    if (anchorError) throw anchorError;
+    if (!anchor) {
+        selection.ids = new Set();
+        selection.snapshotCutoff = '';
+        refreshVisibleListSelection(listId);
+        return 0;
+    }
+    const cutoff = anchor.created_at;
+    const pageSize = 500;
+    const selectedIds = new Set();
+    let start = 0;
+    let expectedTotal = null;
+
+    while (expectedTotal === null || start < expectedTotal) {
+        let query = adminClient.from('drawings')
+            .select('id', { count: start === 0 ? 'exact' : undefined })
+            .lte('created_at', cutoff);
+        query = applyAdminListFilter(query, listId);
+        const { data, error, count } = await query
+            .order('id', { ascending: true })
+            .range(start, start + pageSize - 1);
+        if (error) throw error;
+        if (expectedTotal === null) expectedTotal = count || 0;
+        const batch = data || [];
+        batch.forEach(item => selectedIds.add(String(item.id)));
+        if (batch.length < pageSize) break;
+        start += pageSize;
+    }
+
+    selection.ids = selectedIds;
+    selection.snapshotCutoff = cutoff;
+    refreshVisibleListSelection(listId);
+    return selectedIds.size;
+}
+
+async function runDrawingBulkMutation(action, listId, ids) {
+    const batchSize = 100;
+    let changed = 0;
+    for (let start = 0; start < ids.length; start += batchSize) {
+        const batch = ids.slice(start, start + batchSize);
+        let query = action === 'approve'
+            ? adminClient.from('drawings').update({ approved: true })
+            : adminClient.from('drawings').delete();
+        query = applyAdminListFilter(query.in('id', batch), listId).select('id');
+        const { data, error } = await query;
+        if (error) {
+            const bulkError = new Error(error.message || 'Bulk action failed.');
+            bulkError.completedCount = changed;
+            throw bulkError;
+        }
+        (data || []).forEach(item => forgetAdminSelectionId(item.id));
+        changed += (data || []).length;
+    }
+    return changed;
 }
 
 async function runBulkAction(button) {
@@ -2084,21 +2518,19 @@ async function runBulkAction(button) {
     if (!action || !listId) return;
 
     if (action === 'delete-all-pending-drawings') {
-        const pendingIds = state.drawings
-            .filter(item => !item.approved)
-            .map(item => item.id)
-            .filter(Boolean);
-        if (!pendingIds.length) {
+        const pendingCount = state.adminListTotals['pending-drawings-list'] || 0;
+        if (!pendingCount) {
             setStatus(els.adminStatus, 'no waiting doods');
             return;
         }
-        if (!confirmDangerAction(`Delete ${pendingIds.length} waiting doods? This cannot be undone.`)) return;
+        if (!confirmDangerAction(`Delete ${pendingCount} waiting doods? This cannot be undone.`)) return;
 
         button.disabled = true;
-        setStatus(els.adminStatus, `deleting ${pendingIds.length} waiting doods...`);
+        setStatus(els.adminStatus, `deleting ${pendingCount} waiting doods...`);
         try {
-            const { error } = await adminClient.from('drawings').delete().in('id', pendingIds);
+            const { error } = await adminClient.from('drawings').delete().or('approved.is.null,approved.eq.false');
             if (error) throw error;
+            clearAdminListSelection('pending-drawings-list');
             await loadAdminData();
         } catch (error) {
             setStatus(els.adminStatus, error.message || 'Could not clear waiting doods.');
@@ -2109,20 +2541,17 @@ async function runBulkAction(button) {
     }
 
     if (action === 'delete-all-pending-questions') {
-        const pendingIds = state.questions
-            .filter(item => !hasAnswer(item))
-            .map(item => item.id)
-            .filter(Boolean);
-        if (!pendingIds.length) {
+        const pendingCount = state.adminListTotals['pending-questions-list'] || 0;
+        if (!pendingCount) {
             setStatus(els.adminStatus, 'no waiting asks');
             return;
         }
-        if (!confirmDangerAction(`Delete ${pendingIds.length} waiting asks? This cannot be undone.`)) return;
+        if (!confirmDangerAction(`Delete ${pendingCount} waiting asks? This cannot be undone.`)) return;
 
         button.disabled = true;
-        setStatus(els.adminStatus, `deleting ${pendingIds.length} waiting asks...`);
+        setStatus(els.adminStatus, `deleting ${pendingCount} waiting asks...`);
         try {
-            const { error } = await adminClient.from('questions').delete().in('id', pendingIds);
+            const { error } = await adminClient.from('questions').delete().or(PENDING_ANSWER_FILTER);
             if (error) throw error;
             await loadAdminData();
         } catch (error) {
@@ -2134,38 +2563,55 @@ async function runBulkAction(button) {
     }
 
     if (action === 'select') {
-        const selectedCount = getSelectedIds(listId).length;
-        const totalCount = ADMIN_LIST_PAGINATION[listId]?.selectable
-            ? getAdminListItems(listId).length
-            : (document.getElementById(listId)?.querySelectorAll('input[data-select-id]').length || 0);
-        setListSelected(listId, selectedCount !== totalCount);
+        const selectedCount = getAdminSelectionCount(listId);
+        const totalCount = state.adminListTotals[listId] || 0;
+        if (selectedCount === totalCount && totalCount > 0) {
+            clearAdminListSelection(listId);
+            refreshVisibleListSelection(listId);
+            return;
+        }
+
+        button.disabled = true;
+        setAdminListBusy(listId, true);
+        setStatus(els.adminStatus, 'selecting...');
+        try {
+            const snapshotCount = await snapshotDrawingSelection(listId);
+            setStatus(els.adminStatus, snapshotCount ? `${snapshotCount} selected` : 'nothing to select');
+        } catch (error) {
+            setStatus(els.adminStatus, error.message || 'Could not select doods.');
+        } finally {
+            setAdminListBusy(listId, false);
+            button.disabled = false;
+        }
         return;
     }
 
     const ids = getSelectedIds(listId);
-    if (!ids.length) {
+    const selectionCount = getAdminSelectionCount(listId);
+    if (!selectionCount) {
         setStatus(els.adminStatus, 'select items first');
         return;
     }
-    if (action === 'delete' && !confirmDangerAction(`Delete ${ids.length} selected doods? This cannot be undone.`)) return;
+    if (action === 'delete' && !confirmDangerAction(`Delete ${selectionCount} selected doods? This cannot be undone.`)) return;
 
     button.disabled = true;
-    setStatus(els.adminStatus, `${action} ${ids.length}...`);
+    setStatus(els.adminStatus, `${action} ${selectionCount}...`);
 
     try {
-        if (action === 'approve') {
-            const { error } = await adminClient.from('drawings').update({ approved: true }).in('id', ids);
-            if (error) throw error;
-        }
-
-        if (action === 'delete') {
-            const { error } = await adminClient.from('drawings').delete().in('id', ids);
-            if (error) throw error;
-        }
-
+        await runDrawingBulkMutation(action, listId, ids);
+        clearAdminListSelection(listId);
         await loadAdminData();
     } catch (error) {
-        setStatus(els.adminStatus, error.message || 'Bulk action failed.');
+        const completed = Number(error.completedCount) || 0;
+        try {
+            await loadAdminData();
+        } catch (reloadError) {
+            setStatus(els.adminStatus, `${completed} of ${selectionCount} changed before the error; refresh also failed.`);
+            return;
+        }
+        setStatus(els.adminStatus, completed
+            ? `${completed} of ${selectionCount} changed before the error; list refreshed.`
+            : (error.message || 'Bulk action failed.'));
     } finally {
         button.disabled = false;
     }
@@ -2202,8 +2648,13 @@ async function init() {
     });
 
     els.loginForm.addEventListener('submit', handleLogin);
-    els.refresh.addEventListener('click', loadAdminData);
+    els.refresh.addEventListener('click', () => {
+        void loadAdminData().catch(error => {
+            setStatus(els.adminStatus, error.message || 'Could not refresh admin data.');
+        });
+    });
     els.logout.addEventListener('click', async () => {
+        clearTimeout(wishlistSearchTimer);
         SOCIAL_CARD_VIDEO_KEYS.forEach(revokeSocialVideoObjectUrl);
         socialVideoSelectedFiles.clear();
         await adminClient.auth.signOut();
@@ -2220,10 +2671,14 @@ async function init() {
         list.addEventListener('change', event => {
             const input = event.target.closest('input[data-select-id]');
             if (!input) return;
-            const selected = adminListSelections.get(list.id);
-            if (!selected) return;
-            if (input.checked) selected.add(String(input.dataset.selectId));
-            else selected.delete(String(input.dataset.selectId));
+            const selection = adminListSelections.get(list.id);
+            if (!selection) return;
+            const id = String(input.dataset.selectId);
+            if (input.checked) {
+                selection.ids.add(id);
+            } else {
+                selection.ids.delete(id);
+            }
         });
         list.addEventListener('input', event => {
             const textarea = event.target.closest('textarea[data-answer-for]');
@@ -2238,7 +2693,13 @@ async function init() {
     els.wishlistSearch?.addEventListener('input', () => {
         state.wishlistSearch = els.wishlistSearch.value || '';
         adminListPages.set('wishlist-items-list', 1);
-        renderWishlistItems();
+        adminListLoadTokens.set(
+            'wishlist-items-list',
+            (adminListLoadTokens.get('wishlist-items-list') || 0) + 1
+        );
+        setAdminListBusy('wishlist-items-list', true);
+        clearTimeout(wishlistSearchTimer);
+        wishlistSearchTimer = setTimeout(() => loadAdminList('wishlist-items-list'), 180);
     });
     els.linkSettingsForm?.addEventListener('submit', e => e.preventDefault());
     els.linkSettingsReset?.addEventListener('click', resetLinkSettings);

@@ -69,13 +69,167 @@ function safeAccent(value, fallback = ACCENT_COLORS[0]) {
   return /^#[0-9a-f]{6}$/.test(s) ? s : fallback;
 }
 
-const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
+const ALLOWED_IMAGE_TYPES = new Set([
+  'image/jpeg', 'image/png', 'image/webp', 'image/gif',
+  // iPhone photo pickers may preserve HEIC/HEIF instead of transcoding to JPEG.
+  // Keep the original File, but only accept it when the browser can decode it.
+  'image/heic', 'image/heif', 'image/avif',
+]);
 const MAX_IMG_BYTES = 15 * 1024 * 1024; // 15 MB
 // Chat attachments retain their original File objects until the batch sends.
 // Bound both dimensions so a picker action cannot pin an unsafe amount of
 // full-resolution image data in memory on mobile Safari.
 const MAX_STAGED_IMAGES = 8;
 const MAX_STAGED_BYTES = 40 * 1024 * 1024; // 40 MB across the whole batch
+const MAX_IMAGE_DIMENSION = 12_000;
+const MAX_IMAGE_PIXELS = 55_000_000; // includes normal 12 MP and iPhone 48 MP photos
+const MAX_FALLBACK_DECODE_PIXELS = 25_000_000;
+const STAGED_THUMB_PX = 232; // 58 CSS px at 4x: crisp without retaining a full decode
+
+const IMAGE_EXT_TYPES = Object.freeze({
+  jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif',
+  heic: 'image/heic', heif: 'image/heif', avif: 'image/avif',
+});
+
+function acceptedImageType(file) {
+  let type = String(file?.type || '').trim().toLowerCase().split(';')[0];
+  if (type === 'image/jpg' || type === 'image/pjpeg') type = 'image/jpeg';
+  if (type === 'image/x-png') type = 'image/png';
+  if (type === 'image/heic-sequence') type = 'image/heic';
+  if (type === 'image/heif-sequence') type = 'image/heif';
+  if (ALLOWED_IMAGE_TYPES.has(type)) return type;
+
+  // Some iOS share sheets and clipboard providers omit the MIME type. Only
+  // infer from a known image extension when the provider supplied no useful
+  // type; canvas decoding below still validates the actual bytes.
+  if (!type || type === 'application/octet-stream') {
+    const ext = String(file?.name || '').split('.').pop().toLowerCase();
+    return IMAGE_EXT_TYPES[ext] || null;
+  }
+  return null;
+}
+
+function readFileChunk(file, byteCount = 1024 * 1024) {
+  const blob = file.slice(0, Math.min(file.size, byteCount));
+  if (typeof blob.arrayBuffer === 'function') return blob.arrayBuffer();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error || new Error('read failed'));
+    reader.readAsArrayBuffer(blob);
+  });
+}
+
+function asciiAt(bytes, offset, length) {
+  let out = '';
+  for (let i = 0; i < length && offset + i < bytes.length; i++) out += String.fromCharCode(bytes[offset + i]);
+  return out;
+}
+
+function jpegExifOrientation(bytes, view, dataStart, dataLength) {
+  if (dataLength < 14 || asciiAt(bytes, dataStart, 6) !== 'Exif\0\0') return null;
+  const tiff = dataStart + 6;
+  const byteOrder = asciiAt(bytes, tiff, 2);
+  const little = byteOrder === 'II';
+  if (!little && byteOrder !== 'MM') return null;
+  const read16 = offset => view.getUint16(offset, little);
+  const read32 = offset => view.getUint32(offset, little);
+  const segmentEnd = dataStart + dataLength;
+  if (tiff + 8 > segmentEnd || read16(tiff + 2) !== 42) return null;
+  const ifd = tiff + read32(tiff + 4);
+  if (ifd + 2 > segmentEnd) return null;
+  const count = Math.min(read16(ifd), 256);
+  for (let i = 0; i < count; i++) {
+    const entry = ifd + 2 + i * 12;
+    if (entry + 12 > segmentEnd) break;
+    if (read16(entry) !== 0x0112 || read16(entry + 2) !== 3 || read32(entry + 4) < 1) continue;
+    const orientation = read16(entry + 8);
+    return orientation >= 1 && orientation <= 8 ? orientation : null;
+  }
+  return null;
+}
+
+// Header-only dimension inspection avoids decoding a maliciously huge image
+// just to discover its size. Unknown/new formats still proceed to the browser
+// decoder, with the stricter fallback guard below when resize-at-decode is not
+// available.
+async function imageHeaderDimensions(file, type = acceptedImageType(file)) {
+  let buffer;
+  try { buffer = await readFileChunk(file); } catch { return null; }
+  const bytes = new Uint8Array(buffer);
+  const view = new DataView(buffer);
+  if (bytes.length < 10) return null;
+
+  if (type === 'image/png' && bytes.length >= 24 && asciiAt(bytes, 1, 3) === 'PNG') {
+    return { width: view.getUint32(16, false), height: view.getUint32(20, false) };
+  }
+  if (type === 'image/gif' && (asciiAt(bytes, 0, 6) === 'GIF87a' || asciiAt(bytes, 0, 6) === 'GIF89a')) {
+    return { width: view.getUint16(6, true), height: view.getUint16(8, true) };
+  }
+  if (type === 'image/jpeg' && bytes[0] === 0xff && bytes[1] === 0xd8) {
+    const sof = new Set([0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf]);
+    let offset = 2;
+    let orientation = 1;
+    while (offset + 9 < bytes.length) {
+      if (bytes[offset] !== 0xff) { offset++; continue; }
+      while (offset < bytes.length && bytes[offset] === 0xff) offset++;
+      const marker = bytes[offset++];
+      if (marker === 0xd8 || marker === 0xd9 || (marker >= 0xd0 && marker <= 0xd7)) continue;
+      if (offset + 2 > bytes.length) break;
+      const segmentLength = view.getUint16(offset, false);
+      if (segmentLength < 2 || offset + segmentLength > bytes.length) break;
+      if (marker === 0xe1) {
+        orientation = jpegExifOrientation(bytes, view, offset + 2, segmentLength - 2) || orientation;
+      }
+      if (sof.has(marker) && segmentLength >= 7) {
+        let width = view.getUint16(offset + 5, false);
+        let height = view.getUint16(offset + 3, false);
+        if (orientation >= 5 && orientation <= 8) [width, height] = [height, width];
+        return { width, height };
+      }
+      offset += segmentLength;
+    }
+  }
+  if (type === 'image/webp' && bytes.length >= 30 && asciiAt(bytes, 0, 4) === 'RIFF' && asciiAt(bytes, 8, 4) === 'WEBP') {
+    const chunk = asciiAt(bytes, 12, 4);
+    if (chunk === 'VP8X') {
+      const width = 1 + bytes[24] + (bytes[25] << 8) + (bytes[26] << 16);
+      const height = 1 + bytes[27] + (bytes[28] << 8) + (bytes[29] << 16);
+      return { width, height };
+    }
+    if (chunk === 'VP8 ' && bytes.length >= 30) {
+      return { width: view.getUint16(26, true) & 0x3fff, height: view.getUint16(28, true) & 0x3fff };
+    }
+    if (chunk === 'VP8L' && bytes.length >= 25 && bytes[20] === 0x2f) {
+      const width = 1 + (((bytes[22] & 0x3f) << 8) | bytes[21]);
+      const height = 1 + ((bytes[24] & 0x0f) << 10) + (bytes[23] << 2) + ((bytes[22] & 0xc0) >> 6);
+      return { width, height };
+    }
+  }
+  if (type === 'image/heic' || type === 'image/heif' || type === 'image/avif') {
+    // HEIF/AVIF item properties expose dimensions in an `ispe` box. There can
+    // be a thumbnail and a primary image, so retain the largest valid pair.
+    let best = null;
+    for (let i = 4; i + 16 <= bytes.length; i++) {
+      if (asciiAt(bytes, i, 4) !== 'ispe') continue;
+      const width = view.getUint32(i + 8, false);
+      const height = view.getUint32(i + 12, false);
+      if (width && height && (!best || width * height > best.width * best.height)) best = { width, height };
+    }
+    return best;
+  }
+  return null;
+}
+
+function assertSafeDimensions(dimensions) {
+  if (!dimensions) return;
+  const { width, height } = dimensions;
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width < 1 || height < 1
+      || width > MAX_IMAGE_DIMENSION || height > MAX_IMAGE_DIMENSION
+      || width * height > MAX_IMAGE_PIXELS) {
+    throw Object.assign(new Error('unsafe dimensions'), { code: 'TOO_MANY_PIXELS' });
+  }
+}
 
 const ADJECTIVES = ['soft','rosy','velvet','hazy','lunar','dewy','misty','coral','dusty','silky'];
 const NOUNS      = ['echo','bloom','drift','glow','mist','haze','petal','wisp','veil','lace'];
@@ -333,61 +487,168 @@ function avatarInner(nickname, accent, avatar) {
   return escHtml((nickname || '?')[0].toUpperCase());
 }
 
-// Downscale an image File to a data URL. maxPx caps the longest edge.
-// Canvas re-encode strips EXIF and validates actual image content.
-function fileToDataUrl(file, maxPx, quality = 0.82) {
+function basicImageValidation(file) {
+  if (!file) throw Object.assign(new Error('no file'), { code: 'NO_FILE' });
+  if (file.size > MAX_IMG_BYTES) throw Object.assign(new Error('too large'), { code: 'TOO_LARGE' });
+  const type = acceptedImageType(file);
+  if (!type) throw Object.assign(new Error('unsupported type'), { code: 'BAD_TYPE' });
+  return type;
+}
+
+const _temporaryImageObjectUrls = new Set();
+let _imageWorkTail = Promise.resolve();
+
+function runSerializedImageWork(work) {
+  const run = _imageWorkTail.catch(() => {}).then(work);
+  // Keep the shared tail fulfilled so one bad file cannot poison later work;
+  // return the original promise so its caller still receives the error.
+  _imageWorkTail = run.catch(() => {});
+  return run;
+}
+
+function loadImageElement(file) {
   return new Promise((resolve, reject) => {
-    if (!file) { reject(Object.assign(new Error('no file'), { code: 'NO_FILE' })); return; }
-    if (file.size > MAX_IMG_BYTES) { reject(Object.assign(new Error('too large'), { code: 'TOO_LARGE' })); return; }
-    if (!ALLOWED_IMAGE_TYPES.has(file.type)) { reject(Object.assign(new Error('unsupported type'), { code: 'BAD_TYPE' })); return; }
     const img = new Image();
     const url = URL.createObjectURL(file);
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      let { width: w, height: h } = img;
-      const scale = Math.min(1, maxPx / Math.max(w, h));
-      w = Math.round(w * scale); h = Math.round(h * scale);
-      const canvas = document.createElement('canvas');
-      canvas.width = w; canvas.height = h;
-      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-      resolve(canvas.toDataURL('image/jpeg', quality));
+    _temporaryImageObjectUrls.add(url);
+    let settled = false;
+    const releaseUrl = () => {
+      if (_temporaryImageObjectUrls.delete(url)) URL.revokeObjectURL(url);
     };
-    img.onerror = () => { URL.revokeObjectURL(url); reject(Object.assign(new Error('decode failed'), { code: 'DECODE_FAILED' })); };
+    const finish = (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      releaseUrl();
+      img.onload = null;
+      img.onerror = null;
+      if (error) {
+        img.src = '';
+        reject(Object.assign(error, { code: 'DECODE_FAILED' }));
+      } else {
+        resolve(img);
+      }
+    };
+    const timeout = setTimeout(() => finish(new Error('decode timed out')), 15_000);
+    img.onload = () => finish();
+    img.onerror = () => finish(new Error('decode failed'));
     img.src = url;
   });
+}
+
+// Decode at the requested bound when the browser supports it. On older Safari,
+// fall back to a single HTMLImage decode, but refuse exceptionally large pixel
+// counts first so one preview cannot exhaust the tab. Call cleanup immediately
+// after drawing to release the decoder surface.
+async function boundedImageSource(file, maxPx, knownDimensions = null) {
+  const dimensions = knownDimensions || await imageHeaderDimensions(file);
+  // Never fall through to an unconstrained HTMLImage decode when the header
+  // could not be identified. All accepted normal/iPhone formats above expose
+  // dimensions without decoding pixel data; a null result is malformed or an
+  // unsupported container and is safer to reject.
+  if (!dimensions) throw Object.assign(new Error('unknown dimensions'), { code: 'DECODE_FAILED' });
+  assertSafeDimensions(dimensions);
+
+  if (typeof createImageBitmap === 'function') {
+    const scale = Math.min(1, maxPx / Math.max(dimensions.width, dimensions.height));
+    const boundedLongEdge = Math.max(1, Math.round(Math.max(dimensions.width, dimensions.height) * scale));
+    // Specify one edge only so the decoder preserves aspect ratio even when
+    // EXIF rotates a JPEG and swaps its stored width/height.
+    const resize = dimensions.width >= dimensions.height
+      ? { resizeWidth: boundedLongEdge }
+      : { resizeHeight: boundedLongEdge };
+    const decodeBitmap = options => createImageBitmap(file, {
+      imageOrientation: 'from-image',
+      ...options,
+      resizeQuality: 'high',
+    });
+    try {
+      let bitmap = await decodeBitmap(resize);
+      // Some engines historically interpreted resize dimensions before EXIF
+      // rotation. Retry with the opposite constrained edge, then enforce the
+      // real output bound instead of trusting the options.
+      if (bitmap.width > maxPx || bitmap.height > maxPx) {
+        bitmap.close?.();
+        const opposite = resize.resizeWidth
+          ? { resizeHeight: boundedLongEdge }
+          : { resizeWidth: boundedLongEdge };
+        bitmap = await decodeBitmap(opposite);
+      }
+      if (!bitmap.width || !bitmap.height || bitmap.width > maxPx || bitmap.height > maxPx) {
+        bitmap.close?.();
+        throw Object.assign(new Error('decoder ignored resize bound'), { code: 'TOO_MANY_PIXELS' });
+      }
+      return { source: bitmap, width: bitmap.width, height: bitmap.height, cleanup: () => bitmap.close?.() };
+    } catch (err) {
+      if (err?.code === 'TOO_MANY_PIXELS') throw err;
+      // A supported MIME can still miss a platform decoder (notably HEIC off
+      // Apple devices). The HTMLImage path below gives Safari a second chance.
+    }
+  }
+
+  if (dimensions.width * dimensions.height > MAX_FALLBACK_DECODE_PIXELS) {
+    throw Object.assign(new Error('unsafe fallback decode'), { code: 'TOO_MANY_PIXELS' });
+  }
+  const img = await loadImageElement(file);
+  const width = img.naturalWidth || img.width;
+  const height = img.naturalHeight || img.height;
+  try {
+    assertSafeDimensions({ width, height });
+    return { source: img, width, height, cleanup: () => { img.src = ''; } };
+  } catch (err) {
+    img.src = '';
+    throw err;
+  }
+}
+
+// Downscale an image File to a data URL. maxPx caps the longest edge.
+// Canvas re-encode strips EXIF and validates actual image content.
+async function fileToDataUrl(file, maxPx, quality = 0.82) {
+  basicImageValidation(file);
+  const dimensions = await imageHeaderDimensions(file);
+  assertSafeDimensions(dimensions);
+  const decoded = await boundedImageSource(file, maxPx, dimensions);
+  try {
+    const scale = Math.min(1, maxPx / Math.max(decoded.width, decoded.height));
+    const w = Math.max(1, Math.round(decoded.width * scale));
+    const h = Math.max(1, Math.round(decoded.height * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = w; canvas.height = h;
+    canvas.getContext('2d').drawImage(decoded.source, 0, 0, w, h);
+    return canvas.toDataURL('image/jpeg', quality);
+  } finally {
+    decoded.cleanup();
+  }
 }
 
 // Encode a single image file at two quality levels in one pass.
 // Returns { thumb, full } as JPEG data URLs.
-function fileToThumbAndFull(file) {
-  return new Promise((resolve, reject) => {
-    if (!file) { reject(Object.assign(new Error('no file'), { code: 'NO_FILE' })); return; }
-    if (file.size > MAX_IMG_BYTES) { reject(Object.assign(new Error('too large'), { code: 'TOO_LARGE' })); return; }
-    if (!ALLOWED_IMAGE_TYPES.has(file.type)) { reject(Object.assign(new Error('unsupported type'), { code: 'BAD_TYPE' })); return; }
-    const img = new Image();
-    const url = URL.createObjectURL(file);
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      const maxLong = Math.max(img.width, img.height);
-      function encode(maxPx, quality) {
-        const scale = Math.min(1, maxPx / maxLong);
-        const w = Math.round(img.width * scale);
-        const h = Math.round(img.height * scale);
-        const c = document.createElement('canvas');
-        c.width = w; c.height = h;
-        c.getContext('2d').drawImage(img, 0, 0, w, h);
-        return c.toDataURL('image/jpeg', quality);
-      }
-      resolve({ thumb: encode(380, 0.78), full: encode(1280, 0.87) });
-    };
-    img.onerror = () => { URL.revokeObjectURL(url); reject(Object.assign(new Error('decode failed'), { code: 'DECODE_FAILED' })); };
-    img.src = url;
-  });
+async function fileToThumbAndFull(file) {
+  basicImageValidation(file);
+  const dimensions = await imageHeaderDimensions(file);
+  assertSafeDimensions(dimensions);
+  const decoded = await boundedImageSource(file, 1280, dimensions);
+  try {
+    const maxLong = Math.max(decoded.width, decoded.height);
+    function encode(maxPx, quality) {
+      const scale = Math.min(1, maxPx / maxLong);
+      const w = Math.max(1, Math.round(decoded.width * scale));
+      const h = Math.max(1, Math.round(decoded.height * scale));
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      c.getContext('2d').drawImage(decoded.source, 0, 0, w, h);
+      return c.toDataURL('image/jpeg', quality);
+    }
+    return { thumb: encode(380, 0.78), full: encode(1280, 0.87) };
+  } finally {
+    decoded.cleanup();
+  }
 }
 
 function imgUploadError(err) {
   if (err?.code === 'TOO_LARGE') return 'Image is too large — max 15 MB.';
-  if (err?.code === 'BAD_TYPE') return 'Unsupported file type — use JPEG, PNG, WebP, or GIF.';
+  if (err?.code === 'TOO_MANY_PIXELS') return 'That photo has unusually large dimensions. Choose a smaller copy.';
+  if (err?.code === 'BAD_TYPE') return 'Unsupported file type — use JPEG, PNG, WebP, GIF, HEIC, or AVIF.';
   return "Couldn't read that image.";
 }
 
@@ -596,16 +857,38 @@ async function sbLoadMessages(roomId, limit = 50) {
   } catch (err) { console.error('sbLoadMessages:', err); return []; }
 }
 
-async function sbSendMessage(roomId, body) {
+async function sbSendMessage(roomId, body, sender = null) {
   if (DEMO) return null; // demo: the optimistic append is all there is
-  const { data, error } = await sb.from('room_messages').insert({
+  let request = sb.from('room_messages').insert({
     room_id:    roomId,
-    nickname:   state.user.nickname,
-    session_id: state.user.sessionId,
+    nickname:   sender?.nickname || state.user.nickname,
+    session_id: sender?.sessionId || state.user.sessionId,
     body,
   }).select('id').single();
-  if (error) throw error;
-  return data?.id ?? null; // shared id so reactions/replies key consistently across clients
+  const controller = new AbortController();
+  let timeout = null;
+  // Supabase v2 supports abortSignal. Keep the fallback unmodified if that API
+  // ever disappears rather than racing an uncancelled insert that could later
+  // succeed and be retried as a duplicate.
+  if (typeof request.abortSignal === 'function') {
+    request = request.abortSignal(controller.signal);
+    timeout = setTimeout(() => controller.abort(), 20_000);
+  }
+  try {
+    const { data, error } = await request;
+    if (controller.signal.aborted) {
+      throw Object.assign(new Error('Message send timed out.'), { code: 'SEND_TIMEOUT' });
+    }
+    if (error) throw error;
+    return data?.id ?? null; // shared id so reactions/replies key consistently across clients
+  } catch (err) {
+    if (controller.signal.aborted && err?.code !== 'SEND_TIMEOUT') {
+      throw Object.assign(new Error('Message send timed out.'), { code: 'SEND_TIMEOUT' });
+    }
+    throw err;
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
 }
 
 async function sbAddBan(roomId, type, value) {
@@ -728,7 +1011,12 @@ let _memberCountTimer = null;
 
 function sbJoinPresence(slug) {
   const channel = sb.channel(`presence:${slug}`, {
-    config: { presence: { key: state.user.sessionId } },
+    config: {
+      presence: { key: state.user.sessionId },
+      // Await the server acknowledgement so `send()` can truthfully report
+      // "timed out"/"error" instead of optimistic local queue acceptance.
+      broadcast: { ack: true },
+    },
   });
 
   channel.on('presence', { event: 'sync' }, () => {
@@ -779,10 +1067,11 @@ function sbJoinPresence(slug) {
   channel.on('broadcast', { event: 'chat:image' }, ({ payload }) => {
     if (!payload || state.view !== 'room') return;
     if (payload.sessionId === state.user.sessionId) return; // already shown optimistically
-    const size = (payload.thumb?.length || 0) + (payload.full?.length || 0);
-    if (size > 900_000) return; // drop oversized payloads to prevent OOM/stall
     const thumb = payload.thumb || payload.src;
     const full  = payload.full  || payload.thumb || payload.src;
+    if (!isSafeChatImageDataUrl(thumb, 400) || !isSafeChatImageDataUrl(full, 1300)) return;
+    const size = thumb.length + full.length;
+    if (size > 900_000) return; // drop oversized payloads to prevent OOM/stall
     appendImageMessage(payload.nick, thumb, full, payload.time || Date.now(), payload.sessionId, { replyTo: payload.replyTo });
   });
 
@@ -832,12 +1121,48 @@ async function sbTrackPresence(updates) {
 }
 
 // Fire a realtime broadcast to everyone on the room's presence channel.
-function broadcastToRoom(event, payload) {
+function validateBroadcastStatus(status) {
+  if (status === 'ok') return status;
+  throw Object.assign(new Error(`realtime broadcast ${status || 'failed'}`), {
+    code: status === 'timed out' ? 'BROADCAST_TIMEOUT' : 'BROADCAST_FAILED',
+  });
+}
+
+async function broadcastToRoom(event, payload) {
   // Demo has no realtime channel — treat the optimistic local render as sent so
   // images/reactions/replies aren't rolled back by the "send failed" catch.
-  if (DEMO) return Promise.resolve();
-  if (!state._sbPresenceChan) return Promise.reject(new Error('no channel'));
-  return state._sbPresenceChan.send({ type: 'broadcast', event, payload });
+  if (DEMO) return 'ok';
+  if (!state._sbPresenceChan) throw new Error('no channel');
+  return validateBroadcastStatus(await state._sbPresenceChan.send({ type: 'broadcast', event, payload }));
+}
+
+function captureImageSendContext() {
+  const room = state.room;
+  if (!room || state.view !== 'room') return null;
+  return {
+    roomId: room.id ?? null,
+    roomSlug: String(room.slug || ''),
+    channel: state._sbPresenceChan,
+    sessionId: state.user.sessionId,
+    nickname: state.user.nickname,
+  };
+}
+
+function imageSendContextIsCurrent(context) {
+  if (!context || state.view !== 'room' || !state.room) return false;
+  return (state.room.id ?? null) === context.roomId
+    && String(state.room.slug || '') === context.roomSlug
+    && state._sbPresenceChan === context.channel
+    && state.user.sessionId === context.sessionId;
+}
+
+async function broadcastToCapturedRoom(context, event, payload) {
+  if (!imageSendContextIsCurrent(context)) {
+    throw Object.assign(new Error('room changed'), { code: 'ROOM_CHANGED' });
+  }
+  if (DEMO) return 'ok';
+  if (!context.channel) throw new Error('no channel');
+  return validateBroadcastStatus(await context.channel.send({ type: 'broadcast', event, payload }));
 }
 
 function handleModerationEvent(evt) {
@@ -1701,6 +2026,8 @@ function renderRoomCard(room) {
 
 // ── § TRANSITIONS ─────────────────────────────────────────────────
 async function doShowLobby() {
+  cancelActiveChatSend();
+  releaseAllChatImageMessages();
   await lkDisconnect();
   await sbCleanupChannels();
   resetLeaveConfirm();
@@ -3483,6 +3810,30 @@ async function toggleGhost() {
 // ── § CHAT ────────────────────────────────────────────────────────
 const _msgBurst = []; // rolling timestamps of recent sends
 let _msgIdSeq = 0;   // local counter for optimistic message identity
+let _chatSendInFlight = false;
+let _activeChatSend = null;
+
+function setChatSendBusy(busy) {
+  const send = document.getElementById('btn-send');
+  const image = document.getElementById('btn-chat-image');
+  const file = document.getElementById('chat-file');
+  if (send) {
+    send.disabled = busy;
+    send.setAttribute('aria-busy', busy ? 'true' : 'false');
+  }
+  if (image) image.disabled = busy;
+  if (file) file.disabled = busy;
+}
+
+function cancelActiveChatSend() {
+  const operation = _activeChatSend;
+  if (!operation) return;
+  operation.cancelled = true;
+  operation.images.forEach(staged => { staged.file = null; });
+  _activeChatSend = null;
+  _chatSendInFlight = false;
+  setChatSendBusy(false);
+}
 
 function chatCooldownMs() {
   const now = Date.now();
@@ -3495,6 +3846,7 @@ function chatCooldownMs() {
 }
 
 async function sendMessage() {
+  if (_chatSendInFlight) return;
   const input = document.getElementById('chat-input');
   const body  = input.value.trim();
   const hasImages = _stagedImages.length > 0;
@@ -3529,46 +3881,78 @@ async function sendMessage() {
   if (wait > 0) { showChatCooldown(wait); return; }
   hideChatCooldown();
 
+  const sendContext = captureImageSendContext();
+  if (!sendContext) return;
+  // Detach this exact batch before the first await. Later remove/add actions
+  // therefore cannot mutate which originals this send owns.
+  const imgs = hasImages ? detachStagedImageFiles() : [];
+
   // The reply applies to whichever piece is sent first (text, else the images).
   const replyTo = _replyTarget ? { nick: _replyTarget.nick, text: _replyTarget.text } : null;
   clearReplyTarget();
   let replyUsed = false;
+  const sendOperation = { images: imgs, cancelled: false };
+  _activeChatSend = sendOperation;
+  _chatSendInFlight = true;
+  setChatSendBusy(true);
+  try {
+    if (body) {
+      _msgBurst.push(Date.now());
+      const msgId = ++_msgIdSeq;
+      input.value = '';
+      autoGrowChatInput();
+      const time = Date.now();
+      const msg = { nick: sendContext.nickname, body, time };
+      state.chat.push(msg);
+      const el = appendMessage(msg.nick, msg.body, msg.time, true, { msgId, sessionId: sendContext.sessionId, replyTo }); // optimistic
+      if (replyTo) replyUsed = true;
 
-  if (body) {
-    _msgBurst.push(Date.now());
-    const msgId = ++_msgIdSeq;
-    input.value = '';
-    autoGrowChatInput();
-    const time = Date.now();
-    const msg = { nick: state.user.nickname, body, time };
-    state.chat.push(msg);
-    const el = appendMessage(msg.nick, msg.body, msg.time, true, { msgId, sessionId: state.user.sessionId, replyTo }); // optimistic
-    if (replyTo) replyUsed = true;
-
-    if (state.room?.id) {
-      try {
-        const dbId = await sbSendMessage(state.room.id, body);
-        rekeyMessage(el, dbId); // adopt the shared id so peers' reactions/replies match
-        // Broadcast the reply against the final shared key (or the optimistic one in demo).
-        if (replyTo) broadcastReply(dbId ? 'm' + dbId : msgKey(state.user.sessionId, time), replyTo);
-      } catch (err) {
-        logEvent('error', 'msg_send_failed', { code: err?.code });
-        console.error('sendMessage failed:', err);
-        markMsgFailed(msgId, body);
+      if (sendContext.roomId) {
+        try {
+          const dbId = await sbSendMessage(sendContext.roomId, body, sendContext);
+          if (!sendOperation.cancelled && imageSendContextIsCurrent(sendContext)) {
+            rekeyMessage(el, dbId); // adopt the shared id so peers' reactions/replies match
+            if (replyTo) {
+              broadcastToCapturedRoom(sendContext, 'chat:reply', {
+                key: dbId ? 'm' + dbId : msgKey(sendContext.sessionId, time),
+                replyTo,
+                sessionId: sendContext.sessionId,
+              }).catch(() => {});
+            }
+          }
+        } catch (err) {
+          logEvent('error', 'msg_send_failed', { code: err?.code });
+          console.error('sendMessage failed:', err);
+          if (!sendOperation.cancelled && imageSendContextIsCurrent(sendContext)) markMsgFailed(msgId, body);
+        }
+      } else if (replyTo && !sendOperation.cancelled && imageSendContextIsCurrent(sendContext)) {
+        broadcastToCapturedRoom(sendContext, 'chat:reply', {
+          key: msgKey(sendContext.sessionId, time), replyTo, sessionId: sendContext.sessionId,
+        }).catch(() => {});
       }
-    } else if (replyTo) {
-      broadcastReply(msgKey(state.user.sessionId, time), replyTo);
     }
-  }
 
-  // Send every staged image at once; a batch is one user action, so it bypasses
-  // the per-message spam gate. The reply (if unused by text) rides the first one.
-  if (hasImages) {
-    const imgs = _stagedImages.slice();
-    clearStagedImages();
-    _msgBurst.push(Date.now());
-    for (let i = 0; i < imgs.length; i++) {
-      await sendChatImage(imgs[i].file, { replyTo: (!replyUsed && i === 0) ? replyTo : null, skipGate: true });
+    // A room transition while text was being persisted cancels every remaining
+    // image before it can decode, append locally, or broadcast on another room.
+    if (imgs.length && !sendOperation.cancelled && imageSendContextIsCurrent(sendContext)) {
+      _msgBurst.push(Date.now());
+      for (let i = 0; i < imgs.length; i++) {
+        if (sendOperation.cancelled || !imageSendContextIsCurrent(sendContext)) break;
+        await sendChatImage(imgs[i].file, {
+          replyTo: (!replyUsed && i === 0) ? replyTo : null,
+          skipGate: true,
+          sendContext,
+          sendOperation,
+        });
+        imgs[i].file = null;
+      }
+    }
+  } finally {
+    imgs.forEach(staged => { staged.file = null; });
+    if (_activeChatSend === sendOperation) {
+      _activeChatSend = null;
+      _chatSendInFlight = false;
+      setChatSendBusy(false);
     }
   }
 }
@@ -3623,10 +4007,10 @@ function nickColor(nick, sessionId) {
 // repo root; CSP img-src 'self' allows same-origin). Reactions + replies are
 // ephemeral like chat images — broadcast over realtime, never written to the DB.
 const CHAT_REACTIONS = [
-  { key: 'happy', img: '../happy.png', label: 'happy' },
-  { key: 'cool',  img: '../cool.png',  label: 'cool'  },
-  { key: 'meh',   img: '../meh.png',   label: 'meh'   },
-  { key: 'sad',   img: '../sad.png',   label: 'sad'   },
+  { key: 'happy', img: '../site-images/happy.png', label: 'happy' },
+  { key: 'cool',  img: '../site-images/cool.png',  label: 'cool'  },
+  { key: 'meh',   img: '../site-images/meh.png',   label: 'meh'   },
+  { key: 'sad',   img: '../site-images/sad.png',   label: 'sad'   },
 ];
 const REACT_IMG = Object.fromEntries(CHAT_REACTIONS.map(r => [r.key, r.img]));
 
@@ -3843,20 +4227,105 @@ function markMsgFailed(msgId, body) {
   div.appendChild(label);
 }
 
+const CHAT_IMAGE_MESSAGE_LIMIT = 12;
+// One maximum eight-photo send can approach 6.4M encoded characters. Keep
+// that complete batch while still imposing a firm long-session ceiling.
+const CHAT_IMAGE_ENCODED_CHAR_LIMIT = 6_500_000;
+const CHAT_IMAGE_DATA_URL_RE = /^data:image\/jpeg;base64,[a-z0-9+/=]+$/i;
+
+function jpegDataUrlDimensions(value) {
+  try {
+    const encoded = value.slice(value.indexOf(',') + 1);
+    // Canvas JPEGs expose SOF near the start. Reject unusual files with more
+    // than 96 KiB of metadata rather than decoding their pixels in Safari.
+    const sampleLength = Math.min(encoded.length, 131_072) & ~3;
+    const bytes = atob(encoded.slice(0, sampleLength));
+    if (bytes.charCodeAt(0) !== 0xff || bytes.charCodeAt(1) !== 0xd8) return null;
+    let offset = 2;
+    while (offset + 9 < bytes.length) {
+      if (bytes.charCodeAt(offset) !== 0xff) { offset += 1; continue; }
+      let marker = bytes.charCodeAt(offset + 1);
+      while (marker === 0xff) marker = bytes.charCodeAt(++offset + 1);
+      offset += 2;
+      if (marker === 0xd8 || marker === 0xd9 || (marker >= 0xd0 && marker <= 0xd7)) continue;
+      if (offset + 2 > bytes.length) return null;
+      const segmentLength = (bytes.charCodeAt(offset) << 8) | bytes.charCodeAt(offset + 1);
+      if (segmentLength < 2 || offset + segmentLength > bytes.length) return null;
+      const isStartOfFrame = (marker >= 0xc0 && marker <= 0xc3)
+        || (marker >= 0xc5 && marker <= 0xc7)
+        || (marker >= 0xc9 && marker <= 0xcb)
+        || (marker >= 0xcd && marker <= 0xcf);
+      if (isStartOfFrame) {
+        if (segmentLength < 7) return null;
+        return {
+          height: (bytes.charCodeAt(offset + 3) << 8) | bytes.charCodeAt(offset + 4),
+          width: (bytes.charCodeAt(offset + 5) << 8) | bytes.charCodeAt(offset + 6),
+        };
+      }
+      offset += segmentLength;
+    }
+  } catch {}
+  return null;
+}
+
+function isSafeChatImageDataUrl(value, maxLongEdge) {
+  if (!(typeof value === 'string'
+    && value.length > 32
+    && value.length <= 850_000
+    && CHAT_IMAGE_DATA_URL_RE.test(value))) return false;
+  const dimensions = jpegDataUrlDimensions(value);
+  return Boolean(dimensions?.width && dimensions?.height
+    && dimensions.width <= maxLongEdge
+    && dimensions.height <= maxLongEdge);
+}
+
+function trimEphemeralImageMessages(container) {
+  const messages = Array.from(container?.querySelectorAll('.chat-msg--image') || []);
+  let encodedChars = messages.reduce((total, message) => (
+    total + (Number(message.dataset.imageChars) || 0)
+  ), 0);
+  while (messages.length > CHAT_IMAGE_MESSAGE_LIMIT || encodedChars > CHAT_IMAGE_ENCODED_CHAR_LIMIT) {
+    const oldest = messages.shift();
+    encodedChars -= Number(oldest?.dataset.imageChars) || 0;
+    const key = oldest?.dataset.key;
+    if (key) {
+      _reactions.delete(key);
+      _replyMeta.delete(key);
+      if (_replyTarget?.key === key) clearReplyTarget();
+    }
+    if (oldest) {
+      oldest._releaseChatImage?.();
+      delete oldest._releaseChatImage;
+      oldest.remove();
+    }
+  }
+}
+
+function releaseAllChatImageMessages() {
+  document.querySelectorAll('.chat-msg--image').forEach(message => {
+    message._releaseChatImage?.();
+    delete message._releaseChatImage;
+    message.remove();
+  });
+  closeImageViewer();
+}
+
 // Image message — rendered as a thumbnail that opens a fullscreen viewer.
 // Images are ephemeral: broadcast over realtime, never written to the DB.
 // thumb: small inline preview; full: higher-quality for the viewer.
 function appendImageMessage(nick, thumb, full, time, sessionId, { replyTo } = {}) {
   const el = document.getElementById('chat-messages');
   if (!el) return;
+  if (!isSafeChatImageDataUrl(thumb, 400) || !isSafeChatImageDataUrl(full, 1300)) return;
   const div = document.createElement('div');
-  div.className = 'chat-msg';
+  div.className = 'chat-msg chat-msg--image';
   const isYou = sessionId ? sessionId === state.user.sessionId : nick === state.user.nickname;
   const color = nickColor(nick, sessionId);
   const styleAttr = color ? ` style="color:${escHtml(color)};--c:${escHtml(color)}"` : '';
   const nickGlow = glowAttrs(color);
   const key = msgKey(sessionId, time, nick);
   div.dataset.key = key;
+  div.dataset.imageChars = String(thumb.length + full.length);
   replyTo = replyTo || _replyMeta.get(key);
   div.innerHTML = `
     <div class="chat-msg-header">
@@ -3868,57 +4337,162 @@ function appendImageMessage(nick, thumb, full, time, sessionId, { replyTo } = {}
     <div class="chat-msg-reactions" hidden></div>
   `;
   const imgEl = div.querySelector('.chat-msg-img');
-  imgEl?.addEventListener('click', () => openImageViewer(full));
+  let viewerSource = full;
+  const openFullImage = () => {
+    if (viewerSource) openImageViewer(viewerSource);
+  };
+  imgEl?.addEventListener('click', openFullImage);
   imgEl?.addEventListener('error', () => imgEl.classList.add('chat-msg-img--broken'));
+  div._releaseChatImage = () => {
+    imgEl?.removeEventListener('click', openFullImage);
+    imgEl?.removeAttribute('src');
+    viewerSource = '';
+  };
   attachMsgControls(div, { nick, body: 'photo', sessionId, time, key });
   el.appendChild(div);
   renderReactions(div, key);
+  // Full image data lives in each click handler, so bound the number retained
+  // during a long room session. Text history and current images are untouched.
+  trimEphemeralImageMessages(el);
   // Your own image scrolls into view; others' only when already at the bottom.
   if (isYou || isNearBottom(el)) el.scrollTop = el.scrollHeight;
   updateScrollBtn();
   return div;
 }
 
-async function sendChatImage(file, { replyTo = null, skipGate = false } = {}) {
+async function sendChatImage(file, {
+  replyTo = null, skipGate = false, sendContext = null, sendOperation = null,
+} = {}) {
   if (!file) return;
-  if (!state.room) return;
+  const context = sendContext || captureImageSendContext();
+  if (sendOperation?.cancelled || !imageSendContextIsCurrent(context)) return false;
   if (!skipGate) {
     const wait = chatCooldownMs();
     if (wait > 0) { showChatCooldown(wait); return; }
   }
   let thumb, full;
   try {
-    ({ thumb, full } = await fileToThumbAndFull(file));
+    ({ thumb, full } = await runSerializedImageWork(async () => {
+      if (sendOperation?.cancelled || !imageSendContextIsCurrent(context)) {
+        throw Object.assign(new Error('room changed'), { code: 'ROOM_CHANGED' });
+      }
+      return fileToThumbAndFull(file);
+    }));
   } catch (err) {
+    if (err?.code === 'ROOM_CHANGED' || sendOperation?.cancelled || !imageSendContextIsCurrent(context)) return false;
     logEvent('error', 'upload_failed', { code: err?.code || 'unknown' });
     showChatImgError(imgUploadError(err));
-    return;
+    return false;
   }
+  // Encoding can outlive a room transition. Never append into the replacement
+  // room or use its channel/session for a file selected in the previous one.
+  if (sendOperation?.cancelled || !imageSendContextIsCurrent(context)) return false;
   if (thumb.length + full.length > 800_000) {
     showChatImgError('Image is too large to send. Try a smaller photo.');
-    return;
+    return false;
   }
   if (!skipGate) _msgBurst.push(Date.now());
   const time = Date.now();   // one timestamp so the optimistic + broadcast keys match
-  const optimisticEl = appendImageMessage(state.user.nickname, thumb, full, time, state.user.sessionId, { replyTo }); // optimistic
-  try {
-    await broadcastToRoom('chat:image', {
-      nick: state.user.nickname, thumb, full,
-      src: thumb, // backward compat for old clients
-      time, sessionId: state.user.sessionId, replyTo,
-    });
-    if (replyTo) broadcastReply(msgKey(state.user.sessionId, time), replyTo);
-  } catch {
+  const optimisticEl = appendImageMessage(context.nickname, thumb, full, time, context.sessionId, { replyTo }); // optimistic
+  if (sendOperation?.cancelled || !imageSendContextIsCurrent(context)) {
     optimisticEl?.remove();
-    showChatImgError("Couldn't send image. Check your connection.");
+    return false;
+  }
+  try {
+    await broadcastToCapturedRoom(context, 'chat:image', {
+      nick: context.nickname, thumb, full,
+      src: thumb, // backward compat for old clients
+      time, sessionId: context.sessionId, replyTo,
+    });
+    if (replyTo && !sendOperation?.cancelled && imageSendContextIsCurrent(context)) {
+      broadcastToCapturedRoom(context, 'chat:reply', {
+        key: msgKey(context.sessionId, time), replyTo, sessionId: context.sessionId,
+      }).catch(() => {});
+    }
+    return true;
+  } catch (err) {
+    optimisticEl?.remove();
+    if (err?.code !== 'ROOM_CHANGED' && !sendOperation?.cancelled && imageSendContextIsCurrent(context)) {
+      showChatImgError("Couldn't send image. Check your connection.");
+    }
+    return false;
   }
 }
 
 // ── Multi-image staging: pick several, preview them, send all on ✈ ──────────
-let _stagedImages = [];   // { file, url } — object URLs revoked on clear
+// The strip only receives tiny generated thumbnails. Pointing its <img> tags at
+// original Files made Safari retain one full decoded surface per selection — a
+// handful of modern phone photos could exceed 300 MB before Send was tapped.
+let _stagedImages = [];   // { file, previewUrl, disposed }
+const STAGED_PREVIEW_PLACEHOLDER = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 58 58"><rect width="58" height="58" rx="8" fill="#fff5fa"/><path d="M16 39l8-9 6 6 5-6 8 9H16zm7-13a4 4 0 1 1 0-8 4 4 0 0 1 0 8z" fill="#e9b7ce"/></svg>'
+);
+
+function canvasToPngBlob(canvas) {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(blob => {
+      if (blob) resolve(blob);
+      else reject(Object.assign(new Error('thumbnail encode failed'), { code: 'DECODE_FAILED' }));
+    }, 'image/png');
+  });
+}
+
+async function makeStagedThumbnail(staged) {
+  const file = staged.file;
+  basicImageValidation(file);
+  const dimensions = await imageHeaderDimensions(file);
+  assertSafeDimensions(dimensions);
+  if (staged.disposed) return null;
+  // At 2x the square target, normal landscape/portrait crops still contain at
+  // least 232 source pixels on their short edge before the final center crop.
+  const decoded = await boundedImageSource(file, STAGED_THUMB_PX * 2, dimensions);
+  try {
+    if (staged.disposed) return null;
+    const crop = Math.min(decoded.width, decoded.height);
+    const sx = Math.max(0, (decoded.width - crop) / 2);
+    const sy = Math.max(0, (decoded.height - crop) / 2);
+    const canvas = document.createElement('canvas');
+    canvas.width = STAGED_THUMB_PX;
+    canvas.height = STAGED_THUMB_PX;
+    canvas.getContext('2d').drawImage(
+      decoded.source,
+      sx, sy, crop, crop,
+      0, 0, STAGED_THUMB_PX, STAGED_THUMB_PX
+    );
+    return await canvasToPngBlob(canvas);
+  } finally {
+    decoded.cleanup();
+  }
+}
+
+function queueStagedThumbnail(staged) {
+  // Serialize decode work: at most one original photo has a transient decoded
+  // surface, even when the picker returns the full batch at once.
+  runSerializedImageWork(async () => {
+    if (staged.disposed || !_stagedImages.includes(staged)) return;
+    try {
+      const blob = await makeStagedThumbnail(staged);
+      if (!blob || staged.disposed || !_stagedImages.includes(staged)) return;
+      staged.previewUrl = URL.createObjectURL(blob);
+      renderImgPreview();
+    } catch (err) {
+      if (staged.disposed || !_stagedImages.includes(staged)) return;
+      const idx = _stagedImages.indexOf(staged);
+      if (idx !== -1) _stagedImages.splice(idx, 1);
+      staged.disposed = true;
+      renderImgPreview();
+      showChatImgError(imgUploadError(err));
+    }
+  }).catch(() => {});
+}
+
 function stageImageFiles(fileList) {
   const files = [...(fileList || [])].filter(Boolean);
   if (!files.length) return;
+  if (_chatSendInFlight) {
+    showChatImgError('Your current message is still sending — add the next photo in a moment.');
+    return;
+  }
 
   let stagedBytes = _stagedImages.reduce((sum, staged) => sum + staged.file.size, 0);
   let unsupported = 0;
@@ -3929,7 +4503,7 @@ function stageImageFiles(fileList) {
   for (const file of files) {
     // Match send-time validation here so a file that can never send is not
     // retained as a full-resolution preview first.
-    if (!ALLOWED_IMAGE_TYPES.has(file.type)) {
+    if (!acceptedImageType(file)) {
       unsupported++;
       continue;
     }
@@ -3946,13 +4520,15 @@ function stageImageFiles(fileList) {
       continue;
     }
 
-    _stagedImages.push({ file, url: URL.createObjectURL(file) });
+    const staged = { file, previewUrl: '', disposed: false };
+    _stagedImages.push(staged);
     stagedBytes += file.size;
+    queueStagedThumbnail(staged);
   }
 
   const notices = [];
   if (tooLarge) notices.push(`${tooLarge} ${tooLarge === 1 ? 'image is' : 'images are'} over the 15 MB per-image limit.`);
-  if (unsupported) notices.push(`${unsupported} unsupported ${unsupported === 1 ? 'image was' : 'images were'} skipped (use JPEG, PNG, WebP, or GIF).`);
+  if (unsupported) notices.push(`${unsupported} unsupported ${unsupported === 1 ? 'image was' : 'images were'} skipped (use JPEG, PNG, WebP, GIF, HEIC, or AVIF).`);
   if (overCount) notices.push(`${overCount} ${overCount === 1 ? 'image was' : 'images were'} skipped because a batch can hold up to ${MAX_STAGED_IMAGES}.`);
   if (overTotal) notices.push(`${overTotal} ${overTotal === 1 ? 'image was' : 'images were'} skipped because a batch can total up to ${MAX_STAGED_BYTES / 1024 / 1024} MB.`);
   if (notices.length) showChatImgError(notices.join(' '));
@@ -3961,11 +4537,26 @@ function stageImageFiles(fileList) {
 }
 function removeStagedImage(idx) {
   const [gone] = _stagedImages.splice(idx, 1);
-  if (gone) URL.revokeObjectURL(gone.url);
+  if (gone) {
+    gone.disposed = true;
+    if (gone.previewUrl) URL.revokeObjectURL(gone.previewUrl);
+    gone.previewUrl = '';
+    gone.file = null;
+  }
   renderImgPreview();
 }
+function detachStagedImageFiles() {
+  const batch = _stagedImages.map(staged => ({ file: staged.file }));
+  clearStagedImages();
+  return batch;
+}
 function clearStagedImages() {
-  _stagedImages.forEach(s => URL.revokeObjectURL(s.url));
+  _stagedImages.forEach(s => {
+    s.disposed = true;
+    if (s.previewUrl) URL.revokeObjectURL(s.previewUrl);
+    s.previewUrl = '';
+    s.file = null;
+  });
   _stagedImages = [];
   renderImgPreview();
 }
@@ -3974,7 +4565,7 @@ function renderImgPreview() {
   if (!strip) return;
   strip.hidden = _stagedImages.length === 0;
   strip.innerHTML = _stagedImages.map((s, i) =>
-    `<div class="chat-img-thumb"><img src="${s.url}" alt="attachment ${i + 1}">`
+    `<div class="chat-img-thumb"><img src="${escHtml(s.previewUrl || STAGED_PREVIEW_PLACEHOLDER)}" alt="attachment ${i + 1}">`
     + `<button class="chat-img-rm" data-i="${i}" aria-label="Remove image" title="Remove">`
     + `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M18.3 5.7a1 1 0 0 0-1.4 0L12 10.6 7.1 5.7A1 1 0 0 0 5.7 7.1L10.6 12l-4.9 4.9a1 1 0 1 0 1.4 1.4L12 13.4l4.9 4.9a1 1 0 0 0 1.4-1.4L13.4 12l4.9-4.9a1 1 0 0 0 0-1.4z"/></svg></button></div>`
   ).join('');
@@ -3983,8 +4574,14 @@ function renderImgPreview() {
 }
 
 // pagehide also fires when Safari places the page in bfcache. Clear the strip
-// in every mode so cached Rooms pages cannot retain full-resolution originals.
-window.addEventListener('pagehide', clearStagedImages);
+// and every in-flight decoder URL so cached Rooms pages retain no image bytes.
+window.addEventListener('pagehide', () => {
+  cancelActiveChatSend();
+  clearStagedImages();
+  releaseAllChatImageMessages();
+  _temporaryImageObjectUrls.forEach(url => URL.revokeObjectURL(url));
+  _temporaryImageObjectUrls.clear();
+});
 
 // Grow the chat textarea with its content, up to ~4 lines, then let it scroll.
 const CHAT_INPUT_MAX_H = 112;
@@ -4007,6 +4604,8 @@ function openImageViewer(src) {
 }
 function closeImageViewer() {
   const v = document.getElementById('img-viewer');
+  const img = document.getElementById('img-viewer-img');
+  img?.removeAttribute('src');
   if (v) v.hidden = true;
 }
 
@@ -4283,7 +4882,7 @@ async function init() {
     avatarInput.value = '';
     if (!file) return;
     try {
-      _setupAvatar = await fileToDataUrl(file, 240, 0.88);
+      _setupAvatar = await runSerializedImageWork(() => fileToDataUrl(file, 240, 0.88));
       renderSetupAvatar();
     } catch (err) {
       const errEl = document.getElementById('nickname-error');

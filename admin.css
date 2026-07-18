@@ -27,7 +27,7 @@ body {
     margin: 0;
     background:
         linear-gradient(rgba(255, 247, 251, 0.9), rgba(255, 226, 239, 0.76)),
-        url('background1.png') center / cover fixed;
+        url('site-images/background.png') center / cover fixed;
     color: var(--admin-ink);
     font-family: Arial, sans-serif;
 }
