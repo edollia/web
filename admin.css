@@ -1596,6 +1596,50 @@ button.emergency {
     text-align: center;
 }
 
+.admin-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 9px;
+    width: fit-content;
+    max-width: 100%;
+    margin: 10px auto 18px;
+    padding: 5px 7px;
+    border: 1px solid rgba(232, 190, 211, 0.54);
+    border-radius: 999px;
+    background: rgba(255, 250, 253, 0.72);
+    box-shadow: 0 5px 14px rgba(130, 78, 103, 0.07);
+}
+
+.admin-pagination[hidden] {
+    display: none;
+}
+
+.admin-pagination button {
+    flex: 0 0 auto;
+    width: 34px;
+    min-width: 34px;
+    height: 34px;
+    min-height: 34px;
+    padding: 0;
+    border-radius: 50%;
+    font-size: 14px;
+}
+
+.admin-pagination button:disabled {
+    cursor: default;
+    opacity: 0.38;
+}
+
+.admin-pagination span {
+    min-width: 144px;
+    color: var(--admin-muted);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.2;
+    text-align: center;
+}
+
 @media (max-width: 760px) {
     .admin-shell {
         padding: 14px 10px 24px;
@@ -1711,6 +1755,16 @@ button.emergency {
         min-height: 32px;
         padding: 0 12px;
         font-size: 12px;
+    }
+
+    .admin-pagination {
+        width: 100%;
+        justify-content: space-between;
+        margin: 9px 0 16px;
+    }
+
+    .admin-pagination span {
+        min-width: 0;
     }
 }
 

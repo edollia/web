@@ -137,6 +137,21 @@ const state = {
     linkSettingsAvailable: true
 };
 
+const ADMIN_LIST_PAGINATION = Object.freeze({
+    'pending-drawings-list': { pageSize: 12, label: 'waiting doods', selectable: true },
+    'published-drawings-list': { pageSize: 12, label: 'posted doods', selectable: true },
+    'pending-questions-list': { pageSize: 10, label: 'waiting asks' },
+    'published-questions-list': { pageSize: 10, label: 'answered asks' },
+    'wishlist-items-list': { pageSize: 20, label: 'wishlist items' }
+});
+const adminListPages = new Map(Object.keys(ADMIN_LIST_PAGINATION).map(listId => [listId, 1]));
+const adminListSelections = new Map(
+    Object.entries(ADMIN_LIST_PAGINATION)
+        .filter(([, config]) => config.selectable)
+        .map(([listId]) => [listId, new Set()])
+);
+const adminQuestionDrafts = new Map();
+
 const els = {
     gatePanel: document.getElementById('gate-panel'),
     loginPanel: document.getElementById('login-panel'),
@@ -377,19 +392,121 @@ function emptyMessage(text) {
     return `<div class="admin-empty">${text}</div>`;
 }
 
+function getAdminListItems(listId) {
+    if (listId === 'pending-drawings-list') return state.drawings.filter(item => !item.approved);
+    if (listId === 'published-drawings-list') return state.drawings.filter(item => item.approved);
+    if (listId === 'pending-questions-list') return state.questions.filter(item => !hasAnswer(item));
+    if (listId === 'published-questions-list') return state.questions.filter(hasAnswer);
+    if (listId === 'wishlist-items-list') return getVisibleWishlistItems();
+    return [];
+}
+
+function ensureAdminPagination(container) {
+    const listId = container?.id;
+    const config = ADMIN_LIST_PAGINATION[listId];
+    if (!container || !config) return null;
+
+    let controls = document.getElementById(`${listId}-pagination`);
+    if (controls) return controls;
+
+    controls = document.createElement('nav');
+    controls.id = `${listId}-pagination`;
+    controls.className = 'admin-pagination';
+    controls.setAttribute('aria-label', `${config.label} pages`);
+    controls.hidden = true;
+    controls.innerHTML = `
+        <button type="button" class="soft" data-page-step="-1" aria-label="previous ${escapeHtml(config.label)} page">&larr;</button>
+        <span aria-live="polite"></span>
+        <button type="button" class="soft" data-page-step="1" aria-label="next ${escapeHtml(config.label)} page">&rarr;</button>
+    `;
+    container.insertAdjacentElement('afterend', controls);
+    controls.addEventListener('click', event => {
+        const button = event.target.closest('button[data-page-step]');
+        if (!button || button.disabled) return;
+        const step = Number(button.dataset.pageStep);
+        if (!Number.isFinite(step)) return;
+        adminListPages.set(listId, (adminListPages.get(listId) || 1) + step);
+        renderAdminListById(listId);
+    });
+    return controls;
+}
+
+function paginateAdminList(list, container) {
+    const listId = container?.id;
+    const config = ADMIN_LIST_PAGINATION[listId];
+    if (!config) return list;
+
+    const controls = ensureAdminPagination(container);
+    const totalItems = list.length;
+    const totalPages = Math.max(1, Math.ceil(totalItems / config.pageSize));
+    const requestedPage = adminListPages.get(listId) || 1;
+    const currentPage = Math.max(1, Math.min(requestedPage, totalPages));
+    const start = (currentPage - 1) * config.pageSize;
+    const end = Math.min(start + config.pageSize, totalItems);
+    adminListPages.set(listId, currentPage);
+
+    if (controls) {
+        controls.hidden = totalPages <= 1;
+        const previous = controls.querySelector('[data-page-step="-1"]');
+        const next = controls.querySelector('[data-page-step="1"]');
+        const status = controls.querySelector('span');
+        if (previous) previous.disabled = currentPage <= 1;
+        if (next) next.disabled = currentPage >= totalPages;
+        if (status) {
+            status.textContent = totalItems
+                ? `${start + 1}–${end} of ${totalItems} · page ${currentPage}/${totalPages}`
+                : '';
+        }
+    }
+
+    return list.slice(start, end);
+}
+
+function renderAdminListById(listId) {
+    if (listId === 'pending-drawings-list') {
+        renderDrawings(getAdminListItems(listId), els.pendingDrawings, false);
+        return;
+    }
+    if (listId === 'published-drawings-list') {
+        renderDrawings(getAdminListItems(listId), els.publishedDrawings, true);
+        return;
+    }
+    if (listId === 'pending-questions-list') {
+        renderQuestions(getAdminListItems(listId), els.pendingQuestions, false);
+        return;
+    }
+    if (listId === 'published-questions-list') {
+        renderQuestions(getAdminListItems(listId), els.publishedQuestions, true);
+        return;
+    }
+    if (listId === 'wishlist-items-list') renderWishlistItems();
+}
+
+function pruneAdminListSelections(listId, list) {
+    const selected = adminListSelections.get(listId);
+    if (!selected) return;
+    const validIds = new Set(list.map(item => String(item.id)));
+    selected.forEach(id => {
+        if (!validIds.has(id)) selected.delete(id);
+    });
+}
+
 function renderDrawings(list, container, published) {
+    pruneAdminListSelections(container.id, list);
+    const pageItems = paginateAdminList(list, container);
     if (!list.length) {
         container.innerHTML = emptyMessage(published ? 'no posted doods' : 'nothing waiting');
         return;
     }
 
-    container.innerHTML = list.map(item => `
+    const selected = adminListSelections.get(container.id);
+    container.innerHTML = pageItems.map(item => `
         <article class="admin-card" data-id="${escapeHtml(item.id)}">
             <label class="admin-select">
-                <input type="checkbox" data-select-id="${escapeHtml(item.id)}">
+                <input type="checkbox" data-select-id="${escapeHtml(item.id)}"${selected?.has(String(item.id)) ? ' checked' : ''}>
                 <span></span>
             </label>
-            <img src="${getDrawingSrc(item.imageData)}" alt="">
+            <img src="${getDrawingSrc(item.imageData)}" alt="" loading="lazy" decoding="async">
             ${renderMeta(item)}
             <div class="admin-actions">
                 ${published
@@ -402,16 +519,17 @@ function renderDrawings(list, container, published) {
 }
 
 function renderQuestions(list, container, published) {
+    const pageItems = paginateAdminList(list, container);
     if (!list.length) {
         container.innerHTML = emptyMessage(published ? 'no answered asks' : 'no asks waiting');
         return;
     }
 
-    container.innerHTML = list.map(item => `
+    container.innerHTML = pageItems.map(item => `
         <article class="admin-card admin-question-card" data-id="${escapeHtml(item.id)}">
             <p class="admin-question">${escapeHtml(item.question)}</p>
             ${renderShortMeta(item)}
-            <textarea data-answer-for="${escapeHtml(item.id)}" placeholder="reply">${escapeHtml(item.answer || '')}</textarea>
+            <textarea data-answer-for="${escapeHtml(item.id)}" placeholder="reply">${escapeHtml(adminQuestionDrafts.has(String(item.id)) ? adminQuestionDrafts.get(String(item.id)) : (item.answer || ''))}</textarea>
             <div class="admin-actions">
                 <button data-action="save-question">${published ? 'save edit' : 'save reply'}</button>
                 <button class="danger" data-action="delete-question">delete</button>
@@ -1321,6 +1439,10 @@ async function checkStaticSeoStatus() {
 }
 
 function renderAll({ preserveDrafts = false } = {}) {
+    const validQuestionIds = new Set(state.questions.map(item => String(item.id)));
+    adminQuestionDrafts.forEach((value, id) => {
+        if (!validQuestionIds.has(id)) adminQuestionDrafts.delete(id);
+    });
     renderStats();
     renderDrawings(state.drawings.filter(item => !item.approved), els.pendingDrawings, false);
     renderDrawings(state.drawings.filter(item => item.approved), els.publishedDrawings, true);
@@ -1382,10 +1504,12 @@ function renderWishlistItems() {
     renderWishlistSyncStatus();
 
     if (!state.wishlistItemsAvailable) {
+        paginateAdminList([], container);
         container.innerHTML = emptyMessage('wishlist_items table not set up yet');
         return;
     }
     if (!state.wishlistItems.length) {
+        paginateAdminList([], container);
         container.innerHTML = emptyMessage('nothing synced yet — hit "sync now"');
         return;
     }
@@ -1400,18 +1524,20 @@ function renderWishlistItems() {
     const visible = getVisibleWishlistItems();
 
     if (!visible.length) {
+        paginateAdminList([], container);
         container.innerHTML = emptyMessage('no items match your search');
         return;
     }
 
     const featuredIds = state.wishlistItems.filter(item => item.featured).map(item => item.throne_item_id);
+    const pageItems = paginateAdminList(visible, container);
 
-    container.innerHTML = visible.map(item => {
+    container.innerHTML = pageItems.map(item => {
         const featuredIndex = featuredIds.indexOf(item.throne_item_id);
         const isNew = item.first_synced_at && (Date.now() - new Date(item.first_synced_at).getTime()) < WISHLIST_NEW_WINDOW_MS;
         return `
         <article class="admin-card${item.featured ? ' is-featured' : ''}${item.is_available ? '' : ' is-unavailable'}" data-id="${escapeHtml(item.throne_item_id)}">
-            <img src="${escapeHtml(item.image_url || '')}" alt="">
+            <img src="${escapeHtml(item.image_url || '')}" alt="" loading="lazy" decoding="async">
             <div class="admin-card-body">
                 <div class="admin-card-title-row">
                     <strong>${escapeHtml(item.name || '')}</strong>
@@ -1630,11 +1756,13 @@ async function runAction(button) {
             const answer = card.querySelector('textarea')?.value.trim() || null;
             const { error } = await adminClient.from('questions').update({ answer }).eq('id', id);
             if (error) throw error;
+            adminQuestionDrafts.delete(String(id));
         }
 
         if (action === 'delete-question') {
             const { error } = await adminClient.from('questions').delete().eq('id', id);
             if (error) throw error;
+            adminQuestionDrafts.delete(String(id));
         }
 
         if (action === 'feature-wishlist-item' || action === 'unfeature-wishlist-item') {
@@ -1926,6 +2054,8 @@ async function runSiteHealthCheck() {
 }
 
 function getSelectedIds(listId) {
+    const selected = adminListSelections.get(listId);
+    if (selected) return Array.from(selected);
     const list = document.getElementById(listId);
     if (!list) return [];
     return Array.from(list.querySelectorAll('input[data-select-id]:checked'))
@@ -1936,6 +2066,13 @@ function getSelectedIds(listId) {
 function setListSelected(listId, selected) {
     const list = document.getElementById(listId);
     if (!list) return;
+    const storedSelection = adminListSelections.get(listId);
+    if (storedSelection) {
+        storedSelection.clear();
+        if (selected) {
+            getAdminListItems(listId).forEach(item => storedSelection.add(String(item.id)));
+        }
+    }
     list.querySelectorAll('input[data-select-id]').forEach(input => {
         input.checked = selected;
     });
@@ -1998,7 +2135,9 @@ async function runBulkAction(button) {
 
     if (action === 'select') {
         const selectedCount = getSelectedIds(listId).length;
-        const totalCount = document.getElementById(listId)?.querySelectorAll('input[data-select-id]').length || 0;
+        const totalCount = ADMIN_LIST_PAGINATION[listId]?.selectable
+            ? getAdminListItems(listId).length
+            : (document.getElementById(listId)?.querySelectorAll('input[data-select-id]').length || 0);
         setListSelected(listId, selectedCount !== totalCount);
         return;
     }
@@ -2078,6 +2217,19 @@ async function init() {
             const button = e.target.closest('button[data-action]');
             if (button) runAction(button);
         });
+        list.addEventListener('change', event => {
+            const input = event.target.closest('input[data-select-id]');
+            if (!input) return;
+            const selected = adminListSelections.get(list.id);
+            if (!selected) return;
+            if (input.checked) selected.add(String(input.dataset.selectId));
+            else selected.delete(String(input.dataset.selectId));
+        });
+        list.addEventListener('input', event => {
+            const textarea = event.target.closest('textarea[data-answer-for]');
+            if (!textarea) return;
+            adminQuestionDrafts.set(String(textarea.dataset.answerFor), textarea.value);
+        });
     });
 
     els.wishlistSyncNow?.addEventListener('click', syncWishlistNow);
@@ -2085,6 +2237,7 @@ async function init() {
     els.wishlistUnfeatureAll?.addEventListener('click', unfeatureAllWishlistItems);
     els.wishlistSearch?.addEventListener('input', () => {
         state.wishlistSearch = els.wishlistSearch.value || '';
+        adminListPages.set('wishlist-items-list', 1);
         renderWishlistItems();
     });
     els.linkSettingsForm?.addEventListener('submit', e => e.preventDefault());
