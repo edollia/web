@@ -109,12 +109,46 @@ canvas {
 }
 
 .loading-content {
+    position: relative;
     display: flex;
     flex-direction: column;
     align-items: center;
     width: min(82vw, 320px);
     padding: 20px 18px 18px;
     transform: translateY(32px);
+}
+
+.loading-slow-message {
+    position: absolute;
+    top: calc(100% - 7px);
+    left: 50%;
+    width: min(280px, 78vw);
+    margin: 0;
+    color: rgba(116, 82, 100, 0.58);
+    font-family: "Comic Sans MS", "Trebuchet MS", cursive;
+    font-size: 11px;
+    line-height: 1.35;
+    letter-spacing: 0.01em;
+    text-align: center;
+    pointer-events: none;
+    transform: translateX(-50%);
+    animation: loadingSlowMessageIn 0.42s ease both;
+}
+
+.loading-slow-message[hidden] {
+    display: none !important;
+}
+
+@keyframes loadingSlowMessageIn {
+    from {
+        opacity: 0;
+        transform: translateX(-50%) translateY(4px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+    }
 }
 
 .loading-bar-container {
@@ -400,9 +434,49 @@ button {
     pointer-events: auto;
     touch-action: manipulation;
     cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
     animation:
         entryBubbleBorn 0.58s cubic-bezier(0.18, 0.9, 0.22, 1.24) forwards,
         entryBubbleFloat var(--bubble-duration, 5.2s) ease-in-out 0.58s infinite;
+}
+
+.footer-play-bubble.entry-bubble.is-hint-pressed {
+    animation: entryBubbleHintPress 0.72s cubic-bezier(0.2, 0.82, 0.24, 1) 0.42s both;
+}
+
+.entry-bubble-hint-finger,
+.entry-bubble-hint-wave {
+    position: fixed;
+    left: var(--hint-x);
+    top: var(--hint-y);
+    z-index: 4;
+    pointer-events: none;
+}
+
+.entry-bubble-hint-finger {
+    width: 40px;
+    height: 56px;
+    filter: drop-shadow(0 4px 7px rgba(116, 74, 95, 0.2));
+    transform-origin: 50% 8%;
+    animation: entryBubbleHintFinger 1.34s cubic-bezier(0.2, 0.78, 0.22, 1) both;
+}
+
+.entry-bubble-hint-finger svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+}
+
+.entry-bubble-hint-wave {
+    width: var(--hint-size);
+    height: var(--hint-size);
+    border: 2px solid rgba(255, 255, 255, 0.72);
+    border-radius: 50%;
+    box-shadow: 0 0 0 1px rgba(255, 172, 207, 0.14);
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.54);
+    animation: entryBubbleHintWave 0.68s ease-out 0.68s both;
 }
 
 .footer-play-bubble.entry-bubble:hover {
@@ -427,6 +501,75 @@ button {
     width: 0;
     height: 0;
     pointer-events: none;
+}
+
+@keyframes entryBubbleHintPress {
+    0%, 45% {
+        opacity: 0.88;
+        transform: translate(-50%, -9px) scale(1);
+    }
+
+    62% {
+        opacity: 1;
+        transform: translate(-50%, -7px) scale(0.84);
+    }
+
+    78% {
+        opacity: 0.96;
+        transform: translate(-50%, -10px) scale(1.08);
+    }
+
+    100% {
+        opacity: 0.88;
+        transform: translate(-50%, -9px) scale(1);
+    }
+}
+
+@keyframes entryBubbleHintFinger {
+    0% {
+        opacity: 0;
+        transform: translate(18px, 34px) rotate(-12deg) scale(0.96);
+    }
+
+    24% {
+        opacity: 0.82;
+    }
+
+    54% {
+        opacity: 0.92;
+        transform: translate(-4px, 10px) rotate(-7deg) scale(1);
+    }
+
+    66% {
+        opacity: 0.96;
+        transform: translate(-5px, 4px) rotate(-6deg) scale(0.88);
+    }
+
+    82% {
+        opacity: 0.74;
+        transform: translate(-2px, 9px) rotate(-7deg) scale(0.98);
+    }
+
+    100% {
+        opacity: 0;
+        transform: translate(9px, 27px) rotate(-10deg) scale(0.94);
+    }
+}
+
+@keyframes entryBubbleHintWave {
+    0% {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(0.54);
+    }
+
+    24% {
+        opacity: 0.68;
+    }
+
+    100% {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(1.36);
+    }
 }
 
 .entry-bubble-burst::before,

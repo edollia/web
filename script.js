@@ -180,17 +180,20 @@ document.addEventListener("DOMContentLoaded", async function() {
 
     const uiSoundBuffersReady = loadUiSoundBuffers();
 
+    async function resumeUiAudioContext() {
+        if (!uiAudioContext || uiAudioContext.state === 'running') return;
+        try {
+            await uiAudioContext.resume();
+        } catch (error) {
+            // The overlapping HTMLAudioElement fallback remains available.
+        }
+    }
+
     async function warmUiSounds() {
         if (uiSoundsWarmed) return;
         uiSoundsWarmed = true;
 
-        if (uiAudioContext && uiAudioContext.state !== 'running') {
-            try {
-                await uiAudioContext.resume();
-            } catch (error) {
-                // HTMLAudioElement fallback below still works.
-            }
-        }
+        await resumeUiAudioContext();
 
         Object.values(uiSoundPlayers).forEach(sound => {
             if (!sound.paused) return;
@@ -224,9 +227,13 @@ document.addEventListener("DOMContentLoaded", async function() {
         const sound = uiSoundPlayers[type];
         if (!sound) return;
 
-        sound.pause();
-        sound.currentTime = 0;
-        sound.play().catch(() => {});
+        // Do not cut off a pop that is already playing. Rapid bubble taps can
+        // overlap through Web Audio above; this clone provides the same
+        // behaviour on browsers still using the HTMLAudioElement fallback.
+        const player = sound.paused ? sound : sound.cloneNode(true);
+        player.volume = sound.volume;
+        player.currentTime = 0;
+        player.play().catch(() => {});
     }
 
     window.dollPlayUiSound = playUiSound;
@@ -803,6 +810,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     const loadingScreen = document.getElementById("loading-screen");
     const loadingBarContainer = document.getElementById("loading-bar-container");
     const loadingBarFill = document.getElementById("loading-bar-fill");
+    const loadingSlowMessage = document.getElementById("loading-slow-message");
     const loadingProgressElement = loadingBarFill?.closest('[role="progressbar"]');
     const loadingPawPrints = Array.from(document.querySelectorAll('.loading-paw-print'));
     const prefersReducedLoadingMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
@@ -813,6 +821,11 @@ document.addEventListener("DOMContentLoaded", async function() {
     let displayedLoadingProgress = 0;
     let loadingVisualFrame = null;
     let loadingVisualFrameTime = null;
+    const slowLoadingMessageTimer = window.setTimeout(() => {
+        if (loadingSlowMessage && loadingScreen?.style.display !== 'none') {
+            loadingSlowMessage.hidden = false;
+        }
+    }, 4000);
     const preloadedSubmissions = {
         drawings: [],
         questions: [],
@@ -823,6 +836,11 @@ document.addEventListener("DOMContentLoaded", async function() {
     function markSubmissionsDirty() {
         preloadedSubmissions.loaded = false;
         preloadedSubmissions.error = null;
+    }
+
+    function clearSlowLoadingMessage() {
+        window.clearTimeout(slowLoadingMessageTimer);
+        if (loadingSlowMessage) loadingSlowMessage.hidden = true;
     }
     
     // Mobile detection
@@ -1316,6 +1334,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         // Let the far-right paw finish pressing in before revealing the site.
         await waitForLoadingPawTrail();
         await wait(prefersReducedLoadingMotion ? 80 : 360);
+        clearSlowLoadingMessage();
         loadingScreen.style.opacity = 0;
         setTimeout(() => {
             loadingScreen.style.display = "none";
@@ -1330,6 +1349,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         // Mobile fallback: show website even if loading fails
         if (!window.supabase) window.supabase = createUnavailableSupabaseClient();
         resolveSiteClientReady(window.supabase);
+        clearSlowLoadingMessage();
         loadingScreen.style.opacity = 0;
         setTimeout(() => {
             loadingScreen.style.display = "none";
@@ -1348,6 +1368,9 @@ document.addEventListener("DOMContentLoaded", async function() {
     const entryBubbleField = document.getElementById("entry-bubble-field");
     let entryDismissalInProgress = false;
     let entryBubbleRemaining = 0;
+    let entryBubbleHintTimer = 0;
+    let entryBubbleHintCleanupTimer = 0;
+    let entryBubbleHintShown = false;
     const legacyIOSMatch = navigator.userAgent.match(/(?:CPU (?:iPhone )?OS|iPhone OS) (\d+)[._]/);
     const isLegacyIOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
         && legacyIOSMatch
@@ -1401,9 +1424,59 @@ document.addEventListener("DOMContentLoaded", async function() {
 
     function clearEntryBubbles() {
         if (!entryBubbleField) return;
+        clearEntryBubbleHint();
         entryBubbleField.replaceChildren();
         entryBubbleField.inert = false;
         entryBubbleRemaining = 0;
+    }
+
+    function clearEntryBubbleHint() {
+        window.clearTimeout(entryBubbleHintTimer);
+        window.clearTimeout(entryBubbleHintCleanupTimer);
+        entryBubbleHintTimer = 0;
+        entryBubbleHintCleanupTimer = 0;
+        entryBubbleField?.querySelectorAll('.entry-bubble-hint-finger, .entry-bubble-hint-wave').forEach(node => node.remove());
+        entryBubbleField?.querySelectorAll('.entry-bubble.is-hint-pressed').forEach(bubble => {
+            bubble.classList.remove('is-hint-pressed');
+        });
+    }
+
+    function cancelEntryBubbleHint() {
+        entryBubbleHintShown = true;
+        clearEntryBubbleHint();
+    }
+
+    function showEntryBubbleHint() {
+        entryBubbleHintTimer = 0;
+        if (!entryBubbleField || entryDismissalInProgress || entryBubbleHintShown || entryBubbleRemaining < 1) return;
+        const target = Array.from(entryBubbleField.querySelectorAll('.entry-bubble:not(.popping)'))[0];
+        if (!target) return;
+
+        entryBubbleHintShown = true;
+        const rect = target.getBoundingClientRect();
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+        const finger = document.createElement('span');
+        const wave = document.createElement('span');
+        finger.className = 'entry-bubble-hint-finger';
+        wave.className = 'entry-bubble-hint-wave';
+        finger.setAttribute('aria-hidden', 'true');
+        wave.setAttribute('aria-hidden', 'true');
+        finger.style.cssText = `--hint-x:${centerX}px;--hint-y:${centerY}px;`;
+        wave.style.cssText = `--hint-x:${centerX}px;--hint-y:${centerY}px;--hint-size:${Math.max(rect.width, rect.height)}px;`;
+        finger.innerHTML = `
+            <svg viewBox="0 0 42 58" focusable="false" aria-hidden="true">
+                <path d="M20.5 4.5c-3.2 0-5.2 2.4-5.2 5.7v20.1l-3.1-4.7c-1.6-2.4-4.4-3-6.4-1.4-2 1.6-2.1 4.4-.5 6.7l8.6 13c2.5 3.7 6.5 6 11 6h2.4c6.3 0 11.4-5.1 11.4-11.4V25.2c0-2.7-1.8-4.8-4.3-4.8-1.4 0-2.6.6-3.4 1.6v-2.7c0-2.8-1.9-4.9-4.4-4.9-1.4 0-2.7.6-3.5 1.7v-5.9c0-3.3-1.9-5.7-5.1-5.7Z" fill="rgba(255,255,255,.88)" stroke="rgba(255,210,230,.72)" stroke-width="1.2" stroke-linejoin="round"/>
+            </svg>`;
+        target.classList.add('is-hint-pressed');
+        entryBubbleField.append(wave, finger);
+        entryBubbleHintCleanupTimer = window.setTimeout(clearEntryBubbleHint, 1500);
+    }
+
+    function scheduleEntryBubbleHint() {
+        clearEntryBubbleHint();
+        entryBubbleHintShown = false;
+        entryBubbleHintTimer = window.setTimeout(showEntryBubbleHint, 2000);
     }
 
     function createEntryBubbleBurst(bubble, host = entryBubbleField, extraClass = '') {
@@ -1411,8 +1484,8 @@ document.addEventListener("DOMContentLoaded", async function() {
         const rect = bubble.getBoundingClientRect();
         const burst = document.createElement('span');
         const fragment = document.createDocumentFragment();
-        const particleCount = 18;
-        const fragmentCount = 6;
+        const particleCount = isMobile ? 12 : 16;
+        const fragmentCount = isMobile ? 4 : 5;
         burst.className = `entry-bubble-burst ${extraClass}`.trim();
         burst.setAttribute('aria-hidden', 'true');
         burst.style.cssText = `--burst-size:${Math.max(rect.width, rect.height)}px;left:${rect.left + rect.width / 2}px;top:${rect.top + rect.height / 2}px;`;
@@ -1437,7 +1510,26 @@ document.addEventListener("DOMContentLoaded", async function() {
 
         burst.appendChild(fragment);
         host.appendChild(burst);
-        window.setTimeout(() => burst.remove(), 1080);
+        window.setTimeout(() => burst.remove(), 920);
+    }
+
+    function popEntryBubble(bubble) {
+        if (!bubble || bubble.classList.contains('popping') || entryDismissalInProgress) return;
+        cancelEntryBubbleHint();
+        createEntryBubbleBurst(bubble);
+        bubble.classList.add('popping');
+        bubble.disabled = true;
+        entryBubbleRemaining -= 1;
+        playUiSound('tap');
+        entryBubbleField.setAttribute('aria-label', entryBubbleRemaining
+            ? `${entryBubbleRemaining} bubble${entryBubbleRemaining === 1 ? '' : 's'} left to pop`
+            : 'All bubbles popped. Entering the site.');
+        window.setTimeout(() => bubble.remove(), 360);
+
+        if (entryBubbleRemaining === 0) {
+            entryBubbleField.inert = true;
+            window.setTimeout(() => dismissEntryGate(), 620);
+        }
     }
 
     function startBubbleEntrance() {
@@ -1467,26 +1559,24 @@ document.addEventListener("DOMContentLoaded", async function() {
             bubble.setAttribute('aria-label', `Pop bubble ${index + 1} of ${bubbleCount}`);
             bubble.style.cssText = `--bubble-size:${size}px;--bubble-x:${x}vw;--bubble-y:${y}vh;--bubble-drift:${drift}px;--bubble-duration:${duration}s;`;
 
-            bubble.addEventListener('click', () => {
-                if (bubble.classList.contains('popping') || entryDismissalInProgress) return;
-                createEntryBubbleBurst(bubble);
-                bubble.classList.add('popping');
-                bubble.disabled = true;
-                entryBubbleRemaining -= 1;
-                playUiSound('tap');
-                entryBubbleField.setAttribute('aria-label', entryBubbleRemaining
-                    ? `${entryBubbleRemaining} bubble${entryBubbleRemaining === 1 ? '' : 's'} left to pop`
-                    : 'All bubbles popped. Entering the site.');
-                window.setTimeout(() => bubble.remove(), 620);
-
-                if (entryBubbleRemaining === 0) {
-                    entryBubbleField.inert = true;
-                    window.setTimeout(() => dismissEntryGate(), 900);
-                }
+            bubble.addEventListener('pointerdown', event => {
+                if (!event.isPrimary || event.button > 0) return;
+                event.preventDefault();
+                void resumeUiAudioContext();
+                popEntryBubble(bubble);
+            });
+            bubble.addEventListener('click', event => {
+                // Pointer input is handled on pointerdown for immediate iOS
+                // feedback. A zero-detail click is keyboard/assistive input.
+                if (event.detail !== 0) return;
+                void resumeUiAudioContext();
+                popEntryBubble(bubble);
             });
 
             entryBubbleField.appendChild(bubble);
         });
+
+        scheduleEntryBubbleHint();
     }
 
     function renderEntryGateMode() {
