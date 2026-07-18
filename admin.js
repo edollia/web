@@ -1252,7 +1252,9 @@ function renderStaticSeoStatus(settings = getDraftLinkSettings()) {
         ['X card title', staticSeoSnapshot.twitterTitle, settings.seo_title],
         ['X card description', staticSeoSnapshot.twitterDescription, settings.seo_description],
         ['schema title', staticSeoSnapshot.structuredTitle, settings.seo_title],
-        ['schema description', staticSeoSnapshot.structuredDescription, settings.seo_description]
+        ['schema description', staticSeoSnapshot.structuredDescription, settings.seo_description],
+        ['profile main entity', staticSeoSnapshot.profileMainEntity ? 'present' : 'missing', 'present'],
+        ['profile modified date', staticSeoSnapshot.profileDateValid ? 'valid' : 'invalid', 'valid']
     ];
     const allMatch = rows.every(([, actual, expected]) => actual === expected);
     if (els.staticSeoState) els.staticSeoState.textContent = allMatch ? 'crawler copy matches' : 'GitHub publish needed';
@@ -1279,15 +1281,24 @@ async function checkStaticSeoStatus() {
         const structuredText = doc.getElementById('site-structured-data')?.textContent || '';
         let structuredTitle = '';
         let structuredDescription = '';
+        let profileMainEntity = false;
+        let profileDateValid = false;
         try {
             const data = JSON.parse(structuredText);
             const graph = Array.isArray(data['@graph']) ? data['@graph'] : [];
             const pageNode = graph.find(node => node['@type'] === 'WebPage' || node['@type'] === 'ProfilePage') || {};
+            const profileNode = graph.find(node => node['@type'] === 'ProfilePage') || {};
+            const profileDate = String(profileNode.dateModified || '');
             structuredTitle = String(pageNode.name || '');
             structuredDescription = String(pageNode.description || '');
+            profileMainEntity = Boolean(profileNode.mainEntity && typeof profileNode.mainEntity === 'object');
+            profileDateValid = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(profileDate)
+                && !Number.isNaN(Date.parse(profileDate));
         } catch (error) {
             structuredTitle = '';
             structuredDescription = '';
+            profileMainEntity = false;
+            profileDateValid = false;
         }
         staticSeoSnapshot = {
             title: doc.querySelector('title')?.textContent.trim() || '',
@@ -1297,7 +1308,9 @@ async function checkStaticSeoStatus() {
             twitterTitle: doc.querySelector('meta[name="twitter:title"]')?.getAttribute('content') || '',
             twitterDescription: doc.querySelector('meta[name="twitter:description"]')?.getAttribute('content') || '',
             structuredTitle,
-            structuredDescription
+            structuredDescription,
+            profileMainEntity,
+            profileDateValid
         };
     } catch (error) {
         staticSeoSnapshot = null;
