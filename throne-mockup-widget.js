@@ -6,7 +6,7 @@
     const SUPABASE_URL = 'https://zvqdodzkhmcptwkjlfeu.supabase.co';
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp2cWRvZHpraG1jcHR3a2psZmV1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg3NjM1NjAsImV4cCI6MjA2NDMzOTU2MH0.i1xbRIhPHVkDIrnDlQFP0ebNklrx8WVQcQo8Iuo9zG8';
     const FETCH_TIMEOUT_MS = 6000;
-    const MAX_FEATURED = 50;
+    const MAX_FEATURED = 30;
     const NAME_MAX = 60;
     const CARD_GAP = 10;
     const PAGE_SIZE = 4;

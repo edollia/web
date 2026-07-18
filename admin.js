@@ -1330,7 +1330,7 @@ function renderAll({ preserveDrafts = false } = {}) {
     renderWishlistItems();
 }
 
-const WISHLIST_FEATURED_CAP = 50;
+const WISHLIST_FEATURED_CAP = 30;
 const WISHLIST_NEW_WINDOW_MS = 24 * 60 * 60 * 1000;
 const WISHLIST_POSITION_ACTIONS = new Set([
     'feature-wishlist-item', 'unfeature-wishlist-item',
