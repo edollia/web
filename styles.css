@@ -1195,6 +1195,7 @@ body.has-posts-panel-open .site-brand-footer {
        the other open surfaces while its natural corner remains untouched. */
     top: calc(var(--open-surface-top) + 4px);
     left: 50%;
+    z-index: 1;
     transform: translateX(-50%) rotate(0deg) scale(1.015);
     width: 254px;
     height: auto;
@@ -1243,6 +1244,37 @@ body.has-posts-panel-open .site-brand-footer {
     transform: scaleX(0.96);
     transform-origin: 50% 0;
     transition: opacity 0.2s ease, transform 0.24s ease;
+}
+
+.note-under-sign {
+    position: absolute;
+    top: calc(var(--open-surface-top) + 40px);
+    left: 50%;
+    z-index: 0;
+    display: block;
+    width: 126px;
+    height: auto;
+    opacity: 0;
+    filter: drop-shadow(0 3px 4px rgba(118, 80, 99, 0.1));
+    pointer-events: none;
+    user-select: none;
+    -webkit-user-drag: none;
+    transform: translateX(-50%) translateY(3px) scale(0.96);
+    transform-origin: 50% 50%;
+    transition:
+        opacity 0.38s ease,
+        transform 0.46s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.main-screen.note-ready .note-under-sign {
+    opacity: 0.94;
+    transform: translateX(-50%) translateY(0) scale(1);
+}
+
+.main-screen.note-ready .note-peel-target.hidden + .note-under-sign,
+.main-screen.note-ready .note-peel-target:has(.note-image.hidden) + .note-under-sign {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-3px) scale(0.96);
 }
 
 .note-peel-target.editing {
