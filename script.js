@@ -460,6 +460,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         const foldShadow = foldLayer?.querySelector('.note-fold-shadow');
         const creaseShadow = foldLayer?.querySelector('.note-fold-crease-shadow');
         const creaseHighlight = foldLayer?.querySelector('.note-fold-crease-highlight');
+        const underSign = document.querySelector('.note-under-sign');
         if (!noteTarget || !note || !peelHandle || !frontFace || !foldLayer
             || !foldBack || !foldShadow || !creaseShadow || !creaseHighlight) return;
 
@@ -505,6 +506,20 @@ document.addEventListener("DOMContentLoaded", async function() {
 
         const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
         const dot = (a, b) => a.x * b.x + a.y * b.y;
+
+        function showUnderSign() {
+            if (!underSign) return;
+            underSign.hidden = false;
+            underSign.setAttribute('aria-hidden', 'false');
+        }
+
+        function hideUnderSign() {
+            if (!underSign) return;
+            underSign.hidden = true;
+            underSign.setAttribute('aria-hidden', 'true');
+        }
+
+        hideUnderSign();
 
         function setSvgLine(line, points) {
             if (points.length < 2) {
@@ -690,6 +705,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                 clearFoldGeometry();
                 noteTarget.classList.remove('resetting');
                 noteTarget.style.removeProperty('transform');
+                hideUnderSign();
             });
         }
 
@@ -745,6 +761,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             clearFoldGeometry();
             noteTarget.classList.remove('resetting');
             noteTarget.classList.add('peeling');
+            showUnderSign();
             peelHandle.setPointerCapture?.(e.pointerId);
             e.preventDefault();
         });
@@ -2777,13 +2794,15 @@ document.addEventListener("DOMContentLoaded", async function() {
         socialCardDefinitions.forEach(({ key, option, label, withAt = false }) => {
             if (!option) return;
             const enabled = isPublicLinkEnabled(key);
-            option.href = getPublicLink(key);
+            if (enabled) option.href = getPublicLink(key);
+            else option.removeAttribute('href');
             option.classList.toggle('site-link-hidden', !enabled);
             const cardNode = option.closest('.social-link-card-frame') || option;
             if (cardNode !== option) cardNode.classList.toggle('site-link-hidden', !enabled);
             option.setAttribute('aria-hidden', enabled ? 'false' : 'true');
             option.setAttribute('tabindex', '-1');
             updateSocialCardDisplay(option, key, label, withAt);
+            if (key === 'onlyfans' && !enabled) option.remove();
         });
         if (donateOption) {
             syncKofiWidgetHandle();
