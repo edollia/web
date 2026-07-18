@@ -59,9 +59,6 @@ document.addEventListener("DOMContentLoaded", async function() {
         wishlist_view_mode: 'masonry',
         homepage_note_text: '',
         homepage_note_font_size: 13.25,
-        latest_note_enabled: false,
-        latest_note_title: 'latest note',
-        latest_note_body: '',
         maintenance_enabled: false,
         maintenance_title: '',
         maintenance_message: '',
@@ -1089,9 +1086,6 @@ document.addEventListener("DOMContentLoaded", async function() {
             wishlist_view_mode: ['grid', 'list', 'masonry'].includes(settings.wishlist_view_mode) ? settings.wishlist_view_mode : 'masonry',
             homepage_note_text: String(settings.homepage_note_text || '').slice(0, 220),
             homepage_note_font_size: Math.min(17, Math.max(9, Number(settings.homepage_note_font_size) || 13.25)),
-            latest_note_enabled: settings.latest_note_enabled === true,
-            latest_note_title: String(settings.latest_note_title || DEFAULT_LINK_SETTINGS.latest_note_title),
-            latest_note_body: String(settings.latest_note_body || ''),
             maintenance_enabled: settings.maintenance_enabled === true,
             maintenance_title: String(settings.maintenance_title || DEFAULT_LINK_SETTINGS.maintenance_title),
             maintenance_message: String(settings.maintenance_message || DEFAULT_LINK_SETTINGS.maintenance_message),
@@ -2096,10 +2090,6 @@ document.addEventListener("DOMContentLoaded", async function() {
     const donateOption = document.getElementById('donate-option');
     const siteBrandButton = document.getElementById('site-brand-button');
     const footerBubbleField = document.getElementById('footer-bubble-field');
-    const latestNote = document.getElementById('latest-note');
-    const latestNoteToggle = document.getElementById('latest-note-toggle');
-    const latestNoteTitle = document.getElementById('latest-note-title');
-    const latestNoteBody = document.getElementById('latest-note-body');
     const homepageNoteText = document.getElementById('homepage-note-text');
     const homepageNoteEditor = document.getElementById('homepage-note-editor');
     const homepageNoteTarget = document.getElementById('note-peel-target');
@@ -2284,8 +2274,10 @@ document.addEventListener("DOMContentLoaded", async function() {
             const data = JSON.parse(structuredData.textContent);
             const graph = Array.isArray(data['@graph']) ? data['@graph'] : [];
             const websiteNode = graph.find(node => node['@type'] === 'WebSite');
+            const personNodes = graph.filter(node => node['@type'] === 'Person');
             const pageTitle = siteLinkSettings.seo_title || DEFAULT_LINK_SETTINGS.seo_title;
             const pageDescription = siteLinkSettings.seo_description || DEFAULT_LINK_SETTINGS.seo_description;
+            const siteTagline = siteLinkSettings.site_tagline || DEFAULT_LINK_SETTINGS.site_tagline;
             const sameAs = [...SOCIAL_CARD_KEYS, 'throne']
                 .filter(isPublicLinkEnabled)
                 .map(getPublicLink)
@@ -2295,36 +2287,22 @@ document.addEventListener("DOMContentLoaded", async function() {
                 websiteNode.sameAs = sameAs;
                 websiteNode.description = pageDescription;
             }
-            graph
-                .filter(node => node['@type'] === 'Person')
-                .forEach(node => {
-                    node.sameAs = sameAs;
-                });
+            personNodes.forEach(node => {
+                node.sameAs = sameAs;
+                node.description = pageDescription;
+                node.slogan = siteTagline;
+            });
             graph
                 .filter(node => node['@type'] === 'WebPage' || node['@type'] === 'ProfilePage')
                 .forEach(node => {
                     node.name = pageTitle;
                     node.description = pageDescription;
+                    if (node['@type'] === 'ProfilePage') node.headline = siteTagline;
                 });
             structuredData.textContent = JSON.stringify(data, null, 2);
         } catch (error) {
             // Keep the static structured data if parsing ever fails.
         }
-    }
-
-    function renderLatestNote() {
-        if (!latestNote || !latestNoteTitle || !latestNoteBody || !latestNoteToggle) return;
-        const enabled = siteLinkSettings.latest_note_enabled === true && siteLinkSettings.latest_note_body.trim();
-        latestNote.hidden = !enabled;
-        latestNoteToggle.setAttribute('aria-expanded', latestNoteBody.hidden ? 'false' : 'true');
-        if (!enabled) {
-            latestNoteBody.hidden = true;
-            latestNote.classList.remove('open');
-            return;
-        }
-
-        latestNoteTitle.textContent = siteLinkSettings.latest_note_title || DEFAULT_LINK_SETTINGS.latest_note_title;
-        latestNoteBody.textContent = siteLinkSettings.latest_note_body;
     }
 
     function fitHomepageNoteElement(element) {
@@ -2809,7 +2787,6 @@ document.addEventListener("DOMContentLoaded", async function() {
         renderSeoSettings();
         renderSubmissionControls();
         renderHomepageNoteText();
-        renderLatestNote();
         renderMaintenanceMode();
     }
 
@@ -3172,17 +3149,9 @@ document.addEventListener("DOMContentLoaded", async function() {
         window.addEventListener('resize', renderTourScene);
         renderTourScene();
         // Begin the gentle 425ms exit soon enough that the overlay is fully
-        // gone exactly three seconds after the simultaneous scene begins.
+        // gone exactly two seconds after the simultaneous scene begins.
         tourEndTimer = window.setTimeout(finishTour, tourTotalDuration - tourExitDuration);
     }
-
-    latestNoteToggle?.addEventListener('click', () => {
-        if (!latestNote || !latestNoteBody) return;
-        const nextOpen = latestNoteBody.hidden;
-        latestNoteBody.hidden = !nextOpen;
-        latestNote.classList.toggle('open', nextOpen);
-        latestNoteToggle.setAttribute('aria-expanded', nextOpen ? 'true' : 'false');
-    });
 
     const footerBubblePool = [];
     const footerBubbleLimit = 7;
@@ -3902,20 +3871,140 @@ document.addEventListener("DOMContentLoaded", async function() {
                 .replace(/'/g, '&#039;');
         }
 
+        function parseAnswerUrl(href) {
+            try {
+                const url = new URL(href);
+                return url.protocol === 'https:' || url.protocol === 'http:' ? url : null;
+            } catch (error) {
+                return null;
+            }
+        }
+
+        function decodeTenorShortCode(code) {
+            const alphabet = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+            if (!code || !/^[a-zA-Z0-9]+$/.test(code)) return '';
+            let value = 0n;
+            for (const character of code) {
+                const digit = alphabet.indexOf(character);
+                if (digit < 0) return '';
+                value = (value * 62n) + BigInt(digit);
+            }
+            return value.toString();
+        }
+
+        function getTenorPostId(url) {
+            const hostname = url.hostname.toLowerCase().replace(/^www\./, '');
+            if (hostname !== 'tenor.com') return '';
+            const pathname = decodeURIComponent(url.pathname);
+            const embedMatch = pathname.match(/\/embed\/(\d+)/i);
+            if (embedMatch) return embedMatch[1];
+            const viewMatch = pathname.match(/-(\d+)\/?$/);
+            if (viewMatch) return viewMatch[1];
+            const shortMatch = pathname.match(/^\/([a-zA-Z0-9]+)\.gif\/?$/i);
+            return shortMatch ? decodeTenorShortCode(shortMatch[1]) : '';
+        }
+
+        function getGiphyPostId(url) {
+            const hostname = url.hostname.toLowerCase().replace(/^www\./, '');
+            if (hostname !== 'giphy.com') return '';
+            const pathname = decodeURIComponent(url.pathname).replace(/\/$/, '');
+            const embedMatch = pathname.match(/\/embed\/([a-zA-Z0-9]+)/i);
+            if (embedMatch) return embedMatch[1];
+            const lastSegment = pathname.split('/').filter(Boolean).pop() || '';
+            const id = lastSegment.split('-').pop() || '';
+            return /^[a-zA-Z0-9]+$/.test(id) ? id : '';
+        }
+
+        // Direct media URLs avoid Tenor's oversized branded player. Keep
+        // resolved share links here so saved answers remain compact and the
+        // GIF itself loops immediately.
+        const resolvedTenorMedia = Object.freeze({
+            '4349555': 'https://media1.tenor.com/m/4uTXyXwtUB8AAAAC/excited-bob.gif'
+        });
+
+        function renderAnswerEmbed(provider, postId, originalHref) {
+            if (provider === 'Tenor') {
+                const directMediaUrl = resolvedTenorMedia[postId];
+                if (directMediaUrl) {
+                    const safeMediaUrl = escapeHtml(directMediaUrl);
+                    return `<a href="${escapeHtml(originalHref)}" target="_blank" rel="nofollow ugc noopener noreferrer" class="answer-gif-link answer-gif-link-small"><img src="${safeMediaUrl}" alt="GIF reply" class="answer-gif" loading="lazy" referrerpolicy="no-referrer" data-media-url="${safeMediaUrl}"></a>`;
+                }
+                return `<span class="answer-media-frame answer-tenor-frame"><span class="tenor-gif-embed" data-postid="${escapeHtml(postId)}" data-share-method="host" data-aspect-ratio="1.333333" data-width="100%"><a href="${escapeHtml(originalHref)}">Tenor GIF</a></span></span>`;
+            }
+            const embedHref = `https://giphy.com/embed/${encodeURIComponent(postId)}`;
+            return `<span class="answer-media-frame"><iframe src="${escapeHtml(embedHref)}" title="Giphy GIF reply" loading="lazy" allow="autoplay; fullscreen" referrerpolicy="strict-origin-when-cross-origin"></iframe><a href="${escapeHtml(originalHref)}" target="_blank" rel="nofollow ugc noopener noreferrer" class="answer-media-source">Giphy</a></span>`;
+        }
+
+        function hydrateTenorAnswerEmbeds() {
+            if (!questionsList?.querySelector('.tenor-gif-embed')) return;
+            const existingLoader = document.querySelector('script[data-answer-tenor-loader]');
+            if (existingLoader) return;
+            const loader = document.createElement('script');
+            loader.src = 'https://tenor.com/embed.js';
+            loader.async = true;
+            loader.dataset.answerTenorLoader = 'true';
+            loader.addEventListener('load', () => loader.remove(), { once: true });
+            loader.addEventListener('error', () => {
+                questionsList.querySelectorAll('.answer-tenor-frame').forEach(frame => {
+                    const link = frame.querySelector('a[href]');
+                    if (!link) return;
+                    link.className = 'answer-link answer-media-unavailable';
+                    link.textContent = 'Tenor link';
+                    frame.replaceWith(link);
+                });
+                loader.remove();
+            }, { once: true });
+            document.body.appendChild(loader);
+        }
+
+        function isDirectAnswerImage(url) {
+            return /\.(?:gif|png|jpe?g|webp|avif)(?:$|[?#])/i.test(`${url.pathname}${url.search}${url.hash}`);
+        }
+
+        function getDirectAnswerVideoUrl(url) {
+            if (/\.gifv$/i.test(url.pathname) && /(^|\.)imgur\.com$/i.test(url.hostname)) {
+                const mp4Url = new URL(url.href);
+                mp4Url.pathname = mp4Url.pathname.replace(/\.gifv$/i, '.mp4');
+                return mp4Url.href;
+            }
+            return /\.(?:mp4|webm)(?:$|[?#])/i.test(`${url.pathname}${url.search}${url.hash}`)
+                ? url.href
+                : '';
+        }
+
+        function renderAnswerVideo(href) {
+            const safeHref = escapeHtml(href);
+            return `<span class="answer-video-frame"><video src="${safeHref}" autoplay muted loop playsinline preload="metadata" aria-label="Video reply" data-media-url="${safeHref}"></video></span>`;
+        }
+
         function linkifyText(str) {
             const urlPattern = /(\bhttps?:\/\/[^\s<>"']+|\bwww\.[^\s<>"']+\.[^\s<>"']+|\b[a-zA-Z0-9-]+\.[a-zA-Z]{2,}(?:\/[^\s<>"']*)?)/g;
             let html = '';
             let lastIndex = 0;
             String(str).replace(urlPattern, (match, _url, offset) => {
                 html += escapeHtml(String(str).slice(lastIndex, offset));
-                const href = /^https?:\/\//i.test(match) ? match : 'https://' + match;
+                const trailingPunctuation = match.match(/[),.!?;:]+$/)?.[0] || '';
+                const cleanMatch = trailingPunctuation ? match.slice(0, -trailingPunctuation.length) : match;
+                const href = /^https?:\/\//i.test(cleanMatch) ? cleanMatch : 'https://' + cleanMatch;
                 const safeHref = escapeHtml(href);
-                const safeText = escapeHtml(match);
-                if (/\.gif(?:[?#].*)?$/i.test(href)) {
-                    html += `<a href="${safeHref}" target="_blank" rel="nofollow ugc noopener noreferrer" class="answer-gif-link"><img src="${safeHref}" alt="" class="answer-gif" loading="lazy" referrerpolicy="no-referrer"></a>`;
+                const safeText = escapeHtml(cleanMatch);
+                const parsedUrl = parseAnswerUrl(href);
+                const tenorPostId = parsedUrl ? getTenorPostId(parsedUrl) : '';
+                const giphyPostId = parsedUrl ? getGiphyPostId(parsedUrl) : '';
+                const videoUrl = parsedUrl ? getDirectAnswerVideoUrl(parsedUrl) : '';
+                const answerContainsOnlyThisUrl = String(str).trim() === match;
+                if (tenorPostId) {
+                    html += renderAnswerEmbed('Tenor', tenorPostId, href);
+                } else if (giphyPostId) {
+                    html += renderAnswerEmbed('Giphy', giphyPostId, href);
+                } else if (videoUrl) {
+                    html += renderAnswerVideo(videoUrl);
+                } else if (parsedUrl && (isDirectAnswerImage(parsedUrl) || answerContainsOnlyThisUrl)) {
+                    html += `<a href="${safeHref}" target="_blank" rel="nofollow ugc noopener noreferrer" class="answer-gif-link"><img src="${safeHref}" alt="Image reply" class="answer-gif" loading="lazy" referrerpolicy="no-referrer" data-media-url="${safeHref}"></a>`;
                 } else {
                     html += `<a href="${safeHref}" target="_blank" rel="nofollow ugc noopener noreferrer" class="answer-link">${safeText}</a>`;
                 }
+                html += escapeHtml(trailingPunctuation);
                 lastIndex = offset + match.length;
                 return match;
             });
@@ -3994,6 +4083,35 @@ document.addEventListener("DOMContentLoaded", async function() {
                     fragment.appendChild(el);
                 });
                 questionsList.appendChild(fragment);
+                hydrateTenorAnswerEmbeds();
+                questionsList.querySelectorAll('img.answer-gif').forEach(image => {
+                    image.addEventListener('error', () => {
+                        const link = image.closest('.answer-gif-link');
+                        const href = image.dataset.mediaUrl || link?.href || '';
+                        if (!link || !href) return;
+                        const replacement = document.createElement('a');
+                        replacement.href = href;
+                        replacement.target = '_blank';
+                        replacement.rel = 'nofollow ugc noopener noreferrer';
+                        replacement.className = 'answer-link answer-media-unavailable';
+                        replacement.textContent = 'image link';
+                        link.replaceWith(replacement);
+                    }, { once: true });
+                });
+                questionsList.querySelectorAll('video[data-media-url]').forEach(video => {
+                    video.addEventListener('error', () => {
+                        const frame = video.closest('.answer-video-frame');
+                        const href = video.dataset.mediaUrl || '';
+                        if (!frame || !href) return;
+                        const replacement = document.createElement('a');
+                        replacement.href = href;
+                        replacement.target = '_blank';
+                        replacement.rel = 'nofollow ugc noopener noreferrer';
+                        replacement.className = 'answer-link answer-media-unavailable';
+                        replacement.textContent = 'media link';
+                        frame.replaceWith(replacement);
+                    }, { once: true });
+                });
             } catch (error) {
                 console.error("Error loading questions:", error);
                 questionsList.innerHTML = '<p>Error loading Mi. Please refresh.</p>';

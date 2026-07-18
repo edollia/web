@@ -1969,7 +1969,6 @@
                     '#posts-button',
                     '#donate-option',
                     '#site-brand-button',
-                    '#latest-note-toggle',
                 ].join(','))) return;
 
                 // Let the clicked control continue normally; collapse the

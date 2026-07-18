@@ -88,9 +88,6 @@ const DEFAULT_LINK_SETTINGS = {
     wishlist_view_mode: 'masonry',
     homepage_note_text: '',
     homepage_note_font_size: 13.25,
-    latest_note_enabled: false,
-    latest_note_title: 'latest note',
-    latest_note_body: '',
     maintenance_enabled: false,
     maintenance_title: 'site update in progress',
     maintenance_message: 'Please check back soon.',
@@ -127,6 +124,7 @@ const adminDateFormatter = new Intl.DateTimeFormat(undefined, {
     timeZone: ADMIN_TIME_ZONE,
     timeZoneName: 'short'
 });
+const ADMIN_FUTURE_DATE_TOLERANCE_MS = 2 * 60 * 1000;
 
 const state = {
     drawings: [],
@@ -220,10 +218,6 @@ const els = {
     homepageNoteText: document.getElementById('homepage-note-text-input'),
     homepageNoteState: document.getElementById('homepage-note-state'),
     homepageNoteCount: document.getElementById('homepage-note-count'),
-    latestNoteEnabled: document.getElementById('latest-note-enabled'),
-    latestNoteTitle: document.getElementById('latest-note-title'),
-    latestNoteBody: document.getElementById('latest-note-body-input'),
-    latestNoteState: document.getElementById('latest-note-state'),
     maintenanceEnabled: document.getElementById('maintenance-enabled'),
     maintenanceTitle: document.getElementById('maintenance-title'),
     maintenanceMessage: document.getElementById('maintenance-message'),
@@ -273,7 +267,15 @@ function hasAnswer(question) {
 
 function parseAdminDate(value) {
     if (!value) return null;
-    const date = new Date(value);
+    // The legacy questions/drawings columns return a PostgreSQL timestamp
+    // without a zone (for example 2026-07-17T13:49:10.104303). Supabase's
+    // server value is UTC, but browsers otherwise interpret it as the
+    // device's local time, producing different/future dates across devices.
+    const raw = String(value).trim();
+    const normalized = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,6})?)?$/.test(raw)
+        ? `${raw}Z`
+        : raw;
+    const date = new Date(normalized);
     return Number.isNaN(date.getTime()) ? null : date;
 }
 
@@ -285,7 +287,9 @@ function formatDate(value) {
 function formatRelativeDate(value) {
     const date = parseAdminDate(value);
     if (!date) return 'unknown';
-    const seconds = Math.round((date.getTime() - Date.now()) / 1000);
+    const differenceMs = date.getTime() - Date.now();
+    if (differenceMs > ADMIN_FUTURE_DATE_TOLERANCE_MS) return 'check timestamp';
+    const seconds = Math.round(Math.min(0, differenceMs) / 1000);
     const absSeconds = Math.abs(seconds);
     if (absSeconds < 45) return 'just now';
 
@@ -525,9 +529,6 @@ function normalizeLinkSettings(value) {
         wishlist_view_mode: WISHLIST_VIEW_MODES.includes(settings.wishlist_view_mode) ? settings.wishlist_view_mode : 'masonry',
         homepage_note_text: String(settings.homepage_note_text || '').slice(0, 220),
         homepage_note_font_size: Math.min(17, Math.max(9, Number(settings.homepage_note_font_size) || 13.25)),
-        latest_note_enabled: settings.latest_note_enabled === true,
-        latest_note_title: String(settings.latest_note_title || DEFAULT_LINK_SETTINGS.latest_note_title),
-        latest_note_body: String(settings.latest_note_body || ''),
         maintenance_enabled: settings.maintenance_enabled === true,
         maintenance_title: String(settings.maintenance_title || DEFAULT_LINK_SETTINGS.maintenance_title),
         maintenance_message: String(settings.maintenance_message || DEFAULT_LINK_SETTINGS.maintenance_message),
@@ -653,10 +654,6 @@ function renderLinkSettings({ preserveDraft = false } = {}) {
     if (els.throneCheckoutMode) els.throneCheckoutMode.value = settings.throne_checkout_mode === 'widget' ? 'widget' : 'mockup';
     if (els.wishlistViewMode) els.wishlistViewMode.value = WISHLIST_VIEW_MODES.includes(settings.wishlist_view_mode) ? settings.wishlist_view_mode : 'masonry';
     if (els.homepageNoteText) els.homepageNoteText.value = settings.homepage_note_text || '';
-    if (els.latestNoteEnabled) els.latestNoteEnabled.checked = settings.latest_note_enabled === true;
-    if (els.latestNoteTitle) els.latestNoteTitle.value = settings.latest_note_title || '';
-    if (els.latestNoteBody) els.latestNoteBody.value = settings.latest_note_body || '';
-    if (els.latestNoteState) els.latestNoteState.textContent = settings.latest_note_enabled === true ? 'visible' : 'hidden';
     if (els.maintenanceEnabled) els.maintenanceEnabled.checked = settings.maintenance_enabled === true;
     if (els.maintenanceTitle) els.maintenanceTitle.value = settings.maintenance_title || '';
     if (els.maintenanceMessage) els.maintenanceMessage.value = settings.maintenance_message || '';
@@ -737,9 +734,6 @@ function getDraftLinkSettings() {
         wishlist_view_mode: WISHLIST_VIEW_MODES.includes(els.wishlistViewMode?.value) ? els.wishlistViewMode.value : 'masonry',
         homepage_note_text: (els.homepageNoteText?.value || '').slice(0, 220),
         homepage_note_font_size: Math.min(17, Math.max(9, Number(state.linkSettings.homepage_note_font_size) || 13.25)),
-        latest_note_enabled: els.latestNoteEnabled?.checked === true,
-        latest_note_title: els.latestNoteTitle?.value.trim() || DEFAULT_LINK_SETTINGS.latest_note_title,
-        latest_note_body: els.latestNoteBody?.value.trim() || '',
         maintenance_enabled: els.maintenanceEnabled?.checked === true,
         maintenance_title: els.maintenanceTitle?.value.trim() || DEFAULT_LINK_SETTINGS.maintenance_title,
         maintenance_message: els.maintenanceMessage?.value.trim() || DEFAULT_LINK_SETTINGS.maintenance_message,
@@ -779,7 +773,6 @@ function syncLinkDraftLabels(settings = getDraftLinkSettings()) {
     if (els.homepageNoteState) els.homepageNoteState.textContent = homepageNoteText ? 'visible' : 'blank';
     if (els.homepageNoteCount) els.homepageNoteCount.textContent = `${homepageNoteText.length}/220`;
     document.querySelector('[data-link-card="homepage-note"]')?.classList.toggle('is-disabled', !homepageNoteText);
-    if (els.latestNoteState) els.latestNoteState.textContent = settings.latest_note_enabled === true ? 'visible' : 'hidden';
     if (els.maintenanceState) els.maintenanceState.textContent = settings.maintenance_enabled === true ? 'on' : 'off';
     if (els.entranceModeState) els.entranceModeState.textContent = settings.entrance_mode === 'bubbles' ? 'pop bubbles' : 'paw press';
     if (els.submissionsState) els.submissionsState.textContent = getSubmissionsStateLabel(settings);
@@ -791,7 +784,7 @@ function syncLinkDraftLabels(settings = getDraftLinkSettings()) {
     if (els.seoDescriptionCount) els.seoDescriptionCount.textContent = `${settings.seo_description.length}/180`;
     if (els.siteTaglineCount) els.siteTaglineCount.textContent = `${settings.site_tagline.length}/120`;
     if (els.seoState) els.seoState.textContent = settingsDraftDirty ? 'editing' : 'ready';
-    [...SOCIAL_CARD_KEYS, 'throne', 'latest-note', 'maintenance', 'submissions'].forEach(key => {
+    [...SOCIAL_CARD_KEYS, 'throne', 'maintenance', 'submissions'].forEach(key => {
         const settingKey = key.replace('-', '_');
         let disabled = settings[`${settingKey}_enabled`] === false;
         if (key === 'submissions') {
@@ -1254,17 +1247,21 @@ function renderStaticSeoStatus(settings = getDraftLinkSettings()) {
     const rows = [
         ['static title', staticSeoSnapshot.title, settings.seo_title],
         ['static description', staticSeoSnapshot.description, settings.seo_description],
+        ['Open Graph title', staticSeoSnapshot.ogTitle, settings.seo_title],
+        ['Open Graph description', staticSeoSnapshot.ogDescription, settings.seo_description],
+        ['X card title', staticSeoSnapshot.twitterTitle, settings.seo_title],
+        ['X card description', staticSeoSnapshot.twitterDescription, settings.seo_description],
         ['schema title', staticSeoSnapshot.structuredTitle, settings.seo_title],
         ['schema description', staticSeoSnapshot.structuredDescription, settings.seo_description]
     ];
     const allMatch = rows.every(([, actual, expected]) => actual === expected);
-    if (els.staticSeoState) els.staticSeoState.textContent = allMatch ? 'static matches' : 'dynamic only';
+    if (els.staticSeoState) els.staticSeoState.textContent = allMatch ? 'crawler copy matches' : 'live only · deploy needed';
     els.staticSeoRows.innerHTML = rows.map(([label, actual, expected]) => {
         const ok = actual === expected;
         return `
             <div class="admin-health-row admin-static-row ${ok ? 'is-ok' : 'is-bad'}">
                 <span>${escapeHtml(label)}</span>
-                <strong>${ok ? 'ok' : 'fix'}</strong>
+                <strong>${ok ? 'ok' : 'deploy'}</strong>
                 <small>${escapeHtml(actual || 'missing')}</small>
             </div>
         `;
@@ -1295,6 +1292,10 @@ async function checkStaticSeoStatus() {
         staticSeoSnapshot = {
             title: doc.querySelector('title')?.textContent.trim() || '',
             description: doc.querySelector('meta[name="description"]')?.getAttribute('content') || '',
+            ogTitle: doc.querySelector('meta[property="og:title"]')?.getAttribute('content') || '',
+            ogDescription: doc.querySelector('meta[property="og:description"]')?.getAttribute('content') || '',
+            twitterTitle: doc.querySelector('meta[name="twitter:title"]')?.getAttribute('content') || '',
+            twitterDescription: doc.querySelector('meta[name="twitter:description"]')?.getAttribute('content') || '',
             structuredTitle,
             structuredDescription
         };
@@ -1729,9 +1730,6 @@ async function saveLinkSettingsNow() {
             wishlist_view_mode: WISHLIST_VIEW_MODES.includes(els.wishlistViewMode?.value) ? els.wishlistViewMode.value : 'masonry',
             homepage_note_text: (els.homepageNoteText?.value || '').slice(0, 220),
             homepage_note_font_size: Math.min(17, Math.max(9, Number(state.linkSettings.homepage_note_font_size) || 13.25)),
-            latest_note_enabled: els.latestNoteEnabled?.checked === true,
-            latest_note_title: els.latestNoteTitle?.value.trim() || DEFAULT_LINK_SETTINGS.latest_note_title,
-            latest_note_body: els.latestNoteBody?.value.trim() || '',
             maintenance_enabled: els.maintenanceEnabled?.checked === true,
             maintenance_title: els.maintenanceTitle?.value.trim() || DEFAULT_LINK_SETTINGS.maintenance_title,
             maintenance_message: els.maintenanceMessage?.value.trim() || DEFAULT_LINK_SETTINGS.maintenance_message,
@@ -2150,8 +2148,6 @@ async function init() {
         els.throneCheckoutMode,
         els.wishlistViewMode,
         els.homepageNoteText,
-        els.latestNoteTitle,
-        els.latestNoteBody,
         els.maintenanceTitle,
         els.maintenanceMessage,
         els.maintenanceEta,

@@ -345,31 +345,6 @@
                             </div>
                         </details>
 
-                        <details class="admin-link-card admin-control-card" data-link-card="latest-note" open>
-                            <summary>
-                                <div class="admin-link-card-title">
-                                    <span class="admin-link-icon">N</span>
-                                    <div>
-                                        <strong>latest note</strong>
-                                        <small id="latest-note-state">hidden</small>
-                                    </div>
-                                </div>
-                                <label class="admin-switch">
-                                    <input id="latest-note-enabled" type="checkbox">
-                                    <span></span>
-                                </label>
-                            </summary>
-                            <div class="admin-link-card-body admin-field-grid">
-                                <label class="admin-url-field">
-                                    <span>note title</span>
-                                    <input id="latest-note-title" type="text" maxlength="80" placeholder="latest note">
-                                </label>
-                                <label class="admin-url-field">
-                                    <span>note body</span>
-                                    <textarea id="latest-note-body-input" maxlength="420" placeholder="write the public note here"></textarea>
-                                </label>
-                            </div>
-                        </details>
                     </div>
                 </section>
 
@@ -942,10 +917,11 @@
                                     <textarea id="seo-description" maxlength="180" placeholder="Lia's little space for messages, posts, socials and more."></textarea>
                                 </label>
                                 <label class="admin-url-field">
-                                    <span>tagline <small id="site-tagline-count">0/120</small></span>
+                                    <span>profile tagline <small id="site-tagline-count">0/120</small></span>
                                     <input id="site-tagline" type="text" maxlength="120" placeholder="Lia's little space for messages, posts, socials and more.">
                                 </label>
                             </div>
+                            <p class="admin-tool-note">Saved copy updates the live page metadata and profile schema. The crawler check below verifies the no-JavaScript copy shipped in index.html.</p>
                         </section>
 
                         <aside class="admin-chat-tools">
@@ -955,7 +931,7 @@
                                     <span class="admin-preview-pill" id="static-seo-state">not checked</span>
                                 </div>
                                 <div class="admin-inline-actions">
-                                    <button class="soft" type="button" id="static-seo-check">check static SEO</button>
+                                    <button class="soft" type="button" id="static-seo-check">check crawler copy</button>
                                 </div>
                                 <div class="admin-health-list" id="static-seo-checks"></div>
                             </div>
@@ -980,6 +956,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="../admin-rooms.js?v=4.5"></script>
-    <script src="../admin.js?v=5.9"></script>
+    <script src="../admin.js?v=5.11"></script>
 </body>
 </html>

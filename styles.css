@@ -1066,74 +1066,6 @@ body.has-posts-panel-open .site-brand-footer {
     transform: rotate(-4deg);
 }
 
-.latest-note {
-    width: min(88vw, 348px);
-    margin: 18px auto 0;
-    opacity: 0;
-    transform: translateY(6px);
-}
-
-.main-screen.note-ready .latest-note:not([hidden]) {
-    animation: brandFooterIn 0.6s ease 0.62s forwards;
-}
-
-.latest-note-toggle {
-    width: 100%;
-    min-height: 44px;
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 10px;
-    padding: 10px 13px 10px 15px;
-    border: 1px solid rgba(255, 180, 212, 0.5);
-    border-radius: 18px;
-    background:
-        linear-gradient(rgba(255, 255, 255, 0.74), rgba(255, 246, 251, 0.56)),
-        repeating-linear-gradient(90deg, rgba(255, 231, 242, 0.25) 0 9px, rgba(255, 250, 253, 0.25) 9px 18px);
-    color: rgba(122, 76, 92, 0.76);
-    font-family: "Comic Sans MS", "Trebuchet MS", cursive;
-    font-size: 13px;
-    font-weight: 700;
-    text-align: left;
-    box-shadow:
-        0 6px 15px rgba(255, 145, 195, 0.11),
-        inset 0 1px 0 rgba(255, 255, 255, 0.72);
-}
-
-.latest-note-toggle span:first-child {
-    overflow-wrap: anywhere;
-}
-
-.latest-note-caret {
-    width: 24px;
-    height: 24px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 999px;
-    background: rgba(255, 218, 234, 0.7);
-    color: rgba(174, 85, 130, 0.78);
-    transition: transform 0.18s ease;
-}
-
-.latest-note.open .latest-note-caret {
-    transform: rotate(180deg);
-}
-
-.latest-note-body {
-    margin-top: 8px;
-    padding: 12px 14px;
-    border: 1px solid rgba(255, 214, 230, 0.58);
-    border-radius: 16px;
-    background: rgba(255, 255, 255, 0.68);
-    color: rgba(82, 75, 80, 0.78);
-    font-size: 13px;
-    line-height: 1.45;
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
-    box-shadow: 0 8px 18px rgba(255, 145, 195, 0.1);
-}
-
 .footer-bubble-field {
     position: fixed;
     inset: 0;
@@ -1176,6 +1108,28 @@ body.has-posts-panel-open .site-brand-footer {
 @media (max-height: 720px) {
     .site-brand-footer {
         margin-top: 42px;
+    }
+
+    body.has-social-panel-open .main-screen .site-brand-footer,
+    body.has-wishlist-panel-open .main-screen .site-brand-footer,
+    body.has-posts-panel-open .main-screen .site-brand-footer {
+        margin-top: 6px !important;
+        padding-bottom: max(8px, env(safe-area-inset-bottom));
+    }
+
+    body.has-social-panel-open .site-brand-footer a,
+    body.has-wishlist-panel-open .site-brand-footer a,
+    body.has-posts-panel-open .site-brand-footer a {
+        min-height: 26px;
+        padding: 3px 7px 3px 9px;
+        font-size: 12px;
+    }
+
+    body.has-social-panel-open .site-brand-footer .site-brand-gg,
+    body.has-wishlist-panel-open .site-brand-footer .site-brand-gg,
+    body.has-posts-panel-open .site-brand-footer .site-brand-gg {
+        padding: 2px 5px 3px;
+        font-size: 10px;
     }
 }
 
@@ -3748,8 +3702,9 @@ body.first-visit-tour-active .tour-highlight-target {
 
 .answer-gif-link {
     display: block;
-    margin-top: 7px;
-    border-radius: 11px;
+    width: min(112px, 100%);
+    margin: 7px auto 0;
+    border-radius: 9px;
     overflow: hidden;
     border: 1px solid rgba(255, 180, 212, 0.42);
     box-shadow: 0 4px 12px rgba(255, 145, 198, 0.12);
@@ -3758,8 +3713,89 @@ body.first-visit-tour-active .tour-highlight-target {
 .answer-gif {
     display: block;
     width: 100%;
-    max-height: 180px;
-    object-fit: cover;
+    max-height: 96px;
+    object-fit: contain;
+    background: rgba(255, 247, 251, 0.72);
+}
+
+.answer-media-frame {
+    position: relative;
+    display: block;
+    width: min(112px, 100%);
+    aspect-ratio: 4 / 3;
+    max-height: 84px;
+    margin: 7px auto 0;
+    overflow: hidden;
+    border: 1px solid rgba(255, 180, 212, 0.42);
+    border-radius: 9px;
+    background: rgba(255, 244, 249, 0.72);
+    box-shadow: 0 4px 12px rgba(255, 145, 198, 0.12);
+}
+
+.answer-media-frame iframe {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border: 0;
+}
+
+.answer-tenor-frame .tenor-gif-embed,
+.answer-tenor-frame .tenor-gif-embed > div,
+.answer-tenor-frame .tenor-gif-embed iframe,
+.answer-tenor-frame iframe {
+    width: 100% !important;
+    height: 100% !important;
+    max-width: 100% !important;
+    max-height: 100% !important;
+}
+
+.answer-tenor-frame .tenor-gif-embed > a {
+    visibility: hidden;
+}
+
+.answer-video-frame {
+    display: block;
+    width: min(112px, 100%);
+    max-height: 96px;
+    margin: 7px auto 0;
+    overflow: hidden;
+    border: 1px solid rgba(255, 180, 212, 0.42);
+    border-radius: 9px;
+    background: rgba(255, 247, 251, 0.72);
+    box-shadow: 0 4px 12px rgba(255, 145, 198, 0.12);
+}
+
+.answer-video-frame video {
+    display: block;
+    width: 100%;
+    max-height: 96px;
+    object-fit: contain;
+}
+
+.answer-media-source {
+    position: absolute;
+    right: 6px;
+    bottom: 5px;
+    z-index: 1;
+    padding: 2px 6px;
+    border-radius: 999px;
+    color: rgba(127, 82, 104, 0.68);
+    background: rgba(255, 255, 255, 0.68);
+    font-size: 8px;
+    line-height: 1.35;
+    text-decoration: none;
+    backdrop-filter: blur(5px);
+    -webkit-backdrop-filter: blur(5px);
+}
+
+.answer-media-source:focus-visible {
+    outline: 2px solid rgba(218, 112, 162, 0.5);
+    outline-offset: 2px;
+}
+
+.answer-media-unavailable {
+    display: inline-block;
+    margin-top: 7px;
 }
 
 .like-sticker {
