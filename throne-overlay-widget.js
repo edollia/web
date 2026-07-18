@@ -623,11 +623,11 @@
                 <div class="doll-throne-hint">Apple Pay checkout: full site</div>
                 <div class="doll-throne-iframe-wrap"></div>
                 <div class="doll-throne-loading">
-                    <div class="doll-throne-loader-mark"><img src="wishlist.png" alt=""></div>
+                    <div class="doll-throne-loader-mark"><img src="site-images/wishlist.png" alt=""></div>
                     <p>opening wishlist...</p>
                 </div>
                 <div class="doll-throne-fallback hidden">
-                    <div class="doll-throne-loader-mark"><img src="wishlist.png" alt=""></div>
+                    <div class="doll-throne-loader-mark"><img src="site-images/wishlist.png" alt=""></div>
                     <p>checkout works best on the full throne website.</p>
                     <button type="button">open full website</button>
                 </div>

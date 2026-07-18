@@ -81,6 +81,7 @@ document.addEventListener("DOMContentLoaded", async function() {
 
     // ===== ENHANCED AUDIO HANDLING =====
     const audio = new Audio('hehe.mp3');
+    audio.preload = 'auto';
     audio.loop = true;
     const backgroundMusicVolume = 0.4;
     const backgroundFadeInDuration = 6;
@@ -89,14 +90,24 @@ document.addEventListener("DOMContentLoaded", async function() {
     let backgroundFadeLevel = 0;
     let backgroundFadeFrame = null;
     let audioPlayed = false;
+    let backgroundMusicUnlocked = false;
+    let backgroundMusicRetryArmed = false;
     const uiSounds = {
-        tap: 'CUT1.mp3',
-        link: 'CUT2.mp3',
-        submit: 'CUT3.mp3'
+        tap: 'CUT1.mp3?v=2',
+        link: 'CUT2.mp3?v=2',
+        submit: 'CUT3.mp3?v=2'
     };
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-    const uiAudioContext = AudioContextClass ? new AudioContextClass() : null;
+    let uiAudioContext = null;
     let backgroundMusicGain = null;
+    if (AudioContextClass) {
+        try {
+            uiAudioContext = new AudioContextClass();
+        } catch (error) {
+            // HTMLAudio remains available even if Web Audio cannot initialize.
+            uiAudioContext = null;
+        }
+    }
     if (uiAudioContext) {
         try {
             const backgroundMusicSource = uiAudioContext.createMediaElementSource(audio);
@@ -104,6 +115,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             backgroundMusicSource.connect(backgroundMusicGain);
             backgroundMusicGain.connect(uiAudioContext.destination);
         } catch (error) {
+            // UI sounds can still use Web Audio; music falls back to HTMLAudio.
             backgroundMusicGain = null;
         }
     }
@@ -149,6 +161,67 @@ document.addEventListener("DOMContentLoaded", async function() {
         cancelAnimationFrame(backgroundFadeFrame);
         backgroundFadeFrame = null;
     }
+
+    // Safari can reject a play() call made after an entrance-transition
+    // timeout because the original tap activation has expired. Start the
+    // element silently during that trusted gesture, then rewind and fade it
+    // in at the existing visual cue.
+    function primeBackgroundMusic() {
+        // Without Web Audio gain, iOS may ignore audio.volume = 0. In that
+        // rare fallback, wait for the scheduled/next trusted play instead of
+        // risking an audible full-volume prime.
+        if (!backgroundMusicGain) return;
+        if (audioPlayed || backgroundMusicUnlocked || !audio.paused) {
+            backgroundMusicUnlocked = !audio.paused;
+            return;
+        }
+        backgroundFadeLevel = 0;
+        applyBackgroundMusicVolume();
+        const playAttempt = audio.play();
+        if (!playAttempt?.then) {
+            backgroundMusicUnlocked = !audio.paused;
+            return;
+        }
+        playAttempt
+            .then(() => { backgroundMusicUnlocked = true; })
+            .catch(() => { backgroundMusicUnlocked = false; });
+    }
+
+    function armBackgroundMusicRetry() {
+        if (backgroundMusicRetryArmed) return;
+        backgroundMusicRetryArmed = true;
+        const retry = () => {
+            backgroundMusicRetryArmed = false;
+            document.removeEventListener('pointerdown', retry, true);
+            document.removeEventListener('keydown', retry, true);
+            startBackgroundMusic();
+        };
+        document.addEventListener('pointerdown', retry, { once: true, capture: true });
+        document.addEventListener('keydown', retry, { once: true, capture: true });
+    }
+
+    function startBackgroundMusic() {
+        if (audioPlayed) return;
+        audioPlayed = true;
+        backgroundFadeLevel = 0;
+        applyBackgroundMusicVolume();
+        try {
+            audio.currentTime = 0;
+        } catch (error) {
+            // Metadata may still be settling; play() below remains safe.
+        }
+        audio.play()
+            .then(() => {
+                backgroundMusicUnlocked = true;
+                startBackgroundFadeLoop();
+            })
+            .catch(() => {
+                audioPlayed = false;
+                backgroundMusicUnlocked = false;
+                armBackgroundMusicRetry();
+            });
+    }
+
     audio.addEventListener('play', startBackgroundFadeLoop);
     audio.addEventListener('pause', stopBackgroundFadeLoop);
     setBackgroundMusicVolume(backgroundMusicVolume);
@@ -178,7 +251,14 @@ document.addEventListener("DOMContentLoaded", async function() {
         }));
     }
 
-    const uiSoundBuffersReady = loadUiSoundBuffers();
+    let uiSoundBuffersReady = null;
+
+    function ensureUiSoundBuffers() {
+        if (!uiSoundBuffersReady) {
+            uiSoundBuffersReady = loadUiSoundBuffers();
+        }
+        return uiSoundBuffersReady;
+    }
 
     async function resumeUiAudioContext() {
         if (!uiAudioContext || uiAudioContext.state === 'running') return;
@@ -192,24 +272,8 @@ document.addEventListener("DOMContentLoaded", async function() {
     async function warmUiSounds() {
         if (uiSoundsWarmed) return;
         uiSoundsWarmed = true;
-
         await resumeUiAudioContext();
-
-        Object.values(uiSoundPlayers).forEach(sound => {
-            if (!sound.paused) return;
-            const previousVolume = sound.volume;
-            sound.volume = 0;
-            sound.currentTime = 0;
-            sound.play()
-                .then(() => {
-                    sound.pause();
-                    sound.currentTime = 0;
-                    sound.volume = previousVolume;
-                })
-                .catch(() => {
-                    sound.volume = previousVolume;
-                });
-        });
+        void ensureUiSoundBuffers();
     }
 
     function playUiSound(type) {
@@ -220,6 +284,10 @@ document.addEventListener("DOMContentLoaded", async function() {
             gain.gain.value = 1;
             source.connect(gain);
             gain.connect(uiAudioContext.destination);
+            source.onended = () => {
+                source.disconnect();
+                gain.disconnect();
+            };
             source.start(0);
             return;
         }
@@ -242,31 +310,73 @@ document.addEventListener("DOMContentLoaded", async function() {
         return new Promise(resolve => setTimeout(resolve, ms));
     }
 
+    function loadDeferredImage(image, dataKey) {
+        if (!(image instanceof HTMLImageElement)
+            || image.getAttribute('src')
+            || image.dataset.deferredLoadStarted === 'true') return;
+        const src = String(image.dataset[dataKey] || '').trim();
+        if (!src) return;
+        image.dataset.deferredLoadStarted = 'true';
+        const handleLoad = () => {
+            image.removeEventListener('error', handleError);
+            delete image.dataset.deferredLoadStarted;
+            delete image.dataset[dataKey];
+            image.style.removeProperty('display');
+        };
+        const handleError = () => {
+            image.removeEventListener('load', handleLoad);
+            delete image.dataset.deferredLoadStarted;
+            image.removeAttribute('src');
+        };
+        image.addEventListener('load', handleLoad, { once: true });
+        image.addEventListener('error', handleError, { once: true });
+        image.src = src;
+    }
+
     function createUnavailableSupabaseClient() {
         const unavailableError = {
             message: 'Connection is unavailable right now. Please try again.'
         };
 
         function createSelectQuery(single = false) {
+            let abortSignal = null;
+
+            const getResult = () => {
+                if (abortSignal?.aborted) {
+                    const abortError = new Error('The request was aborted.');
+                    abortError.name = 'AbortError';
+                    return Promise.reject(abortError);
+                }
+
+                return Promise.resolve({
+                    data: single ? null : [],
+                    error: single ? { code: 'PGRST116', message: 'No rows found' } : null
+                });
+            };
+
             const query = {
                 eq: () => query,
                 not: () => query,
                 order: () => query,
+                limit: () => query,
+                abortSignal: signal => {
+                    abortSignal = signal;
+                    return query;
+                },
                 single: () => createSelectQuery(true),
-                then: (resolve, reject) => Promise.resolve({
-                    data: single ? null : [],
-                    error: single ? { code: 'PGRST116', message: 'No rows found' } : null
-                }).then(resolve, reject),
-                catch: callback => Promise.resolve({
-                    data: single ? null : [],
-                    error: single ? { code: 'PGRST116', message: 'No rows found' } : null
-                }).catch(callback)
+                then: (resolve, reject) => getResult().then(resolve, reject),
+                catch: callback => getResult().catch(callback)
             };
 
             return query;
         }
 
         return {
+            // Public panels must distinguish a missing Supabase SDK/client
+            // from a real, successful query that simply returned no rows.
+            // Without this marker the :3 panel could silently present an
+            // empty state forever after a CDN/network failure.
+            __dollUnavailable: true,
             from: () => ({
                 select: () => createSelectQuery(),
                 insert: () => Promise.resolve({ data: null, error: unavailableError }),
@@ -516,6 +626,7 @@ document.addEventListener("DOMContentLoaded", async function() {
 
         function showUnderSign() {
             if (!underSign) return;
+            loadDeferredImage(underSign, 'noteUnderSrc');
             underSign.hidden = false;
             underSign.setAttribute('aria-hidden', 'false');
         }
@@ -815,7 +926,9 @@ document.addEventListener("DOMContentLoaded", async function() {
     const loadingPawPrints = Array.from(document.querySelectorAll('.loading-paw-print'));
     const prefersReducedLoadingMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     const minLoadingTime = 2000;
-    const submissionsPreloadTimeout = 10000;
+    const PUBLIC_DRAWINGS_LIMIT = 24;
+    const PUBLIC_QUESTIONS_LIMIT = 30;
+    const PUBLIC_SUBMISSIONS_TIMEOUT_MS = 10000;
     let loadingBarShown = false;
     let loadingProgress = 0;
     let displayedLoadingProgress = 0;
@@ -832,8 +945,13 @@ document.addEventListener("DOMContentLoaded", async function() {
         loaded: false,
         error: null
     };
+    let submissionsRevision = 0;
+    let submissionsLoadPromise = null;
+    let submissionsLoadController = null;
 
     function markSubmissionsDirty() {
+        submissionsRevision += 1;
+        submissionsLoadController?.abort();
         preloadedSubmissions.loaded = false;
         preloadedSubmissions.error = null;
     }
@@ -841,6 +959,18 @@ document.addEventListener("DOMContentLoaded", async function() {
     function clearSlowLoadingMessage() {
         window.clearTimeout(slowLoadingMessageTimer);
         if (loadingSlowMessage) loadingSlowMessage.hidden = true;
+    }
+
+    function retireLoadingScreen() {
+        if (!loadingScreen) return;
+        if (loadingVisualFrame !== null) {
+            window.cancelAnimationFrame(loadingVisualFrame);
+            loadingVisualFrame = null;
+        }
+        loadingScreen.style.display = 'none';
+        const loadingGif = loadingScreen.querySelector('.loading-gif');
+        loadingGif?.removeAttribute('src');
+        loadingScreen.replaceChildren();
     }
     
     // Mobile detection
@@ -972,74 +1102,110 @@ document.addEventListener("DOMContentLoaded", async function() {
         });
     }
 
-    function decodeImage(src) {
-        return new Promise(resolve => {
-            const img = new Image();
-            img.onload = resolve;
-            img.onerror = resolve;
-            img.src = src;
-        });
+    function createSubmissionsAbortError() {
+        const error = new Error('Public submissions request was aborted.');
+        error.name = 'AbortError';
+        return error;
     }
 
-    async function loadSubmissionsFromSupabase({ decodeDrawings = false } = {}) {
+    async function fetchPublicSubmissions(signal) {
+        if (window.supabase?.__dollUnavailable) {
+            throw new Error('Connection is unavailable right now. Please try again.');
+        }
+
         const [drawingsResult, questionsResult] = await Promise.all([
             window.supabase
                 .from('drawings')
-                .select('*')
+                .select('id,imageData,created_at')
                 .eq('approved', true)
-                .order('created_at', { ascending: false }),
+                .order('created_at', { ascending: false })
+                .limit(PUBLIC_DRAWINGS_LIMIT)
+                .abortSignal(signal),
             window.supabase
                 .from('questions')
-                .select('*')
+                .select('id,question,answer,created_at')
                 .not('answer', 'is', null)
                 .order('created_at', { ascending: false })
+                .limit(PUBLIC_QUESTIONS_LIMIT)
+                .abortSignal(signal)
         ]);
 
+        if (signal.aborted) throw createSubmissionsAbortError();
         if (drawingsResult.error) throw drawingsResult.error;
         if (questionsResult.error) throw questionsResult.error;
 
-        const drawings = drawingsResult.data || [];
-        const questions = questionsResult.data || [];
-
-        if (decodeDrawings) {
-            await Promise.all(drawings.map(drawing =>
-                decodeImage(`data:image/png;base64,${drawing.imageData}`)
-            ));
-        }
-
-        preloadedSubmissions.drawings = drawings;
-        preloadedSubmissions.questions = questions;
-        preloadedSubmissions.error = null;
-        preloadedSubmissions.loaded = true;
-
-        return { drawings, questions };
+        return {
+            drawings: drawingsResult.data || [],
+            questions: (questionsResult.data || []).filter(item => String(item.answer || '').trim())
+        };
     }
 
-    async function preloadSubmissionsData() {
-        try {
-            await loadSubmissionsFromSupabase({ decodeDrawings: true });
-        } catch (error) {
-            preloadedSubmissions.error = error;
-            preloadedSubmissions.loaded = true;
-            console.error("Error preloading submissions:", error);
+    function loadSubmissionsFromSupabase() {
+        // Repeated taps while :3 is opening share one bounded request. There
+        // is intentionally no startup/idle preload: public submissions never
+        // compete with the entrance animation or its first interaction.
+        if (submissionsLoadPromise && !submissionsLoadController?.signal.aborted) {
+            return submissionsLoadPromise;
         }
-    }
+        // A dirty-cache invalidation may have aborted the previous request
+        // only moments before :3 opens. Detach that settling promise so the
+        // fresh request can start immediately instead of inheriting its abort.
+        if (submissionsLoadController?.signal.aborted) {
+            submissionsLoadPromise = null;
+            submissionsLoadController = null;
+        }
 
-    async function preloadSubmissionsWithTimeout() {
+        const requestRevision = submissionsRevision;
+        const controller = new AbortController();
         let timedOut = false;
-        await Promise.race([
-            preloadSubmissionsData(),
-            new Promise(resolve => {
-                setTimeout(() => {
-                    timedOut = true;
-                    resolve();
-                }, submissionsPreloadTimeout);
-            })
-        ]);
+        let requestPromise;
+        const timeoutId = window.setTimeout(() => {
+            timedOut = true;
+            controller.abort();
+        }, PUBLIC_SUBMISSIONS_TIMEOUT_MS);
 
-        if (timedOut && !preloadedSubmissions.loaded) {
-            console.warn("Submissions preload timed out; will retry when :3 opens.");
-        }
+        submissionsLoadController = controller;
+        requestPromise = fetchPublicSubmissions(controller.signal)
+            .then(({ drawings, questions }) => {
+                // A successful submit marks this cache dirty and aborts any
+                // older fetch. Never let a late response overwrite that flag.
+                if (controller.signal.aborted || requestRevision !== submissionsRevision) {
+                    throw createSubmissionsAbortError();
+                }
+
+                preloadedSubmissions.drawings = drawings;
+                preloadedSubmissions.questions = questions;
+                preloadedSubmissions.error = null;
+                preloadedSubmissions.loaded = true;
+                return { drawings, questions };
+            })
+            .catch(error => {
+                const finalError = controller.signal.aborted
+                    ? createSubmissionsAbortError()
+                    : error;
+
+                if (requestRevision === submissionsRevision) {
+                    preloadedSubmissions.error = finalError;
+                    preloadedSubmissions.loaded = true;
+                }
+
+                if (timedOut) {
+                    console.warn('Public submissions request timed out and was aborted; :3 will retry when opened.');
+                }
+                throw finalError;
+            })
+            .finally(() => {
+                window.clearTimeout(timeoutId);
+                if (submissionsLoadPromise === requestPromise) {
+                    submissionsLoadPromise = null;
+                }
+                if (submissionsLoadController === controller) {
+                    submissionsLoadController = null;
+                }
+            });
+
+        submissionsLoadPromise = requestPromise;
+        return requestPromise;
     }
 
     function normalizeSocialCardOrder(value) {
@@ -1061,74 +1227,81 @@ document.addEventListener("DOMContentLoaded", async function() {
             : DEFAULT_LINK_SETTINGS[settingKey];
     }
 
+    function readBooleanSetting(settings, key) {
+        return Object.prototype.hasOwnProperty.call(settings, key)
+            && typeof settings[key] === 'boolean'
+            ? settings[key]
+            : DEFAULT_LINK_SETTINGS[key];
+    }
+
     function normalizeSiteLinkSettings(value) {
         const settings = value && typeof value === 'object' ? value : {};
         return {
             snapchat_url: String(settings.snapchat_url || DEFAULT_LINK_SETTINGS.snapchat_url),
             snapchat_username: readSocialUsernameSetting(settings, 'snapchat'),
-            snapchat_enabled: settings.snapchat_enabled !== false,
+            snapchat_enabled: readBooleanSetting(settings, 'snapchat_enabled'),
             snapchat_card_video_url: String(settings.snapchat_card_video_url || ''),
             snapchat_card_video_path: String(settings.snapchat_card_video_path || ''),
             instagram_url: String(settings.instagram_url || DEFAULT_LINK_SETTINGS.instagram_url),
             instagram_username: readSocialUsernameSetting(settings, 'instagram'),
-            instagram_enabled: settings.instagram_enabled !== false,
+            instagram_enabled: readBooleanSetting(settings, 'instagram_enabled'),
             instagram_card_video_url: String(settings.instagram_card_video_url || ''),
             instagram_card_video_path: String(settings.instagram_card_video_path || ''),
             kofi_url: String(settings.kofi_url || DEFAULT_LINK_SETTINGS.kofi_url),
             kofi_username: readSocialUsernameSetting(settings, 'kofi'),
-            kofi_enabled: settings.kofi_enabled !== false,
+            kofi_enabled: readBooleanSetting(settings, 'kofi_enabled'),
             kofi_card_video_url: String(settings.kofi_card_video_url || ''),
             kofi_card_video_path: String(settings.kofi_card_video_path || ''),
             telegram_url: String(settings.telegram_url || DEFAULT_LINK_SETTINGS.telegram_url),
             telegram_username: readSocialUsernameSetting(settings, 'telegram'),
-            telegram_enabled: settings.telegram_enabled !== false,
+            telegram_enabled: readBooleanSetting(settings, 'telegram_enabled'),
             telegram_card_video_url: String(settings.telegram_card_video_url || ''),
             telegram_card_video_path: String(settings.telegram_card_video_path || ''),
             x_url: String(settings.x_url || DEFAULT_LINK_SETTINGS.x_url),
             x_username: readSocialUsernameSetting(settings, 'x'),
-            x_enabled: settings.x_enabled !== false,
+            x_enabled: readBooleanSetting(settings, 'x_enabled'),
             x_card_video_url: String(settings.x_card_video_url || ''),
             x_card_video_path: String(settings.x_card_video_path || ''),
             tiktok_url: String(settings.tiktok_url || DEFAULT_LINK_SETTINGS.tiktok_url),
             tiktok_username: readSocialUsernameSetting(settings, 'tiktok'),
-            tiktok_enabled: settings.tiktok_enabled !== false,
+            tiktok_enabled: readBooleanSetting(settings, 'tiktok_enabled'),
             tiktok_card_video_url: String(settings.tiktok_card_video_url || ''),
             tiktok_card_video_path: String(settings.tiktok_card_video_path || ''),
             twitch_url: String(settings.twitch_url || DEFAULT_LINK_SETTINGS.twitch_url),
             twitch_username: readSocialUsernameSetting(settings, 'twitch'),
-            twitch_enabled: settings.twitch_enabled !== false,
+            twitch_enabled: readBooleanSetting(settings, 'twitch_enabled'),
             twitch_card_video_url: String(settings.twitch_card_video_url || ''),
             twitch_card_video_path: String(settings.twitch_card_video_path || ''),
             discord_url: String(settings.discord_url || DEFAULT_LINK_SETTINGS.discord_url),
             discord_username: readSocialUsernameSetting(settings, 'discord'),
-            discord_enabled: settings.discord_enabled !== false,
+            discord_enabled: readBooleanSetting(settings, 'discord_enabled'),
             discord_card_video_url: String(settings.discord_card_video_url || ''),
             discord_card_video_path: String(settings.discord_card_video_path || ''),
             onlyfans_url: String(settings.onlyfans_url || DEFAULT_LINK_SETTINGS.onlyfans_url),
             onlyfans_username: readSocialUsernameSetting(settings, 'onlyfans'),
-            onlyfans_enabled: settings.onlyfans_enabled !== false,
+            onlyfans_enabled: readBooleanSetting(settings, 'onlyfans_enabled'),
             onlyfans_card_video_url: String(settings.onlyfans_card_video_url || ''),
             onlyfans_card_video_path: String(settings.onlyfans_card_video_path || ''),
             spotify_url: String(settings.spotify_url || DEFAULT_LINK_SETTINGS.spotify_url),
             spotify_username: readSocialUsernameSetting(settings, 'spotify'),
-            spotify_enabled: settings.spotify_enabled !== false,
+            spotify_enabled: readBooleanSetting(settings, 'spotify_enabled'),
             spotify_card_video_url: String(settings.spotify_card_video_url || ''),
             spotify_card_video_path: String(settings.spotify_card_video_path || ''),
             social_card_order: normalizeSocialCardOrder(settings.social_card_order),
             throne_url: String(settings.throne_url || DEFAULT_LINK_SETTINGS.throne_url),
-            throne_enabled: settings.throne_enabled !== false,
+            throne_enabled: readBooleanSetting(settings, 'throne_enabled'),
             throne_checkout_mode: settings.throne_checkout_mode === 'widget' ? 'widget' : 'mockup',
             wishlist_view_mode: ['grid', 'list', 'masonry'].includes(settings.wishlist_view_mode) ? settings.wishlist_view_mode : 'masonry',
             homepage_note_text: String(settings.homepage_note_text || '').slice(0, 220),
             homepage_note_font_size: Math.min(17, Math.max(9, Number(settings.homepage_note_font_size) || 13.25)),
-            maintenance_enabled: settings.maintenance_enabled === true,
+            maintenance_enabled: readBooleanSetting(settings, 'maintenance_enabled'),
             maintenance_title: String(settings.maintenance_title || DEFAULT_LINK_SETTINGS.maintenance_title),
             maintenance_message: String(settings.maintenance_message || DEFAULT_LINK_SETTINGS.maintenance_message),
             maintenance_eta: String(settings.maintenance_eta || ''),
             entrance_mode: settings.entrance_mode === 'bubbles' ? 'bubbles' : 'paw',
-            drawings_enabled: settings.drawings_enabled !== false,
-            questions_enabled: settings.questions_enabled !== false,
-            rooms_enabled: settings.rooms_enabled !== false,
+            drawings_enabled: readBooleanSetting(settings, 'drawings_enabled'),
+            questions_enabled: readBooleanSetting(settings, 'questions_enabled'),
+            rooms_enabled: readBooleanSetting(settings, 'rooms_enabled'),
             seo_title: String(settings.seo_title || DEFAULT_LINK_SETTINGS.seo_title),
             seo_description: String(settings.seo_description || DEFAULT_LINK_SETTINGS.seo_description),
             site_tagline: String(settings.site_tagline || DEFAULT_LINK_SETTINGS.site_tagline)
@@ -1142,8 +1315,13 @@ document.addEventListener("DOMContentLoaded", async function() {
                 .select('value')
                 .eq('id', 'links');
             if (error || !Array.isArray(data) || !data[0]) return;
-            siteLinkSettings = normalizeSiteLinkSettings(data[0].value);
+            const nextSettings = normalizeSiteLinkSettings(data[0].value);
+            // The entrance timeout is a real boundary: a response arriving
+            // later must not mutate settings without also updating the DOM.
+            if (siteSettingsLoadExpired) return;
+            siteLinkSettings = nextSettings;
         } catch (error) {
+            if (siteSettingsLoadExpired) return;
             siteLinkSettings = { ...DEFAULT_LINK_SETTINGS };
         } finally {
             if (!siteSettingsLoadExpired && typeof applySiteLinkSettingsToDom === 'function') {
@@ -1153,10 +1331,17 @@ document.addEventListener("DOMContentLoaded", async function() {
     }
 
     async function loadSiteLinkSettingsWithTimeout() {
+        let timeoutId = 0;
         await Promise.race([
             loadSiteLinkSettings(),
-            wait(3000).then(() => { siteSettingsLoadExpired = true; })
+            new Promise(resolve => {
+                timeoutId = window.setTimeout(() => {
+                    siteSettingsLoadExpired = true;
+                    resolve();
+                }, 3000);
+            })
         ]);
+        if (timeoutId) window.clearTimeout(timeoutId);
     }
 
     // Enhanced loading logic: wait for min time, window load, AND ALL critical resources
@@ -1167,8 +1352,19 @@ document.addEventListener("DOMContentLoaded", async function() {
                 resolve();
                 return;
             }
-
-            window.addEventListener('load', resolve, { once: true });
+            // Async analytics or a non-critical DOM resource must never hold
+            // the entrance forever. Explicit critical images are tracked by
+            // the bounded resource promise below.
+            let settled = false;
+            const finish = () => {
+                if (settled) return;
+                settled = true;
+                window.clearTimeout(timeoutId);
+                window.removeEventListener('load', finish);
+                resolve();
+            };
+            const timeoutId = window.setTimeout(finish, 8000);
+            window.addEventListener('load', finish, { once: true });
         }),
         // Wait for DOM to be fully ready
         new Promise(resolve => {
@@ -1178,29 +1374,15 @@ document.addEventListener("DOMContentLoaded", async function() {
                 resolve();
             }
         }),
-        Promise.race([
-            uiSoundBuffersReady.catch(() => {}),
-            new Promise(resolve => setTimeout(resolve, 2000))
-        ]),
         waitForKofiOverlayReady(),
         // Wait for critical resources to load
         new Promise(resolve => {
             const criticalResources = [
-                'background1.png',
-                'dropdown1.png',
+                'site-images/background.png',
+                'site-images/header.png',
                 'note-paper-v4.png',
                 'loading.gif',
-                'wishlist.png',
-                'question-bunny.png',
-                'reactions.png',
-                'happy.png',
-                'cool.png',
-                'meh.png',
-                'sad.png',
-                'CUT1.mp3',
-                'CUT2.mp3',
-                'CUT3.mp3',
-                'hehe.mp3'
+                'site-images/wishlist.png'
             ];
             
             let loadedCount = 0;
@@ -1213,7 +1395,6 @@ document.addEventListener("DOMContentLoaded", async function() {
             
             // Load each resource and track completion
             criticalResources.forEach(src => {
-                const fileExtension = src.split('.').pop().toLowerCase();
                 let counted = false;
 
                 const markResourceLoaded = () => {
@@ -1227,50 +1408,10 @@ document.addEventListener("DOMContentLoaded", async function() {
                     }
                 };
                 
-                if (fileExtension === 'mp3') {
-                    // Handle audio files - mobile optimized
-                    const audio = new Audio();
-                    audio.preload = 'metadata'; // Mobile browsers prefer metadata only
-
-                    audio.addEventListener('canplaythrough', markResourceLoaded);
-                    audio.addEventListener('loadedmetadata', markResourceLoaded);
-                    audio.addEventListener('canplay', markResourceLoaded);
-                    audio.onerror = markResourceLoaded;
-                    
-                    // Mobile timeout for audio loading
-                    setTimeout(() => {
-                        if (audio.readyState < 1) { // Not loaded yet
-                            markResourceLoaded();
-                        }
-                    }, 3000); // 3 second timeout for mobile
-                    
-                    audio.src = src;
-                } else if (fileExtension === 'mp4') {
-                    // Handle video files - mobile optimized
-                    const video = document.createElement('video');
-                    video.muted = true; // Mobile browsers require muted for autoload
-                    video.preload = 'metadata'; // Only load metadata on mobile
-
-                    video.addEventListener('loadedmetadata', markResourceLoaded);
-                    video.addEventListener('loadeddata', markResourceLoaded);
-                    video.addEventListener('canplay', markResourceLoaded);
-                    video.onerror = markResourceLoaded;
-                    
-                    // Mobile timeout for video loading
-                    setTimeout(() => {
-                        if (video.readyState < 1) { // Not loaded yet
-                            markResourceLoaded();
-                        }
-                    }, 5000); // 5 second timeout for mobile
-                    
-                    video.src = src;
-                } else {
-                    // Handle image files
-                    const resource = new Image();
-                    resource.onload = markResourceLoaded;
-                    resource.onerror = markResourceLoaded;
-                    resource.src = src;
-                }
+                const resource = new Image();
+                resource.onload = markResourceLoaded;
+                resource.onerror = markResourceLoaded;
+                resource.src = src;
             });
             
             updateLoadingBar(loadedCount, totalResources);
@@ -1324,10 +1465,10 @@ document.addEventListener("DOMContentLoaded", async function() {
             if (loadingProgress < 97) setLoadingProgress(loadingProgress + 0.25);
         }, 350);
 
-        await Promise.all([
-            preloadSubmissionsWithTimeout(),
-            loadSiteLinkSettingsWithTimeout()
-        ]);
+        // Public :3 content is intentionally not part of the entrance gate.
+        // It is fetched only if the visitor opens that panel, so base64
+        // drawings can never contend with the entrance interaction.
+        await loadSiteLinkSettingsWithTimeout();
         clearInterval(progressTick);
         setLoadingProgress(100);
 
@@ -1337,7 +1478,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         clearSlowLoadingMessage();
         loadingScreen.style.opacity = 0;
         setTimeout(() => {
-            loadingScreen.style.display = "none";
+            retireLoadingScreen();
             const iconContainer = document.querySelector('.icon-container');
             if (iconContainer) {
                 iconContainer.style.visibility = "visible";
@@ -1352,7 +1493,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         clearSlowLoadingMessage();
         loadingScreen.style.opacity = 0;
         setTimeout(() => {
-            loadingScreen.style.display = "none";
+            retireLoadingScreen();
             const iconContainer = document.querySelector('.icon-container');
             if (iconContainer) {
                 iconContainer.style.visibility = "visible";
@@ -1380,10 +1521,12 @@ document.addEventListener("DOMContentLoaded", async function() {
     function dismissEntryGate(trigger = null) {
         if (!popup || entryDismissalInProgress) return;
         entryDismissalInProgress = true;
-        // iOS 15 can briefly make the muted pre-warm sounds audible. Keep the
-        // established warm-up on newer browsers, but never start CUT1/CUT3 here
-        // on the affected older phones.
-        if (!isLegacyIOS) warmUiSounds();
+        void warmUiSounds();
+        primeBackgroundMusic();
+        // This hidden sticker is needed only after the visitor enters. Starting
+        // it now gives the transition time to load without delaying the loader
+        // or briefly exposing it before the note begins to peel.
+        loadDeferredImage(document.querySelector('.note-under-sign'), 'noteUnderSrc');
 
         // The paw gets its press acknowledgement. Bubble mode has already
         // played its final pop before reaching this shared exit path.
@@ -1408,17 +1551,7 @@ document.addEventListener("DOMContentLoaded", async function() {
 
             // CUT2 is 0.6 seconds long. Give legacy iOS a little extra separation
             // before page music starts, while retaining the current timing elsewhere.
-            window.setTimeout(() => {
-                if (audioPlayed) return;
-                audioPlayed = true;
-                backgroundFadeLevel = 0;
-                applyBackgroundMusicVolume();
-                audio.play()
-                    .then(startBackgroundFadeLoop)
-                    .catch(e => {
-                        audioPlayed = false;
-                    });
-            }, isLegacyIOS ? 900 : 700);
+            window.setTimeout(startBackgroundMusic, isLegacyIOS ? 900 : 700);
         }, trigger ? 420 : 80);
     }
 
@@ -1528,6 +1661,7 @@ document.addEventListener("DOMContentLoaded", async function() {
 
         if (entryBubbleRemaining === 0) {
             entryBubbleField.inert = true;
+            primeBackgroundMusic();
             window.setTimeout(() => dismissEntryGate(), 620);
         }
     }
@@ -1562,14 +1696,14 @@ document.addEventListener("DOMContentLoaded", async function() {
             bubble.addEventListener('pointerdown', event => {
                 if (!event.isPrimary || event.button > 0) return;
                 event.preventDefault();
-                void resumeUiAudioContext();
+                void warmUiSounds();
                 popEntryBubble(bubble);
             });
             bubble.addEventListener('click', event => {
                 // Pointer input is handled on pointerdown for immediate iOS
                 // feedback. A zero-detail click is keyboard/assistive input.
                 if (event.detail !== 0) return;
-                void resumeUiAudioContext();
+                void warmUiSounds();
                 popEntryBubble(bubble);
             });
 
@@ -2050,6 +2184,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     const postsPanel = document.getElementById('posts-popup');
     const postsButton = document.getElementById('posts-button');
     let postsPanelResizeObserver = null;
+    let postsOpenGeneration = 0;
 
     function shouldPlayPostsMedia() {
         return Boolean(
@@ -2059,53 +2194,105 @@ document.addEventListener("DOMContentLoaded", async function() {
         );
     }
 
-    function pausePostsMedia() {
-        if (!postsPanel) return;
-        postsPanel.querySelectorAll('video').forEach(video => video.pause());
-        postsPanel.querySelectorAll('img.answer-gif[src]').forEach(image => {
-            const src = image.getAttribute('src');
-            if (!src || image.dataset.postsPausedSrc) return;
-            image.dataset.postsPausedSrc = src;
-            if (image.naturalWidth > 0 && image.naturalHeight > 0) {
-                image.style.aspectRatio = `${image.naturalWidth} / ${image.naturalHeight}`;
+    function getPostsMediaFrames() {
+        if (!postsPanel) return [];
+        return Array.from(postsPanel.querySelectorAll([
+            '.answer-gif-link',
+            '.answer-video-frame',
+            '.answer-media-frame'
+        ].join(',')));
+    }
+
+    function pausePostsMediaFrame(frame) {
+        frame.querySelectorAll('img.answer-gif, video, iframe').forEach(media => {
+            if (media instanceof HTMLVideoElement) media.pause();
+            const src = media.getAttribute('src');
+            if (!src || src === 'about:blank') return;
+            media.dataset.postsPausedSrc = src;
+            if (media instanceof HTMLImageElement
+                && media.naturalWidth > 0
+                && media.naturalHeight > 0) {
+                media.style.aspectRatio = `${media.naturalWidth} / ${media.naturalHeight}`;
             }
-            image.removeAttribute('src');
+            if (media instanceof HTMLIFrameElement) {
+                media.src = 'about:blank';
+            } else {
+                media.removeAttribute('src');
+                if (media instanceof HTMLVideoElement) media.load();
+            }
         });
-        postsPanel.querySelectorAll('.answer-media-frame iframe[src]').forEach(frame => {
-            const src = frame.getAttribute('src');
-            if (!src || src === 'about:blank' || frame.dataset.postsPausedSrc) return;
-            frame.dataset.postsPausedSrc = src;
-            frame.src = 'about:blank';
+    }
+
+    function resumePostsMediaFrame(frame) {
+        frame.querySelectorAll('img.answer-gif, video, iframe').forEach(media => {
+            const src = media.dataset.postsPausedSrc || media.dataset.postsSrc;
+            if (src && (!media.getAttribute('src') || media.getAttribute('src') === 'about:blank')) {
+                media.src = src;
+                delete media.dataset.postsPausedSrc;
+                if (media instanceof HTMLVideoElement) media.load();
+            }
+            if (media instanceof HTMLVideoElement && media.getAttribute('src')) {
+                media.play().catch(() => {});
+            }
         });
+    }
+
+    const postsMediaObserver = 'IntersectionObserver' in window
+        ? new IntersectionObserver(entries => {
+            entries.forEach(entry => {
+                const frame = entry.target;
+                frame.dataset.postsMediaNear = entry.isIntersecting ? 'true' : 'false';
+                if (entry.isIntersecting && shouldPlayPostsMedia()) {
+                    resumePostsMediaFrame(frame);
+                } else {
+                    pausePostsMediaFrame(frame);
+                }
+            });
+        }, {
+            root: postsContentEl,
+            rootMargin: '140px 0px'
+        })
+        : null;
+
+    function observePostsMedia() {
+        getPostsMediaFrames().forEach(frame => {
+            if (frame.dataset.postsMediaObserved === 'true') return;
+            frame.dataset.postsMediaObserved = 'true';
+            frame.dataset.postsMediaNear = postsMediaObserver ? 'false' : 'true';
+            postsMediaObserver?.observe(frame);
+        });
+    }
+
+    function pausePostsMedia() {
+        getPostsMediaFrames().forEach(pausePostsMediaFrame);
     }
 
     function resumePostsMedia() {
         if (!shouldPlayPostsMedia() || !postsPanel) return;
-        postsPanel.querySelectorAll('img.answer-gif[data-posts-paused-src]').forEach(image => {
-            const src = image.dataset.postsPausedSrc;
-            if (!src) return;
-            delete image.dataset.postsPausedSrc;
-            image.src = src;
-        });
-        postsPanel.querySelectorAll('.answer-media-frame iframe[data-posts-paused-src]').forEach(frame => {
-            const src = frame.dataset.postsPausedSrc;
-            if (!src) return;
-            delete frame.dataset.postsPausedSrc;
-            frame.src = src;
-        });
-        postsPanel.querySelectorAll('video').forEach(video => video.play().catch(() => {}));
+        observePostsMedia();
+        getPostsMediaFrames()
+            .filter(frame => frame.dataset.postsMediaNear === 'true')
+            .forEach(resumePostsMediaFrame);
     }
 
     function syncPostsMediaPlayback() {
-        if (shouldPlayPostsMedia()) resumePostsMedia();
-        else pausePostsMedia();
+        if (!shouldPlayPostsMedia()) {
+            pausePostsMedia();
+            return;
+        }
+        observePostsMedia();
+        getPostsMediaFrames()
+            .filter(frame => frame.dataset.postsMediaNear !== 'true')
+            .forEach(pausePostsMediaFrame);
+        resumePostsMedia();
     }
 
     if (postsPanel && typeof window.MutationObserver === 'function') {
-        const postsMediaObserver = new MutationObserver(() => {
-            if (!shouldPlayPostsMedia()) pausePostsMedia();
+        const postsMediaMutationObserver = new MutationObserver(() => {
+            observePostsMedia();
+            syncPostsMediaPlayback();
         });
-        postsMediaObserver.observe(postsPanel, { childList: true, subtree: true });
+        postsMediaMutationObserver.observe(postsPanel, { childList: true, subtree: true });
     }
 
     function syncPostsPanelSpace() {
@@ -2169,6 +2356,15 @@ document.addEventListener("DOMContentLoaded", async function() {
     }
 
     function closePostsPanel() {
+        // Closing :3 is also a cancellation boundary. Do not keep downloading
+        // base64 drawings or decode the first cards behind a hidden panel.
+        postsOpenGeneration += 1;
+        if (submissionsLoadController && !submissionsLoadController.signal.aborted) {
+            // Invalidate the request before aborting so a close/reopen race
+            // cannot let the older catch overwrite the newer request cache.
+            submissionsRevision += 1;
+            submissionsLoadController.abort();
+        }
         pausePostsMedia();
         setPostsPanelLayoutOpen(false);
         // Match the wishlist's own close behavior exactly: snap the icons back
@@ -2322,9 +2518,15 @@ document.addEventListener("DOMContentLoaded", async function() {
         { key: 'onlyfans', option: onlyfansOption, label: 'OnlyFans', withAt: true },
         { key: 'spotify', option: spotifyOption, label: 'Spotify' }
     ];
+    let socialPreviewObserver = null;
+    const SOCIAL_PREVIEW_ROOT_MARGIN = 120;
 
     function getSocialCardVideoEntries() {
         return socialCardDefinitions.map(({ key, option }) => [key, option]);
+    }
+
+    function getSocialCardVideoKey(card) {
+        return socialCardDefinitions.find(({ option }) => option === card)?.key || '';
     }
 
     function applySocialCardOrder() {
@@ -2357,10 +2559,26 @@ document.addEventListener("DOMContentLoaded", async function() {
         card.classList.remove('has-social-preview');
     }
 
-    function syncSocialCardVideo(key, card) {
+    function pauseSocialCardPreview(card) {
+        const preview = card?.querySelector('.social-link-preview');
+        if (preview instanceof HTMLVideoElement) {
+            preview.pause();
+            if (preview.getAttribute('src')) {
+                card.classList.remove('has-social-preview');
+                preview.removeAttribute('src');
+                preview.load();
+            }
+            return;
+        }
+        if (!(preview instanceof HTMLImageElement) || !preview.getAttribute('src')) return;
+        card.classList.remove('has-social-preview');
+        preview.removeAttribute('src');
+    }
+
+    function syncSocialCardVideo(key, card, loadMedia = false) {
         if (!card) return;
         const url = String(siteLinkSettings[`${key}_card_video_url`] || '').trim();
-        if (!url) {
+        if (!url || !isPublicLinkEnabled(key)) {
             removeSocialCardVideo(card);
             return;
         }
@@ -2373,6 +2591,14 @@ document.addEventListener("DOMContentLoaded", async function() {
         if (hasWrongPreviewType) {
             removeSocialCardVideo(card);
             preview = null;
+        }
+
+        // Settings are applied while the social panel is still hidden. Keep
+        // the URL in settings only; creating an element with src here would
+        // download and (for GIFs) animate invisible media on every visit.
+        if (!preview && !loadMedia) {
+            card.classList.remove('has-social-preview');
+            return;
         }
 
         if (!preview) {
@@ -2403,9 +2629,22 @@ document.addEventListener("DOMContentLoaded", async function() {
 
         if (preview.dataset.source !== url) {
             card.classList.remove('has-social-preview');
-            if (preview instanceof HTMLVideoElement) preview.pause();
+            if (preview instanceof HTMLVideoElement) {
+                preview.pause();
+                preview.removeAttribute('src');
+                preview.load();
+            } else {
+                preview.removeAttribute('src');
+            }
+            delete preview.dataset.socialPausedSrc;
             preview.dataset.source = url;
+        }
+
+        if (!loadMedia) return;
+
+        if (preview.getAttribute('src') !== url) {
             preview.src = url;
+            delete preview.dataset.socialPausedSrc;
             if (preview instanceof HTMLVideoElement) preview.load();
         }
 
@@ -2414,20 +2653,85 @@ document.addEventListener("DOMContentLoaded", async function() {
         }
     }
 
-    function syncSocialCardVideos() {
-        getSocialCardVideoEntries().forEach(([key, card]) => syncSocialCardVideo(key, card));
+    function syncSocialCardVideos(loadMedia = false) {
+        getSocialCardVideoEntries().forEach(([key, card]) => {
+            const shouldLoad = loadMedia && (
+                typeof window.IntersectionObserver !== 'function'
+                || card?.dataset.socialPreviewNear === 'true'
+            );
+            syncSocialCardVideo(key, card, shouldLoad);
+        });
+    }
+
+    function isSocialCardNearPanel(card) {
+        if (!socialLinksPanel || !card?.isConnected) return false;
+        const panelRect = socialLinksPanel.getBoundingClientRect();
+        const cardRect = card.getBoundingClientRect();
+        return cardRect.bottom >= panelRect.top - SOCIAL_PREVIEW_ROOT_MARGIN
+            && cardRect.top <= panelRect.bottom + SOCIAL_PREVIEW_ROOT_MARGIN;
+    }
+
+    function observeSocialCardPreviews() {
+        socialPreviewObserver?.disconnect();
+        socialPreviewObserver = null;
+        const cards = getVisibleSocialOptions();
+        cards.forEach(card => delete card.dataset.socialPreviewNear);
+
+        if (!socialLinksPanel || typeof window.IntersectionObserver !== 'function') {
+            cards.forEach(card => { card.dataset.socialPreviewNear = 'true'; });
+            return false;
+        }
+
+        socialPreviewObserver = new IntersectionObserver(entries => {
+            entries.forEach(entry => {
+                const card = entry.target;
+                if (!(card instanceof HTMLElement)) return;
+                if (!entry.isIntersecting) {
+                    delete card.dataset.socialPreviewNear;
+                    pauseSocialCardPreview(card);
+                    return;
+                }
+
+                card.dataset.socialPreviewNear = 'true';
+                if (!socialsButton?.classList.contains('open') || document.hidden) return;
+                const key = getSocialCardVideoKey(card);
+                if (key) syncSocialCardVideo(key, card, true);
+            });
+        }, {
+            root: socialLinksPanel,
+            rootMargin: `${SOCIAL_PREVIEW_ROOT_MARGIN}px 0px`,
+            threshold: 0.01
+        });
+
+        cards.forEach(card => {
+            socialPreviewObserver.observe(card);
+            // Hydrate the initially visible cards in the same frame. The
+            // observer takes over as soon as the visitor scrolls.
+            if (!isSocialCardNearPanel(card)) return;
+            card.dataset.socialPreviewNear = 'true';
+            const key = getSocialCardVideoKey(card);
+            if (key) syncSocialCardVideo(key, card, true);
+        });
+        return true;
     }
 
     function playSocialCardVideos() {
-        if (document.hidden) return;
-        getVisibleSocialOptions().forEach(card => {
+        if (document.hidden || !socialsButton?.classList.contains('open')) return;
+        const usingObserver = observeSocialCardPreviews();
+        if (!usingObserver) syncSocialCardVideos(true);
+        getVisibleSocialOptions().filter(card => (
+            !usingObserver || card.dataset.socialPreviewNear === 'true'
+        )).forEach(card => {
             card.querySelector('video.social-link-preview')?.play().catch(() => {});
         });
     }
 
     function pauseSocialCardVideos() {
+        socialPreviewObserver?.disconnect();
+        socialPreviewObserver = null;
         getSocialCardVideoEntries().forEach(([, card]) => {
-            card?.querySelector('video.social-link-preview')?.pause();
+            if (card) delete card.dataset.socialPreviewNear;
+            pauseSocialCardPreview(card);
         });
     }
 
@@ -2463,8 +2767,21 @@ document.addEventListener("DOMContentLoaded", async function() {
         if (!src) return;
 
         image.dataset.socialLoadStarted = 'true';
-        const markLoaded = () => image.classList.add('is-social-image-loaded');
+        const markLoaded = () => {
+            image.removeEventListener('error', allowRetry);
+            delete image.dataset.socialLoadStarted;
+            delete image.dataset.socialSrc;
+            image.style.removeProperty('display');
+            image.classList.add('is-social-image-loaded');
+        };
+        const allowRetry = () => {
+            image.removeEventListener('load', markLoaded);
+            delete image.dataset.socialLoadStarted;
+            image.classList.remove('is-social-image-loaded');
+            image.removeAttribute('src');
+        };
         image.addEventListener('load', markLoaded, { once: true });
+        image.addEventListener('error', allowRetry, { once: true });
         image.src = src;
         if (image.complete && image.naturalWidth > 0) markLoaded();
     }
@@ -3495,6 +3812,18 @@ document.addEventListener("DOMContentLoaded", async function() {
         link.remove();
     }
 
+    function reserveSocialDestinationTab() {
+        try {
+            // Reserve the tab inside the trusted tap. Safari may block a new
+            // window created only after the 300ms card-pop animation.
+            const reservedTab = window.open('about:blank', '_blank');
+            if (reservedTab) reservedTab.opener = null;
+            return reservedTab;
+        } catch (error) {
+            return null;
+        }
+    }
+
     socialCardDefinitions
         .filter(({ key }) => key !== 'kofi')
         .forEach(({ key, option }) => option?.addEventListener('click', function(e) {
@@ -3502,8 +3831,26 @@ document.addEventListener("DOMContentLoaded", async function() {
             e.stopPropagation();
             if (siteLinkSettings.maintenance_enabled === true) return;
             if (!isPublicLinkEnabled(key)) return;
+            if (socialCardPopPending) return;
             const destination = getPublicLink(key);
-            popSocialCardThen(option, () => openSocialDestinationInNewTab(destination));
+            const reservedTab = reserveSocialDestinationTab();
+            const popStarted = popSocialCardThen(option, () => {
+                if (!reservedTab || reservedTab.closed) return;
+                try {
+                    reservedTab.location.replace(destination);
+                } catch (error) {
+                    reservedTab.close();
+                    throw error;
+                }
+            });
+            if (!popStarted) {
+                reservedTab?.close();
+                return;
+            }
+            // Extremely locked-down browsers can refuse even a synchronous
+            // window.open(). Keep the link functional there; this fallback is
+            // still invoked during the original trusted click.
+            if (!reservedTab) openSocialDestinationInNewTab(destination);
         }));
 
     function handleWishlistButtonActivate(e) {
@@ -3931,6 +4278,10 @@ document.addEventListener("DOMContentLoaded", async function() {
                 playUiSound('tap');
                 const open = askFormContainer.style.display === 'block';
                 if (!open) {
+                    loadDeferredImage(
+                        askFormContainer.querySelector('.ask-corner-mascot'),
+                        'questionSrc'
+                    );
                     closeDrawingWidget();
                     closePostsPanel();
                     if (typeof window.closeThroneMockup === 'function') window.closeThroneMockup();
@@ -4015,6 +4366,22 @@ document.addEventListener("DOMContentLoaded", async function() {
         const drawingsList = document.getElementById('drawings-list');
         const questionsList = document.getElementById('questions-list');
         let renderedSubmissionsKey = '';
+        const drawingImageObserver = 'IntersectionObserver' in window
+            ? new IntersectionObserver(entries => {
+                entries.forEach(entry => {
+                    if (!entry.isIntersecting) return;
+                    const image = entry.target;
+                    drawingImageObserver.unobserve(image);
+                    const src = image.dataset.drawingSrc;
+                    if (!src) return;
+                    image.src = src;
+                    delete image.dataset.drawingSrc;
+                });
+            }, {
+                root: postsContentEl,
+                rootMargin: '220px 0px'
+            })
+            : null;
         const drawingLikesObserver = 'IntersectionObserver' in window
             ? new IntersectionObserver(entries => {
                 entries.forEach(entry => {
@@ -4039,6 +4406,29 @@ document.addEventListener("DOMContentLoaded", async function() {
             return `${drawings.length}:${drawingKey}|${questions.length}:${questionKey}`;
         }
 
+        function submissionsStatusMarkup(message, failed = false) {
+            return `
+                <div class="posts-fetch-state${failed ? ' is-error' : ''}" role="status">
+                    <span class="loading-paw-print posts-fetch-paw" aria-hidden="true"></span>
+                    <span>${escapeHtml(message)}</span>
+                </div>
+            `;
+        }
+
+        function showSubmissionsLoadingState() {
+            if (renderedSubmissionsKey) return;
+            const markup = submissionsStatusMarkup('fetching the latest...');
+            if (drawingsList) drawingsList.innerHTML = markup;
+            if (questionsList) questionsList.innerHTML = markup;
+        }
+
+        function showSubmissionsLoadError() {
+            if (renderedSubmissionsKey) return;
+            const markup = submissionsStatusMarkup('couldn\'t fetch yet — close and tap :3 to retry', true);
+            if (drawingsList) drawingsList.innerHTML = markup;
+            if (questionsList) questionsList.innerHTML = markup;
+        }
+
         async function initPostsSystem() {
             postsButton?.addEventListener('click', async (e) => {
                 e.preventDefault();
@@ -4052,10 +4442,20 @@ document.addEventListener("DOMContentLoaded", async function() {
                     closeQuestionForm();
                     if (typeof window.closeThroneMockup === 'function') window.closeThroneMockup();
                     hideNoteImage();
+                    const openGeneration = ++postsOpenGeneration;
                     postsPopup?.classList.add('active');
                     setPostsPanelLayoutOpen(true);
                     postsButton.textContent = '×';
-                    await renderSubmissions();
+                    showSubmissionsLoadingState();
+                    try {
+                        await renderSubmissions();
+                    } catch (error) {
+                        if (openGeneration !== postsOpenGeneration) return;
+                        console.error('Error fetching public submissions:', error);
+                        showSubmissionsLoadError();
+                    }
+                    if (openGeneration !== postsOpenGeneration
+                        || !postsPopup?.classList.contains('active')) return;
                     syncPostsMediaPlayback();
                     syncPostsPanelSpace();
                 }
@@ -4079,6 +4479,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                 this.classList.add('active');
                 document.getElementById(this.dataset.tab).classList.add('active');
                 this.closest('.posts-tabs')?.classList.toggle('questions-active', this.dataset.tab === 'questions-tab');
+                if (this.dataset.tab === 'questions-tab') hydrateTenorAnswerEmbeds();
                 syncPostsMediaPlayback();
             });
         });
@@ -4148,12 +4549,12 @@ document.addEventListener("DOMContentLoaded", async function() {
                 const directMediaUrl = resolvedTenorMedia[postId];
                 if (directMediaUrl) {
                     const safeMediaUrl = escapeHtml(directMediaUrl);
-                    return `<a href="${escapeHtml(originalHref)}" target="_blank" rel="nofollow ugc noopener noreferrer" class="answer-gif-link answer-gif-link-small"><img src="${safeMediaUrl}" alt="GIF reply" class="answer-gif" loading="lazy" referrerpolicy="no-referrer" data-media-url="${safeMediaUrl}"></a>`;
+                    return `<a href="${escapeHtml(originalHref)}" target="_blank" rel="nofollow ugc noopener noreferrer" class="answer-gif-link answer-gif-link-small"><img data-posts-src="${safeMediaUrl}" alt="GIF reply" class="answer-gif" loading="lazy" referrerpolicy="no-referrer" data-media-url="${safeMediaUrl}"></a>`;
                 }
                 return `<span class="answer-media-frame answer-tenor-frame"><span class="tenor-gif-embed" data-postid="${escapeHtml(postId)}" data-share-method="host" data-aspect-ratio="1.333333" data-width="100%"><a href="${escapeHtml(originalHref)}">Tenor GIF</a></span></span>`;
             }
             const embedHref = `https://giphy.com/embed/${encodeURIComponent(postId)}`;
-            return `<span class="answer-media-frame"><iframe src="${escapeHtml(embedHref)}" title="Giphy GIF reply" loading="lazy" allow="autoplay; fullscreen" referrerpolicy="strict-origin-when-cross-origin"></iframe><a href="${escapeHtml(originalHref)}" target="_blank" rel="nofollow ugc noopener noreferrer" class="answer-media-source">Giphy</a></span>`;
+            return `<span class="answer-media-frame"><iframe src="about:blank" data-posts-src="${escapeHtml(embedHref)}" title="Giphy GIF reply" loading="lazy" allow="autoplay; fullscreen" referrerpolicy="strict-origin-when-cross-origin"></iframe><a href="${escapeHtml(originalHref)}" target="_blank" rel="nofollow ugc noopener noreferrer" class="answer-media-source">Giphy</a></span>`;
         }
 
         function hydrateTenorAnswerEmbeds() {
@@ -4195,7 +4596,7 @@ document.addEventListener("DOMContentLoaded", async function() {
 
         function renderAnswerVideo(href) {
             const safeHref = escapeHtml(href);
-            return `<span class="answer-video-frame"><video src="${safeHref}" muted loop playsinline preload="metadata" aria-label="Video reply" data-media-url="${safeHref}"></video></span>`;
+            return `<span class="answer-video-frame"><video data-posts-src="${safeHref}" muted loop playsinline preload="none" aria-label="Video reply" data-media-url="${safeHref}"></video></span>`;
         }
 
         function linkifyText(str) {
@@ -4221,7 +4622,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                 } else if (videoUrl) {
                     html += renderAnswerVideo(videoUrl);
                 } else if (parsedUrl && (isDirectAnswerImage(parsedUrl) || answerContainsOnlyThisUrl)) {
-                    html += `<a href="${safeHref}" target="_blank" rel="nofollow ugc noopener noreferrer" class="answer-gif-link"><img src="${safeHref}" alt="Image reply" class="answer-gif" loading="lazy" referrerpolicy="no-referrer" data-media-url="${safeHref}"></a>`;
+                    html += `<a href="${safeHref}" target="_blank" rel="nofollow ugc noopener noreferrer" class="answer-gif-link"><img data-posts-src="${safeHref}" alt="Image reply" class="answer-gif" loading="lazy" referrerpolicy="no-referrer" data-media-url="${safeHref}"></a>`;
                 } else {
                     html += `<a href="${safeHref}" target="_blank" rel="nofollow ugc noopener noreferrer" class="answer-link">${safeText}</a>`;
                 }
@@ -4244,6 +4645,11 @@ document.addEventListener("DOMContentLoaded", async function() {
                 await loadSubmissionsFromSupabase();
             }
 
+            // The fetch may have completed in the same moment another panel
+            // closed :3. Keep the bounded result cached, but do not attach any
+            // drawing src or start media work until :3 is opened again.
+            if (!postsPopup?.classList.contains('active')) return;
+
             const drawings = preloadedSubmissions.drawings;
             const questions = preloadedSubmissions.questions;
             const nextRenderKey = getSubmissionsRenderKey(drawings, questions);
@@ -4256,23 +4662,35 @@ document.addEventListener("DOMContentLoaded", async function() {
 
         function renderDrawings(drawings) {
             try {
+                drawingImageObserver?.disconnect();
                 drawingLikesObserver?.disconnect();
                 drawingsList.innerHTML = '';
                 const fragment = document.createDocumentFragment();
+                const drawingImagesToObserve = [];
                 const drawingsToObserve = [];
-                drawings.forEach(drawing => {
+                drawings.forEach((drawing, index) => {
                     const el = document.createElement('div');
                     el.className = 'post-item';
                     const drawingSrc = getDrawingSrc(drawing.imageData);
                     if (!drawingSrc) return;
-                    el.innerHTML = `
-                        <img src="${drawingSrc}" alt="User drawing">
+                    const image = document.createElement('img');
+                    image.alt = 'User drawing';
+                    image.loading = index < 4 ? 'eager' : 'lazy';
+                    image.decoding = 'async';
+                    if (index < 4 || !drawingImageObserver) {
+                        image.src = drawingSrc;
+                    } else {
+                        image.dataset.drawingSrc = drawingSrc;
+                        drawingImagesToObserve.push(image);
+                    }
+                    el.appendChild(image);
+                    el.insertAdjacentHTML('beforeend', `
                         <div class="like-sticker" data-drawing-id="${drawing.id}">
                             <div class="like-button">
-                                <img src="reactions.png" alt="Like" class="like-icon">
+                                <img src="site-images/reactions.png" alt="Like" class="like-icon" width="96" height="88" decoding="async">
                             </div>
                         </div>
-                    `;
+                    `);
                     fragment.appendChild(el);
 
                     if (drawingLikesObserver) {
@@ -4282,6 +4700,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                     }
                 });
                 drawingsList.appendChild(fragment);
+                drawingImagesToObserve.forEach(image => drawingImageObserver.observe(image));
                 drawingsToObserve.forEach(el => drawingLikesObserver.observe(el));
             } catch (error) {
                 console.error("Error loading drawings:", error);
@@ -4291,6 +4710,7 @@ document.addEventListener("DOMContentLoaded", async function() {
 
         function renderQuestions(questions) {
             try {
+                postsMediaObserver?.disconnect();
                 questionsList.innerHTML = '';
                 const fragment = document.createDocumentFragment();
                 questions.forEach(q => {
@@ -4304,9 +4724,12 @@ document.addEventListener("DOMContentLoaded", async function() {
                     fragment.appendChild(el);
                 });
                 questionsList.appendChild(fragment);
-                hydrateTenorAnswerEmbeds();
+                observePostsMedia();
+                if (shouldPlayPostsMedia()) hydrateTenorAnswerEmbeds();
                 questionsList.querySelectorAll('img.answer-gif').forEach(image => {
                     image.addEventListener('error', () => {
+                        if (!image.getAttribute('src')
+                            && (image.dataset.postsPausedSrc || image.dataset.postsSrc)) return;
                         const link = image.closest('.answer-gif-link');
                         const href = image.dataset.mediaUrl || link?.href || '';
                         if (!link || !href) return;
@@ -4321,6 +4744,8 @@ document.addEventListener("DOMContentLoaded", async function() {
                 });
                 questionsList.querySelectorAll('video[data-media-url]').forEach(video => {
                     video.addEventListener('error', () => {
+                        if (!video.getAttribute('src')
+                            && (video.dataset.postsPausedSrc || video.dataset.postsSrc)) return;
                         const frame = video.closest('.answer-video-frame');
                         const href = video.dataset.mediaUrl || '';
                         if (!frame || !href) return;
@@ -4342,12 +4767,12 @@ document.addEventListener("DOMContentLoaded", async function() {
 
         // ===== LIKE SYSTEM =====
         const reactionIcons = {
-            'happy': 'happy.png',
-            'cool': 'cool.png', 
-            'meh': 'meh.png',
-            'sad': 'sad.png'
+            'happy': 'site-images/happy.png',
+            'cool': 'site-images/cool.png',
+            'meh': 'site-images/meh.png',
+            'sad': 'site-images/sad.png'
         };
-        const defaultReactionIcon = 'reactions.png';
+        const defaultReactionIcon = 'site-images/reactions.png';
         let currentOpenPicker = null; // Track currently open picker
         let currentOpenPickerCleanup = null;
         let lastClickTime = 0; // Prevent rapid-fire clicks
@@ -4471,19 +4896,19 @@ document.addEventListener("DOMContentLoaded", async function() {
             picker.innerHTML = `
                 <div class="reaction-options">
                     <div class="reaction-option" data-reaction="happy">
-                        <img src="happy.png" alt="Happy">
+                        <img src="site-images/happy.png" alt="Happy" width="96" height="94" decoding="async">
                         <span class="reaction-count">0</span>
                     </div>
                     <div class="reaction-option" data-reaction="cool">
-                        <img src="cool.png" alt="Cool">
+                        <img src="site-images/cool.png" alt="Cool" width="96" height="94" decoding="async">
                         <span class="reaction-count">0</span>
                     </div>
                     <div class="reaction-option" data-reaction="meh">
-                        <img src="meh.png" alt="Meh">
+                        <img src="site-images/meh.png" alt="Meh" width="96" height="94" decoding="async">
                         <span class="reaction-count">0</span>
                     </div>
                     <div class="reaction-option" data-reaction="sad">
-                        <img src="sad.png" alt="Sad">
+                        <img src="site-images/sad.png" alt="Sad" width="96" height="94" decoding="async">
                         <span class="reaction-count">0</span>
                     </div>
                 </div>
