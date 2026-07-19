@@ -945,8 +945,8 @@ document.addEventListener("DOMContentLoaded", async function() {
     const loadingPawPrints = Array.from(document.querySelectorAll('.loading-paw-print'));
     const prefersReducedLoadingMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     const minLoadingTime = 2000;
-    const PUBLIC_DRAWINGS_LIMIT = 24;
-    const PUBLIC_QUESTIONS_LIMIT = 30;
+    const PUBLIC_DRAWINGS_PAGE_SIZE = 12;
+    const PUBLIC_QUESTIONS_PAGE_SIZE = 20;
     const PUBLIC_SUBMISSIONS_TIMEOUT_MS = 10000;
     let loadingBarShown = false;
     let loadingProgress = 0;
@@ -960,19 +960,65 @@ document.addEventListener("DOMContentLoaded", async function() {
     }, 4000);
     const preloadedSubmissions = {
         drawings: [],
-        questions: [],
-        loaded: false,
-        error: null
+        questions: []
     };
     let submissionsRevision = 0;
     let submissionsLoadPromise = null;
-    let submissionsLoadController = null;
+    const submissionsLoadControllers = new Set();
+    const submissionFeeds = {
+        drawings: {
+            key: 'drawings',
+            pageSize: PUBLIC_DRAWINGS_PAGE_SIZE,
+            items: preloadedSubmissions.drawings,
+            ids: new Set(),
+            cursor: null,
+            done: false,
+            loading: false,
+            error: null,
+            controller: null,
+            promise: null
+        },
+        questions: {
+            key: 'questions',
+            pageSize: PUBLIC_QUESTIONS_PAGE_SIZE,
+            items: preloadedSubmissions.questions,
+            ids: new Set(),
+            cursor: null,
+            done: false,
+            loading: false,
+            error: null,
+            controller: null,
+            promise: null
+        }
+    };
+
+    function abortSubmissionLoads() {
+        submissionsLoadControllers.forEach(controller => controller.abort());
+        submissionsLoadControllers.clear();
+        Object.values(submissionFeeds).forEach(state => {
+            state.controller = null;
+            state.promise = null;
+            state.loading = false;
+        });
+    }
+
+    function resetSubmissionFeed(state) {
+        state.items = [];
+        state.ids.clear();
+        state.cursor = null;
+        state.done = false;
+        state.loading = false;
+        state.error = null;
+        state.controller = null;
+        state.promise = null;
+        preloadedSubmissions[state.key] = state.items;
+    }
 
     function markSubmissionsDirty() {
         submissionsRevision += 1;
-        submissionsLoadController?.abort();
-        preloadedSubmissions.loaded = false;
-        preloadedSubmissions.error = null;
+        abortSubmissionLoads();
+        submissionsLoadPromise = null;
+        Object.values(submissionFeeds).forEach(resetSubmissionFeed);
     }
 
     function clearSlowLoadingMessage() {
@@ -1101,102 +1147,132 @@ document.addEventListener("DOMContentLoaded", async function() {
         return error;
     }
 
-    async function fetchPublicSubmissions(signal) {
+    function applySubmissionCursor(query, cursor) {
+        if (!cursor?.createdAt || !cursor?.id) return query;
+        return query.or(
+            `created_at.lt.${cursor.createdAt},and(created_at.eq.${cursor.createdAt},id.lt.${cursor.id})`
+        );
+    }
+
+    async function fetchPublicSubmissionPage(state, signal) {
         if (window.supabase?.__dollUnavailable) {
             throw new Error('Connection is unavailable right now. Please try again.');
         }
 
-        const [drawingsResult, questionsResult] = await Promise.all([
-            window.supabase
+        let query;
+        if (state.key === 'drawings') {
+            query = window.supabase
                 .from('drawings')
                 .select('id,imageData,created_at')
                 .eq('approved', true)
                 .order('created_at', { ascending: false })
-                .limit(PUBLIC_DRAWINGS_LIMIT)
-                .abortSignal(signal),
-            window.supabase
+                .order('id', { ascending: false });
+        } else {
+            query = window.supabase
                 .from('questions')
                 .select('id,question,answer,created_at')
                 .not('answer', 'is', null)
                 .order('created_at', { ascending: false })
-                .limit(PUBLIC_QUESTIONS_LIMIT)
-                .abortSignal(signal)
-        ]);
+                .order('id', { ascending: false });
+        }
+        query = applySubmissionCursor(query, state.cursor)
+            .limit(state.pageSize)
+            .abortSignal(signal);
+        const result = await query;
 
         if (signal.aborted) throw createSubmissionsAbortError();
-        if (drawingsResult.error) throw drawingsResult.error;
-        if (questionsResult.error) throw questionsResult.error;
-
-        return {
-            drawings: drawingsResult.data || [],
-            questions: (questionsResult.data || []).filter(item => String(item.answer || '').trim())
-        };
+        if (result.error) throw result.error;
+        return Array.isArray(result.data) ? result.data : [];
     }
 
-    function loadSubmissionsFromSupabase() {
-        // Repeated taps while :3 is opening share one bounded request. There
-        // is intentionally no startup/idle preload: public submissions never
-        // compete with the entrance animation or its first interaction.
-        if (submissionsLoadPromise && !submissionsLoadController?.signal.aborted) {
-            return submissionsLoadPromise;
-        }
-        // A dirty-cache invalidation may have aborted the previous request
-        // only moments before :3 opens. Detach that settling promise so the
-        // fresh request can start immediately instead of inheriting its abort.
-        if (submissionsLoadController?.signal.aborted) {
-            submissionsLoadPromise = null;
-            submissionsLoadController = null;
-        }
-
+    function loadSubmissionFeedPage(feedKey) {
+        const state = submissionFeeds[feedKey];
+        if (!state || state.done) return Promise.resolve({ feedKey, items: [] });
+        if (state.promise) return state.promise;
         const requestRevision = submissionsRevision;
         const controller = new AbortController();
         let timedOut = false;
-        let requestPromise;
+        let pagePromise;
         const timeoutId = window.setTimeout(() => {
             timedOut = true;
             controller.abort();
         }, PUBLIC_SUBMISSIONS_TIMEOUT_MS);
+        state.loading = true;
+        state.error = null;
+        state.controller = controller;
+        submissionsLoadControllers.add(controller);
 
-        submissionsLoadController = controller;
-        requestPromise = fetchPublicSubmissions(controller.signal)
-            .then(({ drawings, questions }) => {
-                // A successful submit marks this cache dirty and aborts any
-                // older fetch. Never let a late response overwrite that flag.
+        pagePromise = fetchPublicSubmissionPage(state, controller.signal)
+            .then(rawItems => {
                 if (controller.signal.aborted || requestRevision !== submissionsRevision) {
                     throw createSubmissionsAbortError();
                 }
+                const lastRawItem = rawItems[rawItems.length - 1];
+                if (lastRawItem?.created_at && lastRawItem?.id) {
+                    state.cursor = { createdAt: lastRawItem.created_at, id: lastRawItem.id };
+                }
+                state.done = rawItems.length < state.pageSize;
 
-                preloadedSubmissions.drawings = drawings;
-                preloadedSubmissions.questions = questions;
-                preloadedSubmissions.error = null;
-                preloadedSubmissions.loaded = true;
-                return { drawings, questions };
+                const usableItems = state.key === 'questions'
+                    ? rawItems.filter(item => String(item.answer || '').trim())
+                    : rawItems;
+                const newItems = usableItems.filter(item => {
+                    const id = String(item?.id || '');
+                    if (!id || state.ids.has(id)) return false;
+                    state.ids.add(id);
+                    return true;
+                });
+                state.items.push(...newItems);
+                preloadedSubmissions[state.key] = state.items;
+                return { feedKey, items: newItems };
             })
             .catch(error => {
-                const finalError = controller.signal.aborted
-                    ? createSubmissionsAbortError()
-                    : error;
-
-                if (requestRevision === submissionsRevision) {
-                    preloadedSubmissions.error = finalError;
-                    preloadedSubmissions.loaded = true;
+                if (timedOut && requestRevision === submissionsRevision) {
+                    state.error = new Error('Public submissions request timed out.');
+                    throw state.error;
                 }
-
-                if (timedOut) {
-                    console.warn('Public submissions request timed out and was aborted; :3 will retry when opened.');
-                }
-                throw finalError;
+                if (controller.signal.aborted) throw createSubmissionsAbortError();
+                if (requestRevision === submissionsRevision) state.error = error;
+                throw error;
             })
             .finally(() => {
                 window.clearTimeout(timeoutId);
-                if (submissionsLoadPromise === requestPromise) {
-                    submissionsLoadPromise = null;
+                submissionsLoadControllers.delete(controller);
+                if (state.controller === controller) {
+                    state.controller = null;
+                    state.loading = false;
                 }
-                if (submissionsLoadController === controller) {
-                    submissionsLoadController = null;
-                }
+                if (state.promise === pagePromise) state.promise = null;
             });
+        state.promise = pagePromise;
+        return pagePromise;
+    }
 
+    function loadSubmissionsFromSupabase() {
+        if (submissionsLoadPromise) return submissionsLoadPromise;
+        const feedsToLoad = Object.values(submissionFeeds)
+            .filter(state => !state.done && state.items.length === 0)
+            .map(state => state.key);
+        if (!feedsToLoad.length) {
+            return Promise.resolve({
+                drawings: preloadedSubmissions.drawings,
+                questions: preloadedSubmissions.questions
+            });
+        }
+
+        let requestPromise;
+        requestPromise = Promise.allSettled(feedsToLoad.map(loadSubmissionFeedPage))
+            .then(results => {
+                const successful = results.some(result => result.status === 'fulfilled');
+                if (!successful) throw results[0]?.reason || new Error('Could not load submissions.');
+                return {
+                    drawings: preloadedSubmissions.drawings,
+                    questions: preloadedSubmissions.questions
+                };
+            })
+            .finally(() => {
+                if (submissionsLoadPromise === requestPromise) submissionsLoadPromise = null;
+            });
         submissionsLoadPromise = requestPromise;
         return requestPromise;
     }
@@ -2348,15 +2424,16 @@ document.addEventListener("DOMContentLoaded", async function() {
     }
 
     function closePostsPanel() {
-        // Closing :3 is also a cancellation boundary. Do not keep downloading
-        // base64 drawings or decode the first cards behind a hidden panel.
+        // Closing :3 is a cancellation boundary for in-flight *pages*, but
+        // already loaded records stay cached so a quick reopen is instant.
         postsOpenGeneration += 1;
-        if (submissionsLoadController && !submissionsLoadController.signal.aborted) {
-            // Invalidate the request before aborting so a close/reopen race
-            // cannot let the older catch overwrite the newer request cache.
-            submissionsRevision += 1;
-            submissionsLoadController.abort();
-        }
+        abortSubmissionLoads();
+        submissionsLoadPromise = null;
+        postsPanel?.querySelectorAll('#drawings-list img[data-drawing-src], #drawings-list .post-item > img').forEach(image => {
+            const src = image.getAttribute('src');
+            if (src) image.dataset.drawingSrc = src;
+            image.removeAttribute('src');
+        });
         pausePostsMedia();
         setPostsPanelLayoutOpen(false);
         // Match the wishlist's own close behavior exactly: snap the icons back
@@ -4471,13 +4548,15 @@ document.addEventListener("DOMContentLoaded", async function() {
         const drawingImageObserver = 'IntersectionObserver' in window
             ? new IntersectionObserver(entries => {
                 entries.forEach(entry => {
-                    if (!entry.isIntersecting) return;
                     const image = entry.target;
-                    drawingImageObserver.unobserve(image);
-                    const src = image.dataset.drawingSrc;
-                    if (!src) return;
-                    image.src = src;
-                    delete image.dataset.drawingSrc;
+                    if (entry.isIntersecting) {
+                        const src = image.dataset.drawingSrc;
+                        if (src && !image.getAttribute('src')) image.src = src;
+                        return;
+                    }
+                    const src = image.getAttribute('src');
+                    if (src) image.dataset.drawingSrc = src;
+                    image.removeAttribute('src');
                 });
             }, {
                 root: postsContentEl,
@@ -4501,6 +4580,78 @@ document.addEventListener("DOMContentLoaded", async function() {
                 rootMargin: '160px 0px'
             })
             : null;
+        const submissionPageObserver = 'IntersectionObserver' in window
+            ? new IntersectionObserver(entries => {
+                entries.forEach(entry => {
+                    if (!entry.isIntersecting) return;
+                    const feedKey = entry.target.dataset.submissionFeed;
+                    if (feedKey) void loadMoreSubmissionFeed(feedKey);
+                });
+            }, {
+                root: postsContentEl,
+                rootMargin: '520px 0px'
+            })
+            : null;
+
+        function getSubmissionList(feedKey) {
+            return feedKey === 'drawings' ? drawingsList : questionsList;
+        }
+
+        function ensureSubmissionSentinel(feedKey) {
+            const list = getSubmissionList(feedKey);
+            if (!list) return null;
+            let sentinel = list.querySelector(`.posts-page-sentinel[data-submission-feed="${feedKey}"]`);
+            if (!sentinel) {
+                sentinel = document.createElement('button');
+                sentinel.type = 'button';
+                sentinel.className = 'posts-page-sentinel';
+                sentinel.dataset.submissionFeed = feedKey;
+                sentinel.innerHTML = `
+                    <span class="loading-paw-print posts-fetch-paw" aria-hidden="true"></span>
+                    <span class="posts-page-sentinel-label">more...</span>
+                `;
+                sentinel.addEventListener('click', () => void loadMoreSubmissionFeed(feedKey));
+                list.appendChild(sentinel);
+            }
+            submissionPageObserver?.observe(sentinel);
+            return sentinel;
+        }
+
+        function updateSubmissionSentinel(feedKey) {
+            const state = submissionFeeds[feedKey];
+            const sentinel = ensureSubmissionSentinel(feedKey);
+            if (!state || !sentinel) return;
+            sentinel.hidden = state.done;
+            sentinel.disabled = state.loading;
+            sentinel.classList.toggle('is-loading', state.loading);
+            sentinel.classList.toggle('is-error', Boolean(state.error));
+            const label = sentinel.querySelector('.posts-page-sentinel-label');
+            if (label) {
+                label.textContent = state.loading
+                    ? 'fetching more...'
+                    : state.error
+                        ? 'tap to try again'
+                        : 'more...';
+            }
+        }
+
+        function isSubmissionSentinelNear(feedKey) {
+            const sentinel = getSubmissionList(feedKey)
+                ?.querySelector(`.posts-page-sentinel[data-submission-feed="${feedKey}"]`);
+            const tab = sentinel?.closest('.tab-content');
+            if (!sentinel || sentinel.hidden || !tab?.classList.contains('active') || !postsContentEl) return false;
+            const rootRect = postsContentEl.getBoundingClientRect();
+            const rect = sentinel.getBoundingClientRect();
+            return rect.top <= rootRect.bottom + 520 && rect.bottom >= rootRect.top - 40;
+        }
+
+        function scheduleVisibleSubmissionPage(feedKey) {
+            window.requestAnimationFrame(() => {
+                if (postsPopup?.classList.contains('active') && isSubmissionSentinelNear(feedKey)) {
+                    void loadMoreSubmissionFeed(feedKey);
+                }
+            });
+        }
 
         function getSubmissionsRenderKey(drawings, questions) {
             const drawingKey = drawings.map(drawing => drawing.id || drawing.created_at || '').join(',');
@@ -4582,6 +4733,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                 document.getElementById(this.dataset.tab).classList.add('active');
                 this.closest('.posts-tabs')?.classList.toggle('questions-active', this.dataset.tab === 'questions-tab');
                 syncPostsMediaPlayback();
+                scheduleVisibleSubmissionPage(this.dataset.tab === 'questions-tab' ? 'questions' : 'drawings');
             });
         });
 
@@ -4726,34 +4878,44 @@ document.addEventListener("DOMContentLoaded", async function() {
         }
 
         async function renderSubmissions() {
-            if (!preloadedSubmissions.loaded || preloadedSubmissions.error) {
-                await loadSubmissionsFromSupabase();
-            }
+            await loadSubmissionsFromSupabase();
 
             // The fetch may have completed in the same moment another panel
-            // closed :3. Keep the bounded result cached, but do not attach any
-            // drawing src or start media work until :3 is opened again.
+            // closed :3. Keep fetched pages cached, but do not attach drawing
+            // src or start media work until :3 is opened again.
             if (!postsPopup?.classList.contains('active')) return;
 
             const drawings = preloadedSubmissions.drawings;
             const questions = preloadedSubmissions.questions;
             const nextRenderKey = getSubmissionsRenderKey(drawings, questions);
-            if (nextRenderKey === renderedSubmissionsKey) return;
-
-            renderedSubmissionsKey = nextRenderKey;
-            renderDrawings(drawings);
-            renderQuestions(questions);
+            if (nextRenderKey !== renderedSubmissionsKey) {
+                renderedSubmissionsKey = nextRenderKey;
+                renderDrawings(drawings);
+                renderQuestions(questions);
+            }
+            updateSubmissionSentinel('drawings');
+            updateSubmissionSentinel('questions');
+            const activeFeed = postsPopup.querySelector('#questions-tab')?.classList.contains('active')
+                ? 'questions'
+                : 'drawings';
+            scheduleVisibleSubmissionPage(activeFeed);
         }
 
-        function renderDrawings(drawings) {
+        function renderDrawings(drawings, { append = false } = {}) {
             try {
-                drawingImageObserver?.disconnect();
-                drawingLikesObserver?.disconnect();
-                drawingsList.innerHTML = '';
+                if (!append) {
+                    drawingImageObserver?.disconnect();
+                    drawingLikesObserver?.disconnect();
+                    drawingsList.innerHTML = '';
+                }
                 const fragment = document.createDocumentFragment();
                 const drawingImagesToObserve = [];
                 const drawingsToObserve = [];
-                drawings.forEach((drawing, index) => {
+                const startIndex = append
+                    ? drawingsList.querySelectorAll('.post-item').length
+                    : 0;
+                drawings.forEach((drawing, offset) => {
+                    const index = startIndex + offset;
                     const el = document.createElement('div');
                     el.className = 'post-item';
                     const drawingSrc = getDrawingSrc(drawing.imageData);
@@ -4762,12 +4924,11 @@ document.addEventListener("DOMContentLoaded", async function() {
                     image.alt = 'User drawing';
                     image.loading = index < 4 ? 'eager' : 'lazy';
                     image.decoding = 'async';
-                    if (index < 4 || !drawingImageObserver) {
+                    image.dataset.drawingSrc = drawingSrc;
+                    if (!drawingImageObserver || (index < 4 && postsPopup?.classList.contains('active'))) {
                         image.src = drawingSrc;
-                    } else {
-                        image.dataset.drawingSrc = drawingSrc;
-                        drawingImagesToObserve.push(image);
                     }
+                    if (drawingImageObserver) drawingImagesToObserve.push(image);
                     el.appendChild(image);
                     el.insertAdjacentHTML('beforeend', `
                         <div class="like-sticker" data-drawing-id="${drawing.id}">
@@ -4784,7 +4945,8 @@ document.addEventListener("DOMContentLoaded", async function() {
                         initLikeSystem(el, drawing.id);
                     }
                 });
-                drawingsList.appendChild(fragment);
+                const sentinel = drawingsList.querySelector('.posts-page-sentinel');
+                drawingsList.insertBefore(fragment, sentinel);
                 drawingImagesToObserve.forEach(image => drawingImageObserver.observe(image));
                 drawingsToObserve.forEach(el => drawingLikesObserver.observe(el));
             } catch (error) {
@@ -4793,10 +4955,51 @@ document.addEventListener("DOMContentLoaded", async function() {
             }
         }
 
-        function renderQuestions(questions) {
+        function bindQuestionMediaErrors(root) {
+            root.querySelectorAll('img.answer-gif').forEach(image => {
+                if (image.dataset.mediaErrorBound === 'true') return;
+                image.dataset.mediaErrorBound = 'true';
+                image.addEventListener('error', () => {
+                    if (!image.getAttribute('src')
+                        && (image.dataset.postsPausedSrc || image.dataset.postsSrc)) return;
+                    const link = image.closest('.answer-gif-link');
+                    const href = image.dataset.mediaUrl || link?.href || '';
+                    if (!link || !href) return;
+                    const replacement = document.createElement('a');
+                    replacement.href = href;
+                    replacement.target = '_blank';
+                    replacement.rel = 'nofollow ugc noopener noreferrer';
+                    replacement.className = 'answer-link answer-media-unavailable';
+                    replacement.textContent = 'image link';
+                    link.replaceWith(replacement);
+                });
+            });
+            root.querySelectorAll('video[data-media-url]').forEach(video => {
+                if (video.dataset.mediaErrorBound === 'true') return;
+                video.dataset.mediaErrorBound = 'true';
+                video.addEventListener('error', () => {
+                    if (!video.getAttribute('src')
+                        && (video.dataset.postsPausedSrc || video.dataset.postsSrc)) return;
+                    const frame = video.closest('.answer-video-frame');
+                    const href = video.dataset.mediaUrl || '';
+                    if (!frame || !href) return;
+                    const replacement = document.createElement('a');
+                    replacement.href = href;
+                    replacement.target = '_blank';
+                    replacement.rel = 'nofollow ugc noopener noreferrer';
+                    replacement.className = 'answer-link answer-media-unavailable';
+                    replacement.textContent = 'media link';
+                    frame.replaceWith(replacement);
+                });
+            });
+        }
+
+        function renderQuestions(questions, { append = false } = {}) {
             try {
-                postsMediaObserver?.disconnect();
-                questionsList.innerHTML = '';
+                if (!append) {
+                    postsMediaObserver?.disconnect();
+                    questionsList.innerHTML = '';
+                }
                 const fragment = document.createDocumentFragment();
                 questions.forEach(q => {
                     const el = document.createElement('div');
@@ -4808,44 +5011,46 @@ document.addEventListener("DOMContentLoaded", async function() {
                     `;
                     fragment.appendChild(el);
                 });
-                questionsList.appendChild(fragment);
+                const sentinel = questionsList.querySelector('.posts-page-sentinel');
+                questionsList.insertBefore(fragment, sentinel);
                 observePostsMedia();
-                questionsList.querySelectorAll('img.answer-gif').forEach(image => {
-                    image.addEventListener('error', () => {
-                        if (!image.getAttribute('src')
-                            && (image.dataset.postsPausedSrc || image.dataset.postsSrc)) return;
-                        const link = image.closest('.answer-gif-link');
-                        const href = image.dataset.mediaUrl || link?.href || '';
-                        if (!link || !href) return;
-                        const replacement = document.createElement('a');
-                        replacement.href = href;
-                        replacement.target = '_blank';
-                        replacement.rel = 'nofollow ugc noopener noreferrer';
-                        replacement.className = 'answer-link answer-media-unavailable';
-                        replacement.textContent = 'image link';
-                        link.replaceWith(replacement);
-                    }, { once: true });
-                });
-                questionsList.querySelectorAll('video[data-media-url]').forEach(video => {
-                    video.addEventListener('error', () => {
-                        if (!video.getAttribute('src')
-                            && (video.dataset.postsPausedSrc || video.dataset.postsSrc)) return;
-                        const frame = video.closest('.answer-video-frame');
-                        const href = video.dataset.mediaUrl || '';
-                        if (!frame || !href) return;
-                        const replacement = document.createElement('a');
-                        replacement.href = href;
-                        replacement.target = '_blank';
-                        replacement.rel = 'nofollow ugc noopener noreferrer';
-                        replacement.className = 'answer-link answer-media-unavailable';
-                        replacement.textContent = 'media link';
-                        frame.replaceWith(replacement);
-                    }, { once: true });
-                });
+                bindQuestionMediaErrors(questionsList);
                 syncPostsMediaPlayback();
             } catch (error) {
                 console.error("Error loading questions:", error);
                 questionsList.innerHTML = '<p>Error loading Mi. Please refresh.</p>';
+            }
+        }
+
+        async function loadMoreSubmissionFeed(feedKey) {
+            const state = submissionFeeds[feedKey];
+            if (!state || state.done || state.loading || !postsPopup?.classList.contains('active')) return;
+            const tab = getSubmissionList(feedKey)?.closest('.tab-content');
+            if (!tab?.classList.contains('active')) return;
+            const openGeneration = postsOpenGeneration;
+            try {
+                const pagePromise = loadSubmissionFeedPage(feedKey);
+                updateSubmissionSentinel(feedKey);
+                const result = await pagePromise;
+                if (openGeneration !== postsOpenGeneration || !postsPopup.classList.contains('active')) return;
+                if (result.items.length) {
+                    if (feedKey === 'drawings') renderDrawings(result.items, { append: true });
+                    else renderQuestions(result.items, { append: true });
+                    renderedSubmissionsKey = getSubmissionsRenderKey(
+                        preloadedSubmissions.drawings,
+                        preloadedSubmissions.questions
+                    );
+                }
+                updateSubmissionSentinel(feedKey);
+                syncPostsPanelSpace();
+                scheduleVisibleSubmissionPage(feedKey);
+            } catch (error) {
+                if (error?.name !== 'AbortError') {
+                    console.error(`Error fetching more ${feedKey}:`, error);
+                }
+                if (openGeneration === postsOpenGeneration && postsPopup.classList.contains('active')) {
+                    updateSubmissionSentinel(feedKey);
+                }
             }
         }
 
