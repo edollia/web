@@ -338,7 +338,10 @@ document.addEventListener("DOMContentLoaded", async function() {
     let backgroundMusicRetryArmed = false;
     let backgroundMusicPlayPromise = null;
     const uiSounds = {
-        tap: 'CUT1.mp3?v=2',
+        // CUT1 is intentionally served from a versioned pathname instead of
+        // its old query-string URL. GitHub Pages/CDN and Safari could retain a
+        // stale response for the tiny original MP3 even after a deployment.
+        tap: 'CUT1-ui-v3.mp3',
         link: 'CUT2.mp3?v=2',
         submit: 'CUT3.mp3?v=2'
     };
@@ -567,6 +570,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         await Promise.all(Object.entries(uiSounds).map(async ([type, src]) => {
             try {
                 const response = await fetch(src);
+                if (!response.ok) throw new Error(`${type} sound ${response.status}`);
                 const buffer = await response.arrayBuffer();
                 uiSoundBuffers[type] = await uiAudioContext.decodeAudioData(buffer);
             } catch (error) {
