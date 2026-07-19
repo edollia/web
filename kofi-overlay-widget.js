@@ -74,7 +74,10 @@ var kofiWidgetOverlayFloatingChatBuilder = kofiWidgetOverlayFloatingChatBuilder 
         }
     }
 
-    document.addEventListener('keydown', trapKofiFocus);
+    if (!window.__dollKofiFocusTrapBound) {
+        document.addEventListener('keydown', trapKofiFocus);
+        window.__dollKofiFocusTrapBound = true;
+    }
    
     function getButtonId() {
         return `${_configManager.getValue(_myType, 'cssId')}-donate-button`;
@@ -229,7 +232,9 @@ var kofiWidgetOverlayFloatingChatBuilder = kofiWidgetOverlayFloatingChatBuilder 
             popuupKofiIframeHeightOffset: 100
         }, parentElementId);
         
-        // Set up global function to open overlay after widget is initialized
+        // Set up the public controls on the next task. The old fixed 500ms
+        // wait was visible on a fast card tap even though all required DOM had
+        // already been written synchronously above.
         setTimeout(function() {
             window.openKofiOverlay = function() {
                 showKofiScrim();
@@ -287,6 +292,37 @@ var kofiWidgetOverlayFloatingChatBuilder = kofiWidgetOverlayFloatingChatBuilder 
                 console.error('Error opening Ko-fi overlay.');
             };
 
+            window.preloadKofiOverlay = function() {
+                var prefersMobilePopup = window.matchMedia
+                    && (window.matchMedia('(max-width: 640px)').matches
+                        || window.matchMedia('(pointer: coarse)').matches);
+                var iframeId = prefersMobilePopup ? getMobiContainerFrameId() : getContainerFrameId();
+                var popupName = prefersMobilePopup ? 'kofi-popup-iframe-mobi' : 'kofi-popup-iframe';
+                var containerSuffix = prefersMobilePopup
+                    ? 'popup-iframe-container-mobi'
+                    : 'popup-iframe-container';
+                var iframe = document.getElementById(iframeId);
+                if (!iframe || !iframe.contentDocument) return false;
+                var donateButton = iframe.contentDocument.getElementById(`${getButtonId()}`);
+                if (!donateButton) return false;
+                var stateIndex = widgetPageLoadInitiatedStates.findIndex(function(state) {
+                    return state[0] == donateButton;
+                });
+                if (stateIndex < 0) return false;
+                if (widgetPageLoadInitiatedStates[stateIndex][1]) return true;
+
+                var popupId = _configManager.getValue(_myType, 'cssId') + `-${popupName}`;
+                var iframeHostId = popupId + containerSuffix;
+                if (!document.getElementById(iframeHostId)) return false;
+                _utils.loadKofiIframe(
+                    _configManager.getValue(_myType, 'pageId', true),
+                    iframeHostId,
+                    'width: 100%; height: 98%;'
+                );
+                widgetPageLoadInitiatedStates[stateIndex] = [donateButton, true];
+                return true;
+            };
+
             window.closeKofiOverlay = function() {
                 var iframeId = getContainerFrameId();
                 var mobiIframeId = getMobiContainerFrameId();
@@ -312,7 +348,11 @@ var kofiWidgetOverlayFloatingChatBuilder = kofiWidgetOverlayFloatingChatBuilder 
                 closeDesktop() || closeMobile();
                 hideKofiScrim();
             };
-        }, 500);
+            // Fetch the preferred iframe while the site's own loading screen
+            // is still present. Tapping Ko-fi later only opens an already-built
+            // overlay, matching the other social cards' perceived timing.
+            window.preloadKofiOverlay();
+        }, 0);
     };
 
     function activateKofiIframe(iframeId, selectors, heightLimits) {
@@ -867,8 +907,22 @@ var kofiWidgetOverlay = kofiWidgetOverlay || (function () {
         else { doWrite(builder, parentButtonWrapperId, config); }
     };
 
+    const reset = function () {
+        if (!parentButtonWrapperId) return;
+        var popupPrefix = parentButtonWrapperId + '-kofi-popup-iframe';
+        document.querySelectorAll('[id]').forEach(function(element) {
+            if (element.id.indexOf(popupPrefix) === 0) element.remove();
+        });
+        document.getElementById(parentButtonWrapperId)?.replaceChildren();
+        document.getElementById('doll-kofi-scrim')?.remove();
+        delete window.openKofiOverlay;
+        delete window.closeKofiOverlay;
+        delete window.preloadKofiOverlay;
+    };
+
     return {
         draw: draw,
+        reset: reset,
     }
 }());
 

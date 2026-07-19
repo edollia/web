@@ -1215,6 +1215,13 @@ document.addEventListener("DOMContentLoaded", async function() {
         const loadingGif = loadingScreen.querySelector('.loading-gif');
         loadingGif?.removeAttribute('src');
         loadingScreen.replaceChildren();
+        // Entry bubbles are created early so they are already painted when
+        // the loader leaves. Their idle-help countdown, however, must begin
+        // only now; otherwise the hand performs entirely behind the loading
+        // overlay and is gone before the visitor can see it.
+        if (siteLinkSettings.entrance_mode === 'bubbles') {
+            scheduleEntryBubbleHint();
+        }
     }
     
     // Mobile detection
@@ -1339,13 +1346,20 @@ document.addEventListener("DOMContentLoaded", async function() {
             const video = document.createElement('video');
             let settled = false;
             let timeoutId = 0;
-            const finish = ready => {
+            const finish = state => {
                 if (settled) return;
                 settled = true;
                 window.clearTimeout(timeoutId);
-                video.removeEventListener('loadeddata', onReady);
-                video.removeEventListener('error', onError);
-                if (ready && video.readyState >= 2) {
+                if (state !== 'pending') {
+                    video.removeEventListener('loadeddata', onReady);
+                    video.removeEventListener('error', onError);
+                }
+                const ready = state === 'ready' && video.readyState >= 2;
+                // A timeout is only the loading screen's deadline, not a media
+                // failure. Hand the still-loading element to the card so its
+                // own loadeddata/error listeners can finish the job instead of
+                // throwing away downloaded bytes and creating a blank card.
+                if (ready || state === 'pending') {
                     preloadedLocalSocialVideos.set(source, video);
                     mountPreloadedLocalSocialVideo?.(source);
                 } else {
@@ -1361,8 +1375,8 @@ document.addEventListener("DOMContentLoaded", async function() {
                 );
                 resolve(ready);
             };
-            const onReady = () => finish(true);
-            const onError = () => finish(false);
+            const onReady = () => finish('ready');
+            const onError = () => finish('error');
 
             video.muted = true;
             video.defaultMuted = true;
@@ -1371,16 +1385,17 @@ document.addEventListener("DOMContentLoaded", async function() {
             video.preload = 'auto';
             video.setAttribute('muted', '');
             video.setAttribute('playsinline', '');
+            video.setAttribute('webkit-playsinline', '');
             video.dataset.source = source;
             video.addEventListener('loadeddata', onReady, { once: true });
             video.addEventListener('error', onError, { once: true });
             timeoutId = window.setTimeout(
-                () => finish(video.readyState >= 2),
+                () => finish(video.readyState >= 2 ? 'ready' : 'pending'),
                 LOCAL_SOCIAL_CARD_PRELOAD_TIMEOUT_MS
             );
             video.src = source;
             video.load();
-            if (video.readyState >= 2) finish(true);
+            if (video.readyState >= 2) finish('ready');
         })));
     }
 
@@ -1843,6 +1858,11 @@ document.addEventListener("DOMContentLoaded", async function() {
         // It is fetched only if the visitor opens that panel, so base64
         // drawings can never contend with the entrance interaction.
         await loadSiteLinkSettingsWithTimeout();
+        // Ko-fi is the one social-card exception that opens an on-page iframe.
+        // Build and prewarm it behind the loader so its card still has the
+        // same 300ms pop cadence as every other destination.
+        kofiWidgetMayPrepare = true;
+        prepareKofiWidget();
         clearInterval(progressTick);
         setLoadingProgress(100);
 
@@ -1975,6 +1995,19 @@ document.addEventListener("DOMContentLoaded", async function() {
     function scheduleEntryBubbleHint() {
         clearEntryBubbleHint();
         entryBubbleHintShown = false;
+        const loaderIsGone = !loadingScreen || loadingScreen.style.display === 'none';
+        const bubblesAreVisible = Boolean(
+            entryBubbleField
+            && !entryBubbleField.hidden
+            && entryBubbleRemaining > 0
+            && popup
+            && popup.style.display !== 'none'
+            && !entryDismissalInProgress
+        );
+        // startBubbleEntrance() can run beneath the loader while settings and
+        // media finish. retireLoadingScreen() will schedule the real visible
+        // countdown, so do not consume the one-time hint here.
+        if (!loaderIsGone || !bubblesAreVisible) return;
         entryBubbleHintTimer = window.setTimeout(showEntryBubbleHint, 2000);
     }
 
@@ -2916,12 +2949,9 @@ document.addEventListener("DOMContentLoaded", async function() {
     const maintenanceEta = document.getElementById('site-maintenance-eta');
     const FIRST_VISIT_TOUR_KEY = 'doll_first_visit_tour_seen_v1';
     const FIRST_VISIT_TOUR_FORCE = new URLSearchParams(window.location.search).get('previewTour') === '1';
-    let activeKofiWidgetHandle = '';
     let kofiWidgetInitialized = false;
-    let kofiWidgetLoadPromise = null;
-    let kofiActivationPending = false;
-    const KOFI_WIDGET_SCRIPT_SRC = 'kofi-overlay-widget.js?v=5.16';
-
+    let activeKofiWidgetHandle = '';
+    let kofiWidgetMayPrepare = false;
     const socialCardDefinitions = [
         { key: 'snapchat', option: snapchatOption, label: 'Snapchat' },
         { key: 'instagram', option: instagramOption, label: 'Instagram', withAt: true },
@@ -3109,6 +3139,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                 if (!preview.isConnected || preview.parentElement !== card
                     || !ready || !expected || preview.getAttribute('src') !== expected
                     || (current && current !== expectedAbsolute)) return;
+                delete preview.dataset.socialPreviewFailed;
                 if (card.dataset.socialPreviewDeferred !== 'true') {
                     card.classList.add('has-social-preview');
                 }
@@ -3118,6 +3149,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             preview.addEventListener('error', () => {
                 if (!preview.isConnected || preview.parentElement !== card) return;
                 if (preview.getAttribute('src') !== preview.dataset.source) return;
+                preview.dataset.socialPreviewFailed = 'true';
                 card.classList.remove('has-social-preview');
             });
             card.prepend(preview);
@@ -3127,8 +3159,19 @@ document.addEventListener("DOMContentLoaded", async function() {
 
         if (!loadMedia) return;
 
+        const sourceFailed = preview.dataset.socialPreviewFailed === 'true';
         const alreadyHasCurrentSource = preview.getAttribute('src') === url;
-        if (!alreadyHasCurrentSource) {
+        if (!alreadyHasCurrentSource || sourceFailed) {
+            // Safari can leave a media element permanently poisoned after one
+            // interrupted/decode error. Reset that element before assigning
+            // the same URL so a later open is a real retry, not another play()
+            // call against the old failed resource state.
+            if (sourceFailed) {
+                if (preview instanceof HTMLVideoElement) preview.pause();
+                preview.removeAttribute('src');
+                if (preview instanceof HTMLVideoElement) preview.load();
+            }
+            delete preview.dataset.socialPreviewFailed;
             preview.src = url;
             delete preview.dataset.socialPausedSrc;
             if (preview instanceof HTMLVideoElement) preview.load();
@@ -3142,7 +3185,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         // The load/loadeddata handler trims once when a newly assigned source
         // is ready. Re-scanning card rectangles for an unchanged source on
         // every scroll callback was unnecessary main-thread work.
-        if (!alreadyHasCurrentSource) trimSocialCardPreviewCache();
+        if (!alreadyHasCurrentSource || sourceFailed) trimSocialCardPreviewCache();
 
         if (preview instanceof HTMLVideoElement && socialsButton?.classList.contains('open') && !document.hidden) {
             preview.play().catch(() => {});
@@ -3165,6 +3208,8 @@ document.addEventListener("DOMContentLoaded", async function() {
     function syncSocialCardVideos(loadMedia = false) {
         getSocialCardVideoEntries().forEach(([key, card]) => {
             const shouldLoad = loadMedia && (
+                SOCIAL_CARD_VIDEO_SOURCE_MODE === 'github'
+                ||
                 typeof window.IntersectionObserver !== 'function'
                 || card?.dataset.socialPreviewNear === 'true'
             );
@@ -3335,7 +3380,12 @@ document.addEventListener("DOMContentLoaded", async function() {
         window.clearTimeout(socialPreviewReleaseTimer);
         socialPreviewReleaseTimer = 0;
         const usingObserver = observeSocialCardPreviews();
-        if (!usingObserver) syncSocialCardVideos(true);
+        // Same-origin configured files are a small, fixed set and are promised
+        // by the entrance loader. Always remount/retry all of them here; the
+        // observer still decides which decoded videos actively play.
+        if (SOCIAL_CARD_VIDEO_SOURCE_MODE === 'github' || !usingObserver) {
+            syncSocialCardVideos(true);
+        }
         getVisibleSocialOptions().filter(card => (
             !usingObserver || card.dataset.socialPreviewNear === 'true'
         )).forEach(card => {
@@ -3888,6 +3938,10 @@ document.addEventListener("DOMContentLoaded", async function() {
             const enabled = isPublicLinkEnabled(key);
             if (enabled) option.href = getPublicLink(key);
             else option.removeAttribute('href');
+            // Keep a safe new-tab fallback on every native link. JavaScript
+            // intercepts Ko-fi only to open its prepared on-page iframe.
+            option.target = '_blank';
+            option.rel = 'noopener noreferrer';
             option.classList.toggle('site-link-hidden', !enabled);
             const cardNode = option.closest('.social-link-card-frame') || option;
             if (cardNode !== option) cardNode.classList.toggle('site-link-hidden', !enabled);
@@ -3896,8 +3950,9 @@ document.addEventListener("DOMContentLoaded", async function() {
             updateSocialCardDisplay(option, key, label, withAt);
         });
         if (donateOption) {
-            syncKofiWidgetHandle();
-            setKofiWidgetVisibility(isPublicLinkEnabled('kofi'));
+            const kofiEnabled = isPublicLinkEnabled('kofi');
+            if (kofiEnabled && kofiWidgetMayPrepare) prepareKofiWidget();
+            setKofiWidgetVisibility(kofiEnabled);
         }
         if (socialsButton?.classList.contains('open')) {
             const panelAlreadyVisible = socialLinksShell?.classList.contains('active');
@@ -3933,7 +3988,16 @@ document.addEventListener("DOMContentLoaded", async function() {
                 // was already painted before this settings pass can stay.
                 getVisibleSocialOptions().forEach(card => {
                     const preview = card.querySelector('.social-link-preview[src]');
-                    if (preview && !stablePaintedCards.has(card)) {
+                    if (SOCIAL_CARD_VIDEO_SOURCE_MODE === 'github') {
+                        // Local media does not change with Supabase settings.
+                        // Never strand a slower first-load video behind the
+                        // Supabase-only deferred flag; its ready event should
+                        // reveal it during this same opening.
+                        delete card.dataset.socialPreviewDeferred;
+                        if (preview && isSocialPreviewReady(preview)) {
+                            card.classList.add('has-social-preview');
+                        }
+                    } else if (preview && !stablePaintedCards.has(card)) {
                         card.dataset.socialPreviewDeferred = 'true';
                         card.classList.remove('has-social-preview');
                     }
@@ -3968,16 +4032,16 @@ document.addEventListener("DOMContentLoaded", async function() {
         renderMaintenanceMode();
     }
 
-    function setKofiWidgetVisibility(visible) {
-        document.body.classList.toggle('kofi-public-hidden', !visible);
-        if (!visible && typeof window.closeKofiOverlay === 'function') {
-            window.closeKofiOverlay();
+    function syncThroneWidgetUrl() {
+        if (typeof window.setDollThroneUrl === 'function') {
+            window.setDollThroneUrl(getPublicLink('throne'));
+        } else {
+            window.dollThroneUrl = getPublicLink('throne');
         }
-        document.querySelectorAll('[id^="kofi-widget-overlay-"], .floatingchat-container, .floatingchat-container-mobi')
-            .forEach(element => {
-                element.style.display = visible ? '' : 'none';
-                element.style.pointerEvents = visible ? '' : 'none';
-            });
+    }
+
+    function getKofiWidgetApi() {
+        return typeof kofiWidgetOverlay !== 'undefined' ? kofiWidgetOverlay : null;
     }
 
     function getKofiHandleFromUrl() {
@@ -3992,131 +4056,65 @@ document.addEventListener("DOMContentLoaded", async function() {
         }
     }
 
-    function getKofiWidgetApi() {
-        // The local widget declares a top-level `const`, which is a global
-        // lexical binding rather than a property on `window`.
-        return typeof kofiWidgetOverlay !== 'undefined' ? kofiWidgetOverlay : null;
+    function setKofiWidgetVisibility(visible) {
+        document.body.classList.toggle('kofi-public-hidden', !visible);
+        if (!visible && typeof window.closeKofiOverlay === 'function') {
+            window.closeKofiOverlay();
+        }
+        document.querySelectorAll('[id^="kofi-widget-overlay-"], .floatingchat-container, .floatingchat-container-mobi')
+            .forEach(element => {
+                element.style.display = visible ? '' : 'none';
+                element.style.pointerEvents = visible ? '' : 'none';
+            });
     }
 
-    function syncKofiWidgetHandle() {
-        const nextHandle = getKofiHandleFromUrl();
+    function prepareKofiWidget() {
+        if (!isPublicLinkEnabled('kofi')) return false;
         const widgetApi = getKofiWidgetApi();
-        if (!kofiWidgetInitialized || !widgetApi) {
+        if (!widgetApi?.draw) return false;
+        const nextHandle = getKofiHandleFromUrl();
+        if (kofiWidgetInitialized && activeKofiWidgetHandle === nextHandle) return true;
+        try {
+            if (kofiWidgetInitialized) {
+                widgetApi.reset?.();
+                kofiWidgetInitialized = false;
+            }
+            widgetApi.draw(nextHandle, {
+                'type': 'floating-chat',
+                'floating-chat.donateButton.text': 'Support me',
+                'floating-chat.donateButton.background-color': '#323842',
+                'floating-chat.donateButton.text-color': '#fff'
+            });
+            kofiWidgetInitialized = true;
             activeKofiWidgetHandle = nextHandle;
+            setKofiWidgetVisibility(true);
+            return true;
+        } catch (error) {
+            return false;
+        }
+    }
+
+    function openPreparedKofiOverlay() {
+        if (prepareKofiWidget()) {
+            if (typeof window.openKofiOverlay === 'function') {
+                window.openKofiOverlay();
+                return;
+            }
+            // draw() exposes the controls on its next task. This path is only
+            // possible if Ko-fi was enabled immediately before the tap; keep
+            // the iframe promise instead of unexpectedly changing behavior.
+            window.setTimeout(() => {
+                if (typeof window.openKofiOverlay === 'function') {
+                    window.openKofiOverlay();
+                } else {
+                    openSocialDestinationInNewTab(getPublicLink('kofi'));
+                }
+            }, 0);
             return;
         }
-        if (nextHandle === activeKofiWidgetHandle) return;
-        activeKofiWidgetHandle = nextHandle;
-        widgetApi.draw(nextHandle, {
-            'type': 'floating-chat',
-            'floating-chat.donateButton.text': 'Support me',
-            'floating-chat.donateButton.background-color': '#323842',
-            'floating-chat.donateButton.text-color': '#fff'
-        });
-    }
-
-    function ensureKofiWidgetReady() {
-        if (kofiWidgetInitialized && typeof window.openKofiOverlay === 'function') {
-            return Promise.resolve(true);
-        }
-        if (kofiWidgetLoadPromise) return kofiWidgetLoadPromise;
-
-        kofiWidgetLoadPromise = new Promise(resolve => {
-            let settled = false;
-            let readyPoll = 0;
-            const finish = ready => {
-                if (settled) return;
-                settled = true;
-                window.clearTimeout(loadTimeout);
-                if (!ready) kofiWidgetLoadPromise = null;
-                resolve(ready);
-            };
-            const waitForOpenFunction = () => {
-                if (typeof window.openKofiOverlay === 'function') {
-                    finish(true);
-                    return;
-                }
-                readyPoll += 1;
-                if (readyPoll >= 30) {
-                    finish(false);
-                    return;
-                }
-                window.setTimeout(waitForOpenFunction, 100);
-            };
-            const initializeWidget = () => {
-                if (settled) return;
-                try {
-                    const widgetApi = getKofiWidgetApi();
-                    if (!widgetApi) {
-                        finish(false);
-                        return;
-                    }
-                    if (!kofiWidgetInitialized) {
-                        activeKofiWidgetHandle = getKofiHandleFromUrl();
-                        widgetApi.draw(activeKofiWidgetHandle, {
-                            'type': 'floating-chat',
-                            'floating-chat.donateButton.text': 'Support me',
-                            'floating-chat.donateButton.background-color': '#323842',
-                            'floating-chat.donateButton.text-color': '#fff'
-                        });
-                        kofiWidgetInitialized = true;
-                        setKofiWidgetVisibility(isPublicLinkEnabled('kofi'));
-                    }
-                    waitForOpenFunction();
-                } catch (error) {
-                    finish(false);
-                }
-            };
-            const loadTimeout = window.setTimeout(() => finish(false), 7000);
-
-            if (getKofiWidgetApi()) {
-                initializeWidget();
-                return;
-            }
-
-            const loader = document.createElement('script');
-            loader.src = KOFI_WIDGET_SCRIPT_SRC;
-            loader.async = true;
-            loader.dataset.kofiWidgetLoader = 'true';
-            loader.addEventListener('load', initializeWidget, { once: true });
-            loader.addEventListener('error', () => {
-                loader.remove();
-                finish(false);
-            }, { once: true });
-            document.body.appendChild(loader);
-        });
-        return kofiWidgetLoadPromise;
-    }
-
-    function syncThroneWidgetUrl() {
-        if (typeof window.setDollThroneUrl === 'function') {
-            window.setDollThroneUrl(getPublicLink('throne'));
-        } else {
-            window.dollThroneUrl = getPublicLink('throne');
-        }
-    }
-
-    async function openKofiOverlay(reservedTab = null) {
-        try {
-            if (await ensureKofiWidgetReady()) {
-                window.openKofiOverlay();
-                if (reservedTab && !reservedTab.closed) reservedTab.close();
-                return;
-            }
-            if (reservedTab && !reservedTab.closed) {
-                reservedTab.location.replace(getPublicLink('kofi'));
-            } else {
-                window.location.assign(getPublicLink('kofi'));
-            }
-        } catch (error) {
-            if (reservedTab && !reservedTab.closed) {
-                reservedTab.location.replace(getPublicLink('kofi'));
-            } else {
-                window.location.assign(getPublicLink('kofi'));
-            }
-        } finally {
-            kofiActivationPending = false;
-        }
+        // A broken third-party embed must never replace doll.gg. Preserve a
+        // useful Ko-fi destination in a separate tab as the safe fallback.
+        openSocialDestinationInNewTab(getPublicLink('kofi'));
     }
 
     // The social panel is now internally scrollable (see .social-links-panel
@@ -4606,6 +4604,14 @@ document.addEventListener("DOMContentLoaded", async function() {
             popSocialCardThen(option, () => openSocialDestinationInNewTab(destination));
         }));
 
+    donateOption?.addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (siteLinkSettings.maintenance_enabled === true) return;
+        if (!isPublicLinkEnabled('kofi') || socialCardPopPending) return;
+        popSocialCardThen(donateOption, openPreparedKofiOverlay);
+    });
+
     function handleWishlistButtonActivate(e) {
         e.preventDefault();
         e.stopPropagation();
@@ -4637,19 +4643,6 @@ document.addEventListener("DOMContentLoaded", async function() {
         if ((e.key === 'Enter' || e.key === ' ') && e.target === supportMenuButton) {
             e.preventDefault();
             supportMenuButton.click();
-        }
-    });
-
-    donateOption?.addEventListener('click', function(e) {
-        e.preventDefault();
-        e.stopPropagation();
-        if (siteLinkSettings.maintenance_enabled === true) return;
-        if (!isPublicLinkEnabled('kofi')) return;
-        if (socialCardPopPending || kofiActivationPending) return;
-        kofiActivationPending = true;
-        const popStarted = popSocialCardThen(donateOption, () => openKofiOverlay());
-        if (!popStarted) {
-            kofiActivationPending = false;
         }
     });
 
