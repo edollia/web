@@ -14,7 +14,7 @@
     const IMAGE_INITIAL_EXTRA_COUNT = 2;
     const IMAGE_HYDRATE_MARGIN_PX = 180;
     const IMAGE_HYDRATE_TIMEOUT_MS = 8000;
-    const IMAGE_RELEASE_DELAY_MS = 30000;
+    const IMAGE_REVEAL_TIMEOUT_MS = 1800;
     const SWIPE_HINT_INITIAL_DELAY_MS = 3000;
     const SWIPE_HINT_FIRST_VISIBLE_MS = 3000;
     const SWIPE_HINT_REPEAT_DELAY_MS = 5000;
@@ -67,13 +67,16 @@
     let imageHydrationObserver = null;
     let imageHydrationRoot = null;
     let imageHydrationFallbackHandler = null;
-    let imageReleaseTimer = 0;
+    let imagePriorityScrollHandler = null;
+    let imagePriorityRefreshRaf = 0;
+    let imageRevealRun = 0;
     let itemsLoadRun = 0;
     let itemsFetchPromise = null;
     let renderedBodySignature = '';
     const imageHydrationQueue = [];
     const imageHydrationQueued = new Set();
     const activeImageHydrations = new Map();
+    const imagePriorityWindow = new Set();
 
     function formatPrice(cents) {
         if (typeof cents !== 'number' || !cents) return '';
@@ -169,10 +172,24 @@
         return Boolean(panel && (panelOpening || panel.classList.contains('active')));
     }
 
-    function clearImageReleaseTimer() {
-        if (!imageReleaseTimer) return;
-        window.clearTimeout(imageReleaseTimer);
-        imageReleaseTimer = 0;
+    function isProductImageWanted(img) {
+        return imagePriorityWindow.has(img) || img?.dataset?.dwlObservedNear === 'true';
+    }
+
+    function applyProductImageDimensions(img, url) {
+        if (!(img instanceof HTMLImageElement) || !img.naturalWidth || !img.naturalHeight) return false;
+        const cleanUrl = String(url || img.dataset.src || '').trim();
+        if (cleanUrl) imageDims.set(cleanUrl, { w: img.naturalWidth, h: img.naturalHeight });
+        img.width = img.naturalWidth;
+        img.height = img.naturalHeight;
+        const media = img.closest('.doll-wishlist-media');
+        media?.style.setProperty('--dwl-image-ratio', `${img.naturalWidth} / ${img.naturalHeight}`);
+        media?.classList.remove('dwl-media-pending', 'dwl-media-error');
+        return true;
+    }
+
+    function signalProductImageSettled(img) {
+        try { img.dispatchEvent(new Event('dwl-image-settled')); } catch (error) {}
     }
 
     function beginProductImageHydration(img, run, url, priority = 'low') {
@@ -195,10 +212,21 @@
             if (entry.run !== run
                 || !isWishlistPanelVisible()
                 || !img.isConnected
-                || img.dataset.dwlNear !== 'true'
+                || !isProductImageWanted(img)
                 || img.dataset.src !== url
                 || img.dataset.dwlFailed === url
-                || img.hasAttribute('src')) continue;
+                || activeImageHydrations.has(img)) continue;
+
+            if (img.hasAttribute('src')) {
+                if (img.complete) {
+                    if (img.naturalWidth) applyProductImageDimensions(img, url);
+                    else img.removeAttribute('src');
+                    signalProductImageSettled(img);
+                    continue;
+                }
+                beginProductImageHydration(img, run, url, entry.priority);
+                continue;
+            }
 
             beginProductImageHydration(img, run, url, entry.priority);
             img.loading = 'eager';
@@ -216,20 +244,18 @@
 
     function finishProductImageLoad(img) {
         const request = activeImageHydrations.get(img);
-        if (!request || request.run !== imageHydrationRun) return;
+        if (!request || request.run !== imageHydrationRun) {
+            if (img.hasAttribute('src')) applyProductImageDimensions(img, img.dataset.src);
+            signalProductImageSettled(img);
+            return;
+        }
         window.clearTimeout(request.timeoutId);
 
-        if (img.naturalWidth && img.naturalHeight) {
-            imageDims.set(request.url, { w: img.naturalWidth, h: img.naturalHeight });
-            img.width = img.naturalWidth;
-            img.height = img.naturalHeight;
-            const media = img.closest('.doll-wishlist-media');
-            media?.style.setProperty('--dwl-image-ratio', `${img.naturalWidth} / ${img.naturalHeight}`);
-            media?.classList.remove('dwl-media-pending', 'dwl-media-error');
-        }
+        applyProductImageDimensions(img, request.url);
         delete img.dataset.dwlLoading;
-        delete img.dataset.dwlInitial;
         activeImageHydrations.delete(img);
+        signalProductImageSettled(img);
+        scheduleProductImagePriorityRefresh(img.closest('.doll-wishlist-body'));
         drainProductImageQueue();
     }
 
@@ -240,33 +266,86 @@
 
         img.dataset.dwlFailed = request.url;
         delete img.dataset.dwlLoading;
-        delete img.dataset.dwlInitial;
         img.removeAttribute('src');
         img.closest('.doll-wishlist-media')?.classList.add('dwl-media-pending', 'dwl-media-error');
         activeImageHydrations.delete(img);
+        signalProductImageSettled(img);
         drainProductImageQueue();
     }
 
-    function queueProductImage(img, priority = 'low') {
+    function onProductImageLoad(event) {
+        finishProductImageLoad(event.currentTarget);
+    }
+
+    function onProductImageError(event) {
+        const img = event.currentTarget;
+        if (activeImageHydrations.has(img)) finishProductImageError(img);
+    }
+
+    function removeQueuedProductImage(img) {
+        imageHydrationQueued.delete(img);
+        const index = imageHydrationQueue.findIndex(entry => entry.img === img);
+        if (index >= 0) imageHydrationQueue.splice(index, 1);
+    }
+
+    function queueProductImage(img, priority = 'low', { deferDrain = false } = {}) {
         const url = String(img?.dataset?.src || '').trim();
         if (!url
             || !isWishlistPanelVisible()
-            || img.dataset.dwlNear !== 'true'
-            || img.hasAttribute('src')
+            || !isProductImageWanted(img)
             || img.dataset.dwlFailed === url
-            || imageHydrationQueued.has(img)
-            || activeImageHydrations.has(img)) return;
+            || !img.isConnected) return;
+
+        const activeRequest = activeImageHydrations.get(img);
+        if (activeRequest) {
+            if (priority === 'high' && activeRequest.priority !== 'high') {
+                activeRequest.priority = 'high';
+                try { img.fetchPriority = 'high'; } catch (error) {}
+            }
+            return;
+        }
+
+        if (img.hasAttribute('src')) {
+            if (img.complete) {
+                if (img.naturalWidth) applyProductImageDimensions(img, url);
+                else img.removeAttribute('src');
+                signalProductImageSettled(img);
+            } else {
+                beginProductImageHydration(img, imageHydrationRun, url, priority);
+            }
+            return;
+        }
+
+        if (imageHydrationQueued.has(img)) {
+            if (priority === 'high') {
+                const queuedIndex = imageHydrationQueue.findIndex(entry => entry.img === img);
+                if (queuedIndex >= 0 && imageHydrationQueue[queuedIndex].priority !== 'high') {
+                    const [entry] = imageHydrationQueue.splice(queuedIndex, 1);
+                    entry.priority = 'high';
+                    const firstLow = imageHydrationQueue.findIndex(candidate => candidate.priority !== 'high');
+                    if (firstLow < 0) imageHydrationQueue.push(entry);
+                    else imageHydrationQueue.splice(firstLow, 0, entry);
+                }
+            }
+            if (!deferDrain) drainProductImageQueue();
+            return;
+        }
 
         imageHydrationQueued.add(img);
         const entry = { img, url, run: imageHydrationRun, priority };
-        if (priority === 'high') imageHydrationQueue.unshift(entry);
-        else imageHydrationQueue.push(entry);
-        drainProductImageQueue();
+        if (priority === 'high') {
+            const firstLow = imageHydrationQueue.findIndex(candidate => candidate.priority !== 'high');
+            if (firstLow < 0) imageHydrationQueue.push(entry);
+            else imageHydrationQueue.splice(firstLow, 0, entry);
+        } else {
+            imageHydrationQueue.push(entry);
+        }
+        if (!deferDrain) drainProductImageQueue();
     }
 
-    function releaseOffscreenProductImage(img) {
-        if (!img) return;
-        imageHydrationQueued.delete(img);
+    function releaseOffscreenProductImage(img, { deferDrain = false } = {}) {
+        if (!img || imagePriorityWindow.has(img)) return;
+        removeQueuedProductImage(img);
         const request = activeImageHydrations.get(img);
         if (request) {
             window.clearTimeout(request.timeoutId);
@@ -277,7 +356,7 @@
         img.loading = 'lazy';
         delete img.dataset.dwlLoading;
         img.closest('.doll-wishlist-media')?.classList.add('dwl-media-pending');
-        drainProductImageQueue();
+        if (!deferDrain) drainProductImageQueue();
     }
 
     function disconnectProductImageObserver() {
@@ -287,15 +366,26 @@
             imageHydrationRoot.removeEventListener('scroll', imageHydrationFallbackHandler);
             window.removeEventListener('resize', imageHydrationFallbackHandler);
         }
+        if (imageHydrationRoot && imagePriorityScrollHandler) {
+            imageHydrationRoot.removeEventListener('scroll', imagePriorityScrollHandler);
+            window.removeEventListener('resize', imagePriorityScrollHandler);
+        }
+        if (imagePriorityRefreshRaf) {
+            window.cancelAnimationFrame(imagePriorityRefreshRaf);
+            imagePriorityRefreshRaf = 0;
+        }
         imageHydrationRoot = null;
         imageHydrationFallbackHandler = null;
+        imagePriorityScrollHandler = null;
     }
 
-    function stopProgressiveItemImages({ releaseLoaded = false } = {}) {
+    function stopProgressiveItemImages({ releaseLoaded = false, retainLoaded = null } = {}) {
         imageHydrationRun += 1;
+        imageRevealRun += 1;
         disconnectProductImageObserver();
         imageHydrationQueue.length = 0;
         imageHydrationQueued.clear();
+        imagePriorityWindow.clear();
 
         activeImageHydrations.forEach((request, img) => {
             // Removing src is the only browser-level cancellation available
@@ -309,13 +399,13 @@
             img.closest('.doll-wishlist-media')?.classList.add('dwl-media-pending');
         });
         activeImageHydrations.clear();
-        panel?.querySelectorAll('.doll-wishlist-product-img[data-dwl-near]').forEach(img => {
-            delete img.dataset.dwlNear;
-            delete img.dataset.dwlInitial;
+        panel?.querySelectorAll('.doll-wishlist-product-img').forEach(img => {
+            delete img.dataset.dwlObservedNear;
         });
 
-        if (releaseLoaded) {
+        if (releaseLoaded || retainLoaded instanceof Set) {
             panel?.querySelectorAll('.doll-wishlist-product-img[src]').forEach(img => {
+                if (!releaseLoaded && retainLoaded.has(img)) return;
                 img.removeAttribute('src');
                 img.removeAttribute('fetchpriority');
                 img.loading = 'lazy';
@@ -324,67 +414,111 @@
         }
     }
 
-    function scheduleProductImageRelease() {
-        clearImageReleaseTimer();
-        imageReleaseTimer = window.setTimeout(() => {
-            imageReleaseTimer = 0;
-            if (!isWishlistPanelVisible()) stopProgressiveItemImages({ releaseLoaded: true });
-        }, IMAGE_RELEASE_DELAY_MS);
+    function rectsOverlap(rect, rootRect) {
+        return rect.bottom > rootRect.top
+            && rect.top < rootRect.bottom
+            && rect.right > rootRect.left
+            && rect.left < rootRect.right;
     }
 
-    function getInitialProductImages(productImages, root) {
-        if (!productImages.length || !root) return [];
-        const rootRect = root.getBoundingClientRect();
-        const visibleIndexes = [];
-        productImages.forEach((img, index) => {
-            const rect = img.getBoundingClientRect();
-            if (rect.bottom >= rootRect.top
-                && rect.top <= rootRect.bottom
-                && rect.right >= rootRect.left
-                && rect.left <= rootRect.right) {
-                visibleIndexes.push(index);
-            }
-        });
-
-        const firstIndex = visibleIndexes.length ? Math.min(...visibleIndexes) : 0;
-        const lastVisibleIndex = visibleIndexes.length ? Math.max(...visibleIndexes) : firstIndex;
-        const finalIndex = Math.min(
-            productImages.length - 1,
-            lastVisibleIndex + IMAGE_INITIAL_EXTRA_COUNT
-        );
-        return productImages.slice(firstIndex, finalIndex + 1);
-    }
-
-    function prioritizeInitialProductImages(body) {
-        if (!body || !isWishlistPanelVisible()) return;
+    function getPriorityProductImages(body, { atStart = false } = {}) {
+        if (!body) return [];
         const root = wishlistViewMode === 'grid'
             ? body.querySelector('.doll-wishlist-scroll')
             : body;
         const productImages = Array.from(body.querySelectorAll('.doll-wishlist-product-img[data-src]'));
-        getInitialProductImages(productImages, root).forEach(img => {
-            img.dataset.dwlNear = 'true';
-            img.dataset.dwlInitial = 'true';
-            queueProductImage(img, 'high');
+        if (!productImages.length || !root) return [];
+        const rootRect = root.getBoundingClientRect();
+        const shiftX = atStart ? root.scrollLeft : 0;
+        const shiftY = atStart ? root.scrollTop : 0;
+        const entries = productImages.map((img, index) => {
+            const rect = img.getBoundingClientRect();
+            return {
+                img,
+                index,
+                rect: {
+                    top: rect.top + shiftY,
+                    bottom: rect.bottom + shiftY,
+                    left: rect.left + shiftX,
+                    right: rect.right + shiftX,
+                }
+            };
+        });
+        const visibleEntries = entries.filter(entry => rectsOverlap(entry.rect, rootRect));
+        const visibleSet = new Set(visibleEntries.map(entry => entry.img));
+        const horizontal = wishlistViewMode === 'grid';
+        const candidates = entries.filter(entry => !visibleSet.has(entry.img));
+        candidates.sort((a, b) => {
+            const aForward = horizontal
+                ? a.rect.left >= rootRect.right - 1
+                : a.rect.top >= rootRect.bottom - 1;
+            const bForward = horizontal
+                ? b.rect.left >= rootRect.right - 1
+                : b.rect.top >= rootRect.bottom - 1;
+            if (aForward !== bForward) return aForward ? -1 : 1;
+            const aDistance = horizontal
+                ? Math.max(0, a.rect.left - rootRect.right)
+                : Math.max(0, a.rect.top - rootRect.bottom);
+            const bDistance = horizontal
+                ? Math.max(0, b.rect.left - rootRect.right)
+                : Math.max(0, b.rect.top - rootRect.bottom);
+            if (aDistance !== bDistance) return aDistance - bDistance;
+            if (horizontal && a.rect.left !== b.rect.left) return a.rect.left - b.rect.left;
+            if (!horizontal && a.rect.top !== b.rect.top) return a.rect.top - b.rect.top;
+            if (a.rect.top !== b.rect.top) return a.rect.top - b.rect.top;
+            if (a.rect.left !== b.rect.left) return a.rect.left - b.rect.left;
+            return a.index - b.index;
+        });
+
+        if (!visibleEntries.length) {
+            return candidates.slice(0, IMAGE_INITIAL_EXTRA_COUNT).map(entry => entry.img);
+        }
+        return [
+            ...visibleEntries.map(entry => entry.img),
+            ...candidates.slice(0, IMAGE_INITIAL_EXTRA_COUNT).map(entry => entry.img),
+        ];
+    }
+
+    function refreshProductImagePriorityWindow(body) {
+        if (!body || !isWishlistPanelVisible()) return new Set();
+        const productImages = Array.from(body.querySelectorAll('.doll-wishlist-product-img[data-src]'));
+        const nextPriorityWindow = new Set(getPriorityProductImages(body));
+        imagePriorityWindow.clear();
+        nextPriorityWindow.forEach(img => imagePriorityWindow.add(img));
+
+        productImages.forEach(img => {
+            if (imagePriorityWindow.has(img)) {
+                queueProductImage(img, 'high', { deferDrain: true });
+            } else if (img.dataset.dwlObservedNear === 'true') {
+                queueProductImage(img, 'low', { deferDrain: true });
+            } else {
+                releaseOffscreenProductImage(img, { deferDrain: true });
+            }
+        });
+        drainProductImageQueue();
+        return nextPriorityWindow;
+    }
+
+    function scheduleProductImagePriorityRefresh(body) {
+        if (!body || imagePriorityRefreshRaf || !isWishlistPanelVisible()) return;
+        imagePriorityRefreshRaf = window.requestAnimationFrame(() => {
+            imagePriorityRefreshRaf = 0;
+            refreshProductImagePriorityWindow(body);
         });
     }
 
     function setupProgressiveItemImages(body) {
         stopProgressiveItemImages();
-        clearImageReleaseTimer();
         const run = imageHydrationRun;
         const productImages = Array.from(body.querySelectorAll('.doll-wishlist-product-img[data-src]'));
         if (!productImages.length) return;
 
         productImages.forEach(img => {
-            img.addEventListener('load', () => finishProductImageLoad(img));
-            img.addEventListener('error', () => finishProductImageError(img));
-            if (!img.hasAttribute('src')) return;
-
-            const url = String(img.dataset.src || img.currentSrc || img.src || '').trim();
-            beginProductImageHydration(img, run, url);
-            if (img.complete) {
-                if (img.naturalWidth) finishProductImageLoad(img);
-                else finishProductImageError(img);
+            delete img.dataset.dwlFailed;
+            if (img.dataset.dwlHydrationBound !== 'true') {
+                img.dataset.dwlHydrationBound = 'true';
+                img.addEventListener('load', onProductImageLoad);
+                img.addEventListener('error', onProductImageError);
             }
         });
 
@@ -393,22 +527,24 @@
             : body;
         if (!imageHydrationRoot) return;
 
-        // Use the real laid-out viewport, not a fixed "first four" guess.
-        // Every card currently visible on any screen height is prioritized,
-        // followed by exactly two more cards as a scroll/swipe buffer.
-        prioritizeInitialProductImages(body);
+        // Use the real laid-out viewport, never a fixed "first four" guess.
+        // Every card actually visible at this screen height is high priority,
+        // followed by exactly two more cards in the forward scroll direction.
+        refreshProductImagePriorityWindow(body);
+        imagePriorityScrollHandler = () => scheduleProductImagePriorityRefresh(body);
+        imageHydrationRoot.addEventListener('scroll', imagePriorityScrollHandler, { passive: true });
+        window.addEventListener('resize', imagePriorityScrollHandler, { passive: true });
 
         if (typeof window.IntersectionObserver === 'function') {
             imageHydrationObserver = new IntersectionObserver(entries => {
                 entries.forEach(entry => {
                     const img = entry.target;
                     if (entry.isIntersecting) {
-                        img.dataset.dwlNear = 'true';
+                        img.dataset.dwlObservedNear = 'true';
                         queueProductImage(img);
                         return;
                     }
-                    if (img.dataset.dwlInitial === 'true') return;
-                    img.dataset.dwlNear = 'false';
+                    delete img.dataset.dwlObservedNear;
                     releaseOffscreenProductImage(img);
                 });
             }, {
@@ -434,14 +570,78 @@
                     && rect.top <= rootRect.bottom + IMAGE_HYDRATE_MARGIN_PX
                     && rect.right >= rootRect.left - IMAGE_HYDRATE_MARGIN_PX
                     && rect.left <= rootRect.right + IMAGE_HYDRATE_MARGIN_PX;
-                img.dataset.dwlNear = nearby ? 'true' : 'false';
+                if (nearby) img.dataset.dwlObservedNear = 'true';
+                else delete img.dataset.dwlObservedNear;
                 if (nearby) queueProductImage(img);
-                else if (img.dataset.dwlInitial !== 'true') releaseOffscreenProductImage(img);
+                else releaseOffscreenProductImage(img);
             });
         };
         imageHydrationRoot.addEventListener('scroll', imageHydrationFallbackHandler, { passive: true });
         window.addEventListener('resize', imageHydrationFallbackHandler, { passive: true });
         imageHydrationFallbackHandler();
+    }
+
+    function waitForProductImage(img, timeoutMs) {
+        const url = String(img?.dataset?.src || '').trim();
+        if (!img || !url || (img.complete && img.naturalWidth) || img.dataset.dwlFailed === url) {
+            return Promise.resolve();
+        }
+        return new Promise(resolve => {
+            let timer = 0;
+            const finish = () => {
+                img.removeEventListener('dwl-image-settled', finish);
+                if (timer) window.clearTimeout(timer);
+                resolve();
+            };
+            img.addEventListener('dwl-image-settled', finish, { once: true });
+            timer = window.setTimeout(finish, Math.max(0, timeoutMs));
+        });
+    }
+
+    async function revealPreparedWishlistBody(body) {
+        if (!body) return;
+        const run = ++imageRevealRun;
+        const deadline = performance.now() + IMAGE_REVEAL_TIMEOUT_MS;
+
+        for (let pass = 0; pass < 3 && performance.now() < deadline; pass += 1) {
+            const priorityImages = Array.from(refreshProductImagePriorityWindow(body));
+            const pending = priorityImages.filter(img => String(img.dataset.src || '').trim()
+                && !(img.complete && img.naturalWidth)
+                && img.dataset.dwlFailed !== img.dataset.src);
+            if (!pending.length) break;
+            await Promise.all(pending.map(img => waitForProductImage(img, deadline - performance.now())));
+            if (run !== imageRevealRun || !isWishlistPanelVisible()) return;
+            await new Promise(resolve => window.requestAnimationFrame(resolve));
+        }
+
+        const decodedImages = Array.from(imagePriorityWindow).filter(img => img.complete && img.naturalWidth);
+        const remaining = Math.max(0, deadline - performance.now());
+        if (remaining && decodedImages.length) {
+            await Promise.race([
+                Promise.all(decodedImages.map(img => typeof img.decode === 'function'
+                    ? img.decode().catch(() => {})
+                    : Promise.resolve())),
+                new Promise(resolve => window.setTimeout(resolve, remaining)),
+            ]);
+        }
+        if (run !== imageRevealRun || !isWishlistPanelVisible() || !body.isConnected) return;
+
+        body.querySelector('.dwl-initial-image-loader')?.remove();
+        body.classList.remove('dwl-images-preparing');
+        void body.offsetWidth;
+        body.classList.add('dwl-ready-in');
+        window.setTimeout(() => body?.classList.remove('dwl-ready-in'), 360);
+    }
+
+    function prepareWishlistImageReveal(body) {
+        if (!body) return;
+        body.classList.add('dwl-images-preparing');
+        body.querySelector('.dwl-initial-image-loader')?.remove();
+        const loader = document.createElement('div');
+        loader.className = 'dwl-initial-image-loader';
+        loader.setAttribute('aria-hidden', 'true');
+        loader.innerHTML = renderLoadingState();
+        body.appendChild(loader);
     }
 
     function injectStyles() {
@@ -702,6 +902,29 @@
 
             .doll-wishlist-body.dwl-ready-in {
                 animation: dollWishlistContentIn 0.32s cubic-bezier(0.2, 0.82, 0.24, 1) both;
+            }
+
+            /* Keep the stable paw loader in place until the cards that are
+               actually visible (plus the two-card buffer) have settled. The
+               real cards still participate in layout behind it, so masonry
+               can measure its final geometry without flashing blank tiles. */
+            .doll-wishlist-body.dwl-images-preparing > :not(.dwl-initial-image-loader) {
+                visibility: hidden;
+            }
+            .dwl-initial-image-loader {
+                position: absolute;
+                inset: 0;
+                z-index: 20;
+                display: grid;
+                place-items: center;
+                min-height: min(350px, 48vh);
+                background: rgba(255, 250, 253, 0.96);
+                pointer-events: none;
+            }
+            .dwl-initial-image-loader .dwl-loading {
+                width: 100%;
+                min-height: 100%;
+                margin: 0;
             }
 
             @keyframes dollWishlistContentIn {
@@ -2504,6 +2727,7 @@
     function onScroll(event) {
         const scroll = event.currentTarget;
         if (Math.abs(scroll.scrollLeft) > 2) cancelSwipeHintSequence();
+        scheduleProductImagePriorityRefresh(scroll.closest('.doll-wishlist-body'));
         if (scrollRaf) return;
         scrollRaf = window.requestAnimationFrame(() => {
             scrollRaf = 0;
@@ -2539,6 +2763,7 @@
     function onWishlistBodyScroll(event) {
         const body = event.currentTarget;
         if (!body.classList.contains('dwl-scroll-body')) return;
+        scheduleProductImagePriorityRefresh(body);
         const shell = body.closest('.doll-wishlist-scroll-shell');
         if (window.dollQueuePanelScrollUpdate?.(body, shell)) return;
         window.dollMarkPanelScrollActivity?.();
@@ -2687,6 +2912,7 @@
         const body = panel?.querySelector('.doll-wishlist-body');
         if (!body) return;
         stopProgressiveItemImages();
+        prepareWishlistImageReveal(body);
         body.scrollTop = 0;
         const horizontalScroll = body.querySelector('.doll-wishlist-scroll');
         if (horizontalScroll) horizontalScroll.scrollLeft = 0;
@@ -2700,6 +2926,7 @@
             button.setAttribute('aria-label', `Add ${label}`);
         });
         setupProgressiveItemImages(body);
+        void revealPreparedWishlistBody(body);
         window.requestAnimationFrame(() => {
             syncTitleMarquees(body);
             scheduleSwipeHint();
@@ -2716,7 +2943,7 @@
         const readyScrollable = loadState === 'ready'
             && (wishlistViewMode === 'list' || wishlistViewMode === 'masonry');
         body.classList.toggle('dwl-scroll-body', readyScrollable);
-        body.classList.remove('dwl-ready-in');
+        body.classList.remove('dwl-ready-in', 'dwl-images-preparing');
         body.closest('.doll-wishlist-scroll-shell')
             ?.classList.remove('has-content-above', 'has-content-below');
         if (!body.dataset.dwlBodyScrollBound) {
@@ -2775,6 +3002,7 @@
         }
         renderedBodySignature = getWishlistBodySignature();
 
+        prepareWishlistImageReveal(body);
         setupProgressiveItemImages(body);
 
         const scroll = body.querySelector('.doll-wishlist-scroll');
@@ -2809,9 +3037,7 @@
             dock.appendChild(foot);
             body.appendChild(dock);
         }
-        void body.offsetWidth;
-        body.classList.add('dwl-ready-in');
-        window.setTimeout(() => body?.classList.remove('dwl-ready-in'), 360);
+        void revealPreparedWishlistBody(body);
         window.requestAnimationFrame(() => {
             syncTitleMarquees(body);
             scheduleSwipeHint();
@@ -2958,7 +3184,7 @@
         window.requestAnimationFrame(() => {
             const body = panel?.querySelector('.doll-wishlist-body');
             window.dollRefreshPanelScrollExtent?.(body);
-            prioritizeInitialProductImages(body);
+            scheduleProductImagePriorityRefresh(body);
             updateWishlistEdgeFade(body);
         });
     }
@@ -3171,8 +3397,6 @@
         if (!el) return;
         if (hasConflictingLayer()) return;
         if (el.classList.contains('active') || panelOpening) return;
-        clearImageReleaseTimer();
-
         const checkoutArt = el.querySelector('.doll-wishlist-checkout-art[data-checkout-src]');
         if (checkoutArt && !checkoutArt.getAttribute('src') && checkoutArt.dataset.checkoutLoadStarted !== 'true') {
             checkoutArt.dataset.checkoutLoadStarted = 'true';
@@ -3264,7 +3488,9 @@
             panelOpenRaf = 0;
         }
         panelOpening = false;
-        stopProgressiveItemImages();
+        const wishlistBody = panel?.querySelector('.doll-wishlist-body');
+        const retainedImages = new Set(getPriorityProductImages(wishlistBody, { atStart: true }));
+        stopProgressiveItemImages({ retainLoaded: retainedImages });
         closePreview();
         cancelSwipeHintSequence();
         document.body.classList.remove('has-wishlist-panel-open', 'has-wishlist-selection');
@@ -3282,7 +3508,6 @@
         panel.classList.remove('active');
         panel.setAttribute('aria-hidden', 'true');
         showNoteImage();
-        scheduleProductImageRelease();
     }
 
     document.addEventListener('keydown', event => {
@@ -3301,6 +3526,7 @@
             renderDots();
             updateActiveDot();
             syncTitleMarquees();
+            scheduleProductImagePriorityRefresh(panel?.querySelector('.doll-wishlist-body'));
         });
     }, { passive: true });
 

@@ -151,25 +151,17 @@ document.addEventListener("DOMContentLoaded", async function() {
         backgroundFadeFrame = null;
     }
 
-    // Safari can reject play() after the entrance animation because the
-    // original tap activation has expired. Prime this *plain* media element
-    // muted during the trusted gesture; UI effects use Web Audio separately.
-    // Keeping music out of that suspendable graph prevents Safari reporting
-    // "playing" while producing no sound.
+    // Start the plain media element inside the visitor's actual entry gesture.
+    // Safari may pause media that was started muted and then unmuted later, so
+    // this is intentionally an audible start (with our short volume fade), not
+    // a delayed-unmute autoplay workaround.
     function primeBackgroundMusic() {
         if (audioPlayed || backgroundMusicUnlocked || !audio.paused) {
             backgroundMusicUnlocked = !audio.paused;
             return;
         }
-        audio.muted = true;
-        const playAttempt = audio.play();
-        if (!playAttempt?.then) {
-            backgroundMusicUnlocked = !audio.paused;
-            return;
-        }
-        playAttempt
-            .then(() => { backgroundMusicUnlocked = true; })
-            .catch(() => { backgroundMusicUnlocked = false; });
+        audio.muted = false;
+        startBackgroundMusic();
     }
 
     function armBackgroundMusicRetry() {
@@ -179,7 +171,10 @@ document.addEventListener("DOMContentLoaded", async function() {
             backgroundMusicRetryArmed = false;
             document.removeEventListener('pointerdown', retry, true);
             document.removeEventListener('keydown', retry, true);
-            void warmUiSounds().finally(startBackgroundMusic);
+            void warmUiSounds();
+            // Keep play() inside this trusted event. Waiting for the Web Audio
+            // resume promise can outlive Safari's media-activation window.
+            startBackgroundMusic();
         };
         document.addEventListener('pointerdown', retry, { once: true, capture: true });
         document.addEventListener('keydown', retry, { once: true, capture: true });
@@ -204,7 +199,18 @@ document.addEventListener("DOMContentLoaded", async function() {
                 // Metadata may still be settling; play() below remains safe.
             }
         }
-        audio.play()
+        let playAttempt;
+        try {
+            playAttempt = audio.play();
+        } catch (error) {
+            audioPlayed = false;
+            backgroundMusicUnlocked = false;
+            armBackgroundMusicRetry();
+            return;
+        }
+        // Modern browsers return a Promise; older iOS WebViews may return
+        // undefined even when playback starts successfully.
+        Promise.resolve(playAttempt)
             .then(() => {
                 backgroundMusicUnlocked = true;
                 if (firstAudibleStart) {
@@ -224,6 +230,8 @@ document.addEventListener("DOMContentLoaded", async function() {
     audio.addEventListener('pause', stopBackgroundFadeLoop);
     setBackgroundMusicVolume(backgroundMusicVolume);
     const uiSoundBuffers = {};
+    const lastUiSoundAt = new Map();
+    const pendingUiSoundTypes = new Set();
     const uiSoundPlayers = Object.fromEntries(
         Object.entries(uiSounds).map(([type, src]) => {
             const sound = new Audio(src);
@@ -234,6 +242,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         })
     );
     let uiSoundsWarmed = false;
+    let uiAudioResumePromise = null;
 
     async function loadUiSoundBuffers() {
         if (!uiAudioContext) return;
@@ -262,13 +271,16 @@ document.addEventListener("DOMContentLoaded", async function() {
     // to overlapping HTMLAudio players that can duck music on iPhone.
     void ensureUiSoundBuffers();
 
-    async function resumeUiAudioContext() {
-        if (!uiAudioContext || uiAudioContext.state === 'running') return;
-        try {
-            await uiAudioContext.resume();
-        } catch (error) {
-            // The overlapping HTMLAudioElement fallback remains available.
-        }
+    function resumeUiAudioContext() {
+        if (!uiAudioContext || uiAudioContext.state === 'running') return Promise.resolve();
+        if (uiAudioResumePromise) return uiAudioResumePromise;
+        uiAudioResumePromise = Promise.resolve()
+            .then(() => uiAudioContext.resume())
+            .catch(() => {
+                // The HTMLAudioElement fallback remains available.
+            })
+            .finally(() => { uiAudioResumePromise = null; });
+        return uiAudioResumePromise;
     }
 
     async function warmUiSounds() {
@@ -311,11 +323,17 @@ document.addEventListener("DOMContentLoaded", async function() {
     }
 
     function playUiSound(type) {
+        const now = performance.now();
+        if (now - (lastUiSoundAt.get(type) || 0) < 60) return;
+        lastUiSoundAt.set(type, now);
         if (playDecodedUiSound(type)) return;
         if (uiAudioContext && uiSoundBuffers[type] && uiAudioContext.state !== 'running') {
             // resume() happens inside the trusted tap. Play exactly once after
             // it settles; do not also start an HTMLAudio copy in parallel.
+            if (pendingUiSoundTypes.has(type)) return;
+            pendingUiSoundTypes.add(type);
             void resumeUiAudioContext().then(() => {
+                pendingUiSoundTypes.delete(type);
                 if (!playDecodedUiSound(type)) playHtmlUiSound(type);
             });
             return;
@@ -964,6 +982,8 @@ document.addEventListener("DOMContentLoaded", async function() {
     };
     let submissionsRevision = 0;
     let submissionsLoadPromise = null;
+    let submissionsCacheReleaseTimer = 0;
+    let clearRenderedSubmissionsCache = null;
     const submissionsLoadControllers = new Set();
     const submissionFeeds = {
         drawings: {
@@ -971,6 +991,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             pageSize: PUBLIC_DRAWINGS_PAGE_SIZE,
             items: preloadedSubmissions.drawings,
             ids: new Set(),
+            phase: 'dated',
             cursor: null,
             done: false,
             loading: false,
@@ -983,6 +1004,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             pageSize: PUBLIC_QUESTIONS_PAGE_SIZE,
             items: preloadedSubmissions.questions,
             ids: new Set(),
+            phase: 'dated',
             cursor: null,
             done: false,
             loading: false,
@@ -1005,6 +1027,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     function resetSubmissionFeed(state) {
         state.items = [];
         state.ids.clear();
+        state.phase = 'dated';
         state.cursor = null;
         state.done = false;
         state.loading = false;
@@ -1147,8 +1170,11 @@ document.addEventListener("DOMContentLoaded", async function() {
         return error;
     }
 
-    function applySubmissionCursor(query, cursor) {
-        if (!cursor?.createdAt || !cursor?.id) return query;
+    function applySubmissionCursor(query, state) {
+        const cursor = state?.cursor;
+        if (!cursor?.id) return query;
+        if (state.phase === 'undated') return query.lt('id', cursor.id);
+        if (!cursor.createdAt) return query;
         return query.or(
             `created_at.lt.${cursor.createdAt},and(created_at.eq.${cursor.createdAt},id.lt.${cursor.id})`
         );
@@ -1164,18 +1190,19 @@ document.addEventListener("DOMContentLoaded", async function() {
             query = window.supabase
                 .from('drawings')
                 .select('id,imageData,created_at')
-                .eq('approved', true)
-                .order('created_at', { ascending: false })
-                .order('id', { ascending: false });
+                .eq('approved', true);
         } else {
             query = window.supabase
                 .from('questions')
                 .select('id,question,answer,created_at')
-                .not('answer', 'is', null)
-                .order('created_at', { ascending: false })
-                .order('id', { ascending: false });
+                .not('answer', 'is', null);
         }
-        query = applySubmissionCursor(query, state.cursor)
+        query = state.phase === 'undated'
+            ? query.is('created_at', null)
+            : query.not('created_at', 'is', null)
+                .order('created_at', { ascending: false, nullsFirst: false });
+        query = applySubmissionCursor(query, state)
+            .order('id', { ascending: false })
             .limit(state.pageSize)
             .abortSignal(signal);
         const result = await query;
@@ -1208,10 +1235,26 @@ document.addEventListener("DOMContentLoaded", async function() {
                     throw createSubmissionsAbortError();
                 }
                 const lastRawItem = rawItems[rawItems.length - 1];
-                if (lastRawItem?.created_at && lastRawItem?.id) {
-                    state.cursor = { createdAt: lastRawItem.created_at, id: lastRawItem.id };
+                if (lastRawItem?.id) {
+                    state.cursor = {
+                        createdAt: state.phase === 'dated' ? lastRawItem.created_at : null,
+                        id: lastRawItem.id
+                    };
                 }
-                state.done = rawItems.length < state.pageSize;
+                if (rawItems.length < state.pageSize) {
+                    if (state.phase === 'dated') {
+                        // Old rows can predate the timestamp migration. They
+                        // belong at the end, but must never disappear merely
+                        // because keyset pagination needs a non-null cursor.
+                        state.phase = 'undated';
+                        state.cursor = null;
+                        state.done = false;
+                    } else {
+                        state.done = true;
+                    }
+                } else {
+                    state.done = false;
+                }
 
                 const usableItems = state.key === 'questions'
                     ? rawItems.filter(item => String(item.answer || '').trim())
@@ -1227,12 +1270,16 @@ document.addEventListener("DOMContentLoaded", async function() {
                 return { feedKey, items: newItems };
             })
             .catch(error => {
-                if (timedOut && requestRevision === submissionsRevision) {
+                if (timedOut
+                    && requestRevision === submissionsRevision
+                    && state.controller === controller) {
                     state.error = new Error('Public submissions request timed out.');
                     throw state.error;
                 }
                 if (controller.signal.aborted) throw createSubmissionsAbortError();
-                if (requestRevision === submissionsRevision) state.error = error;
+                if (requestRevision === submissionsRevision && state.controller === controller) {
+                    state.error = error;
+                }
                 throw error;
             })
             .finally(() => {
@@ -1580,10 +1627,6 @@ document.addEventListener("DOMContentLoaded", async function() {
     let entryBubbleHintTimer = 0;
     let entryBubbleHintCleanupTimer = 0;
     let entryBubbleHintShown = false;
-    const legacyIOSMatch = navigator.userAgent.match(/(?:CPU (?:iPhone )?OS|iPhone OS) (\d+)[._]/);
-    const isLegacyIOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
-        && legacyIOSMatch
-        && Number(legacyIOSMatch[1]) <= 15;
     if (popup) popup.style.display = "flex";
 
     function dismissEntryGate(trigger = null) {
@@ -1616,10 +1659,6 @@ document.addEventListener("DOMContentLoaded", async function() {
                 }
 
             }, 500);
-
-            // CUT2 is 0.6 seconds long. Give legacy iOS a little extra separation
-            // before page music starts, while retaining the current timing elsewhere.
-            window.setTimeout(startBackgroundMusic, isLegacyIOS ? 900 : 700);
         }, trigger ? 420 : 80);
     }
 
@@ -2429,9 +2468,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         postsOpenGeneration += 1;
         abortSubmissionLoads();
         submissionsLoadPromise = null;
-        postsPanel?.querySelectorAll('#drawings-list img[data-drawing-src], #drawings-list .post-item > img').forEach(image => {
-            const src = image.getAttribute('src');
-            if (src) image.dataset.drawingSrc = src;
+        postsPanel?.querySelectorAll('#drawings-list .post-item > img').forEach(image => {
             image.removeAttribute('src');
         });
         pausePostsMedia();
@@ -2449,6 +2486,15 @@ document.addEventListener("DOMContentLoaded", async function() {
         if (!postsPanel || !postsButton) return;
         postsPanel.classList.remove('active');
         postsButton.textContent = ':3';
+        window.clearTimeout(submissionsCacheReleaseTimer);
+        submissionsCacheReleaseTimer = window.setTimeout(() => {
+            if (postsPanel?.classList.contains('active')) return;
+            submissionsRevision += 1;
+            abortSubmissionLoads();
+            submissionsLoadPromise = null;
+            Object.values(submissionFeeds).forEach(resetSubmissionFeed);
+            clearRenderedSubmissionsCache?.();
+        }, 60000);
     }
 
     function showNoteImage() {
@@ -2595,6 +2641,9 @@ document.addEventListener("DOMContentLoaded", async function() {
     let socialPreviewReleaseTimer = 0;
     const SOCIAL_PREVIEW_ROOT_MARGIN = 120;
     const SOCIAL_PREVIEW_RELEASE_DELAY_MS = 30000;
+    const SOCIAL_PREVIEW_EXTRA_CACHE = 2;
+    const initialSocialPreviewCards = new Set();
+    const socialPreviewRecency = new Map();
 
     function getSocialCardVideoEntries() {
         return socialCardDefinitions.map(({ key, option }) => [key, option]);
@@ -2620,6 +2669,8 @@ document.addEventListener("DOMContentLoaded", async function() {
 
     function removeSocialCardVideo(card) {
         if (!card) return;
+        initialSocialPreviewCards.delete(card);
+        socialPreviewRecency.delete(card);
         const preview = card.querySelector('.social-link-preview');
         if (preview) {
             if (preview instanceof HTMLVideoElement) {
@@ -2632,6 +2683,28 @@ document.addEventListener("DOMContentLoaded", async function() {
             preview.remove();
         }
         card.classList.remove('has-social-preview');
+    }
+
+    function touchSocialCardPreview(card) {
+        if (card) socialPreviewRecency.set(card, performance.now());
+    }
+
+    function trimSocialCardPreviewCache() {
+        const loadedCards = getVisibleSocialOptions().filter(card => (
+            card.querySelector('.social-link-preview[src]')
+        ));
+        const protectedCards = new Set(initialSocialPreviewCards);
+        loadedCards.forEach(card => {
+            if (card.dataset.socialPreviewNear === 'true') protectedCards.add(card);
+        });
+        const cacheLimit = protectedCards.size + SOCIAL_PREVIEW_EXTRA_CACHE;
+        if (loadedCards.length <= cacheLimit) return;
+
+        loadedCards
+            .filter(card => !protectedCards.has(card))
+            .sort((a, b) => (socialPreviewRecency.get(a) || 0) - (socialPreviewRecency.get(b) || 0))
+            .slice(0, loadedCards.length - cacheLimit)
+            .forEach(card => pauseSocialCardPreview(card));
     }
 
     function pauseSocialCardPreview(card, { releaseSource = true } = {}) {
@@ -2724,6 +2797,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             delete preview.dataset.socialPausedSrc;
             if (preview instanceof HTMLVideoElement) preview.load();
         }
+        touchSocialCardPreview(card);
 
         if (preview instanceof HTMLVideoElement && socialsButton?.classList.contains('open') && !document.hidden) {
             preview.play().catch(() => {});
@@ -2752,6 +2826,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         socialPreviewObserver?.disconnect();
         socialPreviewObserver = null;
         const cards = getVisibleSocialOptions();
+        initialSocialPreviewCards.clear();
         cards.forEach(card => delete card.dataset.socialPreviewNear);
 
         if (!socialLinksPanel || typeof window.IntersectionObserver !== 'function') {
@@ -2765,11 +2840,16 @@ document.addEventListener("DOMContentLoaded", async function() {
                 if (!(card instanceof HTMLElement)) return;
                 if (!entry.isIntersecting) {
                     delete card.dataset.socialPreviewNear;
-                    pauseSocialCardPreview(card);
+                    // Pause offscreen video work, but keep a small source LRU
+                    // (including the opening viewport) so scrolling or a quick
+                    // close/reopen never flashes an empty background.
+                    pauseSocialCardPreview(card, { releaseSource: false });
+                    trimSocialCardPreviewCache();
                     return;
                 }
 
                 card.dataset.socialPreviewNear = 'true';
+                touchSocialCardPreview(card);
                 if (!socialsButton?.classList.contains('open') || document.hidden) return;
                 const key = getSocialCardVideoKey(card);
                 if (key) syncSocialCardVideo(key, card, true);
@@ -2786,6 +2866,8 @@ document.addEventListener("DOMContentLoaded", async function() {
             // observer takes over as soon as the visitor scrolls.
             if (!isSocialCardNearPanel(card)) return;
             card.dataset.socialPreviewNear = 'true';
+            initialSocialPreviewCards.add(card);
+            touchSocialCardPreview(card);
             const key = getSocialCardVideoKey(card);
             if (key) syncSocialCardVideo(key, card, true);
         });
@@ -2809,6 +2891,8 @@ document.addEventListener("DOMContentLoaded", async function() {
         window.clearTimeout(socialPreviewReleaseTimer);
         socialPreviewReleaseTimer = 0;
         getSocialCardVideoEntries().forEach(([, card]) => pauseSocialCardPreview(card));
+        initialSocialPreviewCards.clear();
+        socialPreviewRecency.clear();
     }
 
     function pauseSocialCardVideos({ releaseSources = false } = {}) {
@@ -2825,7 +2909,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             // close/reopen cycles. Videos are paused immediately; GIF/video
             // sources are released later if Socials stays closed.
             socialPreviewReleaseTimer = window.setTimeout(() => {
-                if (!socialsButton?.classList.contains('open')) {
+                if (!socialsButton?.classList.contains('open') || document.hidden) {
                     releaseSocialCardPreviewSources();
                 }
             }, SOCIAL_PREVIEW_RELEASE_DELAY_MS);
@@ -3351,7 +3435,6 @@ document.addEventListener("DOMContentLoaded", async function() {
             option.setAttribute('aria-hidden', enabled ? 'false' : 'true');
             option.setAttribute('tabindex', '-1');
             updateSocialCardDisplay(option, key, label, withAt);
-            if (key === 'onlyfans' && !enabled) option.remove();
         });
         if (donateOption) {
             syncKofiWidgetHandle();
@@ -3702,13 +3785,15 @@ document.addEventListener("DOMContentLoaded", async function() {
             playSocialCardVideos();
         }
         if (!document.hidden && backgroundMusicRequested) {
-            void warmUiSounds().finally(startBackgroundMusic);
+            void warmUiSounds();
+            startBackgroundMusic();
         }
         syncPostsMediaPlayback();
     });
     window.addEventListener('pageshow', () => {
         if (backgroundMusicRequested) {
-            void warmUiSounds().finally(startBackgroundMusic);
+            void warmUiSounds();
+            startBackgroundMusic();
         }
     });
     window.addEventListener('pagehide', releaseSocialCardPreviewSources);
@@ -4549,13 +4634,10 @@ document.addEventListener("DOMContentLoaded", async function() {
             ? new IntersectionObserver(entries => {
                 entries.forEach(entry => {
                     const image = entry.target;
-                    if (entry.isIntersecting) {
-                        const src = image.dataset.drawingSrc;
-                        if (src && !image.getAttribute('src')) image.src = src;
+                    if (entry.isIntersecting && postsPopup?.classList.contains('active')) {
+                        restoreDrawingImage(image);
                         return;
                     }
-                    const src = image.getAttribute('src');
-                    if (src) image.dataset.drawingSrc = src;
                     image.removeAttribute('src');
                 });
             }, {
@@ -4653,10 +4735,35 @@ document.addEventListener("DOMContentLoaded", async function() {
             });
         }
 
+        function restoreDrawingImage(image) {
+            if (!(image instanceof HTMLImageElement) || image.getAttribute('src')) return;
+            const drawingId = String(image.dataset.drawingId || '');
+            const drawing = submissionFeeds.drawings.items.find(item => String(item?.id || '') === drawingId);
+            const src = getDrawingSrc(drawing?.imageData);
+            if (src) image.src = src;
+        }
+
+        function resumeCachedDrawingImages() {
+            if (!postsPopup?.classList.contains('active') || !drawingsList) return;
+            const rootRect = postsContentEl?.getBoundingClientRect();
+            drawingsList.querySelectorAll('.post-item > img[data-drawing-id]').forEach(image => {
+                drawingImageObserver?.observe(image);
+                if (!rootRect) {
+                    restoreDrawingImage(image);
+                    return;
+                }
+                const rect = image.getBoundingClientRect();
+                if (rect.bottom >= rootRect.top - 220 && rect.top <= rootRect.bottom + 220) {
+                    restoreDrawingImage(image);
+                }
+            });
+        }
+
         function getSubmissionsRenderKey(drawings, questions) {
-            const drawingKey = drawings.map(drawing => drawing.id || drawing.created_at || '').join(',');
-            const questionKey = questions.map(question => question.id || question.created_at || '').join(',');
-            return `${drawings.length}:${drawingKey}|${questions.length}:${questionKey}`;
+            const lastDrawing = drawings[drawings.length - 1];
+            const lastQuestion = questions[questions.length - 1];
+            return `${submissionsRevision}:${drawings.length}:${lastDrawing?.id || ''}`
+                + `|${questions.length}:${lastQuestion?.id || ''}`;
         }
 
         function submissionsStatusMarkup(message, failed = false) {
@@ -4691,6 +4798,8 @@ document.addEventListener("DOMContentLoaded", async function() {
                 if (open) {
                     showNoteImage();
                 } else {
+                    window.clearTimeout(submissionsCacheReleaseTimer);
+                    submissionsCacheReleaseTimer = 0;
                     closeDrawingWidget();
                     closeQuestionForm();
                     if (typeof window.closeThroneMockup === 'function') window.closeThroneMockup();
@@ -4733,7 +4842,9 @@ document.addEventListener("DOMContentLoaded", async function() {
                 document.getElementById(this.dataset.tab).classList.add('active');
                 this.closest('.posts-tabs')?.classList.toggle('questions-active', this.dataset.tab === 'questions-tab');
                 syncPostsMediaPlayback();
-                scheduleVisibleSubmissionPage(this.dataset.tab === 'questions-tab' ? 'questions' : 'drawings');
+                const activeFeed = this.dataset.tab === 'questions-tab' ? 'questions' : 'drawings';
+                if (activeFeed === 'drawings') resumeCachedDrawingImages();
+                scheduleVisibleSubmissionPage(activeFeed);
             });
         });
 
@@ -4892,6 +5003,8 @@ document.addEventListener("DOMContentLoaded", async function() {
                 renderedSubmissionsKey = nextRenderKey;
                 renderDrawings(drawings);
                 renderQuestions(questions);
+            } else {
+                resumeCachedDrawingImages();
             }
             updateSubmissionSentinel('drawings');
             updateSubmissionSentinel('questions');
@@ -4924,7 +5037,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                     image.alt = 'User drawing';
                     image.loading = index < 4 ? 'eager' : 'lazy';
                     image.decoding = 'async';
-                    image.dataset.drawingSrc = drawingSrc;
+                    image.dataset.drawingId = String(drawing.id);
                     if (!drawingImageObserver || (index < 4 && postsPopup?.classList.contains('active'))) {
                         image.src = drawingSrc;
                     }
@@ -4963,7 +5076,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                     if (!image.getAttribute('src')
                         && (image.dataset.postsPausedSrc || image.dataset.postsSrc)) return;
                     const link = image.closest('.answer-gif-link');
-                    const href = image.dataset.mediaUrl || link?.href || '';
+                    const href = link?.href || image.dataset.mediaUrl || '';
                     if (!link || !href) return;
                     const replacement = document.createElement('a');
                     replacement.href = href;
@@ -5053,6 +5166,16 @@ document.addEventListener("DOMContentLoaded", async function() {
                 }
             }
         }
+
+        clearRenderedSubmissionsCache = () => {
+            drawingImageObserver?.disconnect();
+            drawingLikesObserver?.disconnect();
+            postsMediaObserver?.disconnect();
+            submissionPageObserver?.disconnect();
+            drawingsList?.replaceChildren();
+            questionsList?.replaceChildren();
+            renderedSubmissionsKey = '';
+        };
 
         // ===== LIKE SYSTEM =====
         const reactionIcons = {
