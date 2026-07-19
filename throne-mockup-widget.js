@@ -56,7 +56,6 @@
     let checkoutStatusMessage = '';
     let checkoutRequestRun = 0;
     let checkoutRequestController = null;
-    let checkoutReservedTab = null;
     let scrollRaf = 0;
     let resizeRaf = 0;
     let panelOpenRaf = 0;
@@ -111,6 +110,22 @@
         if (typeof window.dollPlayUiSound === 'function') {
             window.dollPlayUiSound(type);
         }
+    }
+
+    function openCheckoutDestination(url) {
+        // This is the same delayed-link navigation used by the social cards.
+        // Opening about:blank synchronously keeps Safari's popup permission,
+        // but visibly strands the visitor on an empty tab while the cart API
+        // responds. A real anchor opens only once the final Throne URL exists,
+        // so there is no intermediate blank page.
+        const link = document.createElement('a');
+        link.href = url;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        link.hidden = true;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
     }
 
     function escapeHtml(value) {
@@ -3362,7 +3377,7 @@
         panel.querySelector('.doll-wishlist-count b').textContent = count === 1 ? '1 item' : `${count} items`;
         const checkoutBtn = panel.querySelector('.doll-wishlist-checkout');
         checkoutBtn.disabled = count === 0 || checkoutInFlight;
-        checkoutBtn.textContent = checkoutInFlight ? 'opening…' : 'checkout';
+        checkoutBtn.textContent = checkoutInFlight ? 'loading…' : 'checkout';
         const statusEl = panel.querySelector('.doll-wishlist-status');
         if (statusEl) statusEl.textContent = checkoutStatusMessage;
         syncReservedHeight();
@@ -3567,24 +3582,12 @@
 
     async function startCheckout() {
         if (checkoutInFlight || !selectedIds.size) return;
-        // Safari only treats window.open() as user-initiated while this click
-        // handler is still synchronous. Reserve the destination tab before
-        // awaiting Supabase, then navigate that same tab when the cart URL is
-        // ready. This matches the social-card navigation guard.
-        let reservedCheckoutTab = null;
-        try {
-            reservedCheckoutTab = window.open('about:blank', '_blank');
-            if (reservedCheckoutTab) reservedCheckoutTab.opener = null;
-        } catch (error) {
-            reservedCheckoutTab = null;
-        }
         const requestRun = ++checkoutRequestRun;
         const panelSessionRun = itemsLoadRun;
         const checkoutController = typeof window.AbortController === 'function'
             ? new AbortController()
             : null;
         checkoutRequestController = checkoutController;
-        checkoutReservedTab = reservedCheckoutTab;
         checkoutInFlight = true;
         checkoutStatusMessage = '';
         playSound('link');
@@ -3608,10 +3611,7 @@
             const requestStillOwnsPanel = requestRun === checkoutRequestRun
                 && panelSessionRun === itemsLoadRun
                 && isWishlistPanelVisible();
-            if (!requestStillOwnsPanel) {
-                if (reservedCheckoutTab && !reservedCheckoutTab.closed) reservedCheckoutTab.close();
-                return;
-            }
+            if (!requestStillOwnsPanel) return;
 
             if (res.status === 409) {
                 // Something the visitor picked sold out / got unfeatured
@@ -3619,9 +3619,6 @@
                 // smaller cart — refresh what's actually still available and
                 // let them retry with an honest selection.
                 checkoutStatusMessage = 'sorry, something you picked just sold out — pick again?';
-                if (reservedCheckoutTab && !reservedCheckoutTab.closed) reservedCheckoutTab.close();
-                if (checkoutReservedTab === reservedCheckoutTab) checkoutReservedTab = null;
-                reservedCheckoutTab = null;
                 await loadItems();
                 if (requestRun !== checkoutRequestRun || !isWishlistPanelVisible()) return;
                 const stillValid = new Set(items.map(item => item.throne_item_id));
@@ -3633,18 +3630,9 @@
             if (!res.ok || !body.checkoutUrl) {
                 throw new Error(body.error || `throne-cart ${res.status}`);
             }
-            if (reservedCheckoutTab && !reservedCheckoutTab.closed) {
-                reservedCheckoutTab.location.replace(body.checkoutUrl);
-                if (checkoutReservedTab === reservedCheckoutTab) checkoutReservedTab = null;
-                reservedCheckoutTab = null;
-            } else {
-                // A locked-down browser may reject even a synchronous popup;
-                // preserve checkout functionality in that rare case.
-                window.location.assign(body.checkoutUrl);
-            }
+            openCheckoutDestination(body.checkoutUrl);
             closeThroneMockup();
         } catch (err) {
-            if (reservedCheckoutTab && !reservedCheckoutTab.closed) reservedCheckoutTab.close();
             const staleRequest = requestRun !== checkoutRequestRun
                 || panelSessionRun !== itemsLoadRun
                 || !isWishlistPanelVisible();
@@ -3653,7 +3641,6 @@
         } finally {
             if (requestRun === checkoutRequestRun) {
                 if (checkoutRequestController === checkoutController) checkoutRequestController = null;
-                if (checkoutReservedTab === reservedCheckoutTab) checkoutReservedTab = null;
                 checkoutInFlight = false;
                 if (panel?.classList.contains('active')) renderFoot();
             }
@@ -3664,8 +3651,6 @@
         checkoutRequestRun += 1;
         checkoutRequestController?.abort();
         checkoutRequestController = null;
-        if (checkoutReservedTab && !checkoutReservedTab.closed) checkoutReservedTab.close();
-        checkoutReservedTab = null;
         checkoutInFlight = false;
     }
 

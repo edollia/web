@@ -15,11 +15,76 @@ document.addEventListener("DOMContentLoaded", async function() {
     const MAIN_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp2cWRvZHpraG1jcHR3a2psZmV1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg3NjM1NjAsImV4cCI6MjA2NDMzOTU2MH0.i1xbRIhPHVkDIrnDlQFP0ebNklrx8WVQcQo8Iuo9zG8';
     const LOCAL_SOCIAL_CARD_VIDEOS = SOCIAL_CARD_MEDIA_CONFIG.localVideos || {};
     const LOCAL_SOCIAL_CARD_PRELOAD_TIMEOUT_MS = 8000;
-    // Same-origin social videos are decoded behind the entrance screen and
-    // then moved into their cards. Keeping the exact elements avoids relying
-    // on Safari's HTTP cache to make a second <video> instantly paintable.
-    const preloadedLocalSocialVideos = new Map();
-    let mountPreloadedLocalSocialVideo = null;
+    // Same-origin social videos load behind the entrance screen directly in
+    // their final cards. Moving a decoded, detached <video> into the live DOM
+    // made Safari occasionally discard its painted frame until a second open.
+    // Keeping one mounted element for its whole lifecycle removes that race.
+    function getMountedSocialCardForKey(key) {
+        const id = key === 'kofi' ? 'donate-option' : `${key}-option`;
+        return document.getElementById(id);
+    }
+
+    function ensureMountedLocalSocialVideo(key, source) {
+        const card = getMountedSocialCardForKey(key);
+        if (!card || !source) return null;
+
+        let video = card.querySelector('video.social-link-preview');
+        if (video && video.dataset.source !== source) {
+            video.pause();
+            video.removeAttribute('src');
+            video.load();
+            video.remove();
+            video = null;
+        }
+        if (!video) {
+            video = document.createElement('video');
+            video.className = 'social-link-preview';
+            video.setAttribute('aria-hidden', 'true');
+            video.tabIndex = -1;
+            card.prepend(video);
+        }
+
+        video.muted = true;
+        video.defaultMuted = true;
+        video.loop = true;
+        video.playsInline = true;
+        video.preload = 'auto';
+        video.setAttribute('muted', '');
+        video.setAttribute('playsinline', '');
+        video.setAttribute('webkit-playsinline', '');
+        video.dataset.source = source;
+
+        if (video.dataset.localSocialLifecycle !== 'true') {
+            video.dataset.localSocialLifecycle = 'true';
+            video.addEventListener('loadeddata', () => {
+                if (!video.isConnected || video.parentElement !== card
+                    || video.dataset.source !== source
+                    || video.getAttribute('src') !== source
+                    || video.readyState < 2) return;
+                delete video.dataset.socialPreviewFailed;
+                if (card.dataset.socialPreviewDeferred !== 'true') {
+                    card.classList.add('has-social-preview');
+                }
+            });
+            video.addEventListener('error', () => {
+                if (!video.isConnected || video.parentElement !== card
+                    || video.dataset.source !== source
+                    || video.getAttribute('src') !== source) return;
+                video.dataset.socialPreviewFailed = 'true';
+                card.classList.remove('has-social-preview');
+            });
+        }
+
+        if (video.getAttribute('src') !== source) {
+            video.src = source;
+            video.load();
+        }
+        if (video.readyState >= 2) {
+            delete video.dataset.socialPreviewFailed;
+            card.classList.add('has-social-preview');
+        }
+        return video;
+    }
     const DEFAULT_LINK_SETTINGS = {
         snapchat_url: 'https://www.snapchat.com/add/dumidoll',
         snapchat_username: 'dumidoll',
@@ -354,6 +419,10 @@ document.addEventListener("DOMContentLoaded", async function() {
     }
     let uiSoundsWarmed = false;
     let uiAudioResumePromise = null;
+    let uiAudioUnlockQueued = false;
+    uiAudioContext?.addEventListener?.('statechange', () => {
+        if (uiAudioContext.state !== 'running') uiAudioUnlockQueued = false;
+    });
 
     async function loadUiSoundBuffers() {
         if (!uiAudioContext) return;
@@ -385,6 +454,26 @@ document.addEventListener("DOMContentLoaded", async function() {
     function resumeUiAudioContext() {
         if (!uiAudioContext || uiAudioContext.state === 'running') return Promise.resolve();
         if (uiAudioResumePromise) return uiAudioResumePromise;
+        // Queue one inaudible frame before resume(). On iPhone this makes the
+        // effects graph participate in the current trusted gesture before the
+        // separate HTMLAudio music element starts and claims the media session.
+        // Without it Safari can report the context as resumed while producing
+        // no UI audio at all.
+        if (!uiAudioUnlockQueued) {
+            try {
+                const unlockBuffer = uiAudioContext.createBuffer(1, 1, 22050);
+                const unlockSource = uiAudioContext.createBufferSource();
+                unlockSource.buffer = unlockBuffer;
+                unlockSource.connect(uiAudioContext.destination);
+                unlockSource.onended = () => {
+                    try { unlockSource.disconnect(); } catch (error) {}
+                };
+                unlockSource.start(0);
+                uiAudioUnlockQueued = true;
+            } catch (error) {
+                // resume() below and the HTMLAudio fallback remain available.
+            }
+        }
         // Call resume() synchronously while the tap is still trusted. Starting
         // it from a later microtask can miss Safari's short audio-unlock window.
         let resumeAttempt;
@@ -397,7 +486,10 @@ document.addEventListener("DOMContentLoaded", async function() {
             .catch(() => {
                 // The HTMLAudioElement fallback remains available.
             })
-            .finally(() => { uiAudioResumePromise = null; });
+            .finally(() => {
+                uiAudioResumePromise = null;
+                if (uiAudioContext?.state !== 'running') uiAudioUnlockQueued = false;
+            });
         return uiAudioResumePromise;
     }
 
@@ -475,6 +567,15 @@ document.addEventListener("DOMContentLoaded", async function() {
     }
 
     window.dollPlayUiSound = playUiSound;
+
+    // Safari may interrupt Web Audio after the plain background-music element
+    // starts, or after returning from another tab. Resume at pointerdown in
+    // capture phase so the context is awake before the later click handler
+    // asks for its tap/link effect. warmUiSounds() is idempotent and does not
+    // play an audible sound by itself.
+    const keepUiSoundsUnlocked = () => { void warmUiSounds(); };
+    document.addEventListener('pointerdown', keepUiSoundsUnlocked, { capture: true, passive: true });
+    document.addEventListener('keydown', keepUiSoundsUnlocked, { capture: true });
 
     function wait(ms) {
         return new Promise(resolve => setTimeout(resolve, ms));
@@ -1342,31 +1443,26 @@ document.addEventListener("DOMContentLoaded", async function() {
 
         let completed = 0;
         setLoadingProgress(STATIC_RESOURCE_PROGRESS_END);
-        await Promise.allSettled(entries.map(([, source]) => new Promise(resolve => {
-            const video = document.createElement('video');
+        await Promise.allSettled(entries.map(([key, source]) => new Promise(resolve => {
+            const video = ensureMountedLocalSocialVideo(key, source);
+            if (!video) {
+                completed += 1;
+                setLoadingProgress(
+                    STATIC_RESOURCE_PROGRESS_END
+                    + (completed / entries.length)
+                        * (SOCIAL_MEDIA_PROGRESS_END - STATIC_RESOURCE_PROGRESS_END)
+                );
+                resolve(false);
+                return;
+            }
             let settled = false;
             let timeoutId = 0;
-            const finish = state => {
+            const finish = ready => {
                 if (settled) return;
                 settled = true;
                 window.clearTimeout(timeoutId);
-                if (state !== 'pending') {
-                    video.removeEventListener('loadeddata', onReady);
-                    video.removeEventListener('error', onError);
-                }
-                const ready = state === 'ready' && video.readyState >= 2;
-                // A timeout is only the loading screen's deadline, not a media
-                // failure. Hand the still-loading element to the card so its
-                // own loadeddata/error listeners can finish the job instead of
-                // throwing away downloaded bytes and creating a blank card.
-                if (ready || state === 'pending') {
-                    preloadedLocalSocialVideos.set(source, video);
-                    mountPreloadedLocalSocialVideo?.(source);
-                } else {
-                    video.pause();
-                    video.removeAttribute('src');
-                    video.load();
-                }
+                video.removeEventListener('loadeddata', onReady);
+                video.removeEventListener('error', onError);
                 completed += 1;
                 setLoadingProgress(
                     STATIC_RESOURCE_PROGRESS_END
@@ -1375,27 +1471,15 @@ document.addEventListener("DOMContentLoaded", async function() {
                 );
                 resolve(ready);
             };
-            const onReady = () => finish('ready');
-            const onError = () => finish('error');
-
-            video.muted = true;
-            video.defaultMuted = true;
-            video.loop = true;
-            video.playsInline = true;
-            video.preload = 'auto';
-            video.setAttribute('muted', '');
-            video.setAttribute('playsinline', '');
-            video.setAttribute('webkit-playsinline', '');
-            video.dataset.source = source;
+            const onReady = () => finish(video.readyState >= 2);
+            const onError = () => finish(false);
             video.addEventListener('loadeddata', onReady, { once: true });
             video.addEventListener('error', onError, { once: true });
             timeoutId = window.setTimeout(
-                () => finish(video.readyState >= 2 ? 'ready' : 'pending'),
+                () => finish(video.readyState >= 2),
                 LOCAL_SOCIAL_CARD_PRELOAD_TIMEOUT_MS
             );
-            video.src = source;
-            video.load();
-            if (video.readyState >= 2) finish('ready');
+            if (video.readyState >= 2) finish(true);
         })));
     }
 
@@ -1809,9 +1893,8 @@ document.addEventListener("DOMContentLoaded", async function() {
                 }
             }, 8000);
         }),
-        // Decode the same-origin card videos behind the entrance screen. This
-        // preloader is deliberately self-contained: the Socials DOM constants
-        // below cannot initialize until this Promise.all has completed.
+        // Load the same-origin card videos in their final card elements while
+        // the entrance screen is still covering the page.
         preloadConfiguredLocalSocialVideos().catch(() => {})
     ]).then(async () => {
         // Load Supabase only after the initial loading is complete
@@ -3098,21 +3181,15 @@ document.addEventListener("DOMContentLoaded", async function() {
         }
 
         // Supabase mode preserves the old on-open lazy behavior to control
-        // egress. GitHub mode receives already-decoded same-origin elements
-        // from the entrance preloader before the loading screen can leave.
+        // egress. GitHub mode already has its final, mounted card element
+        // loading behind the entrance screen.
         if (!preview && !loadMedia) {
             card.classList.remove('has-social-preview');
             return;
         }
 
         if (!preview) {
-            const preloadedVideo = !useGif && SOCIAL_CARD_VIDEO_SOURCE_MODE === 'github'
-                ? preloadedLocalSocialVideos.get(url)
-                : null;
-            preview = preloadedVideo instanceof HTMLVideoElement
-                ? preloadedVideo
-                : document.createElement(useGif ? 'img' : 'video');
-            if (preloadedVideo) preloadedLocalSocialVideos.delete(url);
+            preview = document.createElement(useGif ? 'img' : 'video');
             preview.className = 'social-link-preview';
             preview.setAttribute('aria-hidden', 'true');
             preview.tabIndex = -1;
@@ -3124,6 +3201,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                 preview.preload = SOCIAL_CARD_VIDEO_SOURCE_MODE === 'github' ? 'auto' : 'metadata';
                 preview.setAttribute('muted', '');
                 preview.setAttribute('playsinline', '');
+                preview.setAttribute('webkit-playsinline', '');
             } else {
                 preview.alt = '';
                 preview.decoding = 'async';
@@ -3191,19 +3269,6 @@ document.addEventListener("DOMContentLoaded", async function() {
             preview.play().catch(() => {});
         }
     }
-
-    // The network preloader above starts while this DOM setup is still being
-    // defined. Whichever side becomes ready first hands each exact decoded
-    // element to syncSocialCardVideo(), which mounts it into the correct card
-    // while it is still hidden and paused behind the entrance screen.
-    mountPreloadedLocalSocialVideo = source => {
-        const definition = socialCardDefinitions.find(({ key }) => (
-            getSocialCardVideoUrl(key) === source
-        ));
-        if (!definition?.option || !preloadedLocalSocialVideos.has(source)) return;
-        syncSocialCardVideo(definition.key, definition.option, true);
-    };
-    Array.from(preloadedLocalSocialVideos.keys()).forEach(mountPreloadedLocalSocialVideo);
 
     function syncSocialCardVideos(loadMedia = false) {
         getSocialCardVideoEntries().forEach(([key, card]) => {
@@ -3381,8 +3446,8 @@ document.addEventListener("DOMContentLoaded", async function() {
         socialPreviewReleaseTimer = 0;
         const usingObserver = observeSocialCardPreviews();
         // Same-origin configured files are a small, fixed set and are promised
-        // by the entrance loader. Always remount/retry all of them here; the
-        // observer still decides which decoded videos actively play.
+        // by the entrance loader. Always synchronize/retry all of them here;
+        // the observer still decides which decoded videos actively play.
         if (SOCIAL_CARD_VIDEO_SOURCE_MODE === 'github' || !usingObserver) {
             syncSocialCardVideos(true);
         }
