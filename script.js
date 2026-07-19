@@ -293,7 +293,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     let backgroundMusicUnlocked = false;
     let backgroundMusicRetryArmed = false;
     let backgroundMusicPlayPromise = null;
-    const UI_SOUND_VERSION = '4';
+    const UI_SOUND_VERSION = '5';
     const uiSounds = {
         tap: `CUT1.mp3?v=${UI_SOUND_VERSION}`,
         link: `CUT2.mp3?v=${UI_SOUND_VERSION}`,
@@ -435,24 +435,115 @@ document.addEventListener("DOMContentLoaded", async function() {
         }
     });
     setBackgroundMusicVolume(backgroundMusicVolume);
-    const UI_SOUND_POOL_SIZE = 3;
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    let uiAudioContext = null;
+    if (AudioContextClass) {
+        try {
+            uiAudioContext = new AudioContextClass();
+        } catch (error) {
+            // Older or constrained webviews keep the HTML fallback path.
+        }
+    }
+    const uiAudioBuffers = {};
+    const activeUiVoices = new Set();
+    const MAX_UI_AUDIO_VOICES = 12;
+    const UI_SOUND_MIN_INTERVAL_MS = 28;
     const lastUiSoundAt = new Map();
-    const uiSoundPools = Object.fromEntries(Object.entries(uiSounds).map(([type, src]) => {
-        const voices = Array.from({ length: UI_SOUND_POOL_SIZE }, () => {
-            const sound = new Audio(src);
-            const voice = { sound, playing: false };
-            sound.preload = 'auto';
-            sound.volume = 1;
-            sound.playsInline = true;
-            sound.setAttribute('playsinline', '');
-            sound.addEventListener('ended', () => { voice.playing = false; });
-            sound.addEventListener('pause', () => { voice.playing = false; });
-            sound.addEventListener('error', () => { voice.playing = false; });
-            sound.load();
-            return voice;
-        });
-        return [type, voices];
+    let uiAudioOutput = null;
+    if (uiAudioContext) {
+        const compressor = uiAudioContext.createDynamicsCompressor();
+        const masterGain = uiAudioContext.createGain();
+        compressor.threshold.value = -12;
+        compressor.knee.value = 12;
+        compressor.ratio.value = 6;
+        compressor.attack.value = 0.003;
+        compressor.release.value = 0.14;
+        masterGain.gain.value = 0.82;
+        compressor.connect(masterGain);
+        masterGain.connect(uiAudioContext.destination);
+        uiAudioOutput = compressor;
+
+        void Promise.all(Object.entries(uiSounds).map(async ([type, src]) => {
+            try {
+                const response = await fetch(src, { cache: 'force-cache' });
+                if (!response.ok) throw new Error(`${type} sound ${response.status}`);
+                const encoded = await response.arrayBuffer();
+                uiAudioBuffers[type] = await uiAudioContext.decodeAudioData(encoded);
+            } catch (error) {
+                // The single-player fallback below remains available.
+            }
+        }));
+    }
+
+    const uiSoundFallbacks = Object.fromEntries(Object.entries(uiSounds).map(([type, src]) => {
+        const sound = new Audio(src);
+        sound.preload = 'auto';
+        sound.volume = 1;
+        sound.playsInline = true;
+        sound.setAttribute('playsinline', '');
+        sound.load();
+        return [type, sound];
     }));
+
+    function resumeUiAudioMixer() {
+        if (!uiAudioContext || uiAudioContext.state === 'running') return;
+        try {
+            const resumeAttempt = uiAudioContext.resume();
+            resumeAttempt?.catch?.(() => {});
+        } catch (error) {}
+    }
+
+    // iOS requires Web Audio to be unlocked by an explicit gesture. Pointerup
+    // runs before the following click, so ordinary buttons reach their click
+    // handler with the shared mixer already awake. The first-ever sound still
+    // has the safe HTML fallback if resume() has not settled yet.
+    document.addEventListener('pointerup', resumeUiAudioMixer, { capture: true, passive: true });
+    document.addEventListener('click', resumeUiAudioMixer, { capture: true, passive: true });
+    document.addEventListener('keydown', resumeUiAudioMixer, { capture: true });
+
+    function playMixedUiSound(type) {
+        const buffer = uiAudioBuffers[type];
+        if (!uiAudioContext || uiAudioContext.state !== 'running' || !uiAudioOutput || !buffer) {
+            return false;
+        }
+        if (activeUiVoices.size >= MAX_UI_AUDIO_VOICES) return true;
+
+        const source = uiAudioContext.createBufferSource();
+        const voiceGain = uiAudioContext.createGain();
+        const startAt = uiAudioContext.currentTime;
+        const endAt = startAt + buffer.duration;
+        const attackEnd = Math.min(endAt, startAt + 0.003);
+        const releaseStart = Math.max(attackEnd, endAt - 0.008);
+        source.buffer = buffer;
+        voiceGain.gain.setValueAtTime(0, startAt);
+        voiceGain.gain.linearRampToValueAtTime(1, attackEnd);
+        voiceGain.gain.setValueAtTime(1, releaseStart);
+        voiceGain.gain.linearRampToValueAtTime(0, endAt);
+        source.connect(voiceGain);
+        voiceGain.connect(uiAudioOutput);
+
+        const voice = { source, voiceGain };
+        activeUiVoices.add(voice);
+        source.onended = () => {
+            activeUiVoices.delete(voice);
+            try { source.disconnect(); } catch (error) {}
+            try { voiceGain.disconnect(); } catch (error) {}
+        };
+        source.start(startAt);
+        return true;
+    }
+
+    function playFallbackUiSound(type) {
+        const sound = uiSoundFallbacks[type];
+        // Never restart an active fallback: cutting a waveform is the glitch
+        // we are avoiding. Once Web Audio unlocks, all later taps can overlap.
+        if (!sound || !sound.paused) return;
+        try {
+            sound.currentTime = 0;
+            const playAttempt = sound.play();
+            playAttempt?.catch?.(() => {});
+        } catch (error) {}
+    }
 
     const VISITOR_ID_TIMEOUT_MS = 1800;
     let visitorIdentityPromise = null;
@@ -505,8 +596,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         return visitorIdentityPromise;
     }
     function playUiSound(type) {
-        const voices = uiSoundPools[type];
-        if (!voices) return;
+        if (!uiSounds[type]) return;
 
         // If iOS interrupted the looping media element, an ordinary site tap
         // is the next trusted gesture and should restore it immediately.
@@ -514,23 +604,10 @@ document.addEventListener("DOMContentLoaded", async function() {
             startBackgroundMusic();
         }
         const now = performance.now();
-        if (now - (lastUiSoundAt.get(type) || 0) < 55) return;
+        if (now - (lastUiSoundAt.get(type) || 0) < UI_SOUND_MIN_INTERVAL_MS) return;
         lastUiSoundAt.set(type, now);
-
-        // Let quick taps overlap without pausing or rewinding a sound that is
-        // already audible. If every bounded voice is busy, drop only the extra
-        // tap instead of creating an unlimited pileup or clipping active audio.
-        const voice = voices.find(candidate => !candidate.playing);
-        if (!voice) return;
-        voice.playing = true;
-        try {
-            voice.sound.currentTime = 0;
-            const playAttempt = voice.sound.play();
-            playAttempt?.catch?.(() => { voice.playing = false; });
-        } catch (error) {
-            voice.playing = false;
-            // A later trusted tap can retry if Safari is still loading audio.
-        }
+        resumeUiAudioMixer();
+        if (!playMixedUiSound(type)) playFallbackUiSound(type);
     }
 
     window.dollPlayUiSound = playUiSound;
@@ -4643,6 +4720,7 @@ document.addEventListener("DOMContentLoaded", async function() {
 
     const footerBubblePool = [];
     const footerBubbleLimit = 7;
+    const footerBubbleDomLimit = footerBubbleLimit * 2;
 
     function clearFooterBubbles(pop = false) {
         if (!footerBubbleField) return;
@@ -4665,6 +4743,17 @@ document.addEventListener("DOMContentLoaded", async function() {
         if (footerBubblePool.length >= footerBubbleLimit) {
             clearFooterBubbles(true);
             return;
+        }
+
+        // A previous group may still be finishing its pop animation while a
+        // fast visitor starts the next group. Keep the decorative DOM bounded
+        // even under synthetic or multi-finger spam.
+        while (footerBubbleField.childElementCount >= footerBubbleDomLimit) {
+            const oldest = footerBubbleField.firstElementChild;
+            if (!oldest) break;
+            const pooledIndex = footerBubblePool.indexOf(oldest);
+            if (pooledIndex >= 0) footerBubblePool.splice(pooledIndex, 1);
+            oldest.remove();
         }
 
         const bubble = document.createElement('span');
@@ -5371,6 +5460,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             postsButton?.addEventListener('click', async (e) => {
                 e.preventDefault();
                 e.stopPropagation();
+                if (!acceptTopControlActivation(postsButton, 220)) return;
                 playUiSound('tap');
                 const open = postsPopup?.classList.contains('active');
                 if (open) {
@@ -5916,6 +6006,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         const reactionIconPreloads = new Map();
         let currentOpenPicker = null; // Track currently open picker
         let currentOpenPickerCleanup = null;
+        const pendingReactionMutations = new Set();
         let lastClickTime = 0; // Prevent rapid-fire clicks
         let lastTouchReactionTime = 0;
 
@@ -6212,33 +6303,37 @@ document.addEventListener("DOMContentLoaded", async function() {
                     }
                     
                     const reaction = option.dataset.reaction;
+                    if (pendingReactionMutations.has(drawingId)) return;
+                    pendingReactionMutations.add(drawingId);
                     playUiSound('tap');
-                    
-                    // Check if user already has this reaction
-                    const ipAddress = await getVisitorIdentity();
-                    
-                    const { data: existingLike } = await window.supabase
-                        .from('drawing_likes')
-                        .select('*')
-                        .eq('drawing_id', drawingId)
-                        .eq('ip_address', ipAddress)
-                        .single();
-                    
-                    if (existingLike && existingLike.reaction_type === reaction) {
-                        // User clicked same reaction - remove it (undo)
-                        await removeLike(drawingId, ipAddress, likeIconElement);
-                    } else {
-                        // Add new reaction or change existing one (overwrite)
-                        if (existingLike) {
-                            // Update existing reaction
-                            await updateLike(drawingId, ipAddress, reaction, likeIconElement);
+                    try {
+                        // Check if user already has this reaction
+                        const ipAddress = await getVisitorIdentity();
+
+                        const { data: existingLike } = await window.supabase
+                            .from('drawing_likes')
+                            .select('*')
+                            .eq('drawing_id', drawingId)
+                            .eq('ip_address', ipAddress)
+                            .single();
+
+                        if (existingLike && existingLike.reaction_type === reaction) {
+                            // User clicked same reaction - remove it (undo)
+                            await removeLike(drawingId, ipAddress, likeIconElement);
                         } else {
-                            // Add new reaction
-                            await addLike(drawingId, ipAddress, reaction, likeIconElement);
+                            // Add new reaction or change existing one (overwrite)
+                            if (existingLike) {
+                                // Update existing reaction
+                                await updateLike(drawingId, ipAddress, reaction, likeIconElement);
+                            } else {
+                                // Add new reaction
+                                await addLike(drawingId, ipAddress, reaction, likeIconElement);
+                            }
                         }
+                    } finally {
+                        pendingReactionMutations.delete(drawingId);
+                        if (currentOpenPicker === picker) closeReactionPicker();
                     }
-                    
-                    closeReactionPicker();
                 };
                 
                 // Add both click and touch event listeners
