@@ -20,7 +20,10 @@
     const IMAGE_DECODE_CACHE_LIMIT = 10;
     const IMAGE_SCROLL_PRIORITY_IDLE_MS = 120;
     const IMAGE_HYDRATE_TIMEOUT_MS = 8000;
-    const IMAGE_REVEAL_TIMEOUT_MS = 1800;
+    const IMAGE_DECODE_TIMEOUT_MS = 2500;
+    const WISHLIST_MEDIA_PREPARE_TIMEOUT_MS = 12000;
+    const WISHLIST_EXIT_TRANSITION_FALLBACK_MS = 520;
+    const WISHLIST_RELEASE_DELAY_MS = 1000;
     const SWIPE_HINT_INITIAL_DELAY_MS = 3000;
     const SWIPE_HINT_FIRST_VISIBLE_MS = 3000;
     const SWIPE_HINT_REPEAT_DELAY_MS = 5000;
@@ -42,7 +45,7 @@
     let panel = null;
     let items = [];
     let selectedIds = new Set();
-    let loadState = 'idle'; // idle | loading | ready | failed
+    let loadState = 'idle'; // idle | loading | preparing | ready | failed
     // Which of the 3 wishlist layouts to render. Defaults to 'masonry' and
     // is overridden by the admin-configurable wishlist_view_mode setting
     // (fetched in loadItems, see applyWishlistViewModeSetting) — grid and
@@ -51,6 +54,9 @@
     const WISHLIST_VIEW_MODES = ['grid', 'list', 'masonry'];
     let checkoutInFlight = false;
     let checkoutStatusMessage = '';
+    let checkoutRequestRun = 0;
+    let checkoutRequestController = null;
+    let checkoutReservedTab = null;
     let scrollRaf = 0;
     let resizeRaf = 0;
     let panelOpenRaf = 0;
@@ -78,13 +84,17 @@
     let imagePriorityRefreshTimer = 0;
     let imageRevealRun = 0;
     let itemsLoadRun = 0;
-    let itemsFetchPromise = null;
+    let itemsFetchController = null;
+    let wishlistExitTransitionTimer = 0;
+    let wishlistReleaseTimer = 0;
+    let wishlistExitTransitionHandler = null;
     let renderedBodySignature = '';
     const imageHydrationQueue = [];
     const imageHydrationQueued = new Set();
     const activeImageHydrations = new Map();
     const imagePriorityWindow = new Set();
     const imageDecodedRecency = new Map();
+    const atomicImageWaitCancels = new Set();
 
     function formatPrice(cents) {
         if (typeof cents !== 'number' || !cents) return '';
@@ -144,16 +154,19 @@
         return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
     }
 
-    function withSupabaseTimeout(query, ms) {
+    function withSupabaseTimeout(query, ms, externalSignal = null) {
         if (typeof window.AbortController !== 'function' || typeof query?.abortSignal !== 'function') {
             return withTimeout(query, ms);
         }
         const controller = new AbortController();
+        const relayAbort = () => controller.abort();
+        if (externalSignal?.aborted) controller.abort();
+        else externalSignal?.addEventListener('abort', relayAbort, { once: true });
         return withTimeout(
             query.abortSignal(controller.signal),
             ms,
             () => controller.abort()
-        );
+        ).finally(() => externalSignal?.removeEventListener('abort', relayAbort));
     }
 
     // url -> { w, h } natural pixel dimensions, captured while preloading so
@@ -477,8 +490,7 @@
 
     function getHydratableProductImages(body) {
         if (!body) return [];
-        return Array.from(body.querySelectorAll('.doll-wishlist-product-img[data-src]'))
-            .filter(img => String(img.dataset.src || '').trim());
+        return Array.from(body.querySelectorAll('.doll-wishlist-product-img[data-src]'));
     }
 
     function freezeMasonryProductGeometry(img, measuredRect = null) {
@@ -726,74 +738,153 @@
         imageHydrationFallbackHandler();
     }
 
-    function waitForProductImage(img, timeoutMs) {
+    function markAtomicProductImageFailed(img, url) {
+        if (!(img instanceof HTMLImageElement)) return;
+        if (url) img.dataset.dwlFailed = url;
+        img.removeAttribute('src');
+        img.removeAttribute('fetchpriority');
+        img.loading = 'lazy';
+        img.closest('.doll-wishlist-media')
+            ?.classList.add('dwl-media-pending', 'dwl-media-error');
+    }
+
+    function loadAndDecodeAtomicProductImage(img, run) {
         const url = String(img?.dataset?.src || '').trim();
-        if (!img || !url || (img.complete && img.naturalWidth) || img.dataset.dwlFailed === url) {
+        if (!(img instanceof HTMLImageElement) || !url) {
+            markAtomicProductImageFailed(img, url);
             return Promise.resolve();
         }
+
         return new Promise(resolve => {
-            let timer = 0;
-            const finish = () => {
-                img.removeEventListener('dwl-image-settled', finish);
-                if (timer) window.clearTimeout(timer);
+            let settled = false;
+            let timeoutId = 0;
+
+            const cleanup = () => {
+                if (timeoutId) window.clearTimeout(timeoutId);
+                img.removeEventListener('load', onLoad);
+                img.removeEventListener('error', onError);
+                atomicImageWaitCancels.delete(cancelWait);
+                delete img.dataset.dwlLoading;
+            };
+            const finish = async loaded => {
+                if (settled) return;
+                settled = true;
+                cleanup();
+
+                if (run !== itemsLoadRun) {
+                    resolve();
+                    return;
+                }
+                if (!loaded || !img.naturalWidth || !img.naturalHeight) {
+                    markAtomicProductImageFailed(img, url);
+                    resolve();
+                    return;
+                }
+
+                let decoded = true;
+                if (typeof img.decode === 'function') {
+                    try {
+                        await withTimeout(img.decode(), IMAGE_DECODE_TIMEOUT_MS);
+                    } catch (error) {
+                        decoded = false;
+                    }
+                }
+                if (run === itemsLoadRun) {
+                    if (decoded) applyProductImageDimensions(img, url);
+                    else markAtomicProductImageFailed(img, url);
+                }
                 resolve();
             };
-            img.addEventListener('dwl-image-settled', finish, { once: true });
-            timer = window.setTimeout(finish, Math.max(0, timeoutMs));
+            const onLoad = () => { void finish(true); };
+            const onError = () => { void finish(false); };
+            const cancelWait = () => {
+                if (settled) return;
+                settled = true;
+                cleanup();
+                resolve();
+            };
+
+            atomicImageWaitCancels.add(cancelWait);
+            img.addEventListener('load', onLoad, { once: true });
+            img.addEventListener('error', onError, { once: true });
+            img.dataset.dwlLoading = '1';
+            img.loading = 'eager';
+            try { img.fetchPriority = 'high'; } catch (error) {}
+            timeoutId = window.setTimeout(onError, IMAGE_HYDRATE_TIMEOUT_MS);
+            img.src = url;
+
+            // Cached images can become complete synchronously in Safari.
+            if (img.complete) {
+                Promise.resolve().then(() => {
+                    void finish(Boolean(img.naturalWidth && img.naturalHeight));
+                });
+            }
         });
     }
 
-    async function revealPreparedWishlistBody(body) {
-        if (!body) return;
-        const run = ++imageRevealRun;
-        // Opening code finishes its final height reservation synchronously
-        // after renderBody/resumeRenderedBody. Measure on the next frame so a
-        // tall phone's newly exposed cards join the priority cohort before we
-        // decide the loader can disappear.
-        await new Promise(resolve => window.requestAnimationFrame(resolve));
-        if (run !== imageRevealRun || !isWishlistPanelVisible() || !body.isConnected) return;
-        const deadline = performance.now() + IMAGE_REVEAL_TIMEOUT_MS;
-
-        for (let pass = 0; pass < 3 && performance.now() < deadline; pass += 1) {
-            const priorityImages = Array.from(refreshProductImagePriorityWindow(body));
-            const pending = priorityImages.filter(img => String(img.dataset.src || '').trim()
-                && !(img.complete && img.naturalWidth)
-                && img.dataset.dwlFailed !== img.dataset.src);
-            if (!pending.length) break;
-            await Promise.all(pending.map(img => waitForProductImage(img, deadline - performance.now())));
-            if (run !== imageRevealRun || !isWishlistPanelVisible()) return;
-            await new Promise(resolve => window.requestAnimationFrame(resolve));
+    async function loadAndDecodeAllWishlistImages(body, run) {
+        const productImages = getHydratableProductImages(body);
+        if (!productImages.length) return;
+        let cursor = 0;
+        let deadlineReached = false;
+        const worker = async () => {
+            while (!deadlineReached && run === itemsLoadRun && cursor < productImages.length) {
+                const image = productImages[cursor];
+                cursor += 1;
+                await loadAndDecodeAtomicProductImage(image, run);
+            }
+        };
+        const workerCount = Math.min(IMAGE_HYDRATE_CONCURRENCY, productImages.length);
+        const workers = Promise.all(Array.from({ length: workerCount }, () => worker()));
+        let deadlineTimer = 0;
+        await Promise.race([
+            workers,
+            new Promise(resolve => {
+                deadlineTimer = window.setTimeout(() => {
+                    deadlineReached = true;
+                    resolve();
+                }, WISHLIST_MEDIA_PREPARE_TIMEOUT_MS);
+            }),
+        ]);
+        if (deadlineTimer) window.clearTimeout(deadlineTimer);
+        if (deadlineReached && run === itemsLoadRun) {
+            cancelAtomicImageWaits();
+            productImages.forEach(img => {
+                if (img.closest('.doll-wishlist-media')?.classList.contains('dwl-media-pending')) {
+                    markAtomicProductImageFailed(img, String(img.dataset.src || '').trim());
+                }
+            });
+            await workers;
         }
-
-        const decodedImages = Array.from(imagePriorityWindow).filter(img => img.complete && img.naturalWidth);
-        const remaining = Math.max(0, deadline - performance.now());
-        if (remaining && decodedImages.length) {
-            await Promise.race([
-                Promise.all(decodedImages.map(img => typeof img.decode === 'function'
-                    ? img.decode().catch(() => {})
-                    : Promise.resolve())),
-                new Promise(resolve => window.setTimeout(resolve, remaining)),
-            ]);
-        }
-        if (run !== imageRevealRun || !isWishlistPanelVisible() || !body.isConnected) return;
-
-        body.querySelector('.dwl-initial-image-loader')?.remove();
-        body.classList.remove('dwl-images-preparing');
-        scheduleProductImagePriorityRefresh(body);
-        void body.offsetWidth;
-        body.classList.add('dwl-ready-in');
-        window.setTimeout(() => body?.classList.remove('dwl-ready-in'), 360);
     }
 
-    function prepareWishlistImageReveal(body) {
+    function cancelAtomicImageWaits() {
+        Array.from(atomicImageWaitCancels).forEach(cancel => cancel());
+        atomicImageWaitCancels.clear();
+    }
+
+    function revealPreparedWishlistBody(body, run) {
+        if (run !== itemsLoadRun || !isWishlistPanelVisible() || !body?.isConnected) return false;
+        body.querySelector('.dwl-initial-image-loader')?.remove();
+        body.classList.remove('dwl-images-preparing');
+        void body.offsetWidth;
+        body.classList.add('dwl-ready-in');
+        window.setTimeout(() => {
+            if (run === itemsLoadRun) body?.classList.remove('dwl-ready-in');
+        }, 360);
+        return true;
+    }
+
+    function prepareWishlistImageReveal(body, existingLoader = null) {
         if (!body) return;
         body.classList.add('dwl-images-preparing');
-        body.querySelector('.dwl-initial-image-loader')?.remove();
-        const loader = document.createElement('div');
-        loader.className = 'dwl-initial-image-loader';
-        loader.setAttribute('aria-hidden', 'true');
-        loader.innerHTML = renderLoadingState();
-        body.prepend(loader);
+        body.querySelector('.dwl-initial-image-loader:not(.dwl-wishlist-loading-only)')?.remove();
+        const loader = existingLoader || document.createElement('div');
+        loader.classList.add('dwl-initial-image-loader');
+        if (!existingLoader) {
+            loader.innerHTML = renderLoadingState();
+            body.prepend(loader);
+        }
     }
 
     function injectStyles() {
@@ -1056,24 +1147,27 @@
                 animation: dollWishlistContentIn 0.32s cubic-bezier(0.2, 0.82, 0.24, 1) both;
             }
 
-            /* Keep the real, already-sized card placeholders visible while the
-               first viewport settles. The previous version hid every card and
-               painted an opaque full-height layer here, which was the large
-               white block visible during every wishlist open. */
+            /* The real cards exist only so their final images can load and
+               decode. Keep them completely hidden until the whole set settles;
+               the visitor sees one harmonized paw state, never partial cards. */
             .doll-wishlist-body.dwl-images-preparing > :not(.dwl-initial-image-loader) {
-                opacity: 0.38;
+                opacity: 0;
+                visibility: hidden;
                 pointer-events: none;
-                transition: opacity 0.2s ease;
+            }
+            .doll-wishlist-body.dwl-images-preparing {
+                height: clamp(170px, 38vh, 300px);
+                min-height: clamp(170px, 38vh, 300px);
+                overflow: hidden !important;
             }
             .dwl-initial-image-loader {
-                position: sticky;
-                top: 0;
+                position: absolute;
+                inset: 0;
                 z-index: 20;
-                display: flex;
-                align-items: flex-start;
-                justify-content: center;
+                display: grid;
+                place-items: center;
                 width: 100%;
-                height: 1px;
+                height: 100%;
                 overflow: visible;
                 background: transparent;
                 pointer-events: none;
@@ -1089,7 +1183,24 @@
                 background: transparent;
                 pointer-events: none;
             }
-            .dwl-initial-image-loader .dwl-wishlist-fetch-state,
+            .dwl-wishlist-loading-only {
+                min-height: clamp(170px, 38vh, 300px);
+                height: clamp(170px, 38vh, 300px);
+                box-sizing: border-box;
+                display: grid;
+                place-items: center;
+                width: 100%;
+                padding: 12px 0;
+            }
+            .dwl-wishlist-loading-only .dwl-wishlist-fetch-state {
+                width: 100%;
+                margin: 0;
+            }
+            .dwl-initial-image-loader .dwl-wishlist-fetch-state {
+                width: 100%;
+                margin: 0;
+                transform: none;
+            }
             .dwl-fetch-loader .dwl-wishlist-fetch-state {
                 width: 100%;
                 margin: 0;
@@ -1257,6 +1368,18 @@
                 background:
                     radial-gradient(circle at 48% 38%, rgba(255, 255, 255, 0.92), transparent 48%),
                     rgba(255, 214, 235, 0.72);
+            }
+            .doll-wishlist-media.dwl-media-error::before {
+                content: "♡";
+                position: absolute;
+                inset: 0;
+                z-index: 1;
+                display: grid;
+                place-items: center;
+                color: rgba(125, 104, 113, 0.54);
+                font-family: var(--dwl-cute);
+                font-size: 22px;
+                line-height: 1;
             }
 
             /* Title and price are a plain, tight text stack — two lines,
@@ -2827,10 +2950,6 @@
     function onScroll(event) {
         const scroll = event.currentTarget;
         if (Math.abs(scroll.scrollLeft) > 2) cancelSwipeHintSequence();
-        scheduleProductImagePriorityRefresh(
-            scroll.closest('.doll-wishlist-body'),
-            IMAGE_SCROLL_PRIORITY_IDLE_MS
-        );
         if (scrollRaf) return;
         scrollRaf = window.requestAnimationFrame(() => {
             scrollRaf = 0;
@@ -2866,7 +2985,6 @@
     function onWishlistBodyScroll(event) {
         const body = event.currentTarget;
         if (!body.classList.contains('dwl-scroll-body')) return;
-        scheduleProductImagePriorityRefresh(body, IMAGE_SCROLL_PRIORITY_IDLE_MS);
         const shell = body.closest('.doll-wishlist-scroll-shell');
         if (window.dollQueuePanelScrollUpdate?.(body, shell)) return;
         window.dollMarkPanelScrollActivity?.();
@@ -2995,48 +3113,12 @@
         ]);
     }
 
-    function canReuseRenderedBody() {
-        const body = panel?.querySelector('.doll-wishlist-body');
-        return Boolean(
-            loadState === 'ready'
-            && items.length
-            && body?.querySelector('.doll-wishlist-item')
-            && renderedBodySignature === getWishlistBodySignature()
-        );
-    }
-
-    function resumeRenderedBody() {
-        const body = panel?.querySelector('.doll-wishlist-body');
-        if (!body) return;
-        prepareWishlistImageReveal(body);
-        body.scrollTop = 0;
-        const horizontalScroll = body.querySelector('.doll-wishlist-scroll');
-        if (horizontalScroll) horizontalScroll.scrollLeft = 0;
-        body.querySelectorAll('.doll-wishlist-item.selected').forEach(card => {
-            card.classList.remove('selected');
-        });
-        body.querySelectorAll('.doll-wishlist-cart-btn').forEach(button => {
-            button.setAttribute('aria-pressed', 'false');
-            const card = button.closest('.doll-wishlist-item');
-            const label = card?.querySelector('.doll-wishlist-name')?.getAttribute('title') || 'wishlist item';
-            button.setAttribute('aria-label', `Add ${label}`);
-        });
-        setupProgressiveItemImages(body);
-        void revealPreparedWishlistBody(body);
-        window.requestAnimationFrame(() => {
-            syncTitleMarquees(body);
-            scheduleSwipeHint();
-            updateWishlistEdgeFade(body);
-        });
-        renderDots();
-    }
-
     function renderBody() {
         if (!panel) return;
         const body = panel.querySelector('.doll-wishlist-body');
         stopProgressiveItemImages();
         window.dollClearScrollMotion?.(body.closest('.doll-wishlist-scroll-shell'));
-        const readyScrollable = loadState === 'ready'
+        const readyScrollable = (loadState === 'preparing' || loadState === 'ready')
             && (wishlistViewMode === 'list' || wishlistViewMode === 'masonry');
         body.classList.toggle('dwl-scroll-body', readyScrollable);
         body.classList.remove('dwl-ready-in', 'dwl-images-preparing');
@@ -3063,11 +3145,7 @@
             renderedBodySignature = '';
             pauseSwipeHintSequence();
             body.scrollTop = 0;
-            // Keep the card layout visible during the network fetch. A tall,
-            // otherwise-empty loader body read as a large white glitch on
-            // iPhone; these existing card-shaped shimmers preserve the final
-            // geometry while the compact paw status floats above them.
-            body.innerHTML = `${renderSkeleton(wishlistViewMode)}<div class="dwl-fetch-loader">${renderLoadingState()}</div>`;
+            body.innerHTML = `<div class="dwl-wishlist-loading-only">${renderLoadingState()}</div>`;
             renderDots();
             return;
         }
@@ -3093,17 +3171,22 @@
         // container (no .doll-wishlist-scroll/.doll-wishlist-page), so the
         // page-swipe/dots/swipe-hint machinery below simply finds nothing
         // to attach to and no-ops for those two modes — only 'grid' uses it.
-        if (wishlistViewMode === 'list') {
-            body.innerHTML = listMarkup(items);
-        } else if (wishlistViewMode === 'masonry') {
-            body.innerHTML = masonryMarkup(items);
+        const uninterruptedLoader = loadState === 'preparing'
+            ? body.querySelector('.dwl-wishlist-loading-only')
+            : null;
+        const contentMarkup = wishlistViewMode === 'list'
+            ? listMarkup(items)
+            : wishlistViewMode === 'masonry'
+                ? masonryMarkup(items)
+                : `<div class="doll-wishlist-scroll">${pagesMarkup(items)}</div>`;
+        if (uninterruptedLoader) {
+            body.insertAdjacentHTML('beforeend', contentMarkup);
         } else {
-            body.innerHTML = `<div class="doll-wishlist-scroll">${pagesMarkup(items)}</div>`;
+            body.innerHTML = contentMarkup;
         }
         renderedBodySignature = getWishlistBodySignature();
 
-        prepareWishlistImageReveal(body);
-        setupProgressiveItemImages(body);
+        if (loadState === 'preparing') prepareWishlistImageReveal(body, uninterruptedLoader);
 
         const scroll = body.querySelector('.doll-wishlist-scroll');
         scroll?.addEventListener('scroll', onScroll, { passive: true });
@@ -3116,6 +3199,7 @@
         });
         body.querySelectorAll('.doll-wishlist-media').forEach(media => {
             media.addEventListener('click', () => {
+                if (media.classList.contains('dwl-media-error')) return;
                 const id = media.closest('.doll-wishlist-item')?.dataset.itemId;
                 const item = items.find(candidate => candidate.throne_item_id === id);
                 if (item) openPreview(item);
@@ -3137,12 +3221,13 @@
             dock.appendChild(foot);
             body.appendChild(dock);
         }
-        void revealPreparedWishlistBody(body);
-        window.requestAnimationFrame(() => {
-            syncTitleMarquees(body);
-            scheduleSwipeHint();
-            updateWishlistEdgeFade(body);
-        });
+        if (loadState === 'ready') {
+            window.requestAnimationFrame(() => {
+                syncTitleMarquees(body);
+                scheduleSwipeHint();
+                updateWishlistEdgeFade(body);
+            });
+        }
         renderDots();
     }
 
@@ -3284,7 +3369,6 @@
         window.requestAnimationFrame(() => {
             const body = panel?.querySelector('.doll-wishlist-body');
             window.dollRefreshPanelScrollExtent?.(body);
-            scheduleProductImagePriorityRefresh(body);
             updateWishlistEdgeFade(body);
         });
     }
@@ -3318,8 +3402,6 @@
                 btn.setAttribute('aria-pressed', String(selected));
                 btn.setAttribute('aria-label', `${selected ? 'Remove ' : 'Add '}${label}`);
             }
-        } else {
-            renderBody();
         }
 
         // The preview lightbox's own price tag lives outside the card, so it
@@ -3337,8 +3419,9 @@
         renderFoot();
     }
 
-    async function waitForSupabaseClient(maxAttempts) {
+    async function waitForSupabaseClient(maxAttempts, signal = null) {
         for (let attempt = 0; attempt < maxAttempts; attempt++) {
+            if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
             const client = window.supabase;
             if (client && typeof client.from === 'function') return client;
             await new Promise(resolve => window.setTimeout(resolve, 100));
@@ -3347,104 +3430,139 @@
     }
 
     // Reads the admin-configurable "wishlist layout" setting (site_settings,
-    // same row/table admin.js's other link settings live in) and applies it
-    // to wishlistViewMode. Deliberately never throws/rejects — it runs
-    // alongside the actual items fetch in loadItems, and a slow or failed
-    // settings read should never be treated as a failure to load the
-    // wishlist itself; it just leaves wishlistViewMode at its default.
-    async function applyWishlistViewModeSetting(client) {
+    // same row/table admin.js's other link settings live in). Return the mode
+    // instead of mutating global state so an aborted/closed run can never race
+    // a newer open and change its layout.
+    async function readWishlistViewModeSetting(client, signal) {
         try {
             const { data, error } = await withSupabaseTimeout(
                 client.from('site_settings').select('value').eq('id', 'links').maybeSingle(),
-                FETCH_TIMEOUT_MS
+                FETCH_TIMEOUT_MS,
+                signal
             );
-            if (error || !data) return;
+            if (error || !data) return null;
             const mode = data.value?.wishlist_view_mode;
-            if (WISHLIST_VIEW_MODES.includes(mode)) wishlistViewMode = mode;
+            return WISHLIST_VIEW_MODES.includes(mode) ? mode : null;
         } catch (err) {
-            // Best-effort only — keep whatever wishlistViewMode already is.
+            return null;
         }
     }
 
-    function fetchWishlistItemsShared() {
-        if (itemsFetchPromise) return itemsFetchPromise;
+    async function triggerBackgroundSync(signal) {
+        const controller = typeof window.AbortController === 'function'
+            ? new AbortController()
+            : null;
+        const relayAbort = () => controller?.abort();
+        if (signal?.aborted) relayAbort();
+        else signal?.addEventListener('abort', relayAbort, { once: true });
+        try {
+            await withTimeout(
+                fetch(`${SUPABASE_URL}/functions/v1/throne-wishlist-sync`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
+                    signal: controller?.signal,
+                }),
+                FETCH_TIMEOUT_MS,
+                () => controller?.abort()
+            );
+        } catch (error) {
+            if (signal?.aborted) throw error;
+            // The mirrored table is still a valid fallback when live sync is
+            // throttled or temporarily unavailable.
+        } finally {
+            signal?.removeEventListener('abort', relayAbort);
+        }
+    }
 
-        const request = (async () => {
-            // script.js lazy-loads the Supabase client after first paint, so
-            // the first opener may need to wait briefly for it.
-            const client = await waitForSupabaseClient(30);
-            if (!client) throw new Error('supabase client unavailable');
+    async function fetchWishlistItemsFresh(signal) {
+        // script.js lazy-loads the Supabase client after first paint, so the
+        // first opener may need to wait briefly for it.
+        const client = await waitForSupabaseClient(30, signal);
+        if (!client) throw new Error('supabase client unavailable');
 
-            const [itemsResult] = await Promise.all([
-                withSupabaseTimeout(
-                    client.from('wishlist_items')
-                        .select('throne_item_id,name,price_cents,image_url,position')
-                        .eq('featured', true)
-                        .eq('is_available', true)
-                        .order('position')
-                        .limit(MAX_FEATURED),
-                    FETCH_TIMEOUT_MS
-                ),
-                applyWishlistViewModeSetting(client),
-            ]);
-            const { data, error } = itemsResult;
-            if (error) throw error;
-            return Array.isArray(data) ? data : [];
-        })();
-
-        // Closing and quickly reopening while this request is pending now
-        // attaches to the same promise instead of issuing a second Supabase
-        // query. Once it settles, a later explicit refresh can start anew.
-        const sharedRequest = request.finally(() => {
-            if (itemsFetchPromise === sharedRequest) itemsFetchPromise = null;
-        });
-        itemsFetchPromise = sharedRequest;
-        return sharedRequest;
+        // Synchronize first, then read. The old fire-and-forget order queried
+        // the previous snapshot and only refreshed it after cards appeared.
+        await triggerBackgroundSync(signal);
+        if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+        const [itemsResult, viewMode] = await Promise.all([
+            withSupabaseTimeout(
+                client.from('wishlist_items')
+                    .select('throne_item_id,name,price_cents,image_url,position')
+                    .eq('featured', true)
+                    .eq('is_available', true)
+                    .order('position')
+                    .limit(MAX_FEATURED),
+                FETCH_TIMEOUT_MS,
+                signal
+            ),
+            readWishlistViewModeSetting(client, signal),
+        ]);
+        const { data, error } = itemsResult;
+        if (error) throw error;
+        return { items: Array.isArray(data) ? data : [], viewMode };
     }
 
     async function loadItems({ bodyPrepared = false } = {}) {
+        itemsFetchController?.abort();
+        const controller = typeof window.AbortController === 'function'
+            ? new AbortController()
+            : null;
+        itemsFetchController = controller;
         const run = ++itemsLoadRun;
         loadState = 'loading';
+        items = [];
         if (!bodyPrepared) renderBody();
 
         try {
-            const nextItems = await fetchWishlistItemsShared();
+            const result = await fetchWishlistItemsFresh(controller?.signal);
             if (run !== itemsLoadRun) return;
-            items = nextItems;
+            items = result.items;
+            if (result.viewMode) wishlistViewMode = result.viewMode;
             const currentImageUrls = new Set(items.map(item => String(item.image_url || '').trim()));
             imageDims.forEach((_dims, url) => {
                 if (!currentImageUrls.has(url)) imageDims.delete(url);
             });
-            loadState = 'ready';
-            if (isWishlistPanelVisible()) {
+            if (!isWishlistPanelVisible()) return;
+            if (!items.length) {
+                loadState = 'ready';
                 renderBody();
                 renderFoot();
-            }
-            if (!items.length && isWishlistPanelVisible()) {
                 window.setTimeout(() => {
-                    if (isWishlistPanelVisible()) fallbackToLegacy();
+                    if (run === itemsLoadRun && isWishlistPanelVisible()) fallbackToLegacy();
                 }, 900);
+                return;
             }
+
+            loadState = 'preparing';
+            renderBody();
+            renderFoot();
+            const body = panel?.querySelector('.doll-wishlist-body');
+            await loadAndDecodeAllWishlistImages(body, run);
+            if (run !== itemsLoadRun || !isWishlistPanelVisible()) return;
+
+            loadState = 'ready';
+            if (!revealPreparedWishlistBody(body, run)) return;
+            renderDots();
+            renderFoot();
+            syncReservedHeight(true);
+            window.requestAnimationFrame(() => {
+                if (run !== itemsLoadRun || !isWishlistPanelVisible()) return;
+                syncTitleMarquees(body);
+                scheduleSwipeHint();
+                updateWishlistEdgeFade(body);
+            });
         } catch (err) {
             if (run !== itemsLoadRun) return;
             loadState = 'failed';
             if (isWishlistPanelVisible()) {
                 renderBody();
                 window.setTimeout(() => {
-                    if (isWishlistPanelVisible()) fallbackToLegacy();
+                    if (run === itemsLoadRun && isWishlistPanelVisible()) fallbackToLegacy();
                 }, 900);
             }
+        } finally {
+            if (itemsFetchController === controller) itemsFetchController = null;
         }
-    }
-
-    function triggerBackgroundSync() {
-        // Fire-and-forget: safe to call on every open because the function
-        // itself throttles real Throne calls server-side. Never blocks
-        // rendering and never surfaces errors to the visitor.
-        fetch(`${SUPABASE_URL}/functions/v1/throne-wishlist-sync`, {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
-        }).catch(() => {});
     }
 
     async function startCheckout() {
@@ -3460,15 +3578,19 @@
         } catch (error) {
             reservedCheckoutTab = null;
         }
+        const requestRun = ++checkoutRequestRun;
+        const panelSessionRun = itemsLoadRun;
+        const checkoutController = typeof window.AbortController === 'function'
+            ? new AbortController()
+            : null;
+        checkoutRequestController = checkoutController;
+        checkoutReservedTab = reservedCheckoutTab;
         checkoutInFlight = true;
         checkoutStatusMessage = '';
         playSound('link');
         renderFoot();
 
         try {
-            const checkoutController = typeof window.AbortController === 'function'
-                ? new AbortController()
-                : null;
             const res = await withTimeout(
                 fetch(`${SUPABASE_URL}/functions/v1/throne-cart`, {
                     method: 'POST',
@@ -3483,6 +3605,13 @@
                 () => checkoutController?.abort()
             );
             const body = await res.json().catch(() => ({}));
+            const requestStillOwnsPanel = requestRun === checkoutRequestRun
+                && panelSessionRun === itemsLoadRun
+                && isWishlistPanelVisible();
+            if (!requestStillOwnsPanel) {
+                if (reservedCheckoutTab && !reservedCheckoutTab.closed) reservedCheckoutTab.close();
+                return;
+            }
 
             if (res.status === 409) {
                 // Something the visitor picked sold out / got unfeatured
@@ -3491,12 +3620,12 @@
                 // let them retry with an honest selection.
                 checkoutStatusMessage = 'sorry, something you picked just sold out — pick again?';
                 if (reservedCheckoutTab && !reservedCheckoutTab.closed) reservedCheckoutTab.close();
+                if (checkoutReservedTab === reservedCheckoutTab) checkoutReservedTab = null;
                 reservedCheckoutTab = null;
-                checkoutInFlight = false;
                 await loadItems();
+                if (requestRun !== checkoutRequestRun || !isWishlistPanelVisible()) return;
                 const stillValid = new Set(items.map(item => item.throne_item_id));
                 selectedIds = new Set(Array.from(selectedIds).filter(id => stillValid.has(id)));
-                renderBody();
                 renderFoot();
                 return;
             }
@@ -3506,6 +3635,7 @@
             }
             if (reservedCheckoutTab && !reservedCheckoutTab.closed) {
                 reservedCheckoutTab.location.replace(body.checkoutUrl);
+                if (checkoutReservedTab === reservedCheckoutTab) checkoutReservedTab = null;
                 reservedCheckoutTab = null;
             } else {
                 // A locked-down browser may reject even a synchronous popup;
@@ -3515,11 +3645,102 @@
             closeThroneMockup();
         } catch (err) {
             if (reservedCheckoutTab && !reservedCheckoutTab.closed) reservedCheckoutTab.close();
+            const staleRequest = requestRun !== checkoutRequestRun
+                || panelSessionRun !== itemsLoadRun
+                || !isWishlistPanelVisible();
+            if (staleRequest) return;
             fallbackToLegacy();
         } finally {
-            checkoutInFlight = false;
-            if (panel) renderFoot();
+            if (requestRun === checkoutRequestRun) {
+                if (checkoutRequestController === checkoutController) checkoutRequestController = null;
+                if (checkoutReservedTab === reservedCheckoutTab) checkoutReservedTab = null;
+                checkoutInFlight = false;
+                if (panel?.classList.contains('active')) renderFoot();
+            }
         }
+    }
+
+    function cancelCheckoutRequest() {
+        checkoutRequestRun += 1;
+        checkoutRequestController?.abort();
+        checkoutRequestController = null;
+        if (checkoutReservedTab && !checkoutReservedTab.closed) checkoutReservedTab.close();
+        checkoutReservedTab = null;
+        checkoutInFlight = false;
+    }
+
+    function cancelScheduledWishlistRelease() {
+        if (wishlistExitTransitionTimer) {
+            window.clearTimeout(wishlistExitTransitionTimer);
+            wishlistExitTransitionTimer = 0;
+        }
+        if (wishlistReleaseTimer) {
+            window.clearTimeout(wishlistReleaseTimer);
+            wishlistReleaseTimer = 0;
+        }
+        if (wishlistExitTransitionHandler && panel) {
+            panel.removeEventListener('transitionend', wishlistExitTransitionHandler);
+        }
+        wishlistExitTransitionHandler = null;
+    }
+
+    function releaseClosedWishlistResources() {
+        wishlistReleaseTimer = 0;
+        if (panelOpening || panel?.classList.contains('active')) return;
+        cancelAtomicImageWaits();
+        cancelCheckoutRequest();
+        stopProgressiveItemImages({ releaseLoaded: true });
+        itemsFetchController?.abort();
+        itemsFetchController = null;
+        items = [];
+        loadState = 'idle';
+        renderedBodySignature = '';
+        imageDims.clear();
+
+        const body = panel?.querySelector('.doll-wishlist-body');
+        const foot = panel?.querySelector('.doll-wishlist-foot');
+        if (foot && foot.parentElement !== panel) panel.appendChild(foot);
+        if (body) {
+            body.replaceChildren();
+            body.scrollTop = 0;
+            body.classList.remove('dwl-scroll-body', 'dwl-images-preparing', 'dwl-ready-in');
+            body.style.removeProperty('--panel-fill-max');
+        }
+        renderDots();
+    }
+
+    function scheduleWishlistReleaseAfterExit(waitForTransition) {
+        cancelScheduledWishlistRelease();
+        const beginDelay = () => {
+            if (wishlistExitTransitionTimer) {
+                window.clearTimeout(wishlistExitTransitionTimer);
+                wishlistExitTransitionTimer = 0;
+            }
+            if (wishlistExitTransitionHandler && panel) {
+                panel.removeEventListener('transitionend', wishlistExitTransitionHandler);
+            }
+            wishlistExitTransitionHandler = null;
+            if (panelOpening || panel?.classList.contains('active')) return;
+            wishlistReleaseTimer = window.setTimeout(
+                releaseClosedWishlistResources,
+                WISHLIST_RELEASE_DELAY_MS
+            );
+        };
+
+        if (!waitForTransition || !panel) {
+            beginDelay();
+            return;
+        }
+        wishlistExitTransitionHandler = event => {
+            if (event.target === panel && event.propertyName === 'opacity') beginDelay();
+        };
+        panel.addEventListener('transitionend', wishlistExitTransitionHandler);
+        // Instant conflict closes suppress transitionend; never retain a
+        // closed wishlist forever just because that event was skipped.
+        wishlistExitTransitionTimer = window.setTimeout(
+            beginDelay,
+            WISHLIST_EXIT_TRANSITION_FALLBACK_MS
+        );
     }
 
     function openThroneMockup() {
@@ -3527,6 +3748,11 @@
         if (!el) return;
         if (hasConflictingLayer()) return;
         if (el.classList.contains('active') || panelOpening) return;
+        cancelScheduledWishlistRelease();
+        itemsFetchController?.abort();
+        itemsFetchController = null;
+        itemsLoadRun += 1;
+        cancelAtomicImageWaits();
         const checkoutArt = el.querySelector('.doll-wishlist-checkout-art[data-checkout-src]');
         if (checkoutArt && !checkoutArt.getAttribute('src') && checkoutArt.dataset.checkoutLoadStarted !== 'true') {
             checkoutArt.dataset.checkoutLoadStarted = 'true';
@@ -3569,19 +3795,11 @@
         // so the frozen panel geometry matches what is actually displayed.
         document.body.classList.add('has-wishlist-panel-open');
 
-        // Reuse already-fetched items on repeat opens. First opens use the
-        // current view mode's stable card shimmers plus a compact paw status;
-        // once settings/items arrive, one render replaces that fetch stage.
-        // A successful empty result is cached too. Treating `items.length`
-        // as the cache flag would re-query Supabase on every quick reopen of
-        // a legitimately empty wishlist.
-        const hasCachedResult = loadState === 'ready';
-        if (!hasCachedResult) loadState = 'loading';
-        if (hasCachedResult && canReuseRenderedBody()) {
-            resumeRenderedBody();
-        } else {
-            renderBody();
-        }
+        // Every visit is a two-state lifecycle: paw-only fetching, then one
+        // atomic reveal of the freshly synchronized and decoded result set.
+        loadState = 'loading';
+        items = [];
+        renderBody();
         renderFoot();
         el.classList.add('dwl-measure-open');
         syncReservedHeight(true);
@@ -3599,14 +3817,7 @@
             el.setAttribute('aria-hidden', 'false');
             resetSwipeHintSequence();
 
-            if (!hasCachedResult) {
-                loadItems({ bodyPrepared: true });
-            } else if (!items.length) {
-                window.setTimeout(() => {
-                    if (isWishlistPanelVisible()) fallbackToLegacy();
-                }, 900);
-            }
-            triggerBackgroundSync();
+            void loadItems({ bodyPrepared: true });
         });
     }
 
@@ -3618,18 +3829,12 @@
             panelOpenRaf = 0;
         }
         panelOpening = false;
-        const wishlistBody = panel?.querySelector('.doll-wishlist-body');
-        const retainedImages = new Set(getPriorityProductImages(wishlistBody, { atStart: true }));
-        stopProgressiveItemImages({
-            retainLoaded: retainedImages,
-            preserveRetainedRequests: true,
-        });
-        // Do not leave an indeterminate paw animation composited behind the
-        // closed panel. A pending fetch/reopen rebuilds the appropriate loader
-        // from current state, while cached cards are prepared afresh below.
-        wishlistBody?.querySelectorAll('.dwl-initial-image-loader, .dwl-fetch-loader')
-            .forEach(loader => loader.remove());
-        wishlistBody?.classList.remove('dwl-images-preparing', 'dwl-ready-in');
+        if (wasOpen || wasOpening) {
+            itemsLoadRun += 1;
+            itemsFetchController?.abort();
+            itemsFetchController = null;
+            cancelCheckoutRequest();
+        }
         closePreview();
         cancelSwipeHintSequence();
         document.body.classList.remove('has-wishlist-panel-open', 'has-wishlist-selection');
@@ -3647,6 +3852,7 @@
         panel.classList.remove('active');
         panel.setAttribute('aria-hidden', 'true');
         showNoteImage();
+        scheduleWishlistReleaseAfterExit(wasOpen);
     }
 
     document.addEventListener('keydown', event => {
@@ -3665,7 +3871,6 @@
             renderDots();
             updateActiveDot();
             syncTitleMarquees();
-            scheduleProductImagePriorityRefresh(panel?.querySelector('.doll-wishlist-body'));
         });
     }, { passive: true });
 

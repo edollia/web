@@ -1,6 +1,23 @@
 document.addEventListener("DOMContentLoaded", async function() {
     const DEFAULT_SOCIAL_CARD_ORDER = ['snapchat', 'instagram', 'kofi', 'telegram', 'x', 'tiktok', 'twitch', 'discord', 'onlyfans', 'spotify'];
     const SOCIAL_CARD_KEYS = [...DEFAULT_SOCIAL_CARD_ORDER];
+    // One shared switch is loaded by both the public site and Admin. Fail
+    // closed to GitHub mode if that tiny config script is ever unavailable;
+    // an absent config must not unexpectedly resume Supabase media egress.
+    const SOCIAL_CARD_MEDIA_CONFIG = window.DOLL_SOCIAL_CARD_MEDIA || Object.freeze({
+        mode: 'github',
+        localVideos: Object.freeze({})
+    });
+    const SOCIAL_CARD_VIDEO_SOURCE_MODE = SOCIAL_CARD_MEDIA_CONFIG.mode === 'supabase'
+        ? 'supabase'
+        : 'github';
+    const LOCAL_SOCIAL_CARD_VIDEOS = SOCIAL_CARD_MEDIA_CONFIG.localVideos || {};
+    const LOCAL_SOCIAL_CARD_PRELOAD_TIMEOUT_MS = 8000;
+    // Same-origin social videos are decoded behind the entrance screen and
+    // then moved into their cards. Keeping the exact elements avoids relying
+    // on Safari's HTTP cache to make a second <video> instantly paintable.
+    const preloadedLocalSocialVideos = new Map();
+    let mountPreloadedLocalSocialVideo = null;
     const DEFAULT_LINK_SETTINGS = {
         snapchat_url: 'https://www.snapchat.com/add/dumidoll',
         snapchat_username: 'dumidoll',
@@ -1060,6 +1077,12 @@ document.addEventListener("DOMContentLoaded", async function() {
     const PUBLIC_DRAWINGS_PAGE_SIZE = 12;
     const PUBLIC_QUESTIONS_PAGE_SIZE = 20;
     const PUBLIC_SUBMISSIONS_TIMEOUT_MS = 10000;
+    const PUBLIC_SUBMISSIONS_MEDIA_TIMEOUT_MS = 8000;
+    const PUBLIC_SUBMISSIONS_MEDIA_CONCURRENCY = 8;
+    const PUBLIC_SUBMISSIONS_EXIT_DURATION_MS = 450;
+    const PUBLIC_SUBMISSIONS_RELEASE_DELAY_MS = 1000;
+    const STATIC_RESOURCE_PROGRESS_END = 58;
+    const SOCIAL_MEDIA_PROGRESS_END = 82;
     let loadingBarShown = false;
     let loadingProgress = 0;
     let displayedLoadingProgress = 0;
@@ -1079,6 +1102,8 @@ document.addEventListener("DOMContentLoaded", async function() {
     let submissionsCacheReleaseTimer = 0;
     let clearRenderedSubmissionsCache = null;
     let closeActiveReactionPicker = null;
+    let postsMediaPreparationController = null;
+    let postsMediaStagingRoot = null;
     const submissionsLoadControllers = new Set();
     const submissionFeeds = {
         drawings: {
@@ -1252,11 +1277,77 @@ document.addEventListener("DOMContentLoaded", async function() {
         }
     }
     
-    // Static resources are most of the load, but final app setup owns the last 16%.
+    // Static images hand the paw trail to the local social-video preloader.
+    // Supabase setup and final app data still own the last 18%.
     function updateLoadingBar(loadedCount, totalResources) {
         if (!totalResources) return;
-        const resourceProgress = (loadedCount / totalResources) * 76;
+        const resourceProgress = (loadedCount / totalResources) * STATIC_RESOURCE_PROGRESS_END;
         setLoadingProgress(resourceProgress);
+    }
+
+    async function preloadConfiguredLocalSocialVideos() {
+        if (SOCIAL_CARD_VIDEO_SOURCE_MODE !== 'github') {
+            setLoadingProgress(SOCIAL_MEDIA_PROGRESS_END);
+            return;
+        }
+
+        const entries = Object.entries(LOCAL_SOCIAL_CARD_VIDEOS)
+            .map(([key, source]) => [key, String(source || '').trim()])
+            .filter(([, source]) => Boolean(source));
+        if (!entries.length) {
+            setLoadingProgress(SOCIAL_MEDIA_PROGRESS_END);
+            return;
+        }
+
+        let completed = 0;
+        setLoadingProgress(STATIC_RESOURCE_PROGRESS_END);
+        await Promise.allSettled(entries.map(([, source]) => new Promise(resolve => {
+            const video = document.createElement('video');
+            let settled = false;
+            let timeoutId = 0;
+            const finish = ready => {
+                if (settled) return;
+                settled = true;
+                window.clearTimeout(timeoutId);
+                video.removeEventListener('loadeddata', onReady);
+                video.removeEventListener('error', onError);
+                if (ready && video.readyState >= 2) {
+                    preloadedLocalSocialVideos.set(source, video);
+                    mountPreloadedLocalSocialVideo?.(source);
+                } else {
+                    video.pause();
+                    video.removeAttribute('src');
+                    video.load();
+                }
+                completed += 1;
+                setLoadingProgress(
+                    STATIC_RESOURCE_PROGRESS_END
+                    + (completed / entries.length)
+                        * (SOCIAL_MEDIA_PROGRESS_END - STATIC_RESOURCE_PROGRESS_END)
+                );
+                resolve(ready);
+            };
+            const onReady = () => finish(true);
+            const onError = () => finish(false);
+
+            video.muted = true;
+            video.defaultMuted = true;
+            video.loop = true;
+            video.playsInline = true;
+            video.preload = 'auto';
+            video.setAttribute('muted', '');
+            video.setAttribute('playsinline', '');
+            video.dataset.source = source;
+            video.addEventListener('loadeddata', onReady, { once: true });
+            video.addEventListener('error', onError, { once: true });
+            timeoutId = window.setTimeout(
+                () => finish(video.readyState >= 2),
+                LOCAL_SOCIAL_CARD_PRELOAD_TIMEOUT_MS
+            );
+            video.src = source;
+            video.load();
+            if (video.readyState >= 2) finish(true);
+        })));
     }
 
     setLoadingProgress(4);
@@ -1395,11 +1486,32 @@ document.addEventListener("DOMContentLoaded", async function() {
         return pagePromise;
     }
 
+    async function loadEntireSubmissionFeed(feedKey) {
+        const state = submissionFeeds[feedKey];
+        if (!state) return [];
+
+        while (!state.done) {
+            const previousPhase = state.phase;
+            const previousCursorId = String(state.cursor?.id || '');
+            await loadSubmissionFeedPage(feedKey);
+
+            // A malformed response must never leave the paw loader spinning
+            // forever. A legitimate final dated page advances into the
+            // undated phase, and every other non-final page advances its ID
+            // cursor, so neither valid path reaches this guard.
+            const cursorAdvanced = previousCursorId !== String(state.cursor?.id || '');
+            if (!state.done && previousPhase === state.phase && !cursorAdvanced) {
+                throw new Error(`Could not advance the ${feedKey} submissions cursor.`);
+            }
+        }
+
+        return state.items;
+    }
+
     function loadSubmissionsFromSupabase() {
         if (submissionsLoadPromise) return submissionsLoadPromise;
-        const feedsToLoad = Object.values(submissionFeeds)
-            .filter(state => !state.done && state.items.length === 0)
-            .map(state => state.key);
+        const requestRevision = submissionsRevision;
+        const feedsToLoad = Object.values(submissionFeeds).map(state => state.key);
         if (!feedsToLoad.length) {
             return Promise.resolve({
                 drawings: preloadedSubmissions.drawings,
@@ -1408,14 +1520,22 @@ document.addEventListener("DOMContentLoaded", async function() {
         }
 
         let requestPromise;
-        requestPromise = Promise.allSettled(feedsToLoad.map(loadSubmissionFeedPage))
-            .then(results => {
-                const successful = results.some(result => result.status === 'fulfilled');
-                if (!successful) throw results[0]?.reason || new Error('Could not load submissions.');
+        requestPromise = Promise.all(feedsToLoad.map(loadEntireSubmissionFeed))
+            .then(() => {
                 return {
                     drawings: preloadedSubmissions.drawings,
                     questions: preloadedSubmissions.questions
                 };
+            })
+            .catch(error => {
+                // Doods and Mi are one atomic surface. If either feed fails,
+                // stop its sibling instead of allowing a partial result set
+                // to continue downloading behind the error state. An older
+                // aborted generation must never cancel a newer quick reopen.
+                if (requestRevision === submissionsRevision) {
+                    abortSubmissionLoads();
+                }
+                throw error;
             })
             .finally(() => {
                 if (submissionsLoadPromise === requestPromise) submissionsLoadPromise = null;
@@ -1639,10 +1759,14 @@ document.addEventListener("DOMContentLoaded", async function() {
                     resolve();
                 }
             }, 8000);
-        })
+        }),
+        // Decode the same-origin card videos behind the entrance screen. This
+        // preloader is deliberately self-contained: the Socials DOM constants
+        // below cannot initialize until this Promise.all has completed.
+        preloadConfiguredLocalSocialVideos().catch(() => {})
     ]).then(async () => {
         // Load Supabase only after the initial loading is complete
-        setLoadingProgress(82);
+        setLoadingProgress(SOCIAL_MEDIA_PROGRESS_END);
 
         try {
             // Bounded — unlike fetch(), a dynamic import() has no built-in
@@ -2412,30 +2536,18 @@ document.addEventListener("DOMContentLoaded", async function() {
 
     function pausePostsMediaFrame(frame) {
         frame.querySelectorAll('img.answer-gif, video, iframe').forEach(media => {
+            // A prepared :3 surface keeps every source attached until the
+            // visitor has fully left it. Removing image/GIF/iframe sources
+            // here made a later scroll or tab switch reveal empty cards.
             if (media instanceof HTMLVideoElement) media.pause();
-            const src = media.getAttribute('src');
-            if (!src || src === 'about:blank') return;
-            media.dataset.postsPausedSrc = src;
-            if (media instanceof HTMLImageElement
-                && media.naturalWidth > 0
-                && media.naturalHeight > 0) {
-                media.style.aspectRatio = `${media.naturalWidth} / ${media.naturalHeight}`;
-            }
-            if (media instanceof HTMLIFrameElement) {
-                media.src = 'about:blank';
-            } else {
-                media.removeAttribute('src');
-                if (media instanceof HTMLVideoElement) media.load();
-            }
         });
     }
 
     function resumePostsMediaFrame(frame) {
         frame.querySelectorAll('img.answer-gif, video, iframe').forEach(media => {
-            const src = media.dataset.postsPausedSrc || media.dataset.postsSrc;
+            const src = media.dataset.postsSrc;
             if (src && (!media.getAttribute('src') || media.getAttribute('src') === 'about:blank')) {
                 media.src = src;
-                delete media.dataset.postsPausedSrc;
                 if (media instanceof HTMLVideoElement) media.load();
             }
             if (media instanceof HTMLVideoElement && media.getAttribute('src')) {
@@ -2492,6 +2604,26 @@ document.addEventListener("DOMContentLoaded", async function() {
             .filter(frame => frame.dataset.postsMediaNear !== 'true')
             .forEach(pausePostsMediaFrame);
         resumePostsMedia();
+    }
+
+    function releasePostsMediaSources(root) {
+        if (!root) return;
+        root.querySelectorAll('.post-item > img, img.answer-gif, video, iframe').forEach(media => {
+            if (media instanceof HTMLVideoElement) media.pause();
+            if (media instanceof HTMLIFrameElement) {
+                media.src = 'about:blank';
+                return;
+            }
+            media.removeAttribute('src');
+            if (media instanceof HTMLVideoElement) media.load();
+        });
+    }
+
+    function disposePostsMediaStaging(root = postsMediaStagingRoot) {
+        if (!root) return;
+        releasePostsMediaSources(root);
+        root.remove();
+        if (postsMediaStagingRoot === root) postsMediaStagingRoot = null;
     }
 
     function syncPostsPanelSpace() {
@@ -2554,16 +2686,45 @@ document.addEventListener("DOMContentLoaded", async function() {
         askButton.textContent = '?';
     }
 
-    function closePostsPanel() {
-        // Closing :3 is a cancellation boundary for in-flight *pages*, but
-        // already loaded records stay cached so a quick reopen is instant.
-        closeActiveReactionPicker?.();
-        postsOpenGeneration += 1;
+    function beginFreshPostsLoad() {
+        window.clearTimeout(submissionsCacheReleaseTimer);
+        submissionsCacheReleaseTimer = 0;
+        postsMediaPreparationController?.abort();
+        postsMediaPreparationController = new AbortController();
+        submissionsRevision += 1;
         abortSubmissionLoads();
         submissionsLoadPromise = null;
-        postsPanel?.querySelectorAll('#drawings-list .post-item > img').forEach(image => {
-            image.removeAttribute('src');
-        });
+        return {
+            generation: ++postsOpenGeneration,
+            signal: postsMediaPreparationController.signal
+        };
+    }
+
+    function discardPostsRetainedResourcesForFreshLoad() {
+        disposePostsMediaStaging();
+        Object.values(submissionFeeds).forEach(resetSubmissionFeed);
+        clearRenderedSubmissionsCache?.({ preserveLoader: true });
+    }
+
+    function closePostsPanel() {
+        // This closer is shared by :3 itself, Socials, Wishlist, and the note.
+        // `postsPopup` is only a local alias inside initPostsSystem(), so using
+        // it here throws before any close state can be cleared. Keep the shared
+        // routine anchored to the module-level panel reference instead.
+        const wasOpen = Boolean(postsPanel?.classList.contains('active'));
+        if (!wasOpen) return;
+
+        // Stop stale requests immediately, but retain the successfully
+        // displayed DOM and image/GIF/iframe sources through the visual exit.
+        // Only videos need an immediate pause; the guarded release below owns
+        // the destructive cleanup one second after the destination took over.
+        closeActiveReactionPicker?.();
+        const closingGeneration = ++postsOpenGeneration;
+        submissionsRevision += 1;
+        abortSubmissionLoads();
+        submissionsLoadPromise = null;
+        postsMediaPreparationController?.abort();
+        postsMediaPreparationController = null;
         pausePostsMedia();
         setPostsPanelLayoutOpen(false);
         // Match the wishlist's own close behavior exactly: snap the icons back
@@ -2581,13 +2742,16 @@ document.addEventListener("DOMContentLoaded", async function() {
         postsButton.textContent = ':3';
         window.clearTimeout(submissionsCacheReleaseTimer);
         submissionsCacheReleaseTimer = window.setTimeout(() => {
-            if (postsPanel?.classList.contains('active')) return;
-            submissionsRevision += 1;
+            submissionsCacheReleaseTimer = 0;
+            if (postsPanel?.classList.contains('active')
+                || postsOpenGeneration !== closingGeneration) return;
             abortSubmissionLoads();
             submissionsLoadPromise = null;
+            releasePostsMediaSources(postsPanel);
+            disposePostsMediaStaging();
             Object.values(submissionFeeds).forEach(resetSubmissionFeed);
             clearRenderedSubmissionsCache?.();
-        }, 60000);
+        }, PUBLIC_SUBMISSIONS_EXIT_DURATION_MS + PUBLIC_SUBMISSIONS_RELEASE_DELAY_MS);
     }
     // The wishlist widget is a separate script and can replace :3 directly.
     // Give it the real closer so that path also aborts fetches and pauses
@@ -2767,6 +2931,13 @@ document.addEventListener("DOMContentLoaded", async function() {
         return /\.gif(?:$|[?#])/i.test(String(url || ''));
     }
 
+    function getSocialCardVideoUrl(key) {
+        if (SOCIAL_CARD_VIDEO_SOURCE_MODE === 'github') {
+            return String(LOCAL_SOCIAL_CARD_VIDEOS[key] || '').trim();
+        }
+        return String(siteLinkSettings[`${key}_card_video_url`] || '').trim();
+    }
+
     function removeSocialCardVideo(card) {
         if (!card) return;
         initialSocialPreviewCards.delete(card);
@@ -2840,7 +3011,7 @@ document.addEventListener("DOMContentLoaded", async function() {
 
     function syncSocialCardVideo(key, card, loadMedia = false) {
         if (!card) return;
-        const url = String(siteLinkSettings[`${key}_card_video_url`] || '').trim();
+        const url = getSocialCardVideoUrl(key);
         if (!url || !isPublicLinkEnabled(key)) {
             removeSocialCardVideo(card);
             return;
@@ -2861,16 +3032,22 @@ document.addEventListener("DOMContentLoaded", async function() {
             preview = null;
         }
 
-        // Settings are applied while the social panel is still hidden. Keep
-        // the URL in settings only; creating an element with src here would
-        // download and (for GIFs) animate invisible media on every visit.
+        // Supabase mode preserves the old on-open lazy behavior to control
+        // egress. GitHub mode receives already-decoded same-origin elements
+        // from the entrance preloader before the loading screen can leave.
         if (!preview && !loadMedia) {
             card.classList.remove('has-social-preview');
             return;
         }
 
         if (!preview) {
-            preview = document.createElement(useGif ? 'img' : 'video');
+            const preloadedVideo = !useGif && SOCIAL_CARD_VIDEO_SOURCE_MODE === 'github'
+                ? preloadedLocalSocialVideos.get(url)
+                : null;
+            preview = preloadedVideo instanceof HTMLVideoElement
+                ? preloadedVideo
+                : document.createElement(useGif ? 'img' : 'video');
+            if (preloadedVideo) preloadedLocalSocialVideos.delete(url);
             preview.className = 'social-link-preview';
             preview.setAttribute('aria-hidden', 'true');
             preview.tabIndex = -1;
@@ -2879,7 +3056,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                 preview.defaultMuted = true;
                 preview.loop = true;
                 preview.playsInline = true;
-                preview.preload = 'metadata';
+                preview.preload = SOCIAL_CARD_VIDEO_SOURCE_MODE === 'github' ? 'auto' : 'metadata';
                 preview.setAttribute('muted', '');
                 preview.setAttribute('playsinline', '');
             } else {
@@ -2936,6 +3113,19 @@ document.addEventListener("DOMContentLoaded", async function() {
             preview.play().catch(() => {});
         }
     }
+
+    // The network preloader above starts while this DOM setup is still being
+    // defined. Whichever side becomes ready first hands each exact decoded
+    // element to syncSocialCardVideo(), which mounts it into the correct card
+    // while it is still hidden and paused behind the entrance screen.
+    mountPreloadedLocalSocialVideo = source => {
+        const definition = socialCardDefinitions.find(({ key }) => (
+            getSocialCardVideoUrl(key) === source
+        ));
+        if (!definition?.option || !preloadedLocalSocialVideos.has(source)) return;
+        syncSocialCardVideo(definition.key, definition.option, true);
+    };
+    Array.from(preloadedLocalSocialVideos.keys()).forEach(mountPreloadedLocalSocialVideo);
 
     function syncSocialCardVideos(loadMedia = false) {
         getSocialCardVideoEntries().forEach(([key, card]) => {
@@ -3013,6 +3203,14 @@ document.addEventListener("DOMContentLoaded", async function() {
             if (ready && preview.isConnected && preview.parentElement === card) {
                 delete card.dataset.socialPreviewDeferred;
                 card.classList.add('has-social-preview');
+                return;
+            }
+            if (SOCIAL_CARD_VIDEO_SOURCE_MODE === 'github') {
+                // A local file that missed the bounded entrance deadline may
+                // still finish moments later. Let its loadeddata handler reveal
+                // it during this same opening instead of suppressing it until
+                // the visitor closes and reopens Socials.
+                delete card.dataset.socialPreviewDeferred;
                 return;
             }
             // Do not let one slow preview visibly replace its card halfway
@@ -3127,7 +3325,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         });
         window.clearTimeout(socialPreviewReleaseTimer);
         socialPreviewReleaseTimer = 0;
-        if (!releaseSources) {
+        if (!releaseSources && SOCIAL_CARD_VIDEO_SOURCE_MODE !== 'github') {
             // Preserve the already-painted nearby previews across quick
             // close/reopen cycles. Videos are paused immediately; GIF/video
             // sources are released later if Socials stays closed.
@@ -3668,7 +3866,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             const stablePaintedCards = panelAlreadyVisible
                 ? new Set(getVisibleSocialOptions().filter(card => {
                     const key = getSocialCardVideoKey(card);
-                    const expectedUrl = String(siteLinkSettings[`${key}_card_video_url`] || '').trim();
+                    const expectedUrl = getSocialCardVideoUrl(key);
                     const preview = card.querySelector('.social-link-preview[src]');
                     return Boolean(expectedUrl
                         && card.classList.contains('has-social-preview')
@@ -4071,8 +4269,20 @@ document.addEventListener("DOMContentLoaded", async function() {
             void warmUiSounds();
             startBackgroundMusic();
         }
+        if (socialsButton?.classList.contains('open') && !document.hidden) {
+            playSocialCardVideos();
+        }
     });
-    window.addEventListener('pagehide', releaseSocialCardPreviewSources);
+    window.addEventListener('pagehide', event => {
+        if (SOCIAL_CARD_VIDEO_SOURCE_MODE === 'github' && event.persisted) {
+            // A bfcache page is not gone. Keep decoded sources attached so
+            // returning with Back/Forward still gets the same instant first
+            // Socials open; playback itself is paused immediately.
+            pauseSocialCardVideos();
+            return;
+        }
+        releaseSocialCardPreviewSources();
+    });
 
     function hasSeenFirstVisitTour() {
         try {
@@ -4891,23 +5101,8 @@ document.addEventListener("DOMContentLoaded", async function() {
         const postsPopup = postsPanel;
         const drawingsList = document.getElementById('drawings-list');
         const questionsList = document.getElementById('questions-list');
-        let renderedSubmissionsKey = '';
+        let postsLoadingOverlay = null;
         const drawingDataInfoCache = new WeakMap();
-        const drawingImageObserver = 'IntersectionObserver' in window
-            ? new IntersectionObserver(entries => {
-                entries.forEach(entry => {
-                    const image = entry.target;
-                    if (entry.isIntersecting && postsPopup?.classList.contains('active')) {
-                        restoreDrawingImage(image);
-                        return;
-                    }
-                    image.removeAttribute('src');
-                });
-            }, {
-                root: postsContentEl,
-                rootMargin: '220px 0px'
-            })
-            : null;
         const drawingLikesObserver = 'IntersectionObserver' in window
             ? new IntersectionObserver(entries => {
                 entries.forEach(entry => {
@@ -4925,114 +5120,6 @@ document.addEventListener("DOMContentLoaded", async function() {
                 rootMargin: '160px 0px'
             })
             : null;
-        const submissionPageObserver = 'IntersectionObserver' in window
-            ? new IntersectionObserver(entries => {
-                entries.forEach(entry => {
-                    if (!entry.isIntersecting) return;
-                    const feedKey = entry.target.dataset.submissionFeed;
-                    if (feedKey) void loadMoreSubmissionFeed(feedKey);
-                });
-            }, {
-                root: postsContentEl,
-                rootMargin: '520px 0px'
-            })
-            : null;
-
-        function getSubmissionList(feedKey) {
-            return feedKey === 'drawings' ? drawingsList : questionsList;
-        }
-
-        function ensureSubmissionSentinel(feedKey) {
-            const list = getSubmissionList(feedKey);
-            if (!list) return null;
-            let sentinel = list.querySelector(`.posts-page-sentinel[data-submission-feed="${feedKey}"]`);
-            if (!sentinel) {
-                sentinel = document.createElement('button');
-                sentinel.type = 'button';
-                sentinel.className = 'posts-page-sentinel';
-                sentinel.dataset.submissionFeed = feedKey;
-                sentinel.innerHTML = `
-                    <span class="loading-paw-print posts-fetch-paw" aria-hidden="true"></span>
-                    <span class="posts-page-sentinel-label">more...</span>
-                `;
-                sentinel.addEventListener('click', () => void loadMoreSubmissionFeed(feedKey));
-                list.appendChild(sentinel);
-            }
-            submissionPageObserver?.observe(sentinel);
-            return sentinel;
-        }
-
-        function updateSubmissionSentinel(feedKey) {
-            const state = submissionFeeds[feedKey];
-            const sentinel = ensureSubmissionSentinel(feedKey);
-            if (!state || !sentinel) return;
-            sentinel.hidden = state.done;
-            sentinel.disabled = state.loading;
-            sentinel.classList.toggle('is-loading', state.loading);
-            sentinel.classList.toggle('is-error', Boolean(state.error));
-            const label = sentinel.querySelector('.posts-page-sentinel-label');
-            if (label) {
-                label.textContent = state.loading
-                    ? 'fetching more...'
-                    : state.error
-                        ? 'tap to try again'
-                        : 'more...';
-            }
-        }
-
-        function isSubmissionSentinelNear(feedKey) {
-            const sentinel = getSubmissionList(feedKey)
-                ?.querySelector(`.posts-page-sentinel[data-submission-feed="${feedKey}"]`);
-            const tab = sentinel?.closest('.tab-content');
-            if (!sentinel || sentinel.hidden || !tab?.classList.contains('active') || !postsContentEl) return false;
-            const rootRect = postsContentEl.getBoundingClientRect();
-            const rect = sentinel.getBoundingClientRect();
-            return rect.top <= rootRect.bottom + 520 && rect.bottom >= rootRect.top - 40;
-        }
-
-        function scheduleVisibleSubmissionPage(feedKey) {
-            window.requestAnimationFrame(() => {
-                if (postsPopup?.classList.contains('active') && isSubmissionSentinelNear(feedKey)) {
-                    void loadMoreSubmissionFeed(feedKey);
-                }
-            });
-        }
-
-        function restoreDrawingImage(image) {
-            if (!(image instanceof HTMLImageElement) || image.getAttribute('src')) return;
-            const drawingId = String(image.dataset.drawingId || '');
-            const drawing = submissionFeeds.drawings.byId.get(drawingId);
-            const src = getDrawingSrcForDrawing(drawing);
-            if (src) image.src = src;
-        }
-
-        function resumeCachedDrawingImages() {
-            if (!postsPopup?.classList.contains('active') || !drawingsList) return;
-            const drawingImages = Array.from(
-                drawingsList.querySelectorAll('.post-item > img[data-drawing-id]')
-            );
-            if (!drawingImageObserver) {
-                drawingImages.forEach(restoreDrawingImage);
-                return;
-            }
-            // The panel always resets to the top when it closes. Restore a
-            // generous first-viewport cohort immediately; IntersectionObserver
-            // handles the rest. This avoids synchronously measuring every one
-            // of hundreds of archived drawings on each reopen/tab switch.
-            const viewportHeight = postsContentEl?.clientHeight || 320;
-            const openingCount = Math.min(
-                drawingImages.length,
-                Math.max(8, (Math.ceil(viewportHeight / 120) * 2) + 4)
-            );
-            drawingImages.slice(0, openingCount).forEach(restoreDrawingImage);
-        }
-
-        function getSubmissionsRenderKey(drawings, questions) {
-            const lastDrawing = drawings[drawings.length - 1];
-            const lastQuestion = questions[questions.length - 1];
-            return `${submissionsRevision}:${drawings.length}:${lastDrawing?.id || ''}`
-                + `|${questions.length}:${lastQuestion?.id || ''}`;
-        }
 
         function submissionsStatusMarkup(message, failed = false) {
             return `
@@ -5043,18 +5130,58 @@ document.addEventListener("DOMContentLoaded", async function() {
             `;
         }
 
+        function ensurePostsLoadingOverlay() {
+            if (postsLoadingOverlay?.isConnected) return postsLoadingOverlay;
+            postsLoadingOverlay = document.createElement('div');
+            postsLoadingOverlay.className = 'posts-loading-overlay';
+            postsContentEl?.appendChild(postsLoadingOverlay);
+            return postsLoadingOverlay;
+        }
+
         function showSubmissionsLoadingState() {
-            if (renderedSubmissionsKey) return;
-            const markup = submissionsStatusMarkup('fetching the latest...');
-            if (drawingsList) drawingsList.innerHTML = markup;
-            if (questionsList) questionsList.innerHTML = markup;
+            const overlay = ensurePostsLoadingOverlay();
+            if (!overlay) return;
+            overlay.innerHTML = submissionsStatusMarkup('fetching the latest...');
+            overlay.hidden = false;
+            postsContentEl?.classList.add('posts-is-fetching');
         }
 
         function showSubmissionsLoadError() {
-            if (renderedSubmissionsKey) return;
-            const markup = submissionsStatusMarkup('couldn\'t fetch yet — close and tap :3 to retry', true);
-            if (drawingsList) drawingsList.innerHTML = markup;
-            if (questionsList) questionsList.innerHTML = markup;
+            const overlay = ensurePostsLoadingOverlay();
+            if (!overlay) return;
+            overlay.innerHTML = submissionsStatusMarkup(
+                'couldn\'t fetch yet — close and tap :3 to retry',
+                true
+            );
+            overlay.hidden = false;
+            postsContentEl?.classList.add('posts-is-fetching');
+        }
+
+        function hideSubmissionsLoadingState() {
+            postsContentEl?.classList.remove('posts-is-fetching');
+            if (postsLoadingOverlay) {
+                postsLoadingOverlay.hidden = true;
+                postsLoadingOverlay.replaceChildren();
+            }
+        }
+
+        function waitForPostsLoaderPaint() {
+            return new Promise(resolve => {
+                let settled = false;
+                const finish = () => {
+                    if (settled) return;
+                    settled = true;
+                    window.clearTimeout(fallbackTimer);
+                    resolve();
+                };
+                const fallbackTimer = window.setTimeout(
+                    finish,
+                    document.hidden ? 80 : 1000
+                );
+                window.requestAnimationFrame(() => {
+                    window.requestAnimationFrame(finish);
+                });
+            });
         }
 
         async function initPostsSystem() {
@@ -5066,21 +5193,25 @@ document.addEventListener("DOMContentLoaded", async function() {
                 if (open) {
                     showNoteImage();
                 } else {
-                    window.clearTimeout(submissionsCacheReleaseTimer);
-                    submissionsCacheReleaseTimer = 0;
                     closeDrawingWidget();
                     closeQuestionForm();
                     if (typeof window.closeThroneMockup === 'function') window.closeThroneMockup();
                     hideNoteImage();
-                    const openGeneration = ++postsOpenGeneration;
+                    const freshLoad = beginFreshPostsLoad();
+                    const openGeneration = freshLoad.generation;
                     postsPopup?.classList.add('active');
                     setPostsPanelLayoutOpen(true);
                     postsButton.textContent = '×';
                     showSubmissionsLoadingState();
+                    await waitForPostsLoaderPaint();
+                    if (openGeneration !== postsOpenGeneration
+                        || !postsPopup?.classList.contains('active')) return;
+                    discardPostsRetainedResourcesForFreshLoad();
                     try {
-                        await renderSubmissions();
+                        await renderSubmissions(openGeneration, freshLoad.signal);
                     } catch (error) {
                         if (openGeneration !== postsOpenGeneration) return;
+                        if (error?.name === 'AbortError') return;
                         console.error('Error fetching public submissions:', error);
                         showSubmissionsLoadError();
                     }
@@ -5113,8 +5244,6 @@ document.addEventListener("DOMContentLoaded", async function() {
                 document.getElementById(this.dataset.tab).classList.add('active');
                 this.closest('.posts-tabs')?.classList.toggle('questions-active', this.dataset.tab === 'questions-tab');
                 syncPostsMediaPlayback();
-                const activeFeed = this.dataset.tab === 'questions-tab' ? 'questions' : 'drawings';
-                if (activeFeed === 'drawings') resumeCachedDrawingImages();
                 // Doods and Mi can have very different content heights. A tab
                 // switch is a stationary reset-to-top boundary, so rebuild the
                 // frozen viewport/extent here instead of keeping the previous
@@ -5124,7 +5253,6 @@ document.addEventListener("DOMContentLoaded", async function() {
                 } else {
                     updateScrollEdgeState(postsContentEl, postsPanel);
                 }
-                scheduleVisibleSubmissionPage(activeFeed);
             });
         });
 
@@ -5283,84 +5411,199 @@ document.addEventListener("DOMContentLoaded", async function() {
             return `data:image/png;base64,${info.clean ?? drawing.imageData}`;
         }
 
-        async function renderSubmissions() {
-            await loadSubmissionsFromSupabase();
-
-            // The fetch may have completed in the same moment another panel
-            // closed :3. Keep fetched pages cached, but do not attach drawing
-            // src or start media work until :3 is opened again.
-            if (!postsPopup?.classList.contains('active')) return;
-
-            const drawings = preloadedSubmissions.drawings;
-            const questions = preloadedSubmissions.questions;
-            const nextRenderKey = getSubmissionsRenderKey(drawings, questions);
-            if (nextRenderKey !== renderedSubmissionsKey) {
-                renderedSubmissionsKey = nextRenderKey;
-                renderDrawings(drawings);
-                renderQuestions(questions);
-            } else {
-                resumeCachedDrawingImages();
-            }
-            updateSubmissionSentinel('drawings');
-            updateSubmissionSentinel('questions');
-            const activeFeed = postsPopup.querySelector('#questions-tab')?.classList.contains('active')
-                ? 'questions'
-                : 'drawings';
-            scheduleVisibleSubmissionPage(activeFeed);
+        function createPostsMediaFallback(href, label) {
+            const replacement = document.createElement('a');
+            replacement.href = href || '#';
+            replacement.target = '_blank';
+            replacement.rel = 'nofollow ugc noopener noreferrer';
+            replacement.className = 'answer-link answer-media-unavailable';
+            replacement.textContent = label;
+            return replacement;
         }
 
-        function renderDrawings(drawings, { append = false } = {}) {
-            try {
-                if (!append) {
-                    drawingImageObserver?.disconnect();
-                    drawingLikesObserver?.disconnect();
-                    drawingsList.innerHTML = '';
+        function replaceUnavailablePostsMedia(media) {
+            if (media instanceof HTMLImageElement && media.matches('.post-item > img')) {
+                const replacement = document.createElement('div');
+                replacement.className = 'posts-media-placeholder';
+                replacement.textContent = 'dood unavailable';
+                media.replaceWith(replacement);
+                return;
+            }
+
+            if (media instanceof HTMLImageElement && media.classList.contains('like-icon')) {
+                // Keep the element itself because the lazy likes query updates
+                // this same <img>. A tiny inline heart is a guaranteed local
+                // fallback if the decorative reaction asset ever fails.
+                const fallback = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 20S4 15 4 9.5C4 6.5 7.6 5 12 8.6 16.4 5 20 6.5 20 9.5 20 15 12 20 12 20Z' fill='none' stroke='%237d6871' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E";
+                media.dataset.postsSrc = fallback;
+                media.src = fallback;
+                return media;
+            }
+
+            if (media instanceof HTMLImageElement && media.classList.contains('answer-gif')) {
+                const link = media.closest('.answer-gif-link');
+                const href = link?.href || media.dataset.mediaUrl || '';
+                if (link) link.replaceWith(createPostsMediaFallback(href, 'image link'));
+                return;
+            }
+
+            if (media instanceof HTMLVideoElement) {
+                const frame = media.closest('.answer-video-frame');
+                const href = media.dataset.mediaUrl || '';
+                if (frame) frame.replaceWith(createPostsMediaFallback(href, 'media link'));
+                return;
+            }
+
+            if (media instanceof HTMLIFrameElement) {
+                const frame = media.closest('.answer-media-frame');
+                const source = frame?.querySelector('.answer-media-source');
+                const href = source?.href || media.dataset.postsSrc || '';
+                if (frame) frame.replaceWith(createPostsMediaFallback(href, 'GIF link'));
+            }
+        }
+
+        function waitForStagedPostsMedia(media, signal) {
+            return new Promise((resolve, reject) => {
+                if (signal.aborted) {
+                    reject(createSubmissionsAbortError());
+                    return;
                 }
-                const fragment = document.createDocumentFragment();
-                const drawingImagesToObserve = [];
-                const drawingsToObserve = [];
-                const startIndex = append
-                    ? drawingsList.querySelectorAll('.post-item').length
-                    : 0;
-                drawings.forEach((drawing, offset) => {
-                    const index = startIndex + offset;
-                    const el = document.createElement('div');
-                    el.className = 'post-item';
-                    const drawingSrc = getDrawingSrcForDrawing(drawing);
-                    if (!drawingSrc) return;
+
+                const isImage = media instanceof HTMLImageElement;
+                const isVideo = media instanceof HTMLVideoElement;
+                const isFrame = media instanceof HTMLIFrameElement;
+                const readyEvent = isVideo ? 'loadeddata' : 'load';
+                const source = String(media.dataset.postsSrc || media.getAttribute('src') || '');
+                let settled = false;
+                let timeoutId = 0;
+
+                const cleanup = () => {
+                    window.clearTimeout(timeoutId);
+                    media.removeEventListener(readyEvent, handleReady);
+                    media.removeEventListener('error', handleError);
+                    signal.removeEventListener('abort', handleAbort);
+                };
+                const finish = ready => {
+                    if (settled) return;
+                    settled = true;
+                    cleanup();
+                    resolve({ media, ready });
+                };
+                const handleReady = () => {
+                    if (isImage && typeof media.decode === 'function') {
+                        media.decode()
+                            .catch(() => {})
+                            .finally(() => finish(media.naturalWidth > 0));
+                        return;
+                    }
+                    finish(isVideo ? media.readyState >= 2 : true);
+                };
+                const handleError = () => finish(false);
+                const handleAbort = () => {
+                    if (settled) return;
+                    settled = true;
+                    cleanup();
+                    reject(createSubmissionsAbortError());
+                };
+
+                media.addEventListener(readyEvent, handleReady);
+                media.addEventListener('error', handleError);
+                signal.addEventListener('abort', handleAbort, { once: true });
+                timeoutId = window.setTimeout(
+                    () => finish(false),
+                    PUBLIC_SUBMISSIONS_MEDIA_TIMEOUT_MS
+                );
+
+                if (isImage) media.loading = 'eager';
+                if (isFrame) media.loading = 'eager';
+                if (isVideo) media.preload = 'auto';
+                if (media.getAttribute('src') !== source) media.src = source;
+                if (isVideo) media.load();
+
+                if (isImage && media.complete) {
+                    Promise.resolve().then(() => {
+                        if (media.naturalWidth > 0) handleReady();
+                        else handleError();
+                    });
+                } else if (isVideo && media.readyState >= 2) {
+                    Promise.resolve().then(handleReady);
+                }
+            });
+        }
+
+        async function prepareStagedPostsMedia(stage, signal) {
+            const mediaElements = Array.from(stage.querySelectorAll([
+                '.post-item > img',
+                'img.like-icon[data-posts-src]',
+                'img.answer-gif',
+                'video[data-posts-src]',
+                'iframe[data-posts-src]'
+            ].join(',')));
+            const results = new Array(mediaElements.length);
+            let cursor = 0;
+            const worker = async () => {
+                while (!signal.aborted && cursor < mediaElements.length) {
+                    const index = cursor;
+                    cursor += 1;
+                    results[index] = await waitForStagedPostsMedia(
+                        mediaElements[index],
+                        signal
+                    );
+                }
+            };
+            const workerCount = Math.min(
+                PUBLIC_SUBMISSIONS_MEDIA_CONCURRENCY,
+                mediaElements.length
+            );
+            await Promise.all(Array.from({ length: workerCount }, () => worker()));
+            if (signal.aborted) throw createSubmissionsAbortError();
+            const fallbackMedia = results
+                .filter(result => !result.ready)
+                .map(result => replaceUnavailablePostsMedia(result.media))
+                .filter(Boolean);
+            if (fallbackMedia.length) {
+                await Promise.all(fallbackMedia.map(media => (
+                    waitForStagedPostsMedia(media, signal)
+                )));
+            }
+        }
+
+        function buildStagedDrawings(drawings, signal) {
+            const container = document.createElement('div');
+            container.className = 'posts-list posts-staging-list';
+            const items = [];
+
+            drawings.forEach(drawing => {
+                if (signal.aborted) throw createSubmissionsAbortError();
+                const el = document.createElement('div');
+                el.className = 'post-item';
+                const drawingSrc = getDrawingSrcForDrawing(drawing);
+                if (drawingSrc) {
                     const image = document.createElement('img');
                     image.alt = 'User drawing';
-                    image.loading = index < 4 ? 'eager' : 'lazy';
+                    image.loading = 'eager';
                     image.decoding = 'async';
                     image.dataset.drawingId = String(drawing.id);
-                    if (!drawingImageObserver || (index < 4 && postsPopup?.classList.contains('active'))) {
-                        image.src = drawingSrc;
-                    }
-                    if (drawingImageObserver) drawingImagesToObserve.push(image);
+                    image.dataset.postsSrc = drawingSrc;
                     el.appendChild(image);
-                    el.insertAdjacentHTML('beforeend', `
-                        <div class="like-sticker" data-drawing-id="${drawing.id}">
-                            <div class="like-button">
-                                <img src="site-images/reactions.png" alt="Like" class="like-icon" width="96" height="88" decoding="async">
-                            </div>
+                } else {
+                    const unavailable = document.createElement('div');
+                    unavailable.className = 'posts-media-placeholder';
+                    unavailable.textContent = 'dood unavailable';
+                    el.appendChild(unavailable);
+                }
+                el.insertAdjacentHTML('beforeend', `
+                    <div class="like-sticker" data-drawing-id="${drawing.id}">
+                        <div class="like-button">
+                            <img data-posts-src="site-images/reactions.png" alt="Like" class="like-icon" width="96" height="88" decoding="async">
                         </div>
-                    `);
-                    fragment.appendChild(el);
+                    </div>
+                `);
+                container.appendChild(el);
+                items.push(el);
+            });
 
-                    if (drawingLikesObserver) {
-                        drawingsToObserve.push(el);
-                    } else {
-                        initLikeSystem(el, drawing.id);
-                    }
-                });
-                const sentinel = drawingsList.querySelector('.posts-page-sentinel');
-                drawingsList.insertBefore(fragment, sentinel);
-                drawingImagesToObserve.forEach(image => drawingImageObserver.observe(image));
-                drawingsToObserve.forEach(el => drawingLikesObserver.observe(el));
-            } catch (error) {
-                console.error("Error loading drawings:", error);
-                drawingsList.innerHTML = '<p>Error loading drawings. Please refresh.</p>';
-            }
+            return { container, items };
         }
 
         function bindQuestionMediaErrors(root) {
@@ -5368,123 +5611,115 @@ document.addEventListener("DOMContentLoaded", async function() {
                 if (image.dataset.mediaErrorBound === 'true') return;
                 image.dataset.mediaErrorBound = 'true';
                 image.addEventListener('error', () => {
-                    if (!image.getAttribute('src')
-                        && (image.dataset.postsPausedSrc || image.dataset.postsSrc)) return;
-                    const link = image.closest('.answer-gif-link');
-                    const href = link?.href || image.dataset.mediaUrl || '';
-                    if (!link || !href) return;
-                    const replacement = document.createElement('a');
-                    replacement.href = href;
-                    replacement.target = '_blank';
-                    replacement.rel = 'nofollow ugc noopener noreferrer';
-                    replacement.className = 'answer-link answer-media-unavailable';
-                    replacement.textContent = 'image link';
-                    link.replaceWith(replacement);
+                    if (!image.getAttribute('src') && image.dataset.postsSrc) return;
+                    replaceUnavailablePostsMedia(image);
                 });
             });
             root.querySelectorAll('video[data-media-url]').forEach(video => {
                 if (video.dataset.mediaErrorBound === 'true') return;
                 video.dataset.mediaErrorBound = 'true';
                 video.addEventListener('error', () => {
-                    if (!video.getAttribute('src')
-                        && (video.dataset.postsPausedSrc || video.dataset.postsSrc)) return;
-                    const frame = video.closest('.answer-video-frame');
-                    const href = video.dataset.mediaUrl || '';
-                    if (!frame || !href) return;
-                    const replacement = document.createElement('a');
-                    replacement.href = href;
-                    replacement.target = '_blank';
-                    replacement.rel = 'nofollow ugc noopener noreferrer';
-                    replacement.className = 'answer-link answer-media-unavailable';
-                    replacement.textContent = 'media link';
-                    frame.replaceWith(replacement);
+                    if (!video.getAttribute('src') && video.dataset.postsSrc) return;
+                    replaceUnavailablePostsMedia(video);
                 });
             });
         }
 
-        function renderQuestions(questions, { append = false } = {}) {
+        function buildStagedQuestions(questions, signal) {
+            const container = document.createElement('div');
+            container.className = 'posts-list posts-staging-list';
+            const items = [];
+            questions.forEach(q => {
+                if (signal.aborted) throw createSubmissionsAbortError();
+                const el = document.createElement('div');
+                el.className = 'question-item';
+                const answerHtml = q.answer ? `<p class="answer-text">${linkifyText(q.answer)}</p>` : '';
+                el.innerHTML = `
+                    <p class="question-text">"${escapeHtml(q.question)}"</p>
+                    ${answerHtml}
+                `;
+                container.appendChild(el);
+                items.push(el);
+            });
+            return { container, items };
+        }
+
+        async function renderSubmissions(openGeneration, signal) {
+            await loadSubmissionsFromSupabase();
+            if (signal.aborted || openGeneration !== postsOpenGeneration
+                || !postsPopup?.classList.contains('active')) {
+                throw createSubmissionsAbortError();
+            }
+
+            const stage = document.createElement('div');
+            stage.className = 'posts-media-staging';
+            stage.setAttribute('aria-hidden', 'true');
+            const drawingsStage = buildStagedDrawings(preloadedSubmissions.drawings, signal);
+            const questionsStage = buildStagedQuestions(preloadedSubmissions.questions, signal);
+            stage.append(drawingsStage.container, questionsStage.container);
+            postsMediaStagingRoot = stage;
+            let committed = false;
+
             try {
-                if (!append) {
-                    postsMediaObserver?.disconnect();
-                    questionsList.innerHTML = '';
+                // Bind every readiness/error listener and assign its source
+                // before connecting the hidden stage. In particular, this
+                // prevents an iframe's initial about:blank load from being
+                // mistaken for the requested GIF embed becoming ready.
+                const mediaReady = prepareStagedPostsMedia(stage, signal);
+                document.body.appendChild(stage);
+                await mediaReady;
+                if (signal.aborted || openGeneration !== postsOpenGeneration
+                    || !postsPopup?.classList.contains('active')) {
+                    throw createSubmissionsAbortError();
                 }
-                const fragment = document.createDocumentFragment();
-                const newQuestionItems = [];
-                questions.forEach(q => {
-                    const el = document.createElement('div');
-                    el.className = 'question-item';
-                    const answerHtml = q.answer ? `<p class="answer-text">${linkifyText(q.answer)}</p>` : '';
-                    el.innerHTML = `
-                        <p class="question-text">"${escapeHtml(q.question)}"</p>
-                        ${answerHtml}
-                    `;
-                    fragment.appendChild(el);
-                    newQuestionItems.push(el);
+
+                // Yield one paint while the paw is still the only visible
+                // state, then move both fully prepared feeds synchronously.
+                // Browsers cannot paint between these two replaceChildren
+                // calls, so Doods and Mi become available as one reveal.
+                await new Promise(resolve => window.requestAnimationFrame(resolve));
+                if (signal.aborted || openGeneration !== postsOpenGeneration
+                    || !postsPopup?.classList.contains('active')) {
+                    throw createSubmissionsAbortError();
+                }
+
+                const drawingsFragment = document.createDocumentFragment();
+                const questionsFragment = document.createDocumentFragment();
+                while (drawingsStage.container.firstChild) {
+                    drawingsFragment.appendChild(drawingsStage.container.firstChild);
+                }
+                while (questionsStage.container.firstChild) {
+                    questionsFragment.appendChild(questionsStage.container.firstChild);
+                }
+                drawingLikesObserver?.disconnect();
+                postsMediaObserver?.disconnect();
+                drawingsList.replaceChildren(drawingsFragment);
+                questionsList.replaceChildren(questionsFragment);
+                hideSubmissionsLoadingState();
+                committed = true;
+                stage.remove();
+                if (postsMediaStagingRoot === stage) postsMediaStagingRoot = null;
+
+                drawingsStage.items.forEach(item => {
+                    const drawingId = item.querySelector('.like-sticker')?.dataset.drawingId;
+                    if (!drawingId) return;
+                    if (drawingLikesObserver) drawingLikesObserver.observe(item);
+                    else initLikeSystem(item, drawingId);
                 });
-                const sentinel = questionsList.querySelector('.posts-page-sentinel');
-                questionsList.insertBefore(fragment, sentinel);
-                newQuestionItems.forEach(item => {
-                    observePostsMedia(item);
-                    bindQuestionMediaErrors(item);
-                    getPostsMediaFrames(item).forEach(frame => {
-                        if (shouldPlayPostsMedia() && frame.dataset.postsMediaNear === 'true') {
-                            resumePostsMediaFrame(frame);
-                        } else {
-                            pausePostsMediaFrame(frame);
-                        }
-                    });
-                });
-            } catch (error) {
-                console.error("Error loading questions:", error);
-                questionsList.innerHTML = '<p>Error loading Mi. Please refresh.</p>';
+                questionsStage.items.forEach(item => bindQuestionMediaErrors(item));
+                observePostsMedia(questionsList);
+                syncPostsMediaPlayback();
+            } finally {
+                if (!committed) disposePostsMediaStaging(stage);
             }
         }
 
-        async function loadMoreSubmissionFeed(feedKey) {
-            const state = submissionFeeds[feedKey];
-            if (!state || state.done || state.loading || !postsPopup?.classList.contains('active')) return;
-            const tab = getSubmissionList(feedKey)?.closest('.tab-content');
-            if (!tab?.classList.contains('active')) return;
-            const openGeneration = postsOpenGeneration;
-            try {
-                const pagePromise = loadSubmissionFeedPage(feedKey);
-                updateSubmissionSentinel(feedKey);
-                const result = await pagePromise;
-                if (openGeneration !== postsOpenGeneration || !postsPopup.classList.contains('active')) return;
-                if (result.items.length) {
-                    if (feedKey === 'drawings') renderDrawings(result.items, { append: true });
-                    else renderQuestions(result.items, { append: true });
-                    renderedSubmissionsKey = getSubmissionsRenderKey(
-                        preloadedSubmissions.drawings,
-                        preloadedSubmissions.questions
-                    );
-                }
-                updateSubmissionSentinel(feedKey);
-                // Appending a page must not tear down and rebuild the active
-                // scroll-motion viewport under the visitor's finger. Its size
-                // is already frozen for this open session; only refresh the
-                // cached extent and edge fades for the longer content.
-                window.dollRefreshPanelScrollExtent?.(postsContentEl);
-                updateScrollEdgeState(postsContentEl, postsPanel);
-                scheduleVisibleSubmissionPage(feedKey);
-            } catch (error) {
-                if (error?.name !== 'AbortError') {
-                    console.error(`Error fetching more ${feedKey}:`, error);
-                }
-                if (openGeneration === postsOpenGeneration && postsPopup.classList.contains('active')) {
-                    updateSubmissionSentinel(feedKey);
-                }
-            }
-        }
-
-        clearRenderedSubmissionsCache = () => {
-            drawingImageObserver?.disconnect();
+        clearRenderedSubmissionsCache = ({ preserveLoader = false } = {}) => {
             drawingLikesObserver?.disconnect();
             postsMediaObserver?.disconnect();
-            submissionPageObserver?.disconnect();
             drawingsList?.replaceChildren();
             questionsList?.replaceChildren();
-            renderedSubmissionsKey = '';
+            if (!preserveLoader) hideSubmissionsLoadingState();
         };
 
         // ===== LIKE SYSTEM =====
@@ -5495,18 +5730,97 @@ document.addEventListener("DOMContentLoaded", async function() {
             'sad': 'site-images/sad.png'
         };
         const defaultReactionIcon = 'site-images/reactions.png';
+        const reactionIconPreloads = new Map();
         let currentOpenPicker = null; // Track currently open picker
         let currentOpenPickerCleanup = null;
         let lastClickTime = 0; // Prevent rapid-fire clicks
         let lastTouchReactionTime = 0;
 
+        function getReactionIconVersion(icon) {
+            return Number.parseInt(icon?.dataset.reactionVersion || '0', 10) || 0;
+        }
+
+        function bumpReactionIconVersion(icon) {
+            const version = getReactionIconVersion(icon) + 1;
+            if (icon) icon.dataset.reactionVersion = String(version);
+            return version;
+        }
+
+        function preloadReactionIcon(url) {
+            if (!url) return Promise.resolve(false);
+            if (reactionIconPreloads.has(url)) return reactionIconPreloads.get(url);
+            const promise = new Promise(resolve => {
+                const image = new Image();
+                let settled = false;
+                const finish = ready => {
+                    if (settled) return;
+                    settled = true;
+                    window.clearTimeout(timeoutId);
+                    image.onload = null;
+                    image.onerror = null;
+                    if (!ready || typeof image.decode !== 'function') {
+                        resolve(Boolean(ready));
+                        return;
+                    }
+                    let decodeSettled = false;
+                    const finishDecode = decoded => {
+                        if (decodeSettled) return;
+                        decodeSettled = true;
+                        window.clearTimeout(decodeTimer);
+                        resolve(decoded);
+                    };
+                    const decodeTimer = window.setTimeout(() => finishDecode(false), 1500);
+                    image.decode().then(
+                        () => finishDecode(true),
+                        () => finishDecode(false)
+                    );
+                };
+                const timeoutId = window.setTimeout(() => finish(false), 3000);
+                image.onload = () => finish(Boolean(image.naturalWidth));
+                image.onerror = () => finish(false);
+                image.src = url;
+                if (image.complete) {
+                    Promise.resolve().then(() => finish(Boolean(image.naturalWidth)));
+                }
+            });
+            reactionIconPreloads.set(url, promise);
+            promise.then(ready => {
+                if (!ready && reactionIconPreloads.get(url) === promise) {
+                    reactionIconPreloads.delete(url);
+                }
+            });
+            return promise;
+        }
+
+        async function setReactionIconWhenReady(icon, url, expectedVersion) {
+            if (!icon?.isConnected || !url || getReactionIconVersion(icon) !== expectedVersion) {
+                return false;
+            }
+            const currentIsFallback = String(icon.getAttribute('src') || '')
+                .startsWith('data:image/svg+xml');
+            if (url === defaultReactionIcon && currentIsFallback) return true;
+            if (icon.getAttribute('src') === url) return true;
+            const ready = await preloadReactionIcon(url);
+            if (!icon.isConnected || getReactionIconVersion(icon) !== expectedVersion) {
+                return false;
+            }
+            if (!ready) {
+                const fallbackSource = String(icon.dataset.postsSrc || '');
+                if (url === defaultReactionIcon
+                    && fallbackSource.startsWith('data:image/svg+xml')) {
+                    icon.src = fallbackSource;
+                    return true;
+                }
+                return false;
+            }
+            icon.src = url;
+            return true;
+        }
+
         async function initLikeSystem(drawingElement, drawingId) {
             const likeSticker = drawingElement.querySelector('.like-sticker');
             const likeButton = likeSticker.querySelector('.like-button');
             const likeIcon = likeButton.querySelector('.like-icon');
-            
-            // Load current likes for this drawing
-            await loadDrawingLikes(drawingId, likeIcon);
             
             // Set up click and touch handlers for mobile compatibility
             const handleReactionClick = async (e) => {
@@ -5528,6 +5842,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                 }
                 lastClickTime = now;
                 playUiSound('tap');
+                bumpReactionIconVersion(likeIcon);
                 
                 // Check if this picker is already open
                 const existingPicker = document.querySelector('.reaction-picker');
@@ -5571,9 +5886,15 @@ document.addEventListener("DOMContentLoaded", async function() {
             // Add both click and touch event listeners
             likeButton.addEventListener('click', handleReactionClick);
             likeButton.addEventListener('touchstart', handleReactionClick, { passive: false });
+
+            // The pin must be tappable as soon as the atomically prepared
+            // card appears. Its count/icon can update independently when the
+            // likes query finishes instead of blocking event binding.
+            void loadDrawingLikes(drawingId, likeIcon);
         }
 
         async function loadDrawingLikes(drawingId, likeIconElement) {
+            const expectedVersion = getReactionIconVersion(likeIconElement);
             try {
                 const { data: likes, error } = await window.supabase
                     .from('drawing_likes')
@@ -5593,9 +5914,17 @@ document.addEventListener("DOMContentLoaded", async function() {
                         reactionCounts[a] > reactionCounts[b] ? a : b
                     );
                     
-                    likeIconElement.src = reactionIcons[mostCommonReaction];
+                    await setReactionIconWhenReady(
+                        likeIconElement,
+                        reactionIcons[mostCommonReaction],
+                        expectedVersion
+                    );
                 } else {
-                    likeIconElement.src = defaultReactionIcon;
+                    await setReactionIconWhenReady(
+                        likeIconElement,
+                        defaultReactionIcon,
+                        expectedVersion
+                    );
                 }
             } catch (error) {
                 console.error("Error loading likes:", error);
@@ -5843,7 +6172,12 @@ document.addEventListener("DOMContentLoaded", async function() {
                 if (error) throw error;
                 
                 // Update UI with animation
-                likeIconElement.src = reactionIcons[reactionType];
+                const iconVersion = bumpReactionIconVersion(likeIconElement);
+                await setReactionIconWhenReady(
+                    likeIconElement,
+                    reactionIcons[reactionType],
+                    iconVersion
+                );
                 
                 // Facebook-like animation
                 animateLikeButton(likeIconElement);
@@ -5865,7 +6199,12 @@ document.addEventListener("DOMContentLoaded", async function() {
                 if (error) throw error;
                 
                 // Update UI with animation
-                likeIconElement.src = reactionIcons[newReactionType];
+                const iconVersion = bumpReactionIconVersion(likeIconElement);
+                await setReactionIconWhenReady(
+                    likeIconElement,
+                    reactionIcons[newReactionType],
+                    iconVersion
+                );
                 
                 // Facebook-like animation
                 animateLikeButton(likeIconElement);
@@ -5893,7 +6232,12 @@ document.addEventListener("DOMContentLoaded", async function() {
                     .eq('drawing_id', drawingId);
                 
                 if (!remainingLikes?.length) {
-                    likeIconElement.src = defaultReactionIcon;
+                    const iconVersion = bumpReactionIconVersion(likeIconElement);
+                    await setReactionIconWhenReady(
+                        likeIconElement,
+                        defaultReactionIcon,
+                        iconVersion
+                    );
                 } else {
                     // Update to most common remaining reaction
                     const reactionCounts = {};
@@ -5903,7 +6247,12 @@ document.addEventListener("DOMContentLoaded", async function() {
                     const mostCommonReaction = Object.keys(reactionCounts).reduce((a, b) => 
                         reactionCounts[a] > reactionCounts[b] ? a : b
                     );
-                    likeIconElement.src = reactionIcons[mostCommonReaction];
+                    const iconVersion = bumpReactionIconVersion(likeIconElement);
+                    await setReactionIconWhenReady(
+                        likeIconElement,
+                        reactionIcons[mostCommonReaction],
+                        iconVersion
+                    );
                 }
                 
             } catch (error) {

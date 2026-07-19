@@ -6,6 +6,15 @@ const SOCIAL_CARD_VIDEO_BUCKET = 'social-card-videos';
 const DEFAULT_SOCIAL_CARD_ORDER = ['snapchat', 'instagram', 'kofi', 'telegram', 'x', 'tiktok', 'twitch', 'discord', 'onlyfans', 'spotify'];
 const SOCIAL_CARD_KEYS = [...DEFAULT_SOCIAL_CARD_ORDER];
 const SOCIAL_CARD_VIDEO_KEYS = [...SOCIAL_CARD_KEYS];
+const SOCIAL_CARD_MEDIA_CONFIG = window.DOLL_SOCIAL_CARD_MEDIA || Object.freeze({
+    mode: 'github',
+    localVideos: Object.freeze({})
+});
+const SOCIAL_CARD_VIDEO_SOURCE_MODE = SOCIAL_CARD_MEDIA_CONFIG.mode === 'supabase'
+    ? 'supabase'
+    : 'github';
+const SOCIAL_CARD_VIDEO_HOSTING_PAUSED = SOCIAL_CARD_VIDEO_SOURCE_MODE !== 'supabase';
+const LOCAL_SOCIAL_CARD_VIDEOS = SOCIAL_CARD_MEDIA_CONFIG.localVideos || {};
 const SOCIAL_USERNAME_URL_BUILDERS = Object.freeze({
     snapchat: username => `https://www.snapchat.com/add/${encodeURIComponent(username)}`,
     instagram: username => `https://www.instagram.com/${encodeURIComponent(username)}`,
@@ -165,6 +174,7 @@ const adminListErrors = new Map();
 let wishlistSearchTimer = null;
 let adminFullLoadGeneration = 0;
 let submissionMutationBusy = false;
+let linkSettingsHydrated = false;
 
 const els = {
     gatePanel: document.getElementById('gate-panel'),
@@ -709,6 +719,10 @@ function applyAdminSocialCardOrder(settings = state.linkSettings) {
 }
 
 function moveSocialCard(key, direction) {
+    if (!linkSettingsHydrated) {
+        setStatus(els.adminStatus, 'Saved site settings are still loading.');
+        return;
+    }
     const order = normalizeSocialCardOrder(state.linkSettings.social_card_order);
     const currentIndex = order.indexOf(key);
     const nextIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
@@ -719,6 +733,14 @@ function moveSocialCard(key, direction) {
     applyAdminSocialCardOrder(state.linkSettings);
     renderLinkPreview();
     scheduleAutoSave();
+}
+
+function setLinkSettingsHydrated(ready) {
+    linkSettingsHydrated = Boolean(ready);
+    if (!els.linkSettingsForm) return;
+    els.linkSettingsForm.classList.toggle('settings-hydrating', !linkSettingsHydrated);
+    els.linkSettingsForm.toggleAttribute('inert', !linkSettingsHydrated);
+    els.linkSettingsForm.setAttribute('aria-busy', linkSettingsHydrated ? 'false' : 'true');
 }
 
 function renderLinkSettings({ preserveDraft = false } = {}) {
@@ -941,6 +963,7 @@ function setSocialVideoStatus(key, message, tone = '') {
     status.classList.toggle('is-error', tone === 'error');
     status.classList.toggle('is-ready', tone === 'ready');
     status.classList.toggle('is-waiting', tone === 'waiting');
+    status.classList.toggle('is-paused', tone === 'paused');
 }
 
 function revokeSocialVideoObjectUrl(key) {
@@ -1036,6 +1059,10 @@ function setAdminSocialMediaPreview(control, source, useGif) {
 function setSocialVideoBusy(key, busy, message = '') {
     const control = getSocialVideoControl(key);
     if (!control) return;
+    if (SOCIAL_CARD_VIDEO_HOSTING_PAUSED) {
+        renderSocialVideoControl(key);
+        return;
+    }
     const fileInput = control.querySelector('[data-video-file]');
     const uploadButton = control.querySelector('[data-video-upload]');
     const removeButton = control.querySelector('[data-video-remove]');
@@ -1062,6 +1089,34 @@ function renderSocialVideoControl(key) {
     const savedPath = String(state.linkSettings[getSocialVideoSettingKey(key, 'path')] || '');
     const selectedFile = socialVideoSelectedFiles.get(key) || null;
     const hasLocalPreview = socialVideoObjectUrls.has(key);
+    const note = control.querySelector('.admin-card-video-note');
+
+    control.classList.toggle('is-hosting-paused', SOCIAL_CARD_VIDEO_HOSTING_PAUSED);
+    control.setAttribute('aria-disabled', String(SOCIAL_CARD_VIDEO_HOSTING_PAUSED));
+    if (SOCIAL_CARD_VIDEO_HOSTING_PAUSED) {
+        revokeSocialVideoObjectUrl(key);
+        socialVideoSelectedFiles.delete(key);
+        if (fileInput) {
+            fileInput.value = '';
+            fileInput.disabled = true;
+        }
+        if (uploadButton) uploadButton.disabled = true;
+        if (removeButton) removeButton.disabled = true;
+        if (pickerLabel) pickerLabel.textContent = 'paused';
+        setAdminSocialMediaPreview(control, '', false);
+        const localFile = String(LOCAL_SOCIAL_CARD_VIDEOS[key] || '');
+        setSocialVideoStatus(
+            key,
+            localFile ? 'local GitHub file active' : 'local mode · no background file',
+            'paused'
+        );
+        if (note) {
+            note.textContent = localFile
+                ? `repository file: ${localFile}`
+                : 'Supabase media controls are paused; this card currently has no local video.';
+        }
+        return;
+    }
 
     if (!hasLocalPreview) {
         setAdminSocialMediaPreview(control, savedUrl, isGifSocialMedia(savedUrl));
@@ -1076,6 +1131,8 @@ function renderSocialVideoControl(key) {
 }
 
 function renderAllSocialVideoControls() {
+    const pauseNotice = document.querySelector('.admin-social-hosting-pause');
+    if (pauseNotice) pauseNotice.hidden = !SOCIAL_CARD_VIDEO_HOSTING_PAUSED;
     SOCIAL_CARD_VIDEO_KEYS.forEach(renderSocialVideoControl);
 }
 
@@ -1102,6 +1159,10 @@ function forgetSocialVideoPicker() {
 }
 
 function reportInterruptedSocialVideoPicker() {
+    if (SOCIAL_CARD_VIDEO_HOSTING_PAUSED) {
+        forgetSocialVideoPicker();
+        return;
+    }
     let pending = null;
     try {
         pending = JSON.parse(sessionStorage.getItem(SOCIAL_VIDEO_PICKER_SESSION_KEY) || 'null');
@@ -1119,6 +1180,7 @@ function reportInterruptedSocialVideoPicker() {
 }
 
 function handleSocialVideoSelection(key, inputOverride = null, { reportEmpty = false } = {}) {
+    if (SOCIAL_CARD_VIDEO_HOSTING_PAUSED) return false;
     const control = getSocialVideoControl(key);
     const fileInput = inputOverride || control?.querySelector('[data-video-file]');
     const file = fileInput?.files?.[0];
@@ -1179,6 +1241,7 @@ function handleSocialVideoSelection(key, inputOverride = null, { reportEmpty = f
 }
 
 function beginSocialVideoPicker(key, fileInput) {
+    if (SOCIAL_CARD_VIDEO_HOSTING_PAUSED) return;
     clearSocialVideoPickerTimer(key);
     socialVideoPendingInputs.set(key, fileInput);
     rememberSocialVideoPicker(key);
@@ -1294,6 +1357,7 @@ async function removeSocialVideoStoragePath(path, { attempts = 3 } = {}) {
 }
 
 async function retryPendingSocialVideoCleanup() {
+    if (SOCIAL_CARD_VIDEO_HOSTING_PAUSED) return;
     const pendingPaths = readPendingSocialVideoCleanup();
     for (const path of pendingPaths) {
         await removeSocialVideoStoragePath(path, { attempts: 1 });
@@ -1301,6 +1365,10 @@ async function retryPendingSocialVideoCleanup() {
 }
 
 async function uploadSocialCardVideo(key) {
+    if (SOCIAL_CARD_VIDEO_HOSTING_PAUSED) {
+        renderSocialVideoControl(key);
+        return;
+    }
     if (!SOCIAL_CARD_VIDEO_KEYS.includes(key)) return;
     const control = getSocialVideoControl(key);
     const fileInput = control?.querySelector('[data-video-file]');
@@ -1373,6 +1441,10 @@ async function uploadSocialCardVideo(key) {
 }
 
 async function removeSocialCardVideo(key) {
+    if (SOCIAL_CARD_VIDEO_HOSTING_PAUSED) {
+        renderSocialVideoControl(key);
+        return;
+    }
     if (!SOCIAL_CARD_VIDEO_KEYS.includes(key)) return;
     const urlKey = getSocialVideoSettingKey(key, 'url');
     const pathKey = getSocialVideoSettingKey(key, 'path');
@@ -2078,6 +2150,7 @@ async function fetchWishlistFeatureMeta() {
 
 async function loadAdminData({ preserveDrafts = true } = {}) {
     const loadGeneration = ++adminFullLoadGeneration;
+    const linkSettingsHydratedAtStart = linkSettingsHydrated;
     const settingsRevisionAtStart = settingsSaveRevision;
     const settingsWritePendingAtStart = settingsSavePending > 0;
     clearTimeout(wishlistSearchTimer);
@@ -2122,7 +2195,7 @@ async function loadAdminData({ preserveDrafts = true } = {}) {
         state.wishlistLastFeaturedId = wishlistFeatureMeta.lastId;
         state.wishlistSyncedAt = wishlistSyncResult.data?.last_synced_at || null;
         state.linkSettingsAvailable = !linkSettingsResult.error || linkSettingsResult.error.code === 'PGRST116';
-        const preserveLiveLinkDraft = preserveDrafts && (
+        const preserveLiveLinkDraft = linkSettingsHydratedAtStart && preserveDrafts && (
             settingsDraftDirty
             || settingsWritePendingAtStart
             || settingsSavePending > 0
@@ -2131,6 +2204,7 @@ async function loadAdminData({ preserveDrafts = true } = {}) {
         if (!preserveLiveLinkDraft) {
             state.linkSettings = normalizeLinkSettings(linkSettingsResult.data?.value);
         }
+        setLinkSettingsHydrated(state.linkSettingsAvailable);
         renderAll({ preserveDrafts, listIds: renderedListIds });
         reportInterruptedSocialVideoPicker();
         if (els.adminStatus?.textContent === loadingMessage) setStatus(els.adminStatus, '');
@@ -2194,6 +2268,7 @@ function getActionRefreshLists(action, sourceListId) {
 }
 
 async function openDashboard() {
+    setLinkSettingsHydrated(false);
     showPanel(els.dashboardPanel);
     try {
         await loadAdminData({ preserveDrafts: false });
@@ -2447,6 +2522,12 @@ function getLinkSettingsComparisonKey(settings) {
 }
 
 async function persistLatestLinkSettings(requestId, { overrides = null, onCommitted = null } = {}) {
+    if (!linkSettingsHydrated) {
+        if (requestId === latestSettingsSaveRequest) {
+            setStatus(els.adminStatus, 'Saved site settings are not ready yet. Refresh before editing.');
+        }
+        return false;
+    }
     let nextSettings;
     try {
         nextSettings = {
@@ -2580,6 +2661,16 @@ function saveLinkSettingsNow({ overrides = null, onCommitted = null, onFailure =
     // queued task starts, could cancel a newer edit's timer.
     clearTimeout(autoSaveTimer);
     autoSaveTimer = null;
+    if (!linkSettingsHydrated) {
+        setStatus(els.adminStatus, 'Saved site settings are not ready yet. Refresh before editing.');
+        if (typeof onFailure !== 'function') return Promise.resolve(false);
+        return Promise.resolve()
+            .then(() => onFailure())
+            .catch(error => {
+                console.warn('Settings rollback cleanup failed:', error);
+            })
+            .then(() => false);
+    }
     const requestId = ++settingsSaveRevision;
     latestSettingsSaveRequest = requestId;
     settingsSavePending += 1;
@@ -2615,10 +2706,19 @@ function saveLinkSettingsNow({ overrides = null, onCommitted = null, onFailure =
 
 function scheduleAutoSave() {
     clearTimeout(autoSaveTimer);
+    if (!linkSettingsHydrated) {
+        autoSaveTimer = null;
+        setStatus(els.adminStatus, 'Saved site settings are still loading.');
+        return;
+    }
     autoSaveTimer = setTimeout(saveLinkSettingsNow, 700);
 }
 
 function resetLinkSettings() {
+    if (!linkSettingsHydrated) {
+        setStatus(els.adminStatus, 'Saved site settings are still loading.');
+        return;
+    }
     const existingVideos = Object.fromEntries(
         SOCIAL_CARD_VIDEO_KEYS.flatMap(key => [
             [getSocialVideoSettingKey(key, 'url'), state.linkSettings[getSocialVideoSettingKey(key, 'url')] || ''],
@@ -2634,6 +2734,11 @@ function resetLinkSettings() {
 async function handleRoomsMasterToggle(event) {
     const checkbox = event.currentTarget;
     const enabled = checkbox.checked;
+    if (!linkSettingsHydrated) {
+        checkbox.checked = !enabled;
+        setStatus(els.adminStatus, 'Saved site settings are still loading.');
+        return;
+    }
     const confirmed = window.confirm(enabled
         ? 'Enable Rooms again? The public Rooms page will become available.'
         : 'Fully disable Rooms? Public Rooms visits will go to 404, and active rooms will be closed. The homepage note will still peel independently.');

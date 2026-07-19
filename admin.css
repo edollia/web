@@ -367,6 +367,12 @@ h1 {
     display: block;
 }
 
+.admin-settings-form.settings-hydrating {
+    opacity: 0.62;
+    pointer-events: none;
+    user-select: none;
+}
+
 .admin-panel-intro {
     display: flex;
     align-items: center;
@@ -1116,6 +1122,41 @@ h1 {
     background: rgba(255, 247, 251, 0.46);
 }
 
+.admin-social-hosting-pause {
+    display: grid;
+    gap: 4px;
+    margin: 0 0 12px;
+    padding: 10px 12px;
+    border: 1px dashed rgba(146, 139, 143, 0.38);
+    border-radius: 13px;
+    background: rgba(242, 241, 242, 0.7);
+    color: rgba(91, 86, 89, 0.72);
+    font-size: 11px;
+    line-height: 1.45;
+}
+
+.admin-social-hosting-pause[hidden] {
+    display: none;
+}
+
+.admin-social-hosting-pause strong {
+    color: rgba(72, 68, 70, 0.82);
+    font-size: 11px;
+    letter-spacing: 0.02em;
+    text-transform: lowercase;
+}
+
+.admin-card-video-control.is-hosting-paused {
+    border-color: rgba(157, 150, 153, 0.28);
+    background: rgba(239, 238, 239, 0.56);
+    filter: grayscale(0.72);
+    opacity: 0.68;
+}
+
+.admin-card-video-control.is-hosting-paused .admin-card-video-actions {
+    pointer-events: none;
+}
+
 .admin-card-video-heading {
     display: flex;
     flex-wrap: wrap;
@@ -1168,6 +1209,21 @@ h1 {
     border: 1px solid rgba(179, 137, 72, 0.24);
     background: rgba(255, 245, 217, 0.74);
     color: rgba(139, 98, 44, 0.9);
+}
+
+.admin-card-video-heading small.is-paused {
+    flex: 1 0 100%;
+    max-width: none;
+    padding: 7px 9px;
+    border: 1px solid rgba(128, 122, 125, 0.22);
+    border-radius: 9px;
+    background: rgba(237, 235, 236, 0.78);
+    color: rgba(79, 74, 77, 0.76);
+    line-height: 1.35;
+    overflow: visible;
+    text-align: left;
+    text-overflow: clip;
+    white-space: normal;
 }
 
 .admin-card-video-control video,

@@ -3589,6 +3589,30 @@ body.first-visit-tour-active .tour-highlight-target {
     scroll-timeline-axis: block;
 }
 
+.posts-content.posts-is-fetching {
+    min-height: clamp(170px, 38vh, 300px);
+    overflow: hidden;
+}
+
+.posts-content.posts-is-fetching > .tab-content {
+    visibility: hidden;
+    pointer-events: none;
+}
+
+.posts-loading-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 20;
+    display: grid;
+    place-items: center;
+    min-height: clamp(170px, 38vh, 300px);
+    pointer-events: none;
+}
+
+.posts-loading-overlay[hidden] {
+    display: none;
+}
+
 .doll-wishlist-body.dwl-scroll-body {
     scroll-timeline-name: --dwl-wishlist-scroll;
     scroll-timeline-axis: block;
@@ -3769,45 +3793,6 @@ body.first-visit-tour-active .tour-highlight-target {
     color: rgba(139, 91, 115, 0.72);
 }
 
-.posts-page-sentinel {
-    grid-column: 1 / -1;
-    width: max-content;
-    min-width: 82px;
-    min-height: 34px;
-    margin: 1px auto 3px;
-    padding: 5px 12px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 5px;
-    border: 1px dashed rgba(231, 158, 190, 0.38);
-    border-radius: 999px;
-    background: rgba(255, 250, 253, 0.55);
-    color: rgba(139, 91, 115, 0.62);
-    font-family: "Comic Sans MS", "Trebuchet MS", cursive;
-    font-size: 9px;
-    line-height: 1;
-    cursor: pointer;
-}
-
-.posts-page-sentinel[hidden] {
-    display: none !important;
-}
-
-.posts-page-sentinel .posts-fetch-paw {
-    display: none;
-    width: 14px;
-    height: 16px;
-}
-
-.posts-page-sentinel.is-loading .posts-fetch-paw {
-    display: block;
-}
-
-.posts-page-sentinel.is-error {
-    border-color: rgba(218, 112, 162, 0.48);
-}
-
 .posts-fetch-paw.loading-paw-print {
     --paw-rotation: 0deg;
     width: 19px;
@@ -3816,6 +3801,36 @@ body.first-visit-tour-active .tour-highlight-target {
     opacity: 0.58;
     transform: rotate(0deg) scale(0.78);
     animation: postsFetchPaw 1.05s ease-in-out infinite;
+}
+
+/* All :3 records and reply media are prepared here while the visible lists
+   continue to show only their paw state. It stays rendered (not display:none)
+   so Safari will actually decode GIF/video/iframe media before the atomic
+   reveal, but lives far outside the viewport and cannot receive input. */
+.posts-media-staging {
+    position: fixed;
+    left: -10000px;
+    top: 0;
+    width: 300px;
+    opacity: 0;
+    pointer-events: none;
+    contain: layout paint style;
+    z-index: -1;
+}
+
+.posts-media-placeholder {
+    display: flex;
+    width: 100%;
+    aspect-ratio: 330 / 230;
+    align-items: center;
+    justify-content: center;
+    padding: 8px;
+    border-radius: 4px;
+    background: rgba(255, 247, 251, 0.82);
+    color: rgba(139, 91, 115, 0.58);
+    font-family: "Comic Sans MS", "Trebuchet MS", cursive;
+    font-size: 9px;
+    text-align: center;
 }
 
 @keyframes postsFetchPaw {
