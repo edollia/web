@@ -16,11 +16,12 @@ document.addEventListener("DOMContentLoaded", async function() {
     const LOCAL_SOCIAL_CARD_VIDEOS = SOCIAL_CARD_MEDIA_CONFIG.localVideos || {};
     const LOCAL_SOCIAL_CARD_PRELOAD_TIMEOUT_MS = 8000;
     const LOCAL_SOCIAL_FRAME_PREPARE_TIMEOUT_MS = 6500;
-    const socialVideoFrameWaits = new WeakMap();
 
     function hasRenderedSocialVideoFrame(video) {
         return video instanceof HTMLVideoElement
             && video.readyState >= 2
+            && video.isConnected
+            && video.getAttribute('src') === video.dataset.source
             && video.dataset.socialFrameReady === 'true';
     }
 
@@ -29,99 +30,54 @@ document.addEventListener("DOMContentLoaded", async function() {
         pauseAfterFrame = false,
     } = {}) {
         if (!(video instanceof HTMLVideoElement)) return Promise.resolve(false);
-        if (hasRenderedSocialVideoFrame(video)) return Promise.resolve(true);
-        const existingWait = socialVideoFrameWaits.get(video);
-        if (existingWait) return existingWait;
-
         const expectedSource = String(video.dataset.source || video.getAttribute('src') || '');
-        let waitPromise;
-        waitPromise = new Promise(resolve => {
+        const sourceIsReady = () => (
+            video.isConnected
+            && video.readyState >= 2
+            && String(video.dataset.source || '') === expectedSource
+            && video.getAttribute('src') === expectedSource
+        );
+        const finishPlaybackState = ready => {
+            if (ready) {
+                const wasReady = video.dataset.socialFrameReady === 'true';
+                video.dataset.socialFrameReady = 'true';
+                if (!wasReady) video.dispatchEvent(new Event('doll-social-frame-ready'));
+            }
+            // A loader request must never pause a video after the visitor has
+            // opened Socials. Playback state belongs to the current UI state,
+            // not to whichever asynchronous readiness request started first.
+            const socialsAreOpen = document.getElementById('socials-button')
+                ?.classList.contains('open');
+            if (ready && pauseAfterFrame && !socialsAreOpen) video.pause();
+            return ready;
+        };
+
+        if (sourceIsReady()) return Promise.resolve(finishPlaybackState(true));
+
+        return new Promise(resolve => {
             let settled = false;
             let timeoutId = 0;
-            let videoFrameId = 0;
-            let frameRequested = false;
-
-            const sourceStillMatches = () => (
-                video.isConnected
-                && String(video.dataset.source || '') === expectedSource
-                && video.getAttribute('src') === expectedSource
-            );
             const cleanup = () => {
                 window.clearTimeout(timeoutId);
-                video.removeEventListener('loadeddata', startFramePreparation);
+                video.removeEventListener('loadeddata', onReady);
+                video.removeEventListener('canplay', onReady);
                 video.removeEventListener('error', onError);
-                video.removeEventListener('seeked', requestPaintedFrame);
-                if (videoFrameId && typeof video.cancelVideoFrameCallback === 'function') {
-                    try { video.cancelVideoFrameCallback(videoFrameId); } catch (error) {}
-                }
             };
             const finish = ready => {
                 if (settled) return;
                 settled = true;
                 cleanup();
-                const painted = Boolean(ready && sourceStillMatches() && video.readyState >= 2);
-                if (painted) {
-                    video.dataset.socialFrameReady = 'true';
-                    video.dispatchEvent(new Event('doll-social-frame-ready'));
-                }
-                if (pauseAfterFrame) video.pause();
-                resolve(painted);
+                resolve(finishPlaybackState(Boolean(ready && sourceIsReady())));
             };
-            const fallbackPaintCheck = () => {
-                window.requestAnimationFrame(() => {
-                    window.requestAnimationFrame(() => finish(video.readyState >= 2));
-                });
-            };
-            const requestPaintedFrame = () => {
-                if (settled || frameRequested || !sourceStillMatches()) return;
-                frameRequested = true;
-                if (typeof video.requestVideoFrameCallback === 'function') {
-                    videoFrameId = video.requestVideoFrameCallback(() => finish(true));
-                    return;
-                }
-                fallbackPaintCheck();
-            };
-            const seekForPaint = () => {
-                if (settled || video.readyState < 2) return;
-                frameRequested = false;
-                const duration = Number.isFinite(video.duration) ? video.duration : 0;
-                const target = duration > 0.08 ? 0.04 : 0;
-                if (Math.abs(video.currentTime - target) > 0.005) {
-                    video.addEventListener('seeked', requestPaintedFrame, { once: true });
-                    try {
-                        video.currentTime = target;
-                        return;
-                    } catch (error) {}
-                }
-                requestPaintedFrame();
-            };
-            const startFramePreparation = () => {
-                if (settled || video.readyState < 2 || !sourceStillMatches()) return;
-                requestPaintedFrame();
-                let playAttempt;
-                try {
-                    playAttempt = video.play();
-                } catch (error) {
-                    seekForPaint();
-                    return;
-                }
-                Promise.resolve(playAttempt)
-                    .then(requestPaintedFrame)
-                    .catch(seekForPaint);
-            };
+            const onReady = () => finish(true);
             const onError = () => finish(false);
 
-            video.addEventListener('loadeddata', startFramePreparation);
-            video.addEventListener('error', onError, { once: true });
-            timeoutId = window.setTimeout(() => finish(false), Math.max(0, timeoutMs));
-            if (video.readyState >= 2) startFramePreparation();
-        }).finally(() => {
-            if (socialVideoFrameWaits.get(video) === waitPromise) {
-                socialVideoFrameWaits.delete(video);
-            }
+            video.addEventListener('loadeddata', onReady);
+            video.addEventListener('canplay', onReady);
+            video.addEventListener('error', onError);
+            timeoutId = window.setTimeout(() => finish(sourceIsReady()), Math.max(0, timeoutMs));
+            if (sourceIsReady()) finish(true);
         });
-        socialVideoFrameWaits.set(video, waitPromise);
-        return waitPromise;
     }
     // Same-origin social videos load behind the entrance screen directly in
     // their final cards. Moving a decoded, detached <video> into the live DOM
@@ -3382,7 +3338,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         if (!alreadyHasCurrentSource || sourceFailed) trimSocialCardPreviewCache();
 
         if (preview instanceof HTMLVideoElement && socialsButton?.classList.contains('open') && !document.hidden) {
-            preview.play().catch(() => {});
+            playSocialPreview(preview);
         }
     }
 
@@ -3417,6 +3373,42 @@ document.addEventListener("DOMContentLoaded", async function() {
         return preview instanceof HTMLVideoElement
             ? hasRenderedSocialVideoFrame(preview)
             : preview instanceof HTMLImageElement && preview.complete && preview.naturalWidth > 0;
+    }
+
+    function playSocialPreview(preview) {
+        if (!(preview instanceof HTMLVideoElement)
+            || document.hidden
+            || !socialsButton?.classList.contains('open')
+            || !preview.paused
+            || preview.dataset.socialPlayPending === 'true') return;
+
+        preview.dataset.socialPlayPending = 'true';
+        let playAttempt;
+        try {
+            playAttempt = preview.play();
+        } catch (error) {
+            delete preview.dataset.socialPlayPending;
+            return;
+        }
+        let shouldRetryWhenReady = false;
+        Promise.resolve(playAttempt)
+            .then(() => { delete preview.dataset.socialPlayRetryUsed; })
+            .catch(() => {
+                shouldRetryWhenReady = preview.dataset.socialPlayRetryUsed !== 'true';
+            })
+            .finally(() => {
+                delete preview.dataset.socialPlayPending;
+                if (!shouldRetryWhenReady
+                    || document.hidden
+                    || !socialsButton?.classList.contains('open')) return;
+                preview.dataset.socialPlayRetryUsed = 'true';
+                const retry = () => playSocialPreview(preview);
+                if (preview.readyState >= 3) {
+                    window.requestAnimationFrame(retry);
+                } else {
+                    preview.addEventListener('canplay', retry, { once: true });
+                }
+            });
     }
 
     function waitForSocialPreviewReady(preview, timeoutMs) {
@@ -3471,7 +3463,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                 delete card.dataset.socialPreviewDeferred;
                 card.classList.add('has-social-preview');
                 if (preview instanceof HTMLVideoElement && !document.hidden) {
-                    preview.play().catch(() => {});
+                    playSocialPreview(preview);
                 }
                 return;
             }
@@ -3579,7 +3571,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         getVisibleSocialOptions().filter(card => (
             !usingObserver || card.dataset.socialPreviewNear === 'true'
         )).forEach(card => {
-            card.querySelector('video.social-link-preview')?.play().catch(() => {});
+            playSocialPreview(card.querySelector('video.social-link-preview'));
         });
     }
 
