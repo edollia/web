@@ -337,24 +337,12 @@ document.addEventListener("DOMContentLoaded", async function() {
     let backgroundMusicUnlocked = false;
     let backgroundMusicRetryArmed = false;
     let backgroundMusicPlayPromise = null;
+    const UI_SOUND_VERSION = '4';
     const uiSounds = {
-        // CUT1 is intentionally served from a versioned pathname instead of
-        // its old query-string URL. GitHub Pages/CDN and Safari could retain a
-        // stale response for the tiny original MP3 even after a deployment.
-        tap: 'CUT1-ui-v3.mp3',
-        link: 'CUT2.mp3?v=2',
-        submit: 'CUT3.mp3?v=2'
+        tap: `CUT1.mp3?v=${UI_SOUND_VERSION}`,
+        link: `CUT2.mp3?v=${UI_SOUND_VERSION}`,
+        submit: `CUT3.mp3?v=${UI_SOUND_VERSION}`
     };
-    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-    let uiAudioContext = null;
-    if (AudioContextClass) {
-        try {
-            uiAudioContext = new AudioContextClass();
-        } catch (error) {
-            // HTMLAudio remains available even if Web Audio cannot initialize.
-            uiAudioContext = null;
-        }
-    }
     function setBackgroundMusicVolume(volume) {
         backgroundMusicRequestedVolume = volume;
         applyBackgroundMusicVolume();
@@ -418,9 +406,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             backgroundMusicRetryArmed = false;
             document.removeEventListener('pointerdown', retry, true);
             document.removeEventListener('keydown', retry, true);
-            void warmUiSounds();
-            // Keep play() inside this trusted event. Waiting for the Web Audio
-            // resume promise can outlive Safari's media-activation window.
+            // Keep play() inside this trusted event so Safari accepts it.
             startBackgroundMusic();
         };
         document.addEventListener('pointerdown', retry, { once: true, capture: true });
@@ -493,15 +479,14 @@ document.addEventListener("DOMContentLoaded", async function() {
         }
     });
     setBackgroundMusicVolume(backgroundMusicVolume);
-    const uiSoundBuffers = {};
     const lastUiSoundAt = new Map();
-    const pendingUiSoundTypes = new Set();
-    const activeUiSoundSources = new Map();
     const uiSoundPlayers = Object.fromEntries(
         Object.entries(uiSounds).map(([type, src]) => {
             const sound = new Audio(src);
             sound.preload = 'auto';
             sound.volume = 1;
+            sound.playsInline = true;
+            sound.setAttribute('playsinline', '');
             sound.load();
             return [type, sound];
         })
@@ -557,133 +542,10 @@ document.addEventListener("DOMContentLoaded", async function() {
             .finally(() => window.clearTimeout(timeoutId));
         return visitorIdentityPromise;
     }
-    let uiSoundsWarmed = false;
-    let uiAudioResumePromise = null;
-    let uiAudioUnlockQueued = false;
-    uiAudioContext?.addEventListener?.('statechange', () => {
-        if (uiAudioContext.state !== 'running') uiAudioUnlockQueued = false;
-    });
-
-    async function loadUiSoundBuffers() {
-        if (!uiAudioContext) return;
-
-        await Promise.all(Object.entries(uiSounds).map(async ([type, src]) => {
-            try {
-                const response = await fetch(src);
-                if (!response.ok) throw new Error(`${type} sound ${response.status}`);
-                const buffer = await response.arrayBuffer();
-                uiSoundBuffers[type] = await uiAudioContext.decodeAudioData(buffer);
-            } catch (error) {
-                // Fall back to HTMLAudioElement for this sound.
-            }
-        }));
-    }
-
-    let uiSoundBuffersReady = null;
-
-    function ensureUiSoundBuffers() {
-        if (!uiSoundBuffersReady) {
-            uiSoundBuffersReady = loadUiSoundBuffers();
-        }
-        return uiSoundBuffersReady;
-    }
-    // These three stripped effects total only a few kilobytes. Decode them
-    // while the entry UI is on screen so the first real taps do not fall back
-    // to overlapping HTMLAudio players that can duck music on iPhone.
-    void ensureUiSoundBuffers();
-
-    function resumeUiAudioContext() {
-        if (!uiAudioContext || uiAudioContext.state === 'running') return Promise.resolve();
-        if (uiAudioResumePromise) return uiAudioResumePromise;
-        // Queue one inaudible frame before resume(). On iPhone this makes the
-        // effects graph participate in the current trusted gesture before the
-        // separate HTMLAudio music element starts and claims the media session.
-        // Without it Safari can report the context as resumed while producing
-        // no UI audio at all.
-        if (!uiAudioUnlockQueued) {
-            try {
-                const unlockBuffer = uiAudioContext.createBuffer(1, 1, 22050);
-                const unlockSource = uiAudioContext.createBufferSource();
-                unlockSource.buffer = unlockBuffer;
-                unlockSource.connect(uiAudioContext.destination);
-                unlockSource.onended = () => {
-                    try { unlockSource.disconnect(); } catch (error) {}
-                };
-                unlockSource.start(0);
-                uiAudioUnlockQueued = true;
-            } catch (error) {
-                // resume() below and the HTMLAudio fallback remain available.
-            }
-        }
-        // Call resume() synchronously while the tap is still trusted. Starting
-        // it from a later microtask can miss Safari's short audio-unlock window.
-        let resumeAttempt;
-        try {
-            resumeAttempt = uiAudioContext.resume();
-        } catch (error) {
-            resumeAttempt = Promise.reject(error);
-        }
-        uiAudioResumePromise = Promise.resolve(resumeAttempt)
-            .catch(() => {
-                // The HTMLAudioElement fallback remains available.
-            })
-            .finally(() => {
-                uiAudioResumePromise = null;
-                if (uiAudioContext?.state !== 'running') uiAudioUnlockQueued = false;
-            });
-        return uiAudioResumePromise;
-    }
-
-    async function warmUiSounds() {
-        if (!uiSoundsWarmed) {
-            uiSoundsWarmed = true;
-            void ensureUiSoundBuffers();
-        }
-        await resumeUiAudioContext();
-    }
-
-    function playDecodedUiSound(type) {
-        if (uiAudioContext && uiAudioContext.state === 'running' && uiSoundBuffers[type]) {
-            const previous = activeUiSoundSources.get(type);
-            if (previous) {
-                previous.source.onended = null;
-                try { previous.source.stop(); } catch (error) {}
-                try { previous.source.disconnect(); } catch (error) {}
-                try { previous.gain.disconnect(); } catch (error) {}
-            }
-            const source = uiAudioContext.createBufferSource();
-            const gain = uiAudioContext.createGain();
-            source.buffer = uiSoundBuffers[type];
-            gain.gain.value = 1;
-            source.connect(gain);
-            gain.connect(uiAudioContext.destination);
-            activeUiSoundSources.set(type, { source, gain });
-            source.onended = () => {
-                if (activeUiSoundSources.get(type)?.source === source) {
-                    activeUiSoundSources.delete(type);
-                }
-                source.disconnect();
-                gain.disconnect();
-            };
-            source.start(0);
-            return true;
-        }
-        return false;
-    }
-
-    function playHtmlUiSound(type) {
+    function playUiSound(type) {
         const sound = uiSoundPlayers[type];
         if (!sound) return;
 
-        // Keep one fallback player per sound. Spawning overlapping HTMLAudio
-        // clones can make iPhone switch/duck audio sessions and is what made a
-        // single tap sound doubled or suddenly quieter.
-        sound.pause();
-        sound.currentTime = 0;
-        sound.play().catch(() => {});
-    }
-
-    function playUiSound(type) {
         // If iOS interrupted the looping media element, an ordinary site tap
         // is the next trusted gesture and should restore it immediately.
         if (backgroundMusicRequested && audio.paused && !document.hidden) {
@@ -692,31 +554,21 @@ document.addEventListener("DOMContentLoaded", async function() {
         const now = performance.now();
         if (now - (lastUiSoundAt.get(type) || 0) < 90) return;
         lastUiSoundAt.set(type, now);
-        if (playDecodedUiSound(type)) return;
-        if (uiAudioContext && uiSoundBuffers[type] && uiAudioContext.state !== 'running') {
-            // resume() happens inside the trusted tap. Play exactly once after
-            // it settles; do not also start an HTMLAudio copy in parallel.
-            if (pendingUiSoundTypes.has(type)) return;
-            pendingUiSoundTypes.add(type);
-            void resumeUiAudioContext().then(() => {
-                pendingUiSoundTypes.delete(type);
-                if (!playDecodedUiSound(type)) playHtmlUiSound(type);
-            });
-            return;
+
+        // Keep one reusable media element per effect. This uses the same iOS
+        // audio path as the working background music and avoids a competing
+        // Web Audio session that can remain inaudible on production Safari.
+        try {
+            sound.pause();
+            sound.currentTime = 0;
+            const playAttempt = sound.play();
+            playAttempt?.catch?.(() => {});
+        } catch (error) {
+            // A later trusted tap can retry if Safari is still loading audio.
         }
-        playHtmlUiSound(type);
     }
 
     window.dollPlayUiSound = playUiSound;
-
-    // Safari may interrupt Web Audio after the plain background-music element
-    // starts, or after returning from another tab. Resume at pointerdown in
-    // capture phase so the context is awake before the later click handler
-    // asks for its tap/link effect. warmUiSounds() is idempotent and does not
-    // play an audible sound by itself.
-    const keepUiSoundsUnlocked = () => { void warmUiSounds(); };
-    document.addEventListener('pointerdown', keepUiSoundsUnlocked, { capture: true, passive: true });
-    document.addEventListener('keydown', keepUiSoundsUnlocked, { capture: true });
 
     function wait(ms) {
         return new Promise(resolve => setTimeout(resolve, ms));
@@ -2153,10 +2005,8 @@ document.addEventListener("DOMContentLoaded", async function() {
     function dismissEntryGate(trigger = null) {
         if (!popup || entryDismissalInProgress) return;
         entryDismissalInProgress = true;
-        void warmUiSounds();
-        // This is a trusted visitor gesture. If iOS declined muted autoplay
-        // during the loader, use the gesture to decode/paint every configured
-        // card's first frame before the main UI can be tapped.
+        // This is a trusted visitor gesture. Use it to prepare media before
+        // the main UI can be tapped.
         primeConfiguredLocalSocialVideoFrames();
         primeBackgroundMusic();
         // This hidden sticker is needed only after the visitor enters. Starting
@@ -2348,14 +2198,12 @@ document.addEventListener("DOMContentLoaded", async function() {
             bubble.addEventListener('pointerdown', event => {
                 if (!event.isPrimary || event.button > 0) return;
                 event.preventDefault();
-                void warmUiSounds();
                 popEntryBubble(bubble);
             });
             bubble.addEventListener('click', event => {
                 // Pointer input is handled on pointerdown for immediate iOS
                 // feedback. A zero-detail click is keyboard/assistive input.
                 if (event.detail !== 0) return;
-                void warmUiSounds();
                 popEntryBubble(bubble);
             });
 
@@ -4551,14 +4399,12 @@ document.addEventListener("DOMContentLoaded", async function() {
             playSocialCardVideos();
         }
         if (!document.hidden && backgroundMusicRequested) {
-            void warmUiSounds();
             startBackgroundMusic();
         }
         syncPostsMediaPlayback();
     });
     window.addEventListener('pageshow', () => {
         if (backgroundMusicRequested) {
-            void warmUiSounds();
             startBackgroundMusic();
         }
         if (socialsButton?.classList.contains('open') && !document.hidden) {
