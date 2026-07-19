@@ -1308,6 +1308,63 @@ document.addEventListener("DOMContentLoaded", async function() {
         if (loadingSlowMessage) loadingSlowMessage.hidden = true;
     }
 
+    async function verifyCurrentSiteRelease() {
+        const currentScript = document.querySelector('script[src^="script.js?v="]');
+        const currentVersion = currentScript
+            ? new URL(currentScript.src, window.location.href).searchParams.get('v')
+            : '';
+        if (!currentVersion) return;
+
+        const controller = typeof AbortController === 'function' ? new AbortController() : null;
+        let timeoutId = 0;
+        try {
+            const checkUrl = new URL(window.location.href);
+            checkUrl.searchParams.delete('_doll_release');
+            checkUrl.searchParams.set('_doll_release_check', String(Date.now()));
+            const response = await Promise.race([
+                fetch(checkUrl, {
+                    cache: 'no-store',
+                    signal: controller?.signal,
+                    headers: { Accept: 'text/html' }
+                }),
+                new Promise(resolve => {
+                    timeoutId = window.setTimeout(() => {
+                        controller?.abort();
+                        resolve(null);
+                    }, 2500);
+                })
+            ]);
+            if (!response?.ok) return;
+            const latestHtml = await response.text();
+            const latestDocument = new DOMParser().parseFromString(latestHtml, 'text/html');
+            const latestScript = latestDocument.querySelector('script[src^="script.js?v="]');
+            const latestVersion = latestScript
+                ? new URL(latestScript.getAttribute('src'), checkUrl).searchParams.get('v')
+                : '';
+            if (!latestVersion || latestVersion === currentVersion) {
+                if (new URL(window.location.href).searchParams.has('_doll_release')) {
+                    const cleanUrl = new URL(window.location.href);
+                    cleanUrl.searchParams.delete('_doll_release');
+                    window.history.replaceState(window.history.state, '', cleanUrl);
+                }
+                return;
+            }
+
+            const recoveryKey = 'doll-release-recovery';
+            if (sessionStorage.getItem(recoveryKey) === latestVersion) return;
+            sessionStorage.setItem(recoveryKey, latestVersion);
+            const recoveryUrl = new URL(window.location.href);
+            recoveryUrl.searchParams.delete('_doll_release_check');
+            recoveryUrl.searchParams.set('_doll_release', latestVersion);
+            window.location.replace(recoveryUrl);
+        } catch (error) {
+            // Offline or constrained visitors continue through the bounded
+            // local loader rather than being blocked by the release check.
+        } finally {
+            window.clearTimeout(timeoutId);
+        }
+    }
+
     function retireLoadingScreen() {
         if (!loadingScreen) return;
         if (loadingVisualFrame !== null) {
@@ -1836,6 +1893,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     // Enhanced loading logic: wait for min time, window load, AND ALL critical resources
     Promise.all([
         new Promise(resolve => setTimeout(resolve, minLoadingTime)),
+        verifyCurrentSiteRelease(),
         new Promise(resolve => {
             if (document.readyState === 'complete') {
                 resolve();
@@ -1865,12 +1923,13 @@ document.addEventListener("DOMContentLoaded", async function() {
         }),
         // Wait for critical resources to load
         new Promise(resolve => {
+            const CORE_ASSET_VERSION = '13';
             const criticalResources = [
-                'site-images/background.png',
-                'site-images/header.png',
-                'note-paper-v4.png',
-                'loading.gif',
-                'site-images/wishlist.png'
+                `site-images/background.png?v=${CORE_ASSET_VERSION}`,
+                `site-images/header.png?v=${CORE_ASSET_VERSION}`,
+                `note-paper-v4.png?v=${CORE_ASSET_VERSION}`,
+                `loading.gif?v=${CORE_ASSET_VERSION}`,
+                `site-images/wishlist.png?v=${CORE_ASSET_VERSION}`
             ];
             
             let loadedCount = 0;
@@ -1884,6 +1943,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             // Load each resource and track completion
             criticalResources.forEach(src => {
                 let counted = false;
+                let attempts = 0;
 
                 const markResourceLoaded = () => {
                     if (counted) return;
@@ -1897,8 +1957,25 @@ document.addEventListener("DOMContentLoaded", async function() {
                 };
                 
                 const resource = new Image();
-                resource.onload = markResourceLoaded;
-                resource.onerror = markResourceLoaded;
+                resource.fetchPriority = 'high';
+                resource.onload = () => {
+                    // onload confirms transfer, while decode confirms Safari
+                    // can actually paint the asset before the overlay leaves.
+                    const decodeAttempt = typeof resource.decode === 'function'
+                        ? resource.decode()
+                        : Promise.resolve();
+                    Promise.resolve(decodeAttempt).catch(() => {}).then(markResourceLoaded);
+                };
+                resource.onerror = () => {
+                    attempts += 1;
+                    if (attempts < 2) {
+                        // A stale or interrupted cached response should get one
+                        // clean retry instead of immediately counting as ready.
+                        window.setTimeout(() => { resource.src = src; }, 250);
+                        return;
+                    }
+                    markResourceLoaded();
+                };
                 resource.src = src;
             });
             

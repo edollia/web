@@ -50,14 +50,14 @@ html {
     height: -webkit-fill-available;
     background:
         radial-gradient(circle at 50% 34%, rgba(255, 226, 240, 0.44), transparent 38%),
-        #fff7fb url('site-images/background.png') center / cover no-repeat fixed;
+        #fff7fb url('site-images/background.png?v=13') center / cover no-repeat fixed;
     overscroll-behavior: none;
     touch-action: manipulation;
 }
 
 body {
     background-color: transparent;
-    background-image: url('site-images/background.png');
+    background-image: url('site-images/background.png?v=13');
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
