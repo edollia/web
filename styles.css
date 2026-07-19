@@ -3758,6 +3758,45 @@ body.first-visit-tour-active .tour-highlight-target {
     color: rgba(139, 91, 115, 0.72);
 }
 
+.posts-page-sentinel {
+    grid-column: 1 / -1;
+    width: max-content;
+    min-width: 82px;
+    min-height: 34px;
+    margin: 1px auto 3px;
+    padding: 5px 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    border: 1px dashed rgba(231, 158, 190, 0.38);
+    border-radius: 999px;
+    background: rgba(255, 250, 253, 0.55);
+    color: rgba(139, 91, 115, 0.62);
+    font-family: "Comic Sans MS", "Trebuchet MS", cursive;
+    font-size: 9px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.posts-page-sentinel[hidden] {
+    display: none !important;
+}
+
+.posts-page-sentinel .posts-fetch-paw {
+    display: none;
+    width: 14px;
+    height: 16px;
+}
+
+.posts-page-sentinel.is-loading .posts-fetch-paw {
+    display: block;
+}
+
+.posts-page-sentinel.is-error {
+    border-color: rgba(218, 112, 162, 0.48);
+}
+
 .posts-fetch-paw.loading-paw-print {
     --paw-rotation: 0deg;
     width: 19px;
