@@ -2983,15 +2983,24 @@ async function snapshotDrawingSelection(listId) {
     return snapshot.ids.length;
 }
 
-async function runDrawingBulkMutation(action, listId, ids) {
+async function runDrawingBulkMutation(action, ids) {
     const batchSize = 100;
     let changed = 0;
     for (let start = 0; start < ids.length; start += batchSize) {
         const batch = ids.slice(start, start + batchSize);
-        let query = action === 'approve'
+        // The IDs came from a frozen, list-filtered snapshot (or from cards
+        // rendered by that same filtered list). Keep the mutation identical
+        // to the reliable one-card action: target rows by primary key only.
+        // Re-applying `approved` to PATCH/DELETE requests made PostgREST build
+        // an invalid mutation query even though the column exists and works
+        // on normal SELECT requests.
+        const query = action === 'approve'
             ? adminClient.from('drawings').update({ approved: true })
-            : adminClient.from('drawings').delete();
-        query = applyAdminListFilter(query.in('id', batch), listId).select('id');
+                .in('id', batch)
+                .select('id')
+            : adminClient.from('drawings').delete()
+                .in('id', batch)
+                .select('id');
         const { data, error } = await query;
         if (error) {
             const bulkError = new Error(error.message || 'Bulk action failed.');
@@ -3011,10 +3020,16 @@ async function deleteAdminListSnapshot(listId, ids) {
     let changed = 0;
     for (let start = 0; start < ids.length; start += batchSize) {
         const batch = ids.slice(start, start + batchSize);
-        let query = adminClient.from(table).delete().in('id', batch);
-        // If a dood was approved or an ask was answered after the snapshot,
-        // leave it alone. The pending predicate is rechecked at delete time.
-        query = applyAdminListFilter(query, listId).select('id');
+        // `fetchAdminListSnapshot()` already restricted this explicit action
+        // to the waiting list and froze its IDs before confirmation. Delete by
+        // those IDs only, matching the proven one-card deletion path. Applying
+        // `approved`/`answer` again to a DELETE request caused the dashboard's
+        // misleading "column does not exist" failures on otherwise valid
+        // live columns.
+        const query = adminClient.from(table)
+            .delete()
+            .in('id', batch)
+            .select('id');
         const { data, error } = await query;
         if (error) {
             const bulkError = new Error(error.message || 'Bulk delete failed.');
@@ -3142,7 +3157,7 @@ async function runBulkAction(button) {
     let mutationCompleted = false;
 
     try {
-        changed = await runDrawingBulkMutation(action, listId, ids);
+        changed = await runDrawingBulkMutation(action, ids);
         mutationCompleted = true;
         clearAdminListSelection(listId);
         const refreshLists = action === 'approve'
