@@ -479,18 +479,24 @@ document.addEventListener("DOMContentLoaded", async function() {
         }
     });
     setBackgroundMusicVolume(backgroundMusicVolume);
+    const UI_SOUND_POOL_SIZE = 3;
     const lastUiSoundAt = new Map();
-    const uiSoundPlayers = Object.fromEntries(
-        Object.entries(uiSounds).map(([type, src]) => {
+    const uiSoundPools = Object.fromEntries(Object.entries(uiSounds).map(([type, src]) => {
+        const voices = Array.from({ length: UI_SOUND_POOL_SIZE }, () => {
             const sound = new Audio(src);
+            const voice = { sound, playing: false };
             sound.preload = 'auto';
             sound.volume = 1;
             sound.playsInline = true;
             sound.setAttribute('playsinline', '');
+            sound.addEventListener('ended', () => { voice.playing = false; });
+            sound.addEventListener('pause', () => { voice.playing = false; });
+            sound.addEventListener('error', () => { voice.playing = false; });
             sound.load();
-            return [type, sound];
-        })
-    );
+            return voice;
+        });
+        return [type, voices];
+    }));
 
     const VISITOR_ID_TIMEOUT_MS = 1800;
     let visitorIdentityPromise = null;
@@ -543,8 +549,8 @@ document.addEventListener("DOMContentLoaded", async function() {
         return visitorIdentityPromise;
     }
     function playUiSound(type) {
-        const sound = uiSoundPlayers[type];
-        if (!sound) return;
+        const voices = uiSoundPools[type];
+        if (!voices) return;
 
         // If iOS interrupted the looping media element, an ordinary site tap
         // is the next trusted gesture and should restore it immediately.
@@ -552,18 +558,21 @@ document.addEventListener("DOMContentLoaded", async function() {
             startBackgroundMusic();
         }
         const now = performance.now();
-        if (now - (lastUiSoundAt.get(type) || 0) < 90) return;
+        if (now - (lastUiSoundAt.get(type) || 0) < 55) return;
         lastUiSoundAt.set(type, now);
 
-        // Keep one reusable media element per effect. This uses the same iOS
-        // audio path as the working background music and avoids a competing
-        // Web Audio session that can remain inaudible on production Safari.
+        // Let quick taps overlap without pausing or rewinding a sound that is
+        // already audible. If every bounded voice is busy, drop only the extra
+        // tap instead of creating an unlimited pileup or clipping active audio.
+        const voice = voices.find(candidate => !candidate.playing);
+        if (!voice) return;
+        voice.playing = true;
         try {
-            sound.pause();
-            sound.currentTime = 0;
-            const playAttempt = sound.play();
-            playAttempt?.catch?.(() => {});
+            voice.sound.currentTime = 0;
+            const playAttempt = voice.sound.play();
+            playAttempt?.catch?.(() => { voice.playing = false; });
         } catch (error) {
+            voice.playing = false;
             // A later trusted tap can retry if Safari is still loading audio.
         }
     }
