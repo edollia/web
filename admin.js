@@ -34,6 +34,15 @@ const socialVideoPickerTimers = new Map();
 const socialVideoPendingInputs = new Map();
 const SOCIAL_VIDEO_PICKER_SESSION_KEY = 'doll_social_video_picker_pending';
 const SOCIAL_VIDEO_CLEANUP_STORAGE_KEY = 'doll_social_video_cleanup_pending_v1';
+const PUBLIC_SITE_SETTINGS_CACHE_KEY = 'doll_public_site_settings_v1';
+
+function cachePublicSiteSettings(settings) {
+    try {
+        localStorage.setItem(PUBLIC_SITE_SETTINGS_CACHE_KEY, JSON.stringify(settings));
+    } catch (error) {
+        // The public page still has a complete static fallback if storage is unavailable.
+    }
+}
 
 async function hashPin(pin) {
     const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(pin));
@@ -96,13 +105,13 @@ const DEFAULT_LINK_SETTINGS = {
     throne_enabled: true,
     throne_checkout_mode: 'mockup',
     wishlist_view_mode: 'masonry',
-    homepage_note_text: '',
-    homepage_note_font_size: 13.25,
+    homepage_note_text: '\n\n\nhiii\nuhhh umm yea\nThese are my only socials\n',
+    homepage_note_font_size: 15.75,
     maintenance_enabled: false,
     maintenance_title: 'site update in progress',
     maintenance_message: 'Please check back soon.',
     maintenance_eta: '',
-    entrance_mode: 'paw',
+    entrance_mode: 'bubbles',
     drawings_enabled: true,
     questions_enabled: true,
     rooms_enabled: false,
@@ -663,12 +672,14 @@ function normalizeLinkSettings(value) {
         throne_checkout_mode: settings.throne_checkout_mode === 'widget' ? 'widget' : 'mockup',
         wishlist_view_mode: WISHLIST_VIEW_MODES.includes(settings.wishlist_view_mode) ? settings.wishlist_view_mode : 'masonry',
         homepage_note_text: String(settings.homepage_note_text || '').slice(0, 220),
-        homepage_note_font_size: Math.min(17, Math.max(9, Number(settings.homepage_note_font_size) || 13.25)),
+        homepage_note_font_size: Math.min(17, Math.max(9, Number(settings.homepage_note_font_size) || DEFAULT_LINK_SETTINGS.homepage_note_font_size)),
         maintenance_enabled: readBooleanSetting(settings, 'maintenance_enabled'),
         maintenance_title: String(settings.maintenance_title || DEFAULT_LINK_SETTINGS.maintenance_title),
         maintenance_message: String(settings.maintenance_message || DEFAULT_LINK_SETTINGS.maintenance_message),
         maintenance_eta: String(settings.maintenance_eta || ''),
-        entrance_mode: settings.entrance_mode === 'bubbles' ? 'bubbles' : 'paw',
+        entrance_mode: ['paw', 'bubbles'].includes(settings.entrance_mode)
+            ? settings.entrance_mode
+            : DEFAULT_LINK_SETTINGS.entrance_mode,
         drawings_enabled: readBooleanSetting(settings, 'drawings_enabled'),
         questions_enabled: readBooleanSetting(settings, 'questions_enabled'),
         rooms_enabled: readBooleanSetting(settings, 'rooms_enabled'),
@@ -880,7 +891,7 @@ function getDraftLinkSettings() {
         throne_checkout_mode: els.throneCheckoutMode?.value === 'widget' ? 'widget' : 'mockup',
         wishlist_view_mode: WISHLIST_VIEW_MODES.includes(els.wishlistViewMode?.value) ? els.wishlistViewMode.value : 'masonry',
         homepage_note_text: (els.homepageNoteText?.value || '').slice(0, 220),
-        homepage_note_font_size: Math.min(17, Math.max(9, Number(state.linkSettings.homepage_note_font_size) || 13.25)),
+        homepage_note_font_size: Math.min(17, Math.max(9, Number(state.linkSettings.homepage_note_font_size) || DEFAULT_LINK_SETTINGS.homepage_note_font_size)),
         maintenance_enabled: els.maintenanceEnabled?.checked === true,
         maintenance_title: els.maintenanceTitle?.value.trim() || DEFAULT_LINK_SETTINGS.maintenance_title,
         maintenance_message: els.maintenanceMessage?.value.trim() || DEFAULT_LINK_SETTINGS.maintenance_message,
@@ -2201,6 +2212,9 @@ async function loadAdminData({ preserveDrafts = true } = {}) {
             || settingsSavePending > 0
             || settingsSaveRevision !== settingsRevisionAtStart
         );
+        if (linkSettingsResult.data?.value) {
+            cachePublicSiteSettings(normalizeLinkSettings(linkSettingsResult.data.value));
+        }
         if (!preserveLiveLinkDraft) {
             state.linkSettings = normalizeLinkSettings(linkSettingsResult.data?.value);
         }
@@ -2587,7 +2601,7 @@ async function persistLatestLinkSettings(requestId, { overrides = null, onCommit
             throne_checkout_mode: els.throneCheckoutMode?.value === 'widget' ? 'widget' : 'mockup',
             wishlist_view_mode: WISHLIST_VIEW_MODES.includes(els.wishlistViewMode?.value) ? els.wishlistViewMode.value : 'masonry',
             homepage_note_text: (els.homepageNoteText?.value || '').slice(0, 220),
-            homepage_note_font_size: Math.min(17, Math.max(9, Number(state.linkSettings.homepage_note_font_size) || 13.25)),
+            homepage_note_font_size: Math.min(17, Math.max(9, Number(state.linkSettings.homepage_note_font_size) || DEFAULT_LINK_SETTINGS.homepage_note_font_size)),
             maintenance_enabled: els.maintenanceEnabled?.checked === true,
             maintenance_title: els.maintenanceTitle?.value.trim() || DEFAULT_LINK_SETTINGS.maintenance_title,
             maintenance_message: els.maintenanceMessage?.value.trim() || DEFAULT_LINK_SETTINGS.maintenance_message,
@@ -2629,6 +2643,8 @@ async function persistLatestLinkSettings(requestId, { overrides = null, onCommit
         }
         return false;
     }
+
+    cachePublicSiteSettings(nextSettings);
 
     if (typeof onCommitted === 'function') {
         try { onCommitted(nextSettings); } catch (commitHookError) {

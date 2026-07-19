@@ -11,6 +11,8 @@ document.addEventListener("DOMContentLoaded", async function() {
     const SOCIAL_CARD_VIDEO_SOURCE_MODE = SOCIAL_CARD_MEDIA_CONFIG.mode === 'supabase'
         ? 'supabase'
         : 'github';
+    const MAIN_SUPABASE_URL = 'https://zvqdodzkhmcptwkjlfeu.supabase.co';
+    const MAIN_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp2cWRvZHpraG1jcHR3a2psZmV1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg3NjM1NjAsImV4cCI6MjA2NDMzOTU2MH0.i1xbRIhPHVkDIrnDlQFP0ebNklrx8WVQcQo8Iuo9zG8';
     const LOCAL_SOCIAL_CARD_VIDEOS = SOCIAL_CARD_MEDIA_CONFIG.localVideos || {};
     const LOCAL_SOCIAL_CARD_PRELOAD_TIMEOUT_MS = 8000;
     // Same-origin social videos are decoded behind the entrance screen and
@@ -74,13 +76,13 @@ document.addEventListener("DOMContentLoaded", async function() {
         throne_enabled: true,
         throne_checkout_mode: 'mockup',
         wishlist_view_mode: 'masonry',
-        homepage_note_text: '',
-        homepage_note_font_size: 13.25,
+        homepage_note_text: '\n\n\nhiii\nuhhh umm yea\nThese are my only socials\n',
+        homepage_note_font_size: 15.75,
         maintenance_enabled: false,
         maintenance_title: '',
         maintenance_message: '',
         maintenance_eta: '',
-        entrance_mode: 'paw',
+        entrance_mode: 'bubbles',
         drawings_enabled: true,
         questions_enabled: true,
         rooms_enabled: false,
@@ -88,9 +90,29 @@ document.addEventListener("DOMContentLoaded", async function() {
         seo_description: "Lia's little space",
         site_tagline: "Lia's little space."
     };
-    let siteLinkSettings = { ...DEFAULT_LINK_SETTINGS };
+    const SITE_SETTINGS_CACHE_KEY = 'doll_public_site_settings_v1';
+
+    function readCachedSiteLinkSettings() {
+        try {
+            const cached = JSON.parse(localStorage.getItem(SITE_SETTINGS_CACHE_KEY) || 'null');
+            return cached && typeof cached === 'object'
+                ? normalizeSiteLinkSettings(cached)
+                : null;
+        } catch (error) {
+            return null;
+        }
+    }
+
+    function cacheSiteLinkSettings(settings) {
+        try {
+            localStorage.setItem(SITE_SETTINGS_CACHE_KEY, JSON.stringify(settings));
+        } catch (error) {
+            // Private browsing and locked-down storage still use static defaults.
+        }
+    }
+
+    let siteLinkSettings = readCachedSiteLinkSettings() || { ...DEFAULT_LINK_SETTINGS };
     let applySiteLinkSettingsToDom = null;
-    let siteSettingsLoadExpired = false;
     let resolveSiteClientReady;
     const siteClientReady = new Promise(resolve => {
         resolveSiteClientReady = resolve;
@@ -540,6 +562,18 @@ document.addEventListener("DOMContentLoaded", async function() {
                 })
             })
         };
+    }
+
+    function createMainSupabaseClient(createClient) {
+        return createClient(MAIN_SUPABASE_URL, MAIN_SUPABASE_ANON_KEY, {
+            db: {
+                schema: 'public'
+            },
+            auth: {
+                persistSession: true,
+                autoRefreshToken: true
+            }
+        });
     }
 
     let submitPopupTimer = null;
@@ -1629,12 +1663,14 @@ document.addEventListener("DOMContentLoaded", async function() {
             throne_checkout_mode: settings.throne_checkout_mode === 'widget' ? 'widget' : 'mockup',
             wishlist_view_mode: ['grid', 'list', 'masonry'].includes(settings.wishlist_view_mode) ? settings.wishlist_view_mode : 'masonry',
             homepage_note_text: String(settings.homepage_note_text || '').slice(0, 220),
-            homepage_note_font_size: Math.min(17, Math.max(9, Number(settings.homepage_note_font_size) || 13.25)),
+            homepage_note_font_size: Math.min(17, Math.max(9, Number(settings.homepage_note_font_size) || DEFAULT_LINK_SETTINGS.homepage_note_font_size)),
             maintenance_enabled: readBooleanSetting(settings, 'maintenance_enabled'),
             maintenance_title: String(settings.maintenance_title || DEFAULT_LINK_SETTINGS.maintenance_title),
             maintenance_message: String(settings.maintenance_message || DEFAULT_LINK_SETTINGS.maintenance_message),
             maintenance_eta: String(settings.maintenance_eta || ''),
-            entrance_mode: settings.entrance_mode === 'bubbles' ? 'bubbles' : 'paw',
+            entrance_mode: ['paw', 'bubbles'].includes(settings.entrance_mode)
+                ? settings.entrance_mode
+                : DEFAULT_LINK_SETTINGS.entrance_mode,
             drawings_enabled: readBooleanSetting(settings, 'drawings_enabled'),
             questions_enabled: readBooleanSetting(settings, 'questions_enabled'),
             rooms_enabled: readBooleanSetting(settings, 'rooms_enabled'),
@@ -1652,15 +1688,14 @@ document.addEventListener("DOMContentLoaded", async function() {
                 .eq('id', 'links');
             if (error || !Array.isArray(data) || !data[0]) return;
             const nextSettings = normalizeSiteLinkSettings(data[0].value);
-            // The entrance timeout is a real boundary: a response arriving
-            // later must not mutate settings without also updating the DOM.
-            if (siteSettingsLoadExpired) return;
             siteLinkSettings = nextSettings;
+            cacheSiteLinkSettings(nextSettings);
         } catch (error) {
-            if (siteSettingsLoadExpired) return;
-            siteLinkSettings = { ...DEFAULT_LINK_SETTINGS };
+            // Keep the last known settings (or the nonblank static fallback).
+            // A transient connection failure must never erase the note or
+            // replace the configured bubble entrance with the paw fallback.
         } finally {
-            if (!siteSettingsLoadExpired && typeof applySiteLinkSettingsToDom === 'function') {
+            if (typeof applySiteLinkSettingsToDom === 'function') {
                 applySiteLinkSettingsToDom();
             }
         }
@@ -1672,7 +1707,6 @@ document.addEventListener("DOMContentLoaded", async function() {
             loadSiteLinkSettings(),
             new Promise(resolve => {
                 timeoutId = window.setTimeout(() => {
-                    siteSettingsLoadExpired = true;
                     resolve();
                 }, 3000);
             })
@@ -1768,6 +1802,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         // Load Supabase only after the initial loading is complete
         setLoadingProgress(SOCIAL_MEDIA_PROGRESS_END);
 
+        const supabaseModulePromise = import('https://esm.sh/@supabase/supabase-js@2');
         try {
             // Bounded — unlike fetch(), a dynamic import() has no built-in
             // timeout. A stalled connection to esm.sh (no error, just no
@@ -1775,26 +1810,26 @@ document.addEventListener("DOMContentLoaded", async function() {
             // the whole loading sequence able to rescue it, since every
             // other network step here already races against a timeout.
             const { createClient } = await Promise.race([
-                import('https://esm.sh/@supabase/supabase-js@2'),
+                supabaseModulePromise,
                 wait(8000).then(() => { throw new Error('Supabase module import timed out'); })
             ]);
-            window.supabase = createClient(
-                'https://zvqdodzkhmcptwkjlfeu.supabase.co',
-                'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp2cWRvZHpraG1jcHR3a2psZmV1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg3NjM1NjAsImV4cCI6MjA2NDMzOTU2MH0.i1xbRIhPHVkDIrnDlQFP0ebNklrx8WVQcQo8Iuo9zG8',
-                {
-                    db: {
-                        schema: 'public'
-                    },
-                    auth: {
-                        persistSession: true,
-                        autoRefreshToken: true
-                    }
-                }
-            );
+            window.supabase = createMainSupabaseClient(createClient);
             setLoadingProgress(89);
         } catch (supabaseError) {
-            // Create a dummy supabase object to prevent errors
+            // Keep entrance bounded, but do not abandon a merely slow import.
+            // If it finishes later, replace the temporary client and repair
+            // settings/live features in this same visit.
             window.supabase = createUnavailableSupabaseClient();
+            void supabaseModulePromise.then(({ createClient }) => {
+                if (!window.supabase?.__dollUnavailable) return;
+                const recoveredClient = createMainSupabaseClient(createClient);
+                window.supabase = recoveredClient;
+                recoveredClient.auth?.onAuthStateChange?.(() => {
+                    window.setTimeout(() => void refreshHomepageNoteAdminAccess(), 0);
+                });
+                void loadSiteLinkSettings();
+                void refreshHomepageNoteAdminAccess();
+            }).catch(() => {});
             setLoadingProgress(89);
         }
         resolveSiteClientReady(window.supabase);
@@ -3433,7 +3468,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     }
 
     function getHomepageNoteFontSize() {
-        return Math.min(17, Math.max(9, Number(siteLinkSettings.homepage_note_font_size) || 13.25));
+        return Math.min(17, Math.max(9, Number(siteLinkSettings.homepage_note_font_size) || DEFAULT_LINK_SETTINGS.homepage_note_font_size));
     }
 
     function getHomepageNoteSettingsSnapshot() {
@@ -3493,7 +3528,8 @@ document.addEventListener("DOMContentLoaded", async function() {
     }
 
     async function saveHomepageNoteSettings(noteSettings, revision) {
-        const client = await siteClientReady;
+        const initialClient = await siteClientReady;
+        const client = window.supabase?.from ? window.supabase : initialClient;
         const { data: userData, error: userError } = await client.auth.getUser();
         if (userError || userData?.user?.id !== HOMEPAGE_NOTE_ADMIN_UID) {
             throw new Error('Your admin session has ended.');
@@ -3526,6 +3562,7 @@ document.addEventListener("DOMContentLoaded", async function() {
 
         if (revision === homepageNoteSaveRevision) {
             siteLinkSettings = latestSettings;
+            cacheSiteLinkSettings(latestSettings);
             renderHomepageNoteText();
         }
     }
@@ -3659,7 +3696,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             if (!homepageNoteSizeRollback) homepageNoteSizeRollback = getHomepageNoteSettingsSnapshot();
             siteLinkSettings = {
                 ...siteLinkSettings,
-                homepage_note_font_size: Math.min(17, Math.max(9, Number(homepageNoteSize.value) || 13.25))
+                homepage_note_font_size: Math.min(17, Math.max(9, Number(homepageNoteSize.value) || DEFAULT_LINK_SETTINGS.homepage_note_font_size))
             };
             renderHomepageNoteText();
             if (!homepageNoteEditor?.hidden) {
@@ -3741,7 +3778,8 @@ document.addEventListener("DOMContentLoaded", async function() {
 
     async function refreshHomepageNoteAdminAccess() {
         const accessRevision = ++homepageNoteAdminAccessRevision;
-        const client = await siteClientReady;
+        const initialClient = await siteClientReady;
+        const client = window.supabase?.auth ? window.supabase : initialClient;
         if (accessRevision !== homepageNoteAdminAccessRevision) return;
         if (!client?.auth?.getUser) {
             setHomepageNoteAdminAccess(false);
@@ -4552,18 +4590,6 @@ document.addEventListener("DOMContentLoaded", async function() {
         link.remove();
     }
 
-    function reserveSocialDestinationTab() {
-        try {
-            // Reserve the tab inside the trusted tap. Safari may block a new
-            // window created only after the 300ms card-pop animation.
-            const reservedTab = window.open('about:blank', '_blank');
-            if (reservedTab) reservedTab.opener = null;
-            return reservedTab;
-        } catch (error) {
-            return null;
-        }
-    }
-
     socialCardDefinitions
         .filter(({ key }) => key !== 'kofi')
         .forEach(({ key, option }) => option?.addEventListener('click', function(e) {
@@ -4573,24 +4599,11 @@ document.addEventListener("DOMContentLoaded", async function() {
             if (!isPublicLinkEnabled(key)) return;
             if (socialCardPopPending) return;
             const destination = getPublicLink(key);
-            const reservedTab = reserveSocialDestinationTab();
-            const popStarted = popSocialCardThen(option, () => {
-                if (!reservedTab || reservedTab.closed) return;
-                try {
-                    reservedTab.location.replace(destination);
-                } catch (error) {
-                    reservedTab.close();
-                    throw error;
-                }
-            });
-            if (!popStarted) {
-                reservedTab?.close();
-                return;
-            }
-            // Extremely locked-down browsers can refuse even a synchronous
-            // window.open(). Keep the link functional there; this fallback is
-            // still invoked during the original trusted click.
-            if (!reservedTab) openSocialDestinationInNewTab(destination);
+            // Preserve the original interaction: the card completes its pop
+            // on this page, then a real destination link opens. Reserving an
+            // empty tab synchronously made iPhone switch to about:blank for the
+            // full animation plus the destination's network startup.
+            popSocialCardThen(option, () => openSocialDestinationInNewTab(destination));
         }));
 
     function handleWishlistButtonActivate(e) {
@@ -4633,13 +4646,10 @@ document.addEventListener("DOMContentLoaded", async function() {
         if (siteLinkSettings.maintenance_enabled === true) return;
         if (!isPublicLinkEnabled('kofi')) return;
         if (socialCardPopPending || kofiActivationPending) return;
-        const widgetReady = kofiWidgetInitialized && typeof window.openKofiOverlay === 'function';
-        const reservedTab = widgetReady ? null : reserveSocialDestinationTab();
         kofiActivationPending = true;
-        const popStarted = popSocialCardThen(donateOption, () => openKofiOverlay(reservedTab));
+        const popStarted = popSocialCardThen(donateOption, () => openKofiOverlay());
         if (!popStarted) {
             kofiActivationPending = false;
-            reservedTab?.close();
         }
     });
 
