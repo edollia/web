@@ -991,6 +991,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             pageSize: PUBLIC_DRAWINGS_PAGE_SIZE,
             items: preloadedSubmissions.drawings,
             ids: new Set(),
+            byId: new Map(),
             phase: 'dated',
             cursor: null,
             done: false,
@@ -1027,6 +1028,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     function resetSubmissionFeed(state) {
         state.items = [];
         state.ids.clear();
+        state.byId?.clear();
         state.phase = 'dated';
         state.cursor = null;
         state.done = false;
@@ -1266,6 +1268,9 @@ document.addEventListener("DOMContentLoaded", async function() {
                     return true;
                 });
                 state.items.push(...newItems);
+                if (state.byId) {
+                    newItems.forEach(item => state.byId.set(String(item.id), item));
+                }
                 preloadedSubmissions[state.key] = state.items;
                 return { feedKey, items: newItems };
             })
@@ -2639,9 +2644,10 @@ document.addEventListener("DOMContentLoaded", async function() {
     ];
     let socialPreviewObserver = null;
     let socialPreviewReleaseTimer = 0;
+    let socialPreviewScrollRaf = 0;
     const SOCIAL_PREVIEW_ROOT_MARGIN = 120;
     const SOCIAL_PREVIEW_RELEASE_DELAY_MS = 30000;
-    const SOCIAL_PREVIEW_EXTRA_CACHE = 2;
+    const SOCIAL_PREVIEW_CACHE_LIMIT = 6;
     const initialSocialPreviewCards = new Set();
     const socialPreviewRecency = new Map();
 
@@ -2693,11 +2699,14 @@ document.addEventListener("DOMContentLoaded", async function() {
         const loadedCards = getVisibleSocialOptions().filter(card => (
             card.querySelector('.social-link-preview[src]')
         ));
-        const protectedCards = new Set(initialSocialPreviewCards);
+        const protectedCards = new Set();
         loadedCards.forEach(card => {
-            if (card.dataset.socialPreviewNear === 'true') protectedCards.add(card);
+            if (isSocialCardVisibleInPanel(card)) protectedCards.add(card);
         });
-        const cacheLimit = protectedCards.size + SOCIAL_PREVIEW_EXTRA_CACHE;
+        initialSocialPreviewCards.forEach(card => {
+            if (protectedCards.size < SOCIAL_PREVIEW_CACHE_LIMIT) protectedCards.add(card);
+        });
+        const cacheLimit = Math.max(SOCIAL_PREVIEW_CACHE_LIMIT, protectedCards.size);
         if (loadedCards.length <= cacheLimit) return;
 
         loadedCards
@@ -2716,13 +2725,20 @@ document.addEventListener("DOMContentLoaded", async function() {
                 card.classList.remove('has-social-preview');
                 preview.removeAttribute('src');
                 preview.load();
+                preview.remove();
+                socialPreviewRecency.delete(card);
             }
             return;
         }
-        if (!releaseSource) return;
+        // Unlike <video>, an <img> GIF has no pause API. Releasing an offscreen
+        // legacy GIF is the only way to stop its decoder; admin uploads are
+        // MP4/WebM, which use the retained-and-paused path above.
+        if (!releaseSource && !(preview instanceof HTMLImageElement)) return;
         if (!(preview instanceof HTMLImageElement) || !preview.getAttribute('src')) return;
         card.classList.remove('has-social-preview');
         preview.removeAttribute('src');
+        preview.remove();
+        socialPreviewRecency.delete(card);
     }
 
     function syncSocialCardVideo(key, card, loadMedia = false) {
@@ -2739,6 +2755,11 @@ document.addEventListener("DOMContentLoaded", async function() {
             ? !(preview instanceof HTMLImageElement)
             : !(preview instanceof HTMLVideoElement));
         if (hasWrongPreviewType) {
+            removeSocialCardVideo(card);
+            preview = null;
+        }
+
+        if (preview && preview.dataset.source !== url) {
             removeSocialCardVideo(card);
             preview = null;
         }
@@ -2769,26 +2790,29 @@ document.addEventListener("DOMContentLoaded", async function() {
                 preview.decoding = 'async';
             }
             preview.addEventListener(useGif ? 'load' : 'loadeddata', () => {
+                const expected = String(preview.dataset.source || '');
+                const current = String(preview.currentSrc || '');
+                let expectedAbsolute = expected;
+                try { expectedAbsolute = new URL(expected, window.location.href).href; } catch (error) {}
+                const ready = preview instanceof HTMLVideoElement
+                    ? preview.readyState >= 2
+                    : preview.naturalWidth > 0;
+                if (!preview.isConnected || preview.parentElement !== card
+                    || !ready || !expected || preview.getAttribute('src') !== expected
+                    || (current && current !== expectedAbsolute)) return;
                 card.classList.add('has-social-preview');
+                touchSocialCardPreview(card);
+                trimSocialCardPreviewCache();
             });
             preview.addEventListener('error', () => {
+                if (!preview.isConnected || preview.parentElement !== card) return;
+                if (preview.getAttribute('src') !== preview.dataset.source) return;
                 card.classList.remove('has-social-preview');
             });
             card.prepend(preview);
         }
 
-        if (preview.dataset.source !== url) {
-            card.classList.remove('has-social-preview');
-            if (preview instanceof HTMLVideoElement) {
-                preview.pause();
-                preview.removeAttribute('src');
-                preview.load();
-            } else {
-                preview.removeAttribute('src');
-            }
-            delete preview.dataset.socialPausedSrc;
-            preview.dataset.source = url;
-        }
+        preview.dataset.source = url;
 
         if (!loadMedia) return;
 
@@ -2798,6 +2822,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             if (preview instanceof HTMLVideoElement) preview.load();
         }
         touchSocialCardPreview(card);
+        trimSocialCardPreviewCache();
 
         if (preview instanceof HTMLVideoElement && socialsButton?.classList.contains('open') && !document.hidden) {
             preview.play().catch(() => {});
@@ -2820,6 +2845,23 @@ document.addEventListener("DOMContentLoaded", async function() {
         const cardRect = card.getBoundingClientRect();
         return cardRect.bottom >= panelRect.top - SOCIAL_PREVIEW_ROOT_MARGIN
             && cardRect.top <= panelRect.bottom + SOCIAL_PREVIEW_ROOT_MARGIN;
+    }
+
+    function isSocialCardVisibleInPanel(card) {
+        if (!socialLinksPanel || !card?.isConnected) return false;
+        const panelRect = socialLinksPanel.getBoundingClientRect();
+        const cardRect = card.getBoundingClientRect();
+        return cardRect.bottom > panelRect.top && cardRect.top < panelRect.bottom;
+    }
+
+    function hydrateVisibleSocialCardPreviews() {
+        if (!socialsButton?.classList.contains('open') || document.hidden) return;
+        getVisibleSocialOptions().forEach(card => {
+            if (!isSocialCardVisibleInPanel(card)) return;
+            const key = getSocialCardVideoKey(card);
+            if (key) syncSocialCardVideo(key, card, true);
+        });
+        trimSocialCardPreviewCache();
     }
 
     function observeSocialCardPreviews() {
@@ -2866,7 +2908,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             // observer takes over as soon as the visitor scrolls.
             if (!isSocialCardNearPanel(card)) return;
             card.dataset.socialPreviewNear = 'true';
-            initialSocialPreviewCards.add(card);
+            if (isSocialCardVisibleInPanel(card)) initialSocialPreviewCards.add(card);
             touchSocialCardPreview(card);
             const key = getSocialCardVideoKey(card);
             if (key) syncSocialCardVideo(key, card, true);
@@ -3647,6 +3689,12 @@ document.addEventListener("DOMContentLoaded", async function() {
     }
     function onSocialPanelScroll(event) {
         queuePanelScrollUpdate(event.currentTarget, socialLinksShell);
+        if (!socialPreviewScrollRaf) {
+            socialPreviewScrollRaf = window.requestAnimationFrame(() => {
+                socialPreviewScrollRaf = 0;
+                hydrateVisibleSocialCardPreviews();
+            });
+        }
     }
     socialLinksPanel?.addEventListener('scroll', onSocialPanelScroll, { passive: true });
 
@@ -4630,6 +4678,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         const drawingsList = document.getElementById('drawings-list');
         const questionsList = document.getElementById('questions-list');
         let renderedSubmissionsKey = '';
+        const drawingDataInfoCache = new WeakMap();
         const drawingImageObserver = 'IntersectionObserver' in window
             ? new IntersectionObserver(entries => {
                 entries.forEach(entry => {
@@ -4738,8 +4787,8 @@ document.addEventListener("DOMContentLoaded", async function() {
         function restoreDrawingImage(image) {
             if (!(image instanceof HTMLImageElement) || image.getAttribute('src')) return;
             const drawingId = String(image.dataset.drawingId || '');
-            const drawing = submissionFeeds.drawings.items.find(item => String(item?.id || '') === drawingId);
-            const src = getDrawingSrc(drawing?.imageData);
+            const drawing = submissionFeeds.drawings.byId.get(drawingId);
+            const src = getDrawingSrcForDrawing(drawing);
             if (src) image.src = src;
         }
 
@@ -4892,10 +4941,14 @@ document.addEventListener("DOMContentLoaded", async function() {
 
         function getGiphyPostId(url) {
             const hostname = url.hostname.toLowerCase().replace(/^www\./, '');
-            if (hostname !== 'giphy.com') return '';
+            if (hostname !== 'giphy.com' && !hostname.endsWith('.giphy.com')) return '';
             const pathname = decodeURIComponent(url.pathname).replace(/\/$/, '');
             const embedMatch = pathname.match(/\/embed\/([a-zA-Z0-9]+)/i);
             if (embedMatch) return embedMatch[1];
+            const directMediaMatch = pathname.match(/\/([a-zA-Z0-9]+)\/(?:[^/]+\.gif)$/i);
+            if (directMediaMatch) return directMediaMatch[1];
+            const directFileMatch = pathname.match(/\/([a-zA-Z0-9]+)\.gif$/i);
+            if (directFileMatch) return directFileMatch[1];
             const lastSegment = pathname.split('/').filter(Boolean).pop() || '';
             const id = lastSegment.split('-').pop() || '';
             return /^[a-zA-Z0-9]+$/.test(id) ? id : '';
@@ -4982,10 +5035,21 @@ document.addEventListener("DOMContentLoaded", async function() {
             return html;
         }
 
-        function getDrawingSrc(imageData) {
-            const cleanData = String(imageData || '').replace(/\s/g, '');
-            if (!cleanData || !/^[A-Za-z0-9+/=]+$/.test(cleanData)) return '';
-            return `data:image/png;base64,${cleanData}`;
+        function getDrawingSrcForDrawing(drawing) {
+            if (!drawing || typeof drawing !== 'object') return '';
+            let info = drawingDataInfoCache.get(drawing);
+            if (!info) {
+                const raw = String(drawing.imageData || '');
+                const hasWhitespace = /\s/.test(raw);
+                const clean = hasWhitespace ? raw.replace(/\s/g, '') : raw;
+                info = {
+                    valid: Boolean(clean && /^[A-Za-z0-9+/=]+$/.test(clean)),
+                    clean: hasWhitespace ? clean : null,
+                };
+                drawingDataInfoCache.set(drawing, info);
+            }
+            if (!info.valid) return '';
+            return `data:image/png;base64,${info.clean ?? drawing.imageData}`;
         }
 
         async function renderSubmissions() {
@@ -5031,7 +5095,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                     const index = startIndex + offset;
                     const el = document.createElement('div');
                     el.className = 'post-item';
-                    const drawingSrc = getDrawingSrc(drawing.imageData);
+                    const drawingSrc = getDrawingSrcForDrawing(drawing);
                     if (!drawingSrc) return;
                     const image = document.createElement('img');
                     image.alt = 'User drawing';

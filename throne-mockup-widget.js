@@ -193,14 +193,44 @@
     }
 
     function beginProductImageHydration(img, run, url, priority = 'low') {
+        const token = Symbol('wishlist-image-request');
+        const onLoad = () => finishProductImageLoad(img, token);
+        const onError = () => finishProductImageError(img, token);
         const timeoutId = window.setTimeout(() => {
             // A CDN request can neither resolve nor reject on a broken mobile
             // connection. Treat that exactly like an image error so it cannot
-            // occupy one of the three hydration slots forever.
-            finishProductImageError(img);
+            // occupy one of the bounded hydration slots forever.
+            finishProductImageError(img, token);
         }, IMAGE_HYDRATE_TIMEOUT_MS);
-        activeImageHydrations.set(img, { run, url, timeoutId, priority });
+        const request = { run, url, timeoutId, priority, token, onLoad, onError };
+        activeImageHydrations.set(img, request);
+        img.addEventListener('load', onLoad);
+        img.addEventListener('error', onError);
         img.dataset.dwlLoading = '1';
+        return request;
+    }
+
+    function clearProductImageRequest(img, request) {
+        if (!request) return;
+        window.clearTimeout(request.timeoutId);
+        img.removeEventListener('load', request.onLoad);
+        img.removeEventListener('error', request.onError);
+    }
+
+    function cancelProductImageRequest(img, {
+        removeSource = true,
+        signalSettled = true,
+        deferDrain = false,
+    } = {}) {
+        const request = activeImageHydrations.get(img);
+        if (!request) return false;
+        clearProductImageRequest(img, request);
+        activeImageHydrations.delete(img);
+        delete img.dataset.dwlLoading;
+        if (removeSource) img.removeAttribute('src');
+        if (signalSettled) signalProductImageSettled(img);
+        if (!deferDrain) drainProductImageQueue();
+        return true;
     }
 
     function drainProductImageQueue() {
@@ -224,11 +254,15 @@
                     signalProductImageSettled(img);
                     continue;
                 }
-                beginProductImageHydration(img, run, url, entry.priority);
+                const request = beginProductImageHydration(img, run, url, entry.priority);
+                if (img.complete) {
+                    if (img.naturalWidth) finishProductImageLoad(img, request.token);
+                    else finishProductImageError(img, request.token);
+                }
                 continue;
             }
 
-            beginProductImageHydration(img, run, url, entry.priority);
+            const request = beginProductImageHydration(img, run, url, entry.priority);
             img.loading = 'eager';
             try { img.fetchPriority = entry.priority; } catch (err) {}
             img.src = url;
@@ -236,20 +270,16 @@
             // A memory-cache hit may be complete before the load event can
             // run. Settle it explicitly without waiting for another task.
             if (img.complete) {
-                if (img.naturalWidth) finishProductImageLoad(img);
-                else finishProductImageError(img);
+                if (img.naturalWidth) finishProductImageLoad(img, request.token);
+                else finishProductImageError(img, request.token);
             }
         }
     }
 
-    function finishProductImageLoad(img) {
+    function finishProductImageLoad(img, token) {
         const request = activeImageHydrations.get(img);
-        if (!request || request.run !== imageHydrationRun) {
-            if (img.hasAttribute('src')) applyProductImageDimensions(img, img.dataset.src);
-            signalProductImageSettled(img);
-            return;
-        }
-        window.clearTimeout(request.timeoutId);
+        if (!request || request.run !== imageHydrationRun || request.token !== token) return;
+        clearProductImageRequest(img, request);
 
         applyProductImageDimensions(img, request.url);
         delete img.dataset.dwlLoading;
@@ -259,10 +289,10 @@
         drainProductImageQueue();
     }
 
-    function finishProductImageError(img) {
+    function finishProductImageError(img, token) {
         const request = activeImageHydrations.get(img);
-        if (!request || request.run !== imageHydrationRun) return;
-        window.clearTimeout(request.timeoutId);
+        if (!request || request.run !== imageHydrationRun || request.token !== token) return;
+        clearProductImageRequest(img, request);
 
         img.dataset.dwlFailed = request.url;
         delete img.dataset.dwlLoading;
@@ -271,15 +301,6 @@
         activeImageHydrations.delete(img);
         signalProductImageSettled(img);
         drainProductImageQueue();
-    }
-
-    function onProductImageLoad(event) {
-        finishProductImageLoad(event.currentTarget);
-    }
-
-    function onProductImageError(event) {
-        const img = event.currentTarget;
-        if (activeImageHydrations.has(img)) finishProductImageError(img);
     }
 
     function removeQueuedProductImage(img) {
@@ -311,7 +332,11 @@
                 else img.removeAttribute('src');
                 signalProductImageSettled(img);
             } else {
-                beginProductImageHydration(img, imageHydrationRun, url, priority);
+                const request = beginProductImageHydration(img, imageHydrationRun, url, priority);
+                if (img.complete) {
+                    if (img.naturalWidth) finishProductImageLoad(img, request.token);
+                    else finishProductImageError(img, request.token);
+                }
             }
             return;
         }
@@ -346,11 +371,7 @@
     function releaseOffscreenProductImage(img, { deferDrain = false } = {}) {
         if (!img || imagePriorityWindow.has(img)) return;
         removeQueuedProductImage(img);
-        const request = activeImageHydrations.get(img);
-        if (request) {
-            window.clearTimeout(request.timeoutId);
-            activeImageHydrations.delete(img);
-        }
+        cancelProductImageRequest(img, { deferDrain: true });
         if (img.hasAttribute('src')) img.removeAttribute('src');
         img.removeAttribute('fetchpriority');
         img.loading = 'lazy';
@@ -379,7 +400,11 @@
         imagePriorityScrollHandler = null;
     }
 
-    function stopProgressiveItemImages({ releaseLoaded = false, retainLoaded = null } = {}) {
+    function stopProgressiveItemImages({
+        releaseLoaded = false,
+        retainLoaded = null,
+        preserveRetainedRequests = false,
+    } = {}) {
         imageHydrationRun += 1;
         imageRevealRun += 1;
         disconnectProductImageObserver();
@@ -388,17 +413,18 @@
         imagePriorityWindow.clear();
 
         activeImageHydrations.forEach((request, img) => {
+            if (preserveRetainedRequests && retainLoaded instanceof Set && retainLoaded.has(img)) {
+                request.run = imageHydrationRun;
+                return;
+            }
             // Removing src is the only browser-level cancellation available
             // for an <img>; browsers may still finish a response already in
             // flight, but it will no longer decode or paint into this panel.
-            window.clearTimeout(request.timeoutId);
-            img.removeAttribute('src');
+            cancelProductImageRequest(img, { deferDrain: true });
             img.removeAttribute('fetchpriority');
             img.loading = 'lazy';
-            delete img.dataset.dwlLoading;
             img.closest('.doll-wishlist-media')?.classList.add('dwl-media-pending');
         });
-        activeImageHydrations.clear();
         panel?.querySelectorAll('.doll-wishlist-product-img').forEach(img => {
             delete img.dataset.dwlObservedNear;
         });
@@ -406,6 +432,7 @@
         if (releaseLoaded || retainLoaded instanceof Set) {
             panel?.querySelectorAll('.doll-wishlist-product-img[src]').forEach(img => {
                 if (!releaseLoaded && retainLoaded.has(img)) return;
+                cancelProductImageRequest(img, { deferDrain: true });
                 img.removeAttribute('src');
                 img.removeAttribute('fetchpriority');
                 img.loading = 'lazy';
@@ -421,16 +448,32 @@
             && rect.left < rootRect.right;
     }
 
+    function getHydratableProductImages(body) {
+        if (!body) return [];
+        return Array.from(body.querySelectorAll('.doll-wishlist-product-img[data-src]'))
+            .filter(img => String(img.dataset.src || '').trim());
+    }
+
+    function freezeMasonryProductGeometry(img) {
+        if (wishlistViewMode !== 'masonry' || !img) return;
+        const media = img.closest('.doll-wishlist-media');
+        if (!media || media.classList.contains('dwl-media-frozen')) return;
+        const rect = media.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) return;
+        media.style.setProperty('--dwl-frozen-image-ratio', `${rect.width} / ${rect.height}`);
+        media.classList.add('dwl-media-frozen');
+    }
+
     function getPriorityProductImages(body, { atStart = false } = {}) {
         if (!body) return [];
         const root = wishlistViewMode === 'grid'
             ? body.querySelector('.doll-wishlist-scroll')
             : body;
-        const productImages = Array.from(body.querySelectorAll('.doll-wishlist-product-img[data-src]'));
+        const productImages = getHydratableProductImages(body);
         if (!productImages.length || !root) return [];
         const rootRect = root.getBoundingClientRect();
-        const shiftX = atStart ? root.scrollLeft : 0;
-        const shiftY = atStart ? root.scrollTop : 0;
+        const shiftX = atStart ? Math.max(0, root.scrollLeft) : 0;
+        const shiftY = atStart ? Math.max(0, root.scrollTop) : 0;
         const entries = productImages.map((img, index) => {
             const rect = img.getBoundingClientRect();
             return {
@@ -447,15 +490,10 @@
         const visibleEntries = entries.filter(entry => rectsOverlap(entry.rect, rootRect));
         const visibleSet = new Set(visibleEntries.map(entry => entry.img));
         const horizontal = wishlistViewMode === 'grid';
-        const candidates = entries.filter(entry => !visibleSet.has(entry.img));
+        const candidates = entries.filter(entry => !visibleSet.has(entry.img) && (horizontal
+            ? entry.rect.left >= rootRect.right - 1
+            : entry.rect.top >= rootRect.bottom - 1));
         candidates.sort((a, b) => {
-            const aForward = horizontal
-                ? a.rect.left >= rootRect.right - 1
-                : a.rect.top >= rootRect.bottom - 1;
-            const bForward = horizontal
-                ? b.rect.left >= rootRect.right - 1
-                : b.rect.top >= rootRect.bottom - 1;
-            if (aForward !== bForward) return aForward ? -1 : 1;
             const aDistance = horizontal
                 ? Math.max(0, a.rect.left - rootRect.right)
                 : Math.max(0, a.rect.top - rootRect.bottom);
@@ -471,7 +509,12 @@
         });
 
         if (!visibleEntries.length) {
-            return candidates.slice(0, IMAGE_INITIAL_EXTRA_COUNT).map(entry => entry.img);
+            return entries
+                .sort((a, b) => horizontal
+                    ? (a.rect.left - b.rect.left || a.rect.top - b.rect.top || a.index - b.index)
+                    : (a.rect.top - b.rect.top || a.rect.left - b.rect.left || a.index - b.index))
+                .slice(0, IMAGE_INITIAL_EXTRA_COUNT)
+                .map(entry => entry.img);
         }
         return [
             ...visibleEntries.map(entry => entry.img),
@@ -479,17 +522,43 @@
         ];
     }
 
+    function preemptLowPriorityHydrations(nextPriorityWindow) {
+        const urgentImages = Array.from(nextPriorityWindow).filter(img => {
+            if (!String(img.dataset.src || '').trim()) return false;
+            if (img.complete && img.naturalWidth) return false;
+            return !activeImageHydrations.has(img);
+        });
+        let slotsNeeded = urgentImages.length
+            - Math.max(0, IMAGE_HYDRATE_CONCURRENCY - activeImageHydrations.size);
+        if (slotsNeeded <= 0) return;
+
+        for (const [img] of activeImageHydrations) {
+            if (slotsNeeded <= 0) break;
+            if (nextPriorityWindow.has(img)) continue;
+            cancelProductImageRequest(img, { deferDrain: true });
+            img.closest('.doll-wishlist-media')?.classList.add('dwl-media-pending');
+            slotsNeeded -= 1;
+        }
+    }
+
     function refreshProductImagePriorityWindow(body) {
         if (!body || !isWishlistPanelVisible()) return new Set();
-        const productImages = Array.from(body.querySelectorAll('.doll-wishlist-product-img[data-src]'));
+        const productImages = getHydratableProductImages(body);
         const nextPriorityWindow = new Set(getPriorityProductImages(body));
         imagePriorityWindow.clear();
         nextPriorityWindow.forEach(img => imagePriorityWindow.add(img));
+        // Rebuild the not-yet-started queue atomically for the new viewport.
+        // Otherwise a card that used to be high priority can keep that stale
+        // rank after a fast scroll and jump ahead of the newly visible cards.
+        imageHydrationQueue.length = 0;
+        imageHydrationQueued.clear();
+        preemptLowPriorityHydrations(nextPriorityWindow);
 
         productImages.forEach(img => {
             if (imagePriorityWindow.has(img)) {
                 queueProductImage(img, 'high', { deferDrain: true });
-            } else if (img.dataset.dwlObservedNear === 'true') {
+            } else if (img.dataset.dwlObservedNear === 'true'
+                && !body.classList.contains('dwl-images-preparing')) {
                 queueProductImage(img, 'low', { deferDrain: true });
             } else {
                 releaseOffscreenProductImage(img, { deferDrain: true });
@@ -508,18 +577,13 @@
     }
 
     function setupProgressiveItemImages(body) {
-        stopProgressiveItemImages();
         const run = imageHydrationRun;
-        const productImages = Array.from(body.querySelectorAll('.doll-wishlist-product-img[data-src]'));
+        const productImages = getHydratableProductImages(body);
         if (!productImages.length) return;
 
         productImages.forEach(img => {
             delete img.dataset.dwlFailed;
-            if (img.dataset.dwlHydrationBound !== 'true') {
-                img.dataset.dwlHydrationBound = 'true';
-                img.addEventListener('load', onProductImageLoad);
-                img.addEventListener('error', onProductImageError);
-            }
+            freezeMasonryProductGeometry(img);
         });
 
         imageHydrationRoot = wishlistViewMode === 'grid'
@@ -541,6 +605,8 @@
                     const img = entry.target;
                     if (entry.isIntersecting) {
                         img.dataset.dwlObservedNear = 'true';
+                        if (body.classList.contains('dwl-images-preparing')
+                            && !imagePriorityWindow.has(img)) return;
                         queueProductImage(img);
                         return;
                     }
@@ -572,7 +638,10 @@
                     && rect.left <= rootRect.right + IMAGE_HYDRATE_MARGIN_PX;
                 if (nearby) img.dataset.dwlObservedNear = 'true';
                 else delete img.dataset.dwlObservedNear;
-                if (nearby) queueProductImage(img);
+                if (nearby) {
+                    if (!body.classList.contains('dwl-images-preparing')
+                        || imagePriorityWindow.has(img)) queueProductImage(img);
+                }
                 else releaseOffscreenProductImage(img);
             });
         };
@@ -601,6 +670,12 @@
     async function revealPreparedWishlistBody(body) {
         if (!body) return;
         const run = ++imageRevealRun;
+        // Opening code finishes its final height reservation synchronously
+        // after renderBody/resumeRenderedBody. Measure on the next frame so a
+        // tall phone's newly exposed cards join the priority cohort before we
+        // decide the loader can disappear.
+        await new Promise(resolve => window.requestAnimationFrame(resolve));
+        if (run !== imageRevealRun || !isWishlistPanelVisible() || !body.isConnected) return;
         const deadline = performance.now() + IMAGE_REVEAL_TIMEOUT_MS;
 
         for (let pass = 0; pass < 3 && performance.now() < deadline; pass += 1) {
@@ -628,6 +703,7 @@
 
         body.querySelector('.dwl-initial-image-loader')?.remove();
         body.classList.remove('dwl-images-preparing');
+        scheduleProductImagePriorityRefresh(body);
         void body.offsetWidth;
         body.classList.add('dwl-ready-in');
         window.setTimeout(() => body?.classList.remove('dwl-ready-in'), 360);
@@ -910,6 +986,14 @@
                can measure its final geometry without flashing blank tiles. */
             .doll-wishlist-body.dwl-images-preparing > :not(.dwl-initial-image-loader) {
                 visibility: hidden;
+            }
+            .doll-wishlist-body.dwl-images-preparing {
+                overflow: hidden !important;
+                overscroll-behavior: none;
+                touch-action: none;
+            }
+            .doll-wishlist-body.dwl-images-preparing .doll-wishlist-scroll {
+                overflow: hidden;
             }
             .dwl-initial-image-loader {
                 position: absolute;
@@ -1354,6 +1438,15 @@
             .doll-wishlist-item.dwl-pin .doll-wishlist-media.dwl-media-pending {
                 aspect-ratio: var(--dwl-image-ratio, var(--dwl-fallback-image-ratio, 4 / 5));
                 max-height: 220px;
+            }
+            .doll-wishlist-item.dwl-pin .doll-wishlist-media.dwl-media-frozen {
+                aspect-ratio: var(--dwl-frozen-image-ratio) !important;
+                max-height: 220px;
+            }
+            .doll-wishlist-item.dwl-pin .doll-wishlist-media.dwl-media-frozen img {
+                width: 100%;
+                height: 100%;
+                object-fit: cover;
             }
             .doll-wishlist-item.dwl-pin .doll-wishlist-media.dwl-media-pending img {
                 height: 100%;
@@ -2911,7 +3004,6 @@
     function resumeRenderedBody() {
         const body = panel?.querySelector('.doll-wishlist-body');
         if (!body) return;
-        stopProgressiveItemImages();
         prepareWishlistImageReveal(body);
         body.scrollTop = 0;
         const horizontalScroll = body.querySelector('.doll-wishlist-scroll');
@@ -3490,7 +3582,10 @@
         panelOpening = false;
         const wishlistBody = panel?.querySelector('.doll-wishlist-body');
         const retainedImages = new Set(getPriorityProductImages(wishlistBody, { atStart: true }));
-        stopProgressiveItemImages({ retainLoaded: retainedImages });
+        stopProgressiveItemImages({
+            retainLoaded: retainedImages,
+            preserveRetainedRequests: true,
+        });
         closePreview();
         cancelSwipeHintSequence();
         document.body.classList.remove('has-wishlist-panel-open', 'has-wishlist-selection');
