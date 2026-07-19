@@ -501,8 +501,9 @@ let _imageWorkTail = Promise.resolve();
 function runSerializedImageWork(work) {
   const run = _imageWorkTail.catch(() => {}).then(work);
   // Keep the shared tail fulfilled so one bad file cannot poison later work;
-  // return the original promise so its caller still receives the error.
-  _imageWorkTail = run.catch(() => {});
+  // settle it to `undefined` so the queue itself never retains the last
+  // encoded thumbnail/full-image result after its caller is finished.
+  _imageWorkTail = run.then(() => undefined, () => undefined);
   return run;
 }
 
@@ -2044,6 +2045,9 @@ async function doShowLobby() {
   closeReactionPicker();
 
   state.view = 'lobby';
+  // A broadcast already queued before channel cleanup can land during the
+  // awaited disconnects above. Sweep once more after closing the room view.
+  releaseAllChatImageMessages();
   state.room = null;
   state.participants = [];
   state.chat = [];

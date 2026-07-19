@@ -10,14 +10,11 @@
     const NAME_MAX = 60;
     const CARD_GAP = 10;
     const PAGE_SIZE = 4;
-    const IMAGE_PRELOAD_CONCURRENCY = 3;
-    const IMAGE_PRELOAD_BUDGET_MS = 1100;
-    const IMAGE_PROBE_TIMEOUT_MS = 6000;
-    const IMAGE_EAGER_COUNT = PAGE_SIZE;
-    const IMAGE_HYDRATE_CONCURRENCY = 3;
+    const IMAGE_HYDRATE_CONCURRENCY = 6;
+    const IMAGE_INITIAL_EXTRA_COUNT = 2;
     const IMAGE_HYDRATE_MARGIN_PX = 180;
     const IMAGE_HYDRATE_TIMEOUT_MS = 8000;
-    const IMAGE_RELEASE_DELAY_MS = 480;
+    const IMAGE_RELEASE_DELAY_MS = 30000;
     const SWIPE_HINT_INITIAL_DELAY_MS = 3000;
     const SWIPE_HINT_FIRST_VISIBLE_MS = 3000;
     const SWIPE_HINT_REPEAT_DELAY_MS = 5000;
@@ -66,7 +63,6 @@
     let previewImageGeneration = 0;
     let previewImageReleaseTimer = 0;
     let marqueeRuleCounter = 0;
-    let imageProbeRun = 0;
     let imageHydrationRun = 0;
     let imageHydrationObserver = null;
     let imageHydrationRoot = null;
@@ -74,6 +70,7 @@
     let imageReleaseTimer = 0;
     let itemsLoadRun = 0;
     let itemsFetchPromise = null;
+    let renderedBodySignature = '';
     const imageHydrationQueue = [];
     const imageHydrationQueued = new Set();
     const activeImageHydrations = new Map();
@@ -125,12 +122,27 @@
         window.open(url, '_blank', 'noopener,noreferrer');
     }
 
-    function withTimeout(promise, ms) {
+    function withTimeout(promise, ms, onTimeout = null) {
         let timer;
         const timeout = new Promise((_, reject) => {
-            timer = setTimeout(() => reject(new Error('timeout')), ms);
+            timer = setTimeout(() => {
+                try { onTimeout?.(); } catch (error) {}
+                reject(new Error('timeout'));
+            }, ms);
         });
         return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+    }
+
+    function withSupabaseTimeout(query, ms) {
+        if (typeof window.AbortController !== 'function' || typeof query?.abortSignal !== 'function') {
+            return withTimeout(query, ms);
+        }
+        const controller = new AbortController();
+        return withTimeout(
+            query.abortSignal(controller.signal),
+            ms,
+            () => controller.abort()
+        );
     }
 
     // url -> { w, h } natural pixel dimensions, captured while preloading so
@@ -139,102 +151,6 @@
     // lay out at zero height and visibly re-balance the instant the photos
     // decode — that split-second "the wishlist reorganizes itself" jump.
     const imageDims = new Map();
-    const imageProbeRequests = new Map();
-
-    function cancelImageDimensionProbes() {
-        imageProbeRun += 1;
-        imageProbeRequests.forEach(request => request.cancel());
-        imageProbeRequests.clear();
-    }
-
-    function probeImageDimensions(url, priority = 'low') {
-        if (imageDims.has(url)) return Promise.resolve();
-        const existingProbe = imageProbeRequests.get(url);
-        if (existingProbe) return existingProbe.promise;
-
-        let cancel = () => {};
-        const promise = new Promise(resolve => {
-            const image = new Image();
-            let settled = false;
-            let timeoutId = 0;
-
-            image.decoding = 'async';
-            // Supported in current Chromium/Safari and safely ignored by
-            // older engines. The first visible cards win bandwidth while
-            // the rest of the queue remains deliberately low priority.
-            try { image.fetchPriority = priority; } catch (err) {}
-
-            const finish = (rememberDimensions = true) => {
-                if (settled) return;
-                settled = true;
-                window.clearTimeout(timeoutId);
-                image.onload = null;
-                image.onerror = null;
-                if (rememberDimensions && image.naturalWidth && image.naturalHeight) {
-                    imageDims.set(url, { w: image.naturalWidth, h: image.naturalHeight });
-                }
-                resolve();
-            };
-
-            image.onload = finish;
-            image.onerror = finish;
-            timeoutId = window.setTimeout(() => {
-                // Release a stalled worker so one broken CDN response cannot
-                // prevent every later wishlist photo from being measured.
-                image.removeAttribute('src');
-                finish(false);
-            }, IMAGE_PROBE_TIMEOUT_MS);
-            cancel = () => {
-                image.removeAttribute('src');
-                finish(false);
-            };
-            image.src = url;
-            if (image.complete) finish();
-        });
-        const request = { promise, cancel };
-        imageProbeRequests.set(url, request);
-        void promise.then(() => {
-            if (imageProbeRequests.get(url) === request) imageProbeRequests.delete(url);
-        });
-        return promise;
-    }
-
-    async function preloadVisibleItemImages(list) {
-        // Masonry needs the initially-visible photos' natural ratios before
-        // it paints or its two columns visibly rebalance. Only measure the
-        // first page: everything after it stays URL-only until it approaches
-        // the viewport (setupProgressiveItemImages below). The previous queue
-        // kept walking all 30 URLs after the short UI timeout had elapsed,
-        // which made it progressive in appearance but not on the network.
-        cancelImageDimensionProbes();
-        const run = imageProbeRun;
-        const urls = Array.from(new Set(
-            list
-                .slice(0, IMAGE_EAGER_COUNT)
-                .map(item => String(item?.image_url || '').trim())
-                .filter(url => url && !imageDims.has(url))
-        ));
-        if (!urls.length) return;
-
-        let cursor = 0;
-        const runWorker = async () => {
-            while (run === imageProbeRun && cursor < urls.length) {
-                const index = cursor++;
-                await probeImageDimensions(urls[index], 'high');
-            }
-        };
-        const workerCount = Math.min(IMAGE_PRELOAD_CONCURRENCY, urls.length);
-        const queue = Promise.all(Array.from({ length: workerCount }, runWorker));
-
-        try {
-            // Preserve the existing short loader ceiling. At most the four
-            // initially visible requests can continue after it.
-            await withTimeout(queue, IMAGE_PRELOAD_BUDGET_MS);
-        } catch (err) {
-            // Best effort only: product media must never strand the panel.
-        }
-    }
-
     // Emits width/height attrs when the photo was measured during preload, so
     // the browser reserves the tile's true aspect ratio before the pixels
     // decode. Empty string when unknown — the tile just falls back to the old
@@ -259,14 +175,14 @@
         imageReleaseTimer = 0;
     }
 
-    function beginProductImageHydration(img, run, url) {
+    function beginProductImageHydration(img, run, url, priority = 'low') {
         const timeoutId = window.setTimeout(() => {
             // A CDN request can neither resolve nor reject on a broken mobile
             // connection. Treat that exactly like an image error so it cannot
             // occupy one of the three hydration slots forever.
             finishProductImageError(img);
         }, IMAGE_HYDRATE_TIMEOUT_MS);
-        activeImageHydrations.set(img, { run, url, timeoutId });
+        activeImageHydrations.set(img, { run, url, timeoutId, priority });
         img.dataset.dwlLoading = '1';
     }
 
@@ -284,9 +200,9 @@
                 || img.dataset.dwlFailed === url
                 || img.hasAttribute('src')) continue;
 
-            beginProductImageHydration(img, run, url);
+            beginProductImageHydration(img, run, url, entry.priority);
             img.loading = 'eager';
-            try { img.fetchPriority = 'low'; } catch (err) {}
+            try { img.fetchPriority = entry.priority; } catch (err) {}
             img.src = url;
 
             // A memory-cache hit may be complete before the load event can
@@ -312,6 +228,7 @@
             media?.classList.remove('dwl-media-pending', 'dwl-media-error');
         }
         delete img.dataset.dwlLoading;
+        delete img.dataset.dwlInitial;
         activeImageHydrations.delete(img);
         drainProductImageQueue();
     }
@@ -323,13 +240,14 @@
 
         img.dataset.dwlFailed = request.url;
         delete img.dataset.dwlLoading;
+        delete img.dataset.dwlInitial;
         img.removeAttribute('src');
         img.closest('.doll-wishlist-media')?.classList.add('dwl-media-pending', 'dwl-media-error');
         activeImageHydrations.delete(img);
         drainProductImageQueue();
     }
 
-    function queueProductImage(img) {
+    function queueProductImage(img, priority = 'low') {
         const url = String(img?.dataset?.src || '').trim();
         if (!url
             || !isWishlistPanelVisible()
@@ -340,7 +258,9 @@
             || activeImageHydrations.has(img)) return;
 
         imageHydrationQueued.add(img);
-        imageHydrationQueue.push({ img, url, run: imageHydrationRun });
+        const entry = { img, url, run: imageHydrationRun, priority };
+        if (priority === 'high') imageHydrationQueue.unshift(entry);
+        else imageHydrationQueue.push(entry);
         drainProductImageQueue();
     }
 
@@ -391,6 +311,7 @@
         activeImageHydrations.clear();
         panel?.querySelectorAll('.doll-wishlist-product-img[data-dwl-near]').forEach(img => {
             delete img.dataset.dwlNear;
+            delete img.dataset.dwlInitial;
         });
 
         if (releaseLoaded) {
@@ -409,6 +330,42 @@
             imageReleaseTimer = 0;
             if (!isWishlistPanelVisible()) stopProgressiveItemImages({ releaseLoaded: true });
         }, IMAGE_RELEASE_DELAY_MS);
+    }
+
+    function getInitialProductImages(productImages, root) {
+        if (!productImages.length || !root) return [];
+        const rootRect = root.getBoundingClientRect();
+        const visibleIndexes = [];
+        productImages.forEach((img, index) => {
+            const rect = img.getBoundingClientRect();
+            if (rect.bottom >= rootRect.top
+                && rect.top <= rootRect.bottom
+                && rect.right >= rootRect.left
+                && rect.left <= rootRect.right) {
+                visibleIndexes.push(index);
+            }
+        });
+
+        const firstIndex = visibleIndexes.length ? Math.min(...visibleIndexes) : 0;
+        const lastVisibleIndex = visibleIndexes.length ? Math.max(...visibleIndexes) : firstIndex;
+        const finalIndex = Math.min(
+            productImages.length - 1,
+            lastVisibleIndex + IMAGE_INITIAL_EXTRA_COUNT
+        );
+        return productImages.slice(firstIndex, finalIndex + 1);
+    }
+
+    function prioritizeInitialProductImages(body) {
+        if (!body || !isWishlistPanelVisible()) return;
+        const root = wishlistViewMode === 'grid'
+            ? body.querySelector('.doll-wishlist-scroll')
+            : body;
+        const productImages = Array.from(body.querySelectorAll('.doll-wishlist-product-img[data-src]'));
+        getInitialProductImages(productImages, root).forEach(img => {
+            img.dataset.dwlNear = 'true';
+            img.dataset.dwlInitial = 'true';
+            queueProductImage(img, 'high');
+        });
     }
 
     function setupProgressiveItemImages(body) {
@@ -436,6 +393,11 @@
             : body;
         if (!imageHydrationRoot) return;
 
+        // Use the real laid-out viewport, not a fixed "first four" guess.
+        // Every card currently visible on any screen height is prioritized,
+        // followed by exactly two more cards as a scroll/swipe buffer.
+        prioritizeInitialProductImages(body);
+
         if (typeof window.IntersectionObserver === 'function') {
             imageHydrationObserver = new IntersectionObserver(entries => {
                 entries.forEach(entry => {
@@ -445,6 +407,7 @@
                         queueProductImage(img);
                         return;
                     }
+                    if (img.dataset.dwlInitial === 'true') return;
                     img.dataset.dwlNear = 'false';
                     releaseOffscreenProductImage(img);
                 });
@@ -473,7 +436,7 @@
                     && rect.left <= rootRect.right + IMAGE_HYDRATE_MARGIN_PX;
                 img.dataset.dwlNear = nearby ? 'true' : 'false';
                 if (nearby) queueProductImage(img);
-                else releaseOffscreenProductImage(img);
+                else if (img.dataset.dwlInitial !== 'true') releaseOffscreenProductImage(img);
             });
         };
         imageHydrationRoot.addEventListener('scroll', imageHydrationFallbackHandler, { passive: true });
@@ -2680,15 +2643,12 @@
         const label = capName(fullLabel);
         const modeClass = mode === 'list' ? ' dwl-row' : mode === 'masonry' ? ' dwl-pin' : '';
         const imageUrl = String(item.image_url || '').trim();
-        const eager = itemIndex < IMAGE_EAGER_COUNT;
-        const sourceAttr = eager && imageUrl ? ` src="${escapeHtml(imageUrl)}"` : '';
-        const priorityAttr = eager ? ' loading="eager" fetchpriority="high"' : ' loading="lazy"';
         return `
         <article class="doll-wishlist-item${modeClass}${selected ? ' selected' : ''}" data-item-id="${escapeHtml(item.throne_item_id)}">
             <div class="dwl-glow" aria-hidden="true"></div>
             <div class="dwl-burst-clip" aria-hidden="true"><div class="dwl-burst"></div></div>
             <div class="doll-wishlist-media dwl-media-pending"${imageRatioStyle(imageUrl)}>
-                <img class="doll-wishlist-product-img"${sourceAttr} data-src="${escapeHtml(imageUrl)}" alt="" decoding="async"${priorityAttr}${imageDimsAttr(imageUrl)}>
+                <img class="doll-wishlist-product-img" data-src="${escapeHtml(imageUrl)}" alt="" decoding="async" loading="lazy"${imageDimsAttr(imageUrl)}>
             </div>
             <div class="doll-wishlist-info">
                 <p class="doll-wishlist-name" title="${escapeHtml(fullLabel)}">${escapeHtml(label)}</p>
@@ -2698,6 +2658,54 @@
                 ${ICON_HEART}${ICON_HEART_FILLED}
             </button>
         </article>`;
+    }
+
+    function getWishlistBodySignature() {
+        return JSON.stringify([
+            wishlistViewMode,
+            items.map(item => [
+                item.throne_item_id,
+                item.name,
+                item.price_cents,
+                item.image_url,
+                item.position
+            ])
+        ]);
+    }
+
+    function canReuseRenderedBody() {
+        const body = panel?.querySelector('.doll-wishlist-body');
+        return Boolean(
+            loadState === 'ready'
+            && items.length
+            && body?.querySelector('.doll-wishlist-item')
+            && renderedBodySignature === getWishlistBodySignature()
+        );
+    }
+
+    function resumeRenderedBody() {
+        const body = panel?.querySelector('.doll-wishlist-body');
+        if (!body) return;
+        stopProgressiveItemImages();
+        body.scrollTop = 0;
+        const horizontalScroll = body.querySelector('.doll-wishlist-scroll');
+        if (horizontalScroll) horizontalScroll.scrollLeft = 0;
+        body.querySelectorAll('.doll-wishlist-item.selected').forEach(card => {
+            card.classList.remove('selected');
+        });
+        body.querySelectorAll('.doll-wishlist-cart-btn').forEach(button => {
+            button.setAttribute('aria-pressed', 'false');
+            const card = button.closest('.doll-wishlist-item');
+            const label = card?.querySelector('.doll-wishlist-name')?.getAttribute('title') || 'wishlist item';
+            button.setAttribute('aria-label', `Add ${label}`);
+        });
+        setupProgressiveItemImages(body);
+        window.requestAnimationFrame(() => {
+            syncTitleMarquees(body);
+            scheduleSwipeHint();
+            updateWishlistEdgeFade(body);
+        });
+        renderDots();
     }
 
     function renderBody() {
@@ -2729,6 +2737,7 @@
         // to be destroyed anyway by the body.innerHTML assignment below, or
         // by the fresh dock created further down for list/masonry.
         if (loadState === 'loading') {
+            renderedBodySignature = '';
             pauseSwipeHintSequence();
             body.scrollTop = 0;
             body.innerHTML = renderLoadingState();
@@ -2736,12 +2745,14 @@
             return;
         }
         if (loadState === 'failed') {
+            renderedBodySignature = '';
             cancelSwipeHintSequence();
             body.innerHTML = `<div class="doll-wishlist-state">couldn't load the wishlist here.<br>opening the full site instead…</div>`;
             renderDots();
             return;
         }
         if (loadState === 'ready' && !items.length) {
+            renderedBodySignature = '';
             cancelSwipeHintSequence();
             body.innerHTML = `<div class="doll-wishlist-state">nothing featured yet.<br>opening the full site instead…</div>`;
             renderDots();
@@ -2762,6 +2773,7 @@
         } else {
             body.innerHTML = `<div class="doll-wishlist-scroll">${pagesMarkup(items)}</div>`;
         }
+        renderedBodySignature = getWishlistBodySignature();
 
         setupProgressiveItemImages(body);
 
@@ -2946,6 +2958,7 @@
         window.requestAnimationFrame(() => {
             const body = panel?.querySelector('.doll-wishlist-body');
             window.dollRefreshPanelScrollExtent?.(body);
+            prioritizeInitialProductImages(body);
             updateWishlistEdgeFade(body);
         });
     }
@@ -3006,7 +3019,7 @@
     // wishlist itself; it just leaves wishlistViewMode at its default.
     async function applyWishlistViewModeSetting(client) {
         try {
-            const { data, error } = await withTimeout(
+            const { data, error } = await withSupabaseTimeout(
                 client.from('site_settings').select('value').eq('id', 'links').maybeSingle(),
                 FETCH_TIMEOUT_MS
             );
@@ -3028,9 +3041,9 @@
             if (!client) throw new Error('supabase client unavailable');
 
             const [itemsResult] = await Promise.all([
-                withTimeout(
+                withSupabaseTimeout(
                     client.from('wishlist_items')
-                        .select('*')
+                        .select('throne_item_id,name,price_cents,image_url,position')
                         .eq('featured', true)
                         .eq('is_available', true)
                         .order('position')
@@ -3056,7 +3069,6 @@
 
     async function loadItems({ bodyPrepared = false } = {}) {
         const run = ++itemsLoadRun;
-        cancelImageDimensionProbes();
         loadState = 'loading';
         if (!bodyPrepared) renderBody();
 
@@ -3064,13 +3076,11 @@
             const nextItems = await fetchWishlistItemsShared();
             if (run !== itemsLoadRun) return;
             items = nextItems;
-            // The data itself is now cached even while the optional first-
-            // page dimension pass is still finishing. A close/reopen during
-            // that short pass can render these cached cards immediately and
-            // must not start a second Supabase request.
+            const currentImageUrls = new Set(items.map(item => String(item.image_url || '').trim()));
+            imageDims.forEach((_dims, url) => {
+                if (!currentImageUrls.has(url)) imageDims.delete(url);
+            });
             loadState = 'ready';
-            if (isWishlistPanelVisible()) await preloadVisibleItemImages(items);
-            if (run !== itemsLoadRun) return;
             if (isWishlistPanelVisible()) {
                 renderBody();
                 renderFoot();
@@ -3110,6 +3120,9 @@
         renderFoot();
 
         try {
+            const checkoutController = typeof window.AbortController === 'function'
+                ? new AbortController()
+                : null;
             const res = await withTimeout(
                 fetch(`${SUPABASE_URL}/functions/v1/throne-cart`, {
                     method: 'POST',
@@ -3118,8 +3131,10 @@
                         'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
                     },
                     body: JSON.stringify({ itemIds: Array.from(selectedIds) }),
+                    signal: checkoutController?.signal,
                 }),
-                FETCH_TIMEOUT_MS
+                FETCH_TIMEOUT_MS,
+                () => checkoutController?.abort()
             );
             const body = await res.json().catch(() => ({}));
 
@@ -3208,7 +3223,11 @@
         // a legitimately empty wishlist.
         const hasCachedResult = loadState === 'ready';
         if (!hasCachedResult) loadState = 'loading';
-        renderBody();
+        if (hasCachedResult && canReuseRenderedBody()) {
+            resumeRenderedBody();
+        } else {
+            renderBody();
+        }
         renderFoot();
         el.classList.add('dwl-measure-open');
         syncReservedHeight(true);
@@ -3245,7 +3264,6 @@
             panelOpenRaf = 0;
         }
         panelOpening = false;
-        cancelImageDimensionProbes();
         stopProgressiveItemImages();
         closePreview();
         cancelSwipeHintSequence();

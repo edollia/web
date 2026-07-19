@@ -24,6 +24,7 @@ const socialVideoSelectedFiles = new Map();
 const socialVideoPickerTimers = new Map();
 const socialVideoPendingInputs = new Map();
 const SOCIAL_VIDEO_PICKER_SESSION_KEY = 'doll_social_video_picker_pending';
+const SOCIAL_VIDEO_CLEANUP_STORAGE_KEY = 'doll_social_video_cleanup_pending_v1';
 
 async function hashPin(pin) {
     const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(pin));
@@ -110,6 +111,10 @@ const adminClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY
 
 let autoSaveTimer = null;
 let settingsDraftDirty = false;
+let settingsSaveTail = Promise.resolve();
+let settingsSavePending = 0;
+let settingsSaveRevision = 0;
+let latestSettingsSaveRequest = 0;
 let staticSeoSnapshot = null;
 let staticSeoCheckFailed = false;
 
@@ -722,7 +727,7 @@ function renderLinkSettings({ preserveDraft = false } = {}) {
     }
     applyAdminSocialCardOrder(settings);
     renderAllSocialVideoControls();
-    if (preserveDraft && settingsDraftDirty) {
+    if (preserveDraft && (settingsDraftDirty || settingsSavePending > 0)) {
         renderLinkPreview();
         return;
     }
@@ -1227,6 +1232,69 @@ function socialVideoStorageError(error) {
     return message;
 }
 
+function readPendingSocialVideoCleanup() {
+    try {
+        const value = JSON.parse(localStorage.getItem(SOCIAL_VIDEO_CLEANUP_STORAGE_KEY) || '[]');
+        return Array.isArray(value)
+            ? value.filter(path => typeof path === 'string' && path.startsWith('cards/') && path.length <= 300).slice(-40)
+            : [];
+    } catch (error) {
+        return [];
+    }
+}
+
+function writePendingSocialVideoCleanup(paths) {
+    try {
+        const uniquePaths = Array.from(new Set(paths)).slice(-40);
+        if (uniquePaths.length) {
+            localStorage.setItem(SOCIAL_VIDEO_CLEANUP_STORAGE_KEY, JSON.stringify(uniquePaths));
+        } else {
+            localStorage.removeItem(SOCIAL_VIDEO_CLEANUP_STORAGE_KEY);
+        }
+    } catch (error) {}
+}
+
+function rememberPendingSocialVideoCleanup(path) {
+    if (!path) return;
+    writePendingSocialVideoCleanup([...readPendingSocialVideoCleanup(), path]);
+}
+
+function forgetPendingSocialVideoCleanup(path) {
+    if (!path) return;
+    writePendingSocialVideoCleanup(readPendingSocialVideoCleanup().filter(item => item !== path));
+}
+
+async function removeSocialVideoStoragePath(path, { attempts = 3 } = {}) {
+    if (!path) return { ok: true, error: null };
+    let lastError = null;
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+        try {
+            const { error } = await adminClient.storage
+                .from(SOCIAL_CARD_VIDEO_BUCKET)
+                .remove([path]);
+            if (!error) {
+                forgetPendingSocialVideoCleanup(path);
+                return { ok: true, error: null };
+            }
+            lastError = error;
+        } catch (error) {
+            lastError = error;
+        }
+        if (attempt < attempts - 1) {
+            await new Promise(resolve => setTimeout(resolve, 250 * (attempt + 1)));
+        }
+    }
+    rememberPendingSocialVideoCleanup(path);
+    return { ok: false, error: lastError };
+}
+
+async function retryPendingSocialVideoCleanup() {
+    const pendingPaths = readPendingSocialVideoCleanup();
+    for (const path of pendingPaths) {
+        await removeSocialVideoStoragePath(path, { attempts: 1 });
+    }
+}
+
 async function uploadSocialCardVideo(key) {
     if (!SOCIAL_CARD_VIDEO_KEYS.includes(key)) return;
     const control = getSocialVideoControl(key);
@@ -1242,7 +1310,6 @@ async function uploadSocialCardVideo(key) {
 
     const urlKey = getSocialVideoSettingKey(key, 'url');
     const pathKey = getSocialVideoSettingKey(key, 'path');
-    const previousUrl = state.linkSettings[urlKey] || '';
     const previousPath = state.linkSettings[pathKey] || '';
     const uniquePart = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2);
     const storagePath = `cards/${key}-${Date.now()}-${uniquePart}.${extension}`;
@@ -1264,26 +1331,35 @@ async function uploadSocialCardVideo(key) {
         const publicUrl = publicData?.publicUrl || '';
         if (!publicUrl) throw new Error('Could not create the public media URL.');
 
-        state.linkSettings[urlKey] = publicUrl;
-        state.linkSettings[pathKey] = storagePath;
         settingsDraftDirty = true;
-        const saved = await saveLinkSettingsNow();
+        const saved = await saveLinkSettingsNow({
+            overrides: {
+                [urlKey]: publicUrl,
+                [pathKey]: storagePath
+            },
+            onCommitted: () => {
+                state.linkSettings[urlKey] = publicUrl;
+                state.linkSettings[pathKey] = storagePath;
+            },
+            onFailure: async () => {
+                const cleanup = await removeSocialVideoStoragePath(storagePath);
+                if (!cleanup.ok) console.warn('Failed upload cleanup:', cleanup.error);
+            }
+        });
         if (!saved) {
-            state.linkSettings[urlKey] = previousUrl;
-            state.linkSettings[pathKey] = previousPath;
-            await adminClient.storage.from(SOCIAL_CARD_VIDEO_BUCKET).remove([storagePath]);
             throw new Error('Media uploaded, but its card setting could not be saved.');
         }
 
-        if (previousPath && previousPath !== storagePath) {
-            adminClient.storage.from(SOCIAL_CARD_VIDEO_BUCKET).remove([previousPath])
-                .then(({ error }) => { if (error) console.warn('Old social video cleanup failed:', error); });
-        }
+        const oldCleanup = previousPath && previousPath !== storagePath
+            ? await removeSocialVideoStoragePath(previousPath)
+            : { ok: true };
         revokeSocialVideoObjectUrl(key);
         socialVideoSelectedFiles.delete(key);
         if (fileInput) fileInput.value = '';
         renderSocialVideoControl(key);
-        setSocialVideoStatus(key, 'background live ✓');
+        setSocialVideoStatus(key, oldCleanup.ok
+            ? 'background live ✓'
+            : 'background live · old file cleanup will retry', oldCleanup.ok ? '' : 'error');
     } catch (error) {
         setSocialVideoStatus(key, socialVideoStorageError(error), 'error');
     } finally {
@@ -1301,29 +1377,33 @@ async function removeSocialCardVideo(key) {
     if (!window.confirm(`Remove the ${key} card background?`)) return;
 
     setSocialVideoBusy(key, true, 'removing...');
-    state.linkSettings[urlKey] = '';
-    state.linkSettings[pathKey] = '';
     settingsDraftDirty = true;
 
     try {
-        const saved = await saveLinkSettingsNow();
+        const saved = await saveLinkSettingsNow({
+            overrides: {
+                [urlKey]: '',
+                [pathKey]: ''
+            },
+            onCommitted: () => {
+                state.linkSettings[urlKey] = '';
+                state.linkSettings[pathKey] = '';
+            }
+        });
         if (!saved) {
-            state.linkSettings[urlKey] = previousUrl;
-            state.linkSettings[pathKey] = previousPath;
             throw new Error('Could not save the empty background setting.');
         }
-        if (previousPath) {
-            const { error: removeError } = await adminClient.storage
-                .from(SOCIAL_CARD_VIDEO_BUCKET)
-                .remove([previousPath]);
-            if (removeError) console.warn('Social video file cleanup failed:', removeError);
-        }
+        const cleanup = previousPath
+            ? await removeSocialVideoStoragePath(previousPath)
+            : { ok: true };
         revokeSocialVideoObjectUrl(key);
         socialVideoSelectedFiles.delete(key);
         const fileInput = getSocialVideoControl(key)?.querySelector('[data-video-file]');
         if (fileInput) fileInput.value = '';
         renderSocialVideoControl(key);
-        setSocialVideoStatus(key, 'removed ✓');
+        setSocialVideoStatus(key, cleanup.ok
+            ? 'removed ✓'
+            : 'setting removed · file cleanup will retry', cleanup.ok ? '' : 'error');
     } catch (error) {
         setSocialVideoStatus(key, socialVideoStorageError(error), 'error');
     } finally {
@@ -1566,10 +1646,14 @@ async function syncWishlistNow() {
 
 async function featureAllWishlistItems() {
     if (!els.wishlistFeatureAll) return;
+    // Keep one stable search scope for the whole action. Typing a new search
+    // while the count/confirmation is in flight must not change which rows
+    // the already-confirmed action later mutates.
+    const actionSearch = state.wishlistSearch;
     let countQuery = adminClient.from('wishlist_items')
         .select('throne_item_id', { count: 'exact', head: true })
         .eq('featured', false);
-    countQuery = applyWishlistSearchFilter(countQuery);
+    countQuery = applyWishlistSearchFilter(countQuery, actionSearch);
     const countResult = await countQuery;
     if (countResult.error) {
         setStatus(els.adminStatus, countResult.error.message || 'could not count wishlist items');
@@ -1594,7 +1678,7 @@ async function featureAllWishlistItems() {
             let targetQuery = adminClient.from('wishlist_items')
                 .select('throne_item_id')
                 .eq('featured', false);
-            targetQuery = applyWishlistSearchFilter(targetQuery);
+            targetQuery = applyWishlistSearchFilter(targetQuery, actionSearch);
             const targetResult = await targetQuery
                 .order('position', { ascending: true })
                 .order('name', { ascending: true })
@@ -1641,10 +1725,11 @@ async function featureAllWishlistItems() {
 
 async function unfeatureAllWishlistItems() {
     if (!els.wishlistUnfeatureAll) return;
+    const actionSearch = state.wishlistSearch;
     let countQuery = adminClient.from('wishlist_items')
         .select('throne_item_id', { count: 'exact', head: true })
         .eq('featured', true);
-    countQuery = applyWishlistSearchFilter(countQuery);
+    countQuery = applyWishlistSearchFilter(countQuery, actionSearch);
     const countResult = await countQuery;
     if (countResult.error) {
         setStatus(els.adminStatus, countResult.error.message || 'could not count wishlist items');
@@ -1661,14 +1746,22 @@ async function unfeatureAllWishlistItems() {
 
     els.wishlistUnfeatureAll.disabled = true;
     setStatus(els.adminStatus, 'unfeaturing...');
+    let mutationCompleted = false;
     try {
         let updateQuery = adminClient.from('wishlist_items').update({ featured: false }).eq('featured', true);
-        updateQuery = applyWishlistSearchFilter(updateQuery);
+        updateQuery = applyWishlistSearchFilter(updateQuery, actionSearch);
         const { error } = await updateQuery;
         if (error) throw error;
+        mutationCompleted = true;
         await loadAdminData();
     } catch (error) {
-        setStatus(els.adminStatus, error.message || 'could not unfeature items');
+        if (mutationCompleted) {
+            let reloadFailed = false;
+            try { await loadAdminData(); } catch (reloadError) { reloadFailed = true; }
+            setStatus(els.adminStatus, `${targetCount} unfeatured; ${reloadFailed ? 'refresh failed' : 'list refreshed'}`);
+        } else {
+            setStatus(els.adminStatus, error.message || 'could not unfeature items');
+        }
     } finally {
         els.wishlistUnfeatureAll.disabled = false;
         wishlistActionBusy = false;
@@ -1709,7 +1802,7 @@ function applyAdminListFilter(query, listId) {
     if (listId === 'published-questions-list') {
         return query
             .not('answer', 'is', null)
-            .not('answer', 'match', QUOTED_WHITESPACE_ONLY_ANSWER_PATTERN);
+            .not('answer', 'match', WHITESPACE_ONLY_ANSWER_PATTERN);
     }
     return query;
 }
@@ -1723,11 +1816,10 @@ function getWishlistSearchPattern(searchValue = state.wishlistSearch) {
 function applyWishlistSearchFilter(query, searchValue = state.wishlistSearch) {
     const pattern = getWishlistSearchPattern(searchValue);
     if (!pattern) return query;
-    // `.ilike()` accepts PostgREST's raw filter-value syntax. Quote arbitrary
-    // user text so commas, colons, parentheses and quotes in item names cannot
-    // turn a harmless dashboard search into a malformed request.
-    const quotedPattern = `"${pattern.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
-    return query.ilike('name', quotedPattern);
+    // This is a direct query-builder filter, not a raw `.or()` expression.
+    // Supabase encodes punctuation in the value; adding our own quotes would
+    // make those quotes part of the ILIKE pattern and break normal searches.
+    return query.ilike('name', pattern);
 }
 
 function buildAdminListQuery(listId, { wishlistSearch = state.wishlistSearch } = {}) {
@@ -1899,6 +1991,8 @@ async function fetchWishlistFeatureMeta() {
 
 async function loadAdminData({ preserveDrafts = true } = {}) {
     const loadGeneration = ++adminFullLoadGeneration;
+    const settingsRevisionAtStart = settingsSaveRevision;
+    const settingsWritePendingAtStart = settingsSavePending > 0;
     clearTimeout(wishlistSearchTimer);
     wishlistSearchTimer = null;
     const loadingMessage = 'loading...';
@@ -1941,7 +2035,15 @@ async function loadAdminData({ preserveDrafts = true } = {}) {
         state.wishlistLastFeaturedId = wishlistFeatureMeta.lastId;
         state.wishlistSyncedAt = wishlistSyncResult.data?.last_synced_at || null;
         state.linkSettingsAvailable = !linkSettingsResult.error || linkSettingsResult.error.code === 'PGRST116';
-        state.linkSettings = normalizeLinkSettings(linkSettingsResult.data?.value);
+        const preserveLiveLinkDraft = preserveDrafts && (
+            settingsDraftDirty
+            || settingsWritePendingAtStart
+            || settingsSavePending > 0
+            || settingsSaveRevision !== settingsRevisionAtStart
+        );
+        if (!preserveLiveLinkDraft) {
+            state.linkSettings = normalizeLinkSettings(linkSettingsResult.data?.value);
+        }
         renderAll({ preserveDrafts, listIds: renderedListIds });
         reportInterruptedSocialVideoPicker();
         if (els.adminStatus?.textContent === loadingMessage) setStatus(els.adminStatus, '');
@@ -1971,6 +2073,7 @@ async function openDashboard() {
     showPanel(els.dashboardPanel);
     try {
         await loadAdminData({ preserveDrafts: false });
+        void retryPendingSocialVideoCleanup();
         checkStaticSeoStatus().catch(() => renderStaticSeoStatus());
     } catch (error) {
         setStatus(els.adminStatus, error.message || 'Could not load admin data.');
@@ -2054,16 +2157,22 @@ async function runAction(button) {
 
     button.disabled = true;
     setStatus(els.adminStatus, 'saving...');
+    let mutationCompleted = false;
+    let mutationLabel = 'saved';
 
     try {
         if (action === 'approve-drawing') {
             const { error } = await adminClient.from('drawings').update({ approved: true }).eq('id', id);
             if (error) throw error;
+            mutationCompleted = true;
+            mutationLabel = 'dood approved';
         }
 
         if (action === 'delete-drawing') {
             const { error } = await adminClient.from('drawings').delete().eq('id', id);
             if (error) throw error;
+            mutationCompleted = true;
+            mutationLabel = 'dood deleted';
         }
 
         if (action === 'save-question') {
@@ -2071,12 +2180,16 @@ async function runAction(button) {
             const { error } = await adminClient.from('questions').update({ answer }).eq('id', id);
             if (error) throw error;
             adminQuestionDrafts.delete(String(id));
+            mutationCompleted = true;
+            mutationLabel = 'reply saved';
         }
 
         if (action === 'delete-question') {
             const { error } = await adminClient.from('questions').delete().eq('id', id);
             if (error) throw error;
             adminQuestionDrafts.delete(String(id));
+            mutationCompleted = true;
+            mutationLabel = 'ask deleted';
         }
 
         if (action === 'feature-wishlist-item' || action === 'unfeature-wishlist-item') {
@@ -2087,6 +2200,8 @@ async function runAction(button) {
             }
             const { error } = await adminClient.from('wishlist_items').update(update).eq('throne_item_id', id);
             if (error) throw error;
+            mutationCompleted = true;
+            mutationLabel = featured ? 'item featured' : 'item unfeatured';
         }
 
         if (action === 'move-wishlist-item-up' || action === 'move-wishlist-item-down') {
@@ -2132,6 +2247,8 @@ async function runAction(button) {
                         : 'first half was rolled back';
                     throw new Error(`${err2?.message || 'move failed halfway'}; ${recovery}; ${reloadFailed ? 'refresh failed too' : 'list refreshed'}`);
                 }
+                mutationCompleted = true;
+                mutationLabel = 'item moved';
             }
         }
 
@@ -2140,7 +2257,13 @@ async function runAction(button) {
         }
         await loadAdminData();
     } catch (error) {
-        setStatus(els.adminStatus, error.message || 'Could not save.');
+        if (mutationCompleted) {
+            let reloadFailed = false;
+            try { await loadAdminData(); } catch (reloadError) { reloadFailed = true; }
+            setStatus(els.adminStatus, `${mutationLabel}; ${reloadFailed ? 'refresh failed' : 'list refreshed'}`);
+        } else {
+            setStatus(els.adminStatus, error.message || 'Could not save.');
+        }
     } finally {
         button.disabled = false;
         if (isWishlistPositionAction) wishlistActionBusy = false;
@@ -2157,9 +2280,19 @@ function cleanUrl(value, label) {
     }
 }
 
-async function saveLinkSettingsNow() {
-    clearTimeout(autoSaveTimer);
-    autoSaveTimer = null;
+function getLinkSettingsComparisonKey(settings) {
+    const comparable = {};
+    Object.keys(DEFAULT_LINK_SETTINGS).forEach(key => {
+        let value = settings?.[key];
+        if (key.endsWith('_url') && !key.includes('_card_video_')) {
+            try { value = new URL(String(value || '').trim()).href; } catch (error) {}
+        }
+        comparable[key] = value;
+    });
+    return JSON.stringify(comparable);
+}
+
+async function persistLatestLinkSettings(requestId, { overrides = null, onCommitted = null } = {}) {
     let nextSettings;
     try {
         nextSettings = {
@@ -2232,12 +2365,17 @@ async function saveLinkSettingsNow() {
             seo_description: els.seoDescription?.value.trim() || DEFAULT_LINK_SETTINGS.seo_description,
             site_tagline: els.siteTagline?.value.trim() || DEFAULT_LINK_SETTINGS.site_tagline
         };
+        if (overrides) Object.assign(nextSettings, overrides);
     } catch (error) {
-        setStatus(els.adminStatus, error.message || 'Check the links.');
+        if (requestId === latestSettingsSaveRequest) {
+            setStatus(els.adminStatus, error.message || 'Check the links.');
+        }
         return false;
     }
-    const savedSettingsKey = JSON.stringify(nextSettings);
-    if (els.seoState) els.seoState.textContent = 'saving';
+    const savedSettingsKey = getLinkSettingsComparisonKey(nextSettings);
+    if (requestId === latestSettingsSaveRequest && els.seoState) {
+        els.seoState.textContent = 'saving';
+    }
 
     const { error } = await adminClient
         .from('site_settings')
@@ -2248,22 +2386,77 @@ async function saveLinkSettingsNow() {
         });
 
     if (error) {
-        if (els.seoState) els.seoState.textContent = 'error';
-        setStatus(els.adminStatus, error.code === '42P01'
-            ? 'Install site_settings.sql in Supabase first.'
-            : (error.message || 'Could not save links.'));
+        if (requestId === latestSettingsSaveRequest) {
+            if (els.seoState) els.seoState.textContent = 'error';
+            setStatus(els.adminStatus, error.code === '42P01'
+                ? 'Install site_settings.sql in Supabase first.'
+                : (error.message || 'Could not save links.'));
+        }
         return false;
     }
 
-    state.linkSettings = nextSettings;
-    settingsDraftDirty = JSON.stringify(getDraftLinkSettings()) !== savedSettingsKey;
+    if (typeof onCommitted === 'function') {
+        try { onCommitted(nextSettings); } catch (commitHookError) {
+            console.warn('Saved settings could not be mirrored locally:', commitHookError);
+        }
+    }
+
+    // A user can keep editing while this request is in flight. Never replace
+    // those newer DOM/order/video values with the older saved snapshot.
+    const currentDraftKey = getLinkSettingsComparisonKey(getDraftLinkSettings());
+    const savedCurrentDraft = currentDraftKey === savedSettingsKey;
+    if (savedCurrentDraft) state.linkSettings = nextSettings;
+    settingsDraftDirty = !savedCurrentDraft;
     syncLinkDraftLabels();
     renderLinkPreview();
-    setStatus(els.adminStatus, 'saved ✓');
-    setTimeout(() => {
-        if (els.adminStatus?.textContent === 'saved ✓') setStatus(els.adminStatus, '');
-    }, 2000);
+    if (requestId === latestSettingsSaveRequest) {
+        if (els.seoState) els.seoState.textContent = settingsDraftDirty ? 'editing' : 'ready';
+        if (!settingsDraftDirty) {
+            setStatus(els.adminStatus, 'saved ✓');
+            setTimeout(() => {
+                if (els.adminStatus?.textContent === 'saved ✓') setStatus(els.adminStatus, '');
+            }, 2000);
+        }
+    }
     return true;
+}
+
+function saveLinkSettingsNow({ overrides = null, onCommitted = null, onFailure = null } = {}) {
+    // Clear the debounce at invocation time. Clearing it later, when this
+    // queued task starts, could cancel a newer edit's timer.
+    clearTimeout(autoSaveTimer);
+    autoSaveTimer = null;
+    const requestId = ++settingsSaveRevision;
+    latestSettingsSaveRequest = requestId;
+    settingsSavePending += 1;
+    const settingOverrides = overrides && typeof overrides === 'object'
+        ? { ...overrides }
+        : null;
+
+    const run = settingsSaveTail.then(() => persistLatestLinkSettings(requestId, {
+        overrides: settingOverrides,
+        onCommitted
+    }));
+    const safeRun = run.catch(error => {
+        if (requestId === latestSettingsSaveRequest) {
+            if (els.seoState) els.seoState.textContent = 'error';
+            setStatus(els.adminStatus, error?.message || 'Could not save links.');
+        }
+        return false;
+    });
+    const guardedRun = safeRun.then(async saved => {
+        if (!saved && typeof onFailure === 'function') {
+            try { await onFailure(); } catch (rollbackError) {
+                console.warn('Settings rollback cleanup failed:', rollbackError);
+            }
+        }
+        return saved;
+    });
+    // The queue always recovers, so one failed write cannot block the next.
+    settingsSaveTail = guardedRun.then(() => undefined, () => undefined);
+    return guardedRun.finally(() => {
+        settingsSavePending = Math.max(0, settingsSavePending - 1);
+    });
 }
 
 function scheduleAutoSave() {
@@ -2441,14 +2634,18 @@ function refreshVisibleListSelection(listId) {
     });
 }
 
-async function snapshotDrawingSelection(listId) {
-    const selection = adminListSelections.get(listId);
-    if (!selection) return 0;
+function getAdminListTable(listId) {
+    if (listId.includes('drawings')) return 'drawings';
+    if (listId.includes('questions')) return 'questions';
+    throw new Error(`Unknown submission list: ${listId}`);
+}
 
-    // Freeze the result set at the start of the explicit select-all action.
-    // Only IDs are transferred, in bounded pages; rows created afterward can
-    // never silently join a later bulk mutation.
-    let anchorQuery = adminClient.from('drawings')
+async function fetchAdminListSnapshot(listId) {
+    const table = getAdminListTable(listId);
+    // Freeze the result set at the start of the explicit action. Only IDs are
+    // transferred, in bounded pages; rows created afterward cannot silently
+    // join a later destructive mutation.
+    let anchorQuery = adminClient.from(table)
         .select('id,created_at');
     anchorQuery = applyAdminListFilter(anchorQuery, listId);
     const { data: anchor, error: anchorError } = await anchorQuery
@@ -2458,10 +2655,7 @@ async function snapshotDrawingSelection(listId) {
         .maybeSingle();
     if (anchorError) throw anchorError;
     if (!anchor) {
-        selection.ids = new Set();
-        selection.snapshotCutoff = '';
-        refreshVisibleListSelection(listId);
-        return 0;
+        return { ids: [], cutoff: '' };
     }
     const cutoff = anchor.created_at;
     const pageSize = 500;
@@ -2470,7 +2664,7 @@ async function snapshotDrawingSelection(listId) {
     let expectedTotal = null;
 
     while (expectedTotal === null || start < expectedTotal) {
-        let query = adminClient.from('drawings')
+        let query = adminClient.from(table)
             .select('id', { count: start === 0 ? 'exact' : undefined })
             .lte('created_at', cutoff);
         query = applyAdminListFilter(query, listId);
@@ -2485,10 +2679,17 @@ async function snapshotDrawingSelection(listId) {
         start += pageSize;
     }
 
-    selection.ids = selectedIds;
-    selection.snapshotCutoff = cutoff;
+    return { ids: Array.from(selectedIds), cutoff };
+}
+
+async function snapshotDrawingSelection(listId) {
+    const selection = adminListSelections.get(listId);
+    if (!selection) return 0;
+    const snapshot = await fetchAdminListSnapshot(listId);
+    selection.ids = new Set(snapshot.ids);
+    selection.snapshotCutoff = snapshot.cutoff;
     refreshVisibleListSelection(listId);
-    return selectedIds.size;
+    return snapshot.ids.length;
 }
 
 async function runDrawingBulkMutation(action, listId, ids) {
@@ -2512,53 +2713,83 @@ async function runDrawingBulkMutation(action, listId, ids) {
     return changed;
 }
 
+async function deleteAdminListSnapshot(listId, ids) {
+    const table = getAdminListTable(listId);
+    const batchSize = 100;
+    let changed = 0;
+    for (let start = 0; start < ids.length; start += batchSize) {
+        const batch = ids.slice(start, start + batchSize);
+        let query = adminClient.from(table).delete().in('id', batch);
+        // If a dood was approved or an ask was answered after the snapshot,
+        // leave it alone. The pending predicate is rechecked at delete time.
+        query = applyAdminListFilter(query, listId).select('id');
+        const { data, error } = await query;
+        if (error) {
+            const bulkError = new Error(error.message || 'Bulk delete failed.');
+            bulkError.completedCount = changed;
+            throw bulkError;
+        }
+        changed += (data || []).length;
+    }
+    return changed;
+}
+
+async function clearPendingAdminList(button, listId, noun) {
+    const previousStatus = els.adminStatus?.textContent || '';
+    let changed = 0;
+    let deleteCompleted = false;
+    button.disabled = true;
+    setAdminListBusy(listId, true);
+    setStatus(els.adminStatus, `checking waiting ${noun}...`);
+    try {
+        const snapshot = await fetchAdminListSnapshot(listId);
+        const pendingCount = snapshot.ids.length;
+        if (!pendingCount) {
+            setStatus(els.adminStatus, `no waiting ${noun}`);
+            return;
+        }
+        if (!confirmDangerAction(`Delete ${pendingCount} waiting ${noun}? This cannot be undone.`)) {
+            setStatus(els.adminStatus, previousStatus);
+            return;
+        }
+
+        setStatus(els.adminStatus, `deleting ${pendingCount} waiting ${noun}...`);
+        changed = await deleteAdminListSnapshot(listId, snapshot.ids);
+        deleteCompleted = true;
+        clearAdminListSelection(listId);
+        await loadAdminData();
+        setStatus(els.adminStatus, `${changed} waiting ${noun} deleted`);
+    } catch (error) {
+        const completed = Number(error.completedCount) || 0;
+        if (deleteCompleted) {
+            setStatus(els.adminStatus, `${changed} waiting ${noun} deleted; refresh failed`);
+            return;
+        }
+        let reloadFailed = false;
+        if (completed) {
+            try { await loadAdminData(); } catch (reloadError) { reloadFailed = true; }
+        }
+        setStatus(els.adminStatus, completed
+            ? `${completed} deleted before the error; ${reloadFailed ? 'refresh failed' : 'list refreshed'}`
+            : (error.message || `Could not clear waiting ${noun}.`));
+    } finally {
+        setAdminListBusy(listId, false);
+        button.disabled = false;
+    }
+}
+
 async function runBulkAction(button) {
     const action = button.dataset.bulkAction;
     const listId = button.dataset.list;
     if (!action || !listId) return;
 
     if (action === 'delete-all-pending-drawings') {
-        const pendingCount = state.adminListTotals['pending-drawings-list'] || 0;
-        if (!pendingCount) {
-            setStatus(els.adminStatus, 'no waiting doods');
-            return;
-        }
-        if (!confirmDangerAction(`Delete ${pendingCount} waiting doods? This cannot be undone.`)) return;
-
-        button.disabled = true;
-        setStatus(els.adminStatus, `deleting ${pendingCount} waiting doods...`);
-        try {
-            const { error } = await adminClient.from('drawings').delete().or('approved.is.null,approved.eq.false');
-            if (error) throw error;
-            clearAdminListSelection('pending-drawings-list');
-            await loadAdminData();
-        } catch (error) {
-            setStatus(els.adminStatus, error.message || 'Could not clear waiting doods.');
-        } finally {
-            button.disabled = false;
-        }
+        await clearPendingAdminList(button, 'pending-drawings-list', 'doods');
         return;
     }
 
     if (action === 'delete-all-pending-questions') {
-        const pendingCount = state.adminListTotals['pending-questions-list'] || 0;
-        if (!pendingCount) {
-            setStatus(els.adminStatus, 'no waiting asks');
-            return;
-        }
-        if (!confirmDangerAction(`Delete ${pendingCount} waiting asks? This cannot be undone.`)) return;
-
-        button.disabled = true;
-        setStatus(els.adminStatus, `deleting ${pendingCount} waiting asks...`);
-        try {
-            const { error } = await adminClient.from('questions').delete().or(PENDING_ANSWER_FILTER);
-            if (error) throw error;
-            await loadAdminData();
-        } catch (error) {
-            setStatus(els.adminStatus, error.message || 'Could not clear waiting asks.');
-        } finally {
-            button.disabled = false;
-        }
+        await clearPendingAdminList(button, 'pending-questions-list', 'asks');
         return;
     }
 
@@ -2754,6 +2985,9 @@ async function init() {
     document.querySelectorAll('.admin-switch').forEach(toggle => {
         toggle.addEventListener('click', e => e.stopPropagation());
         toggle.addEventListener('keydown', e => e.stopPropagation());
+        // Rooms has a confirmed, immediate save path above. Registering this
+        // generic debounce too would save twice (even after a cancelled toggle).
+        if (els.roomsMasterEnabled && toggle.contains(els.roomsMasterEnabled)) return;
         toggle.addEventListener('change', () => {
             settingsDraftDirty = true;
             renderLinkPreview();

@@ -84,12 +84,13 @@ document.addEventListener("DOMContentLoaded", async function() {
     audio.preload = 'auto';
     audio.loop = true;
     const backgroundMusicVolume = 0.4;
-    const backgroundFadeInDuration = 6;
-    const backgroundFadeOutDuration = 4;
+    const BACKGROUND_FADE_IN_MS = 900;
     let backgroundMusicRequestedVolume = backgroundMusicVolume;
     let backgroundFadeLevel = 0;
+    let backgroundFadeStartedAt = 0;
     let backgroundFadeFrame = null;
     let audioPlayed = false;
+    let backgroundMusicRequested = false;
     let backgroundMusicUnlocked = false;
     let backgroundMusicRetryArmed = false;
     const uiSounds = {
@@ -99,24 +100,12 @@ document.addEventListener("DOMContentLoaded", async function() {
     };
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
     let uiAudioContext = null;
-    let backgroundMusicGain = null;
     if (AudioContextClass) {
         try {
             uiAudioContext = new AudioContextClass();
         } catch (error) {
             // HTMLAudio remains available even if Web Audio cannot initialize.
             uiAudioContext = null;
-        }
-    }
-    if (uiAudioContext) {
-        try {
-            const backgroundMusicSource = uiAudioContext.createMediaElementSource(audio);
-            backgroundMusicGain = uiAudioContext.createGain();
-            backgroundMusicSource.connect(backgroundMusicGain);
-            backgroundMusicGain.connect(uiAudioContext.destination);
-        } catch (error) {
-            // UI sounds can still use Web Audio; music falls back to HTMLAudio.
-            backgroundMusicGain = null;
         }
     }
     function setBackgroundMusicVolume(volume) {
@@ -126,33 +115,33 @@ document.addEventListener("DOMContentLoaded", async function() {
 
     function applyBackgroundMusicVolume() {
         const volume = backgroundMusicRequestedVolume * backgroundFadeLevel;
-        if (backgroundMusicGain) {
-            audio.volume = 1;
-            backgroundMusicGain.gain.value = volume;
-        } else {
-            audio.volume = volume;
-        }
+        audio.volume = volume;
     }
 
     function updateBackgroundFade() {
-        if (!audioPlayed || audio.paused) {
+        if (!backgroundMusicRequested || audio.paused) {
             backgroundFadeFrame = null;
             return;
         }
 
-        const duration = Number.isFinite(audio.duration) ? audio.duration : 0;
-        const fadeInWindow = duration > 0 ? Math.min(backgroundFadeInDuration, duration / 2) : backgroundFadeInDuration;
-        const fadeOutWindow = duration > 0 ? Math.min(backgroundFadeOutDuration, duration / 2) : backgroundFadeOutDuration;
-        const fadeInLevel = fadeInWindow ? audio.currentTime / fadeInWindow : 1;
-        const fadeOutLevel = duration > 0 && fadeOutWindow ? (duration - audio.currentTime) / fadeOutWindow : 1;
-        backgroundFadeLevel = Math.max(0, Math.min(1, fadeInLevel, fadeOutLevel));
+        const elapsed = Math.max(0, performance.now() - backgroundFadeStartedAt);
+        backgroundFadeLevel = Math.min(1, elapsed / BACKGROUND_FADE_IN_MS);
         applyBackgroundMusicVolume();
 
-        backgroundFadeFrame = requestAnimationFrame(updateBackgroundFade);
+        if (backgroundFadeLevel < 1) {
+            backgroundFadeFrame = requestAnimationFrame(updateBackgroundFade);
+        } else {
+            backgroundFadeFrame = null;
+        }
     }
 
-    function startBackgroundFadeLoop() {
-        if (backgroundFadeFrame !== null) return;
+    function startBackgroundFadeLoop({ restart = false } = {}) {
+        if (backgroundFadeFrame !== null) cancelAnimationFrame(backgroundFadeFrame);
+        if (restart || !backgroundFadeStartedAt) {
+            backgroundFadeStartedAt = performance.now();
+            backgroundFadeLevel = 0;
+            applyBackgroundMusicVolume();
+        }
         updateBackgroundFade();
     }
 
@@ -162,21 +151,17 @@ document.addEventListener("DOMContentLoaded", async function() {
         backgroundFadeFrame = null;
     }
 
-    // Safari can reject a play() call made after an entrance-transition
-    // timeout because the original tap activation has expired. Start the
-    // element silently during that trusted gesture, then rewind and fade it
-    // in at the existing visual cue.
+    // Safari can reject play() after the entrance animation because the
+    // original tap activation has expired. Prime this *plain* media element
+    // muted during the trusted gesture; UI effects use Web Audio separately.
+    // Keeping music out of that suspendable graph prevents Safari reporting
+    // "playing" while producing no sound.
     function primeBackgroundMusic() {
-        // Without Web Audio gain, iOS may ignore audio.volume = 0. In that
-        // rare fallback, wait for the scheduled/next trusted play instead of
-        // risking an audible full-volume prime.
-        if (!backgroundMusicGain) return;
         if (audioPlayed || backgroundMusicUnlocked || !audio.paused) {
             backgroundMusicUnlocked = !audio.paused;
             return;
         }
-        backgroundFadeLevel = 0;
-        applyBackgroundMusicVolume();
+        audio.muted = true;
         const playAttempt = audio.play();
         if (!playAttempt?.then) {
             backgroundMusicUnlocked = !audio.paused;
@@ -194,26 +179,40 @@ document.addEventListener("DOMContentLoaded", async function() {
             backgroundMusicRetryArmed = false;
             document.removeEventListener('pointerdown', retry, true);
             document.removeEventListener('keydown', retry, true);
-            startBackgroundMusic();
+            void warmUiSounds().finally(startBackgroundMusic);
         };
         document.addEventListener('pointerdown', retry, { once: true, capture: true });
         document.addEventListener('keydown', retry, { once: true, capture: true });
     }
 
     function startBackgroundMusic() {
-        if (audioPlayed) return;
+        backgroundMusicRequested = true;
+        if (audioPlayed && !audio.paused) {
+            audio.muted = false;
+            backgroundFadeLevel = 1;
+            applyBackgroundMusicVolume();
+            return;
+        }
+
+        const firstAudibleStart = !audioPlayed;
         audioPlayed = true;
-        backgroundFadeLevel = 0;
-        applyBackgroundMusicVolume();
-        try {
-            audio.currentTime = 0;
-        } catch (error) {
-            // Metadata may still be settling; play() below remains safe.
+        audio.muted = false;
+        if (firstAudibleStart) {
+            try {
+                audio.currentTime = 0;
+            } catch (error) {
+                // Metadata may still be settling; play() below remains safe.
+            }
         }
         audio.play()
             .then(() => {
                 backgroundMusicUnlocked = true;
-                startBackgroundFadeLoop();
+                if (firstAudibleStart) {
+                    startBackgroundFadeLoop({ restart: true });
+                } else {
+                    backgroundFadeLevel = 1;
+                    applyBackgroundMusicVolume();
+                }
             })
             .catch(() => {
                 audioPlayed = false;
@@ -222,7 +221,6 @@ document.addEventListener("DOMContentLoaded", async function() {
             });
     }
 
-    audio.addEventListener('play', startBackgroundFadeLoop);
     audio.addEventListener('pause', stopBackgroundFadeLoop);
     setBackgroundMusicVolume(backgroundMusicVolume);
     const uiSoundBuffers = {};
@@ -259,6 +257,10 @@ document.addEventListener("DOMContentLoaded", async function() {
         }
         return uiSoundBuffersReady;
     }
+    // These three stripped effects total only a few kilobytes. Decode them
+    // while the entry UI is on screen so the first real taps do not fall back
+    // to overlapping HTMLAudio players that can duck music on iPhone.
+    void ensureUiSoundBuffers();
 
     async function resumeUiAudioContext() {
         if (!uiAudioContext || uiAudioContext.state === 'running') return;
@@ -270,13 +272,14 @@ document.addEventListener("DOMContentLoaded", async function() {
     }
 
     async function warmUiSounds() {
-        if (uiSoundsWarmed) return;
-        uiSoundsWarmed = true;
+        if (!uiSoundsWarmed) {
+            uiSoundsWarmed = true;
+            void ensureUiSoundBuffers();
+        }
         await resumeUiAudioContext();
-        void ensureUiSoundBuffers();
     }
 
-    function playUiSound(type) {
+    function playDecodedUiSound(type) {
         if (uiAudioContext && uiAudioContext.state === 'running' && uiSoundBuffers[type]) {
             const source = uiAudioContext.createBufferSource();
             const gain = uiAudioContext.createGain();
@@ -289,9 +292,12 @@ document.addEventListener("DOMContentLoaded", async function() {
                 gain.disconnect();
             };
             source.start(0);
-            return;
+            return true;
         }
+        return false;
+    }
 
+    function playHtmlUiSound(type) {
         const sound = uiSoundPlayers[type];
         if (!sound) return;
 
@@ -302,6 +308,19 @@ document.addEventListener("DOMContentLoaded", async function() {
         player.volume = sound.volume;
         player.currentTime = 0;
         player.play().catch(() => {});
+    }
+
+    function playUiSound(type) {
+        if (playDecodedUiSound(type)) return;
+        if (uiAudioContext && uiSoundBuffers[type] && uiAudioContext.state !== 'running') {
+            // resume() happens inside the trusted tap. Play exactly once after
+            // it settles; do not also start an HTMLAudio copy in parallel.
+            void resumeUiAudioContext().then(() => {
+                if (!playDecodedUiSound(type)) playHtmlUiSound(type);
+            });
+            return;
+        }
+        playHtmlUiSound(type);
     }
 
     window.dollPlayUiSound = playUiSound;
@@ -1076,32 +1095,6 @@ document.addEventListener("DOMContentLoaded", async function() {
 
     setLoadingProgress(4);
 
-    function waitForKofiOverlayReady() {
-        return new Promise(resolve => {
-            if (typeof window.openKofiOverlay === 'function' && typeof window.closeKofiOverlay === 'function') {
-                resolve();
-                return;
-            }
-
-            const startedAt = Date.now();
-            const checkReady = () => {
-                if (typeof window.openKofiOverlay === 'function' && typeof window.closeKofiOverlay === 'function') {
-                    resolve();
-                    return;
-                }
-
-                if (Date.now() - startedAt >= 2000) {
-                    resolve();
-                    return;
-                }
-
-                setTimeout(checkReady, 100);
-            };
-
-            checkReady();
-        });
-    }
-
     function createSubmissionsAbortError() {
         const error = new Error('Public submissions request was aborted.');
         error.name = 'AbortError';
@@ -1374,7 +1367,6 @@ document.addEventListener("DOMContentLoaded", async function() {
                 resolve();
             }
         }),
-        waitForKofiOverlayReady(),
         // Wait for critical resources to load
         new Promise(resolve => {
             const criticalResources = [
@@ -2454,7 +2446,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         option.setAttribute('aria-hidden', 'true');
         option.innerHTML = `
             <span class="social-link-icon" aria-hidden="true">
-                <img data-social-src="social-icons/onlyfans.png" alt="" width="192" height="192" decoding="async">
+                <img src="social-icons/onlyfans.png" alt="" width="192" height="192" decoding="async">
             </span>
             <span class="social-link-copy">
                 <strong>onlyfans</strong>
@@ -2504,7 +2496,11 @@ document.addEventListener("DOMContentLoaded", async function() {
     const maintenanceEta = document.getElementById('site-maintenance-eta');
     const FIRST_VISIT_TOUR_KEY = 'doll_first_visit_tour_seen_v1';
     const FIRST_VISIT_TOUR_FORCE = new URLSearchParams(window.location.search).get('previewTour') === '1';
-    let activeKofiWidgetHandle = 'edoll';
+    let activeKofiWidgetHandle = '';
+    let kofiWidgetInitialized = false;
+    let kofiWidgetLoadPromise = null;
+    let kofiActivationPending = false;
+    const KOFI_WIDGET_SCRIPT_SRC = 'kofi-overlay-widget.js?v=5.16';
 
     const socialCardDefinitions = [
         { key: 'snapchat', option: snapchatOption, label: 'Snapchat' },
@@ -2519,7 +2515,9 @@ document.addEventListener("DOMContentLoaded", async function() {
         { key: 'spotify', option: spotifyOption, label: 'Spotify' }
     ];
     let socialPreviewObserver = null;
+    let socialPreviewReleaseTimer = 0;
     const SOCIAL_PREVIEW_ROOT_MARGIN = 120;
+    const SOCIAL_PREVIEW_RELEASE_DELAY_MS = 30000;
 
     function getSocialCardVideoEntries() {
         return socialCardDefinitions.map(({ key, option }) => [key, option]);
@@ -2559,10 +2557,11 @@ document.addEventListener("DOMContentLoaded", async function() {
         card.classList.remove('has-social-preview');
     }
 
-    function pauseSocialCardPreview(card) {
+    function pauseSocialCardPreview(card, { releaseSource = true } = {}) {
         const preview = card?.querySelector('.social-link-preview');
         if (preview instanceof HTMLVideoElement) {
             preview.pause();
+            if (!releaseSource) return;
             if (preview.getAttribute('src')) {
                 card.classList.remove('has-social-preview');
                 preview.removeAttribute('src');
@@ -2570,6 +2569,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             }
             return;
         }
+        if (!releaseSource) return;
         if (!(preview instanceof HTMLImageElement) || !preview.getAttribute('src')) return;
         card.classList.remove('has-social-preview');
         preview.removeAttribute('src');
@@ -2717,6 +2717,8 @@ document.addEventListener("DOMContentLoaded", async function() {
 
     function playSocialCardVideos() {
         if (document.hidden || !socialsButton?.classList.contains('open')) return;
+        window.clearTimeout(socialPreviewReleaseTimer);
+        socialPreviewReleaseTimer = 0;
         const usingObserver = observeSocialCardPreviews();
         if (!usingObserver) syncSocialCardVideos(true);
         getVisibleSocialOptions().filter(card => (
@@ -2726,13 +2728,31 @@ document.addEventListener("DOMContentLoaded", async function() {
         });
     }
 
-    function pauseSocialCardVideos() {
+    function releaseSocialCardPreviewSources() {
+        window.clearTimeout(socialPreviewReleaseTimer);
+        socialPreviewReleaseTimer = 0;
+        getSocialCardVideoEntries().forEach(([, card]) => pauseSocialCardPreview(card));
+    }
+
+    function pauseSocialCardVideos({ releaseSources = false } = {}) {
         socialPreviewObserver?.disconnect();
         socialPreviewObserver = null;
         getSocialCardVideoEntries().forEach(([, card]) => {
             if (card) delete card.dataset.socialPreviewNear;
-            pauseSocialCardPreview(card);
+            pauseSocialCardPreview(card, { releaseSource: releaseSources });
         });
+        window.clearTimeout(socialPreviewReleaseTimer);
+        socialPreviewReleaseTimer = 0;
+        if (!releaseSources) {
+            // Preserve the already-painted nearby previews across quick
+            // close/reopen cycles. Videos are paused immediately; GIF/video
+            // sources are released later if Socials stays closed.
+            socialPreviewReleaseTimer = window.setTimeout(() => {
+                if (!socialsButton?.classList.contains('open')) {
+                    releaseSocialCardPreviewSources();
+                }
+            }, SOCIAL_PREVIEW_RELEASE_DELAY_MS);
+        }
     }
 
     function getPublicLink(key) {
@@ -2759,38 +2779,6 @@ document.addEventListener("DOMContentLoaded", async function() {
     function getVisibleSocialOptions() {
         return Array.from(socialLinksPanel?.querySelectorAll('.social-link-card') || [])
             .filter(option => !option.classList.contains('site-link-hidden'));
-    }
-
-    function loadDeferredSocialImage(image) {
-        if (!(image instanceof HTMLImageElement) || image.dataset.socialLoadStarted === 'true') return;
-        const src = String(image.dataset.socialSrc || '').trim();
-        if (!src) return;
-
-        image.dataset.socialLoadStarted = 'true';
-        const markLoaded = () => {
-            image.removeEventListener('error', allowRetry);
-            delete image.dataset.socialLoadStarted;
-            delete image.dataset.socialSrc;
-            image.style.removeProperty('display');
-            image.classList.add('is-social-image-loaded');
-        };
-        const allowRetry = () => {
-            image.removeEventListener('load', markLoaded);
-            delete image.dataset.socialLoadStarted;
-            image.classList.remove('is-social-image-loaded');
-            image.removeAttribute('src');
-        };
-        image.addEventListener('load', markLoaded, { once: true });
-        image.addEventListener('error', allowRetry, { once: true });
-        image.src = src;
-        if (image.complete && image.naturalWidth > 0) markLoaded();
-    }
-
-    function loadVisibleSocialImages() {
-        getVisibleSocialOptions().forEach(option => {
-            const cardNode = option.closest('.social-link-card-frame') || option;
-            cardNode.querySelectorAll('img[data-social-src]').forEach(loadDeferredSocialImage);
-        });
     }
 
     function syncStructuredDataLinks() {
@@ -3311,7 +3299,6 @@ document.addEventListener("DOMContentLoaded", async function() {
             getVisibleSocialOptions().forEach(option => {
                 option.setAttribute('tabindex', socialsButton.classList.contains('open') ? '0' : '-1');
             });
-            if (socialsButton.classList.contains('open')) loadVisibleSocialImages();
         }
         syncStructuredDataLinks();
         renderSeoSettings();
@@ -3344,16 +3331,100 @@ document.addEventListener("DOMContentLoaded", async function() {
         }
     }
 
+    function getKofiWidgetApi() {
+        // The local widget declares a top-level `const`, which is a global
+        // lexical binding rather than a property on `window`.
+        return typeof kofiWidgetOverlay !== 'undefined' ? kofiWidgetOverlay : null;
+    }
+
     function syncKofiWidgetHandle() {
         const nextHandle = getKofiHandleFromUrl();
-        if (nextHandle === activeKofiWidgetHandle || typeof kofiWidgetOverlay === 'undefined') return;
+        const widgetApi = getKofiWidgetApi();
+        if (!kofiWidgetInitialized || !widgetApi) {
+            activeKofiWidgetHandle = nextHandle;
+            return;
+        }
+        if (nextHandle === activeKofiWidgetHandle) return;
         activeKofiWidgetHandle = nextHandle;
-        kofiWidgetOverlay.draw(nextHandle, {
+        widgetApi.draw(nextHandle, {
             'type': 'floating-chat',
             'floating-chat.donateButton.text': 'Support me',
             'floating-chat.donateButton.background-color': '#323842',
             'floating-chat.donateButton.text-color': '#fff'
         });
+    }
+
+    function ensureKofiWidgetReady() {
+        if (kofiWidgetInitialized && typeof window.openKofiOverlay === 'function') {
+            return Promise.resolve(true);
+        }
+        if (kofiWidgetLoadPromise) return kofiWidgetLoadPromise;
+
+        kofiWidgetLoadPromise = new Promise(resolve => {
+            let settled = false;
+            let readyPoll = 0;
+            const finish = ready => {
+                if (settled) return;
+                settled = true;
+                window.clearTimeout(loadTimeout);
+                if (!ready) kofiWidgetLoadPromise = null;
+                resolve(ready);
+            };
+            const waitForOpenFunction = () => {
+                if (typeof window.openKofiOverlay === 'function') {
+                    finish(true);
+                    return;
+                }
+                readyPoll += 1;
+                if (readyPoll >= 30) {
+                    finish(false);
+                    return;
+                }
+                window.setTimeout(waitForOpenFunction, 100);
+            };
+            const initializeWidget = () => {
+                if (settled) return;
+                try {
+                    const widgetApi = getKofiWidgetApi();
+                    if (!widgetApi) {
+                        finish(false);
+                        return;
+                    }
+                    if (!kofiWidgetInitialized) {
+                        activeKofiWidgetHandle = getKofiHandleFromUrl();
+                        widgetApi.draw(activeKofiWidgetHandle, {
+                            'type': 'floating-chat',
+                            'floating-chat.donateButton.text': 'Support me',
+                            'floating-chat.donateButton.background-color': '#323842',
+                            'floating-chat.donateButton.text-color': '#fff'
+                        });
+                        kofiWidgetInitialized = true;
+                        setKofiWidgetVisibility(isPublicLinkEnabled('kofi'));
+                    }
+                    waitForOpenFunction();
+                } catch (error) {
+                    finish(false);
+                }
+            };
+            const loadTimeout = window.setTimeout(() => finish(false), 7000);
+
+            if (getKofiWidgetApi()) {
+                initializeWidget();
+                return;
+            }
+
+            const loader = document.createElement('script');
+            loader.src = KOFI_WIDGET_SCRIPT_SRC;
+            loader.async = true;
+            loader.dataset.kofiWidgetLoader = 'true';
+            loader.addEventListener('load', initializeWidget, { once: true });
+            loader.addEventListener('error', () => {
+                loader.remove();
+                finish(false);
+            }, { once: true });
+            document.body.appendChild(loader);
+        });
+        return kofiWidgetLoadPromise;
     }
 
     function syncThroneWidgetUrl() {
@@ -3364,24 +3435,27 @@ document.addEventListener("DOMContentLoaded", async function() {
         }
     }
 
-    function openKofiOverlay() {
-        let attempts = 0;
-        const maxAttempts = 36;
-
-        function tryOpen() {
-            attempts += 1;
-            if (typeof window.openKofiOverlay === 'function') {
+    async function openKofiOverlay(reservedTab = null) {
+        try {
+            if (await ensureKofiWidgetReady()) {
                 window.openKofiOverlay();
+                if (reservedTab && !reservedTab.closed) reservedTab.close();
                 return;
             }
-            if (attempts < maxAttempts) {
-                window.setTimeout(tryOpen, 80);
+            if (reservedTab && !reservedTab.closed) {
+                reservedTab.location.replace(getPublicLink('kofi'));
             } else {
-                window.open(getPublicLink('kofi'), '_blank', 'noopener,noreferrer');
+                window.location.assign(getPublicLink('kofi'));
             }
+        } catch (error) {
+            if (reservedTab && !reservedTab.closed) {
+                reservedTab.location.replace(getPublicLink('kofi'));
+            } else {
+                window.location.assign(getPublicLink('kofi'));
+            }
+        } finally {
+            kofiActivationPending = false;
         }
-
-        tryOpen();
     }
 
     // The social panel is now internally scrollable (see .social-links-panel
@@ -3481,9 +3555,19 @@ document.addEventListener("DOMContentLoaded", async function() {
         });
     }
 
+    const topControlActivationTimes = new Map();
+    function acceptTopControlActivation(control, minimumGapMs = 300) {
+        const now = performance.now();
+        const previous = topControlActivationTimes.get(control) || 0;
+        if (now - previous < minimumGapMs) return false;
+        topControlActivationTimes.set(control, now);
+        return true;
+    }
+
     function handleSocialsButtonActivate(e) {
         e.preventDefault();
         e.stopPropagation();
+        if (!acceptTopControlActivation(socialsButton)) return;
         playUiSound('tap');
 
         if (socialsButton.classList.contains('open')) {
@@ -3498,7 +3582,6 @@ document.addEventListener("DOMContentLoaded", async function() {
         closePostsPanel();
         hideNoteImage();
         resetIconsCollapse();
-        loadVisibleSocialImages();
         socialsButton.classList.remove('show-glitter');
         socialsButton.classList.add('open');
         socialsButton.setAttribute('aria-expanded', 'true');
@@ -3541,8 +3624,17 @@ document.addEventListener("DOMContentLoaded", async function() {
         } else if (socialsButton?.classList.contains('open')) {
             playSocialCardVideos();
         }
+        if (!document.hidden && backgroundMusicRequested) {
+            void warmUiSounds().finally(startBackgroundMusic);
+        }
         syncPostsMediaPlayback();
     });
+    window.addEventListener('pageshow', () => {
+        if (backgroundMusicRequested) {
+            void warmUiSounds().finally(startBackgroundMusic);
+        }
+    });
+    window.addEventListener('pagehide', releaseSocialCardPreviewSources);
 
     function hasSeenFirstVisitTour() {
         try {
@@ -3856,6 +3948,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     function handleWishlistButtonActivate(e) {
         e.preventDefault();
         e.stopPropagation();
+        if (!acceptTopControlActivation(supportMenuButton)) return;
         if (siteLinkSettings.maintenance_enabled === true) return;
         closeSocialsMenu({ restoreNote: false });
         closeActionMenu();
@@ -3891,7 +3984,15 @@ document.addEventListener("DOMContentLoaded", async function() {
         e.stopPropagation();
         if (siteLinkSettings.maintenance_enabled === true) return;
         if (!isPublicLinkEnabled('kofi')) return;
-        popSocialCardThen(donateOption, openKofiOverlay);
+        if (socialCardPopPending || kofiActivationPending) return;
+        const widgetReady = kofiWidgetInitialized && typeof window.openKofiOverlay === 'function';
+        const reservedTab = widgetReady ? null : reserveSocialDestinationTab();
+        kofiActivationPending = true;
+        const popStarted = popSocialCardThen(donateOption, () => openKofiOverlay(reservedTab));
+        if (!popStarted) {
+            kofiActivationPending = false;
+            reservedTab?.close();
+        }
     });
 
     function handleActionMenuActivate(e) {
@@ -3901,6 +4002,7 @@ document.addEventListener("DOMContentLoaded", async function() {
 
         e.preventDefault();
         e.stopPropagation();
+        if (!acceptTopControlActivation(actionMenuButton)) return;
         if (!actionMenuButton.classList.contains('open')) {
             closeSocialsMenu();
             closeSupportMenu();
@@ -4479,7 +4581,6 @@ document.addEventListener("DOMContentLoaded", async function() {
                 this.classList.add('active');
                 document.getElementById(this.dataset.tab).classList.add('active');
                 this.closest('.posts-tabs')?.classList.toggle('questions-active', this.dataset.tab === 'questions-tab');
-                if (this.dataset.tab === 'questions-tab') hydrateTenorAnswerEmbeds();
                 syncPostsMediaPlayback();
             });
         });
@@ -4551,32 +4652,16 @@ document.addEventListener("DOMContentLoaded", async function() {
                     const safeMediaUrl = escapeHtml(directMediaUrl);
                     return `<a href="${escapeHtml(originalHref)}" target="_blank" rel="nofollow ugc noopener noreferrer" class="answer-gif-link answer-gif-link-small"><img data-posts-src="${safeMediaUrl}" alt="GIF reply" class="answer-gif" loading="lazy" referrerpolicy="no-referrer" data-media-url="${safeMediaUrl}"></a>`;
                 }
-                return `<span class="answer-media-frame answer-tenor-frame"><span class="tenor-gif-embed" data-postid="${escapeHtml(postId)}" data-share-method="host" data-aspect-ratio="1.333333" data-width="100%"><a href="${escapeHtml(originalHref)}">Tenor GIF</a></span></span>`;
+                const embedHref = `https://tenor.com/embed/${encodeURIComponent(postId)}`;
+                return `<span class="answer-media-frame answer-tenor-frame"><iframe src="about:blank" data-posts-src="${escapeHtml(embedHref)}" title="Tenor GIF reply" loading="lazy" allow="autoplay; fullscreen" referrerpolicy="strict-origin-when-cross-origin"></iframe><a href="${escapeHtml(originalHref)}" target="_blank" rel="nofollow ugc noopener noreferrer" class="answer-media-source">Tenor</a></span>`;
             }
-            const embedHref = `https://giphy.com/embed/${encodeURIComponent(postId)}`;
-            return `<span class="answer-media-frame"><iframe src="about:blank" data-posts-src="${escapeHtml(embedHref)}" title="Giphy GIF reply" loading="lazy" allow="autoplay; fullscreen" referrerpolicy="strict-origin-when-cross-origin"></iframe><a href="${escapeHtml(originalHref)}" target="_blank" rel="nofollow ugc noopener noreferrer" class="answer-media-source">Giphy</a></span>`;
-        }
-
-        function hydrateTenorAnswerEmbeds() {
-            if (!questionsList?.querySelector('.tenor-gif-embed')) return;
-            const existingLoader = document.querySelector('script[data-answer-tenor-loader]');
-            if (existingLoader) return;
-            const loader = document.createElement('script');
-            loader.src = 'https://tenor.com/embed.js';
-            loader.async = true;
-            loader.dataset.answerTenorLoader = 'true';
-            loader.addEventListener('load', () => loader.remove(), { once: true });
-            loader.addEventListener('error', () => {
-                questionsList.querySelectorAll('.answer-tenor-frame').forEach(frame => {
-                    const link = frame.querySelector('a[href]');
-                    if (!link) return;
-                    link.className = 'answer-link answer-media-unavailable';
-                    link.textContent = 'Tenor link';
-                    frame.replaceWith(link);
-                });
-                loader.remove();
-            }, { once: true });
-            document.body.appendChild(loader);
+            // Giphy's iframe preserves its own source ratio inside our tiny
+            // 4:3 reply card, producing the large top/bottom letterbox gaps.
+            // Its compact direct rendition loops by itself and can be neatly
+            // cropped inside the same small card without a nested player.
+            const directMediaUrl = `https://media.giphy.com/media/${encodeURIComponent(postId)}/200w.gif`;
+            const safeMediaUrl = escapeHtml(directMediaUrl);
+            return `<a href="${escapeHtml(originalHref)}" target="_blank" rel="nofollow ugc noopener noreferrer" class="answer-gif-link answer-gif-link-small answer-giphy-link"><img data-posts-src="${safeMediaUrl}" alt="GIF reply" class="answer-gif answer-giphy-gif" loading="lazy" referrerpolicy="no-referrer" data-media-url="${safeMediaUrl}"><span class="answer-media-source" aria-hidden="true">Giphy</span></a>`;
         }
 
         function isDirectAnswerImage(url) {
@@ -4725,7 +4810,6 @@ document.addEventListener("DOMContentLoaded", async function() {
                 });
                 questionsList.appendChild(fragment);
                 observePostsMedia();
-                if (shouldPlayPostsMedia()) hydrateTenorAnswerEmbeds();
                 questionsList.querySelectorAll('img.answer-gif').forEach(image => {
                     image.addEventListener('error', () => {
                         if (!image.getAttribute('src')
@@ -4799,14 +4883,13 @@ document.addEventListener("DOMContentLoaded", async function() {
                     e.preventDefault();
                     lastTouchReactionTime = Date.now();
                 }
-                playUiSound('tap');
-                
                 // Prevent rapid-fire clicks (debounce)
                 const now = Date.now();
                 if (now - lastClickTime < 300) {
                     return;
                 }
                 lastClickTime = now;
+                playUiSound('tap');
                 
                 // Check if this picker is already open
                 const existingPicker = document.querySelector('.reaction-picker');

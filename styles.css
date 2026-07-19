@@ -2546,17 +2546,6 @@ body.has-social-panel-open .site-brand-footer {
     transform-origin: center;
 }
 
-.social-link-icon img[data-social-src],
-.social-link-mascot[data-social-src] {
-    opacity: 0;
-    transition: opacity 0.18s ease;
-}
-
-.social-link-icon img[data-social-src].is-social-image-loaded,
-.social-link-mascot[data-social-src].is-social-image-loaded {
-    opacity: 1;
-}
-
 .social-link-kofi-icon img {
     width: 48px;
     height: 48px;
@@ -3961,6 +3950,14 @@ body.first-visit-tour-active .tour-highlight-target {
     max-height: 84px;
     object-fit: contain;
     background: rgba(255, 247, 251, 0.72);
+}
+
+.answer-giphy-link {
+    position: relative;
+}
+
+.answer-giphy-gif {
+    object-fit: cover;
 }
 
 .answer-media-frame {
