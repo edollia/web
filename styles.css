@@ -1082,7 +1082,7 @@ button {
 .note-peel-target:has(.note-image.hidden) {
     opacity: 0;
     pointer-events: none;
-    transform: translateX(-50%) translateY(-20px) rotate(0deg) scale(1.015);
+    transform: translateX(-50%) translateY(-8px) rotate(0deg) scale(0.985);
     animation: none;
 }
 
@@ -4004,9 +4004,18 @@ body.first-visit-tour-active .tour-highlight-target {
 
 .answer-giphy-link {
     position: relative;
+    aspect-ratio: 16 / 9;
+    max-height: 63px;
 }
 
 .answer-giphy-gif {
+    object-fit: cover;
+    max-height: none;
+    transform: scale(1.16);
+    transform-origin: center;
+}
+
+.answer-gif-link-small .answer-gif {
     object-fit: cover;
 }
 

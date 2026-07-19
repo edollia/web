@@ -83,6 +83,8 @@ document.addEventListener("DOMContentLoaded", async function() {
     const audio = new Audio('hehe.mp3');
     audio.preload = 'auto';
     audio.loop = true;
+    audio.playsInline = true;
+    audio.setAttribute('playsinline', '');
     const backgroundMusicVolume = 0.4;
     const BACKGROUND_FADE_IN_MS = 900;
     let backgroundMusicRequestedVolume = backgroundMusicVolume;
@@ -93,6 +95,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     let backgroundMusicRequested = false;
     let backgroundMusicUnlocked = false;
     let backgroundMusicRetryArmed = false;
+    let backgroundMusicPlayPromise = null;
     const uiSounds = {
         tap: 'CUT1.mp3?v=2',
         link: 'CUT2.mp3?v=2',
@@ -156,8 +159,8 @@ document.addEventListener("DOMContentLoaded", async function() {
     // this is intentionally an audible start (with our short volume fade), not
     // a delayed-unmute autoplay workaround.
     function primeBackgroundMusic() {
-        if (audioPlayed || backgroundMusicUnlocked || !audio.paused) {
-            backgroundMusicUnlocked = !audio.paused;
+        if (!audio.paused) {
+            backgroundMusicUnlocked = true;
             return;
         }
         audio.muted = false;
@@ -188,6 +191,11 @@ document.addEventListener("DOMContentLoaded", async function() {
             applyBackgroundMusicVolume();
             return;
         }
+        // The final bubble and the shared entry-dismiss path can both reach
+        // this function. Reuse the in-flight play request instead of issuing
+        // two competing media starts while Safari is still resolving the
+        // first trusted gesture.
+        if (backgroundMusicPlayPromise) return;
 
         const firstAudibleStart = !audioPlayed;
         audioPlayed = true;
@@ -210,8 +218,9 @@ document.addEventListener("DOMContentLoaded", async function() {
         }
         // Modern browsers return a Promise; older iOS WebViews may return
         // undefined even when playback starts successfully.
-        Promise.resolve(playAttempt)
+        const currentPlayPromise = Promise.resolve(playAttempt)
             .then(() => {
+                if (audio.paused) throw new Error('background music remained paused');
                 backgroundMusicUnlocked = true;
                 if (firstAudibleStart) {
                     startBackgroundFadeLoop({ restart: true });
@@ -224,14 +233,26 @@ document.addEventListener("DOMContentLoaded", async function() {
                 audioPlayed = false;
                 backgroundMusicUnlocked = false;
                 armBackgroundMusicRetry();
+            })
+            .finally(() => {
+                if (backgroundMusicPlayPromise === currentPlayPromise) {
+                    backgroundMusicPlayPromise = null;
+                }
             });
+        backgroundMusicPlayPromise = currentPlayPromise;
     }
 
-    audio.addEventListener('pause', stopBackgroundFadeLoop);
+    audio.addEventListener('pause', () => {
+        stopBackgroundFadeLoop();
+        if (backgroundMusicRequested && !document.hidden) {
+            armBackgroundMusicRetry();
+        }
+    });
     setBackgroundMusicVolume(backgroundMusicVolume);
     const uiSoundBuffers = {};
     const lastUiSoundAt = new Map();
     const pendingUiSoundTypes = new Set();
+    const activeUiSoundSources = new Map();
     const uiSoundPlayers = Object.fromEntries(
         Object.entries(uiSounds).map(([type, src]) => {
             const sound = new Audio(src);
@@ -241,6 +262,57 @@ document.addEventListener("DOMContentLoaded", async function() {
             return [type, sound];
         })
     );
+
+    const VISITOR_ID_TIMEOUT_MS = 1800;
+    let visitorIdentityPromise = null;
+    let inMemoryFallbackVisitorId = '';
+
+    function getFallbackVisitorId() {
+        if (inMemoryFallbackVisitorId) return inMemoryFallbackVisitorId;
+        const storageKey = 'doll-fallback-visitor-id';
+        try {
+            const stored = window.localStorage.getItem(storageKey);
+            if (stored) {
+                inMemoryFallbackVisitorId = stored;
+                return stored;
+            }
+        } catch (error) {}
+
+        const randomPart = window.crypto?.randomUUID?.()
+            || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+        inMemoryFallbackVisitorId = `anon:${randomPart}`;
+        try {
+            window.localStorage.setItem(storageKey, inMemoryFallbackVisitorId);
+        } catch (error) {}
+        return inMemoryFallbackVisitorId;
+    }
+
+    function getVisitorIdentity() {
+        if (visitorIdentityPromise) return visitorIdentityPromise;
+        const fallbackId = getFallbackVisitorId();
+        const controller = typeof window.AbortController === 'function'
+            ? new AbortController()
+            : null;
+        let timeoutId = 0;
+        const ipRequest = fetch('https://api.ipify.org?format=json', {
+            signal: controller?.signal,
+            cache: 'no-store',
+        }).then(async response => {
+            if (!response.ok) throw new Error(`ip lookup ${response.status}`);
+            const payload = await response.json();
+            const ip = String(payload?.ip || '').trim();
+            return ip || fallbackId;
+        }).catch(() => fallbackId);
+        const timeout = new Promise(resolve => {
+            timeoutId = window.setTimeout(() => {
+                controller?.abort();
+                resolve(fallbackId);
+            }, VISITOR_ID_TIMEOUT_MS);
+        });
+        visitorIdentityPromise = Promise.race([ipRequest, timeout])
+            .finally(() => window.clearTimeout(timeoutId));
+        return visitorIdentityPromise;
+    }
     let uiSoundsWarmed = false;
     let uiAudioResumePromise = null;
 
@@ -274,8 +346,15 @@ document.addEventListener("DOMContentLoaded", async function() {
     function resumeUiAudioContext() {
         if (!uiAudioContext || uiAudioContext.state === 'running') return Promise.resolve();
         if (uiAudioResumePromise) return uiAudioResumePromise;
-        uiAudioResumePromise = Promise.resolve()
-            .then(() => uiAudioContext.resume())
+        // Call resume() synchronously while the tap is still trusted. Starting
+        // it from a later microtask can miss Safari's short audio-unlock window.
+        let resumeAttempt;
+        try {
+            resumeAttempt = uiAudioContext.resume();
+        } catch (error) {
+            resumeAttempt = Promise.reject(error);
+        }
+        uiAudioResumePromise = Promise.resolve(resumeAttempt)
             .catch(() => {
                 // The HTMLAudioElement fallback remains available.
             })
@@ -293,13 +372,24 @@ document.addEventListener("DOMContentLoaded", async function() {
 
     function playDecodedUiSound(type) {
         if (uiAudioContext && uiAudioContext.state === 'running' && uiSoundBuffers[type]) {
+            const previous = activeUiSoundSources.get(type);
+            if (previous) {
+                previous.source.onended = null;
+                try { previous.source.stop(); } catch (error) {}
+                try { previous.source.disconnect(); } catch (error) {}
+                try { previous.gain.disconnect(); } catch (error) {}
+            }
             const source = uiAudioContext.createBufferSource();
             const gain = uiAudioContext.createGain();
             source.buffer = uiSoundBuffers[type];
             gain.gain.value = 1;
             source.connect(gain);
             gain.connect(uiAudioContext.destination);
+            activeUiSoundSources.set(type, { source, gain });
             source.onended = () => {
+                if (activeUiSoundSources.get(type)?.source === source) {
+                    activeUiSoundSources.delete(type);
+                }
                 source.disconnect();
                 gain.disconnect();
             };
@@ -313,18 +403,22 @@ document.addEventListener("DOMContentLoaded", async function() {
         const sound = uiSoundPlayers[type];
         if (!sound) return;
 
-        // Do not cut off a pop that is already playing. Rapid bubble taps can
-        // overlap through Web Audio above; this clone provides the same
-        // behaviour on browsers still using the HTMLAudioElement fallback.
-        const player = sound.paused ? sound : sound.cloneNode(true);
-        player.volume = sound.volume;
-        player.currentTime = 0;
-        player.play().catch(() => {});
+        // Keep one fallback player per sound. Spawning overlapping HTMLAudio
+        // clones can make iPhone switch/duck audio sessions and is what made a
+        // single tap sound doubled or suddenly quieter.
+        sound.pause();
+        sound.currentTime = 0;
+        sound.play().catch(() => {});
     }
 
     function playUiSound(type) {
+        // If iOS interrupted the looping media element, an ordinary site tap
+        // is the next trusted gesture and should restore it immediately.
+        if (backgroundMusicRequested && audio.paused && !document.hidden) {
+            startBackgroundMusic();
+        }
         const now = performance.now();
-        if (now - (lastUiSoundAt.get(type) || 0) < 60) return;
+        if (now - (lastUiSoundAt.get(type) || 0) < 90) return;
         lastUiSoundAt.set(type, now);
         if (playDecodedUiSound(type)) return;
         if (uiAudioContext && uiSoundBuffers[type] && uiAudioContext.state !== 'running') {
@@ -984,6 +1078,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     let submissionsLoadPromise = null;
     let submissionsCacheReleaseTimer = 0;
     let clearRenderedSubmissionsCache = null;
+    let closeActiveReactionPicker = null;
     const submissionsLoadControllers = new Set();
     const submissionFeeds = {
         drawings: {
@@ -2306,9 +2401,9 @@ document.addEventListener("DOMContentLoaded", async function() {
         );
     }
 
-    function getPostsMediaFrames() {
-        if (!postsPanel) return [];
-        return Array.from(postsPanel.querySelectorAll([
+    function getPostsMediaFrames(root = postsPanel) {
+        if (!root) return [];
+        return Array.from(root.querySelectorAll([
             '.answer-gif-link',
             '.answer-video-frame',
             '.answer-media-frame'
@@ -2366,8 +2461,8 @@ document.addEventListener("DOMContentLoaded", async function() {
         })
         : null;
 
-    function observePostsMedia() {
-        getPostsMediaFrames().forEach(frame => {
+    function observePostsMedia(root = postsPanel) {
+        getPostsMediaFrames(root).forEach(frame => {
             if (frame.dataset.postsMediaObserved === 'true') return;
             frame.dataset.postsMediaObserved = 'true';
             frame.dataset.postsMediaNear = postsMediaObserver ? 'false' : 'true';
@@ -2397,14 +2492,6 @@ document.addEventListener("DOMContentLoaded", async function() {
             .filter(frame => frame.dataset.postsMediaNear !== 'true')
             .forEach(pausePostsMediaFrame);
         resumePostsMedia();
-    }
-
-    if (postsPanel && typeof window.MutationObserver === 'function') {
-        const postsMediaMutationObserver = new MutationObserver(() => {
-            observePostsMedia();
-            syncPostsMediaPlayback();
-        });
-        postsMediaMutationObserver.observe(postsPanel, { childList: true, subtree: true });
     }
 
     function syncPostsPanelSpace() {
@@ -2470,6 +2557,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     function closePostsPanel() {
         // Closing :3 is a cancellation boundary for in-flight *pages*, but
         // already loaded records stay cached so a quick reopen is instant.
+        closeActiveReactionPicker?.();
         postsOpenGeneration += 1;
         abortSubmissionLoads();
         submissionsLoadPromise = null;
@@ -2501,12 +2589,17 @@ document.addEventListener("DOMContentLoaded", async function() {
             clearRenderedSubmissionsCache?.();
         }, 60000);
     }
+    // The wishlist widget is a separate script and can replace :3 directly.
+    // Give it the real closer so that path also aborts fetches and pauses
+    // GIF/video/iframe media instead of merely hiding the panel visually.
+    window.dollClosePostsPanel = closePostsPanel;
 
     function showNoteImage() {
         closeDrawingWidget();
         closeQuestionForm();
         closePostsPanel();
         closeActionMenu();
+        notePeelTarget?.classList.remove('dwl-note-locking');
         notePeelTarget?.classList.remove('hidden');
         noteImage?.classList.remove('hidden');
     }
@@ -2644,10 +2737,11 @@ document.addEventListener("DOMContentLoaded", async function() {
     ];
     let socialPreviewObserver = null;
     let socialPreviewReleaseTimer = 0;
-    let socialPreviewScrollRaf = 0;
+    let socialOpenGeneration = 0;
     const SOCIAL_PREVIEW_ROOT_MARGIN = 120;
     const SOCIAL_PREVIEW_RELEASE_DELAY_MS = 30000;
     const SOCIAL_PREVIEW_CACHE_LIMIT = 6;
+    const SOCIAL_PREVIEW_OPEN_WAIT_MS = 240;
     const initialSocialPreviewCards = new Set();
     const socialPreviewRecency = new Map();
 
@@ -2677,6 +2771,8 @@ document.addEventListener("DOMContentLoaded", async function() {
         if (!card) return;
         initialSocialPreviewCards.delete(card);
         socialPreviewRecency.delete(card);
+        delete card.dataset.socialPreviewNear;
+        delete card.dataset.socialPreviewDeferred;
         const preview = card.querySelector('.social-link-preview');
         if (preview) {
             if (preview instanceof HTMLVideoElement) {
@@ -2730,10 +2826,11 @@ document.addEventListener("DOMContentLoaded", async function() {
             }
             return;
         }
-        // Unlike <video>, an <img> GIF has no pause API. Releasing an offscreen
-        // legacy GIF is the only way to stop its decoder; admin uploads are
-        // MP4/WebM, which use the retained-and-paused path above.
-        if (!releaseSource && !(preview instanceof HTMLImageElement)) return;
+        // GIFs cannot be paused, but keep the small cached opening set during a
+        // quick close/reopen. The existing delayed release still removes them
+        // after 30 seconds, avoiding the much more noticeable base-card flash
+        // on every ordinary reopen.
+        if (!releaseSource) return;
         if (!(preview instanceof HTMLImageElement) || !preview.getAttribute('src')) return;
         card.classList.remove('has-social-preview');
         preview.removeAttribute('src');
@@ -2800,7 +2897,9 @@ document.addEventListener("DOMContentLoaded", async function() {
                 if (!preview.isConnected || preview.parentElement !== card
                     || !ready || !expected || preview.getAttribute('src') !== expected
                     || (current && current !== expectedAbsolute)) return;
-                card.classList.add('has-social-preview');
+                if (card.dataset.socialPreviewDeferred !== 'true') {
+                    card.classList.add('has-social-preview');
+                }
                 touchSocialCardPreview(card);
                 trimSocialCardPreviewCache();
             });
@@ -2816,13 +2915,22 @@ document.addEventListener("DOMContentLoaded", async function() {
 
         if (!loadMedia) return;
 
-        if (preview.getAttribute('src') !== url) {
+        const alreadyHasCurrentSource = preview.getAttribute('src') === url;
+        if (!alreadyHasCurrentSource) {
             preview.src = url;
             delete preview.dataset.socialPausedSrc;
             if (preview instanceof HTMLVideoElement) preview.load();
         }
         touchSocialCardPreview(card);
-        trimSocialCardPreviewCache();
+        if (alreadyHasCurrentSource
+            && isSocialPreviewReady(preview)
+            && card.dataset.socialPreviewDeferred !== 'true') {
+            card.classList.add('has-social-preview');
+        }
+        // The load/loadeddata handler trims once when a newly assigned source
+        // is ready. Re-scanning card rectangles for an unchanged source on
+        // every scroll callback was unnecessary main-thread work.
+        if (!alreadyHasCurrentSource) trimSocialCardPreviewCache();
 
         if (preview instanceof HTMLVideoElement && socialsButton?.classList.contains('open') && !document.hidden) {
             preview.play().catch(() => {});
@@ -2854,14 +2962,82 @@ document.addEventListener("DOMContentLoaded", async function() {
         return cardRect.bottom > panelRect.top && cardRect.top < panelRect.bottom;
     }
 
-    function hydrateVisibleSocialCardPreviews() {
-        if (!socialsButton?.classList.contains('open') || document.hidden) return;
-        getVisibleSocialOptions().forEach(card => {
-            if (!isSocialCardVisibleInPanel(card)) return;
-            const key = getSocialCardVideoKey(card);
-            if (key) syncSocialCardVideo(key, card, true);
+    function isSocialPreviewReady(preview) {
+        return preview instanceof HTMLVideoElement
+            ? preview.readyState >= 2
+            : preview instanceof HTMLImageElement && preview.complete && preview.naturalWidth > 0;
+    }
+
+    function waitForSocialPreviewReady(preview, timeoutMs) {
+        if (isSocialPreviewReady(preview)) return Promise.resolve(true);
+        return new Promise(resolve => {
+            const readyEvent = preview instanceof HTMLVideoElement ? 'loadeddata' : 'load';
+            let settled = false;
+            let timer = 0;
+            const finish = ready => {
+                if (settled) return;
+                settled = true;
+                window.clearTimeout(timer);
+                preview.removeEventListener(readyEvent, onReady);
+                preview.removeEventListener('error', onError);
+                resolve(ready);
+            };
+            const onReady = () => finish(isSocialPreviewReady(preview));
+            const onError = () => finish(false);
+            preview.addEventListener(readyEvent, onReady);
+            preview.addEventListener('error', onError);
+            timer = window.setTimeout(() => finish(isSocialPreviewReady(preview)), timeoutMs);
+            if (isSocialPreviewReady(preview)) finish(true);
         });
-        trimSocialCardPreviewCache();
+    }
+
+    async function prepareOpeningSocialPreviews(openGeneration) {
+        if (openGeneration !== socialOpenGeneration
+            || !socialsButton?.classList.contains('open')) return false;
+        const cards = Array.from(initialSocialPreviewCards).filter(card => isSocialCardVisibleInPanel(card));
+        const candidates = cards.map(card => ({
+            card,
+            preview: card.querySelector('.social-link-preview[src]'),
+        })).filter(({ preview }) => preview);
+        const results = await Promise.all(candidates.map(async ({ card, preview }) => ({
+            card,
+            preview,
+            ready: await waitForSocialPreviewReady(preview, SOCIAL_PREVIEW_OPEN_WAIT_MS),
+        })));
+        // A settings refresh, close, or second open can replace/remove these
+        // exact preview nodes while the readiness wait is pending. Never let
+        // that stale preparation mutate the new opening cohort.
+        if (openGeneration !== socialOpenGeneration
+            || !socialsButton?.classList.contains('open')) return false;
+        results.forEach(({ card, preview, ready }) => {
+            if (ready && preview.isConnected && preview.parentElement === card) {
+                delete card.dataset.socialPreviewDeferred;
+                card.classList.add('has-social-preview');
+                return;
+            }
+            // Do not let one slow preview visibly replace its card halfway
+            // through this open. Its source keeps loading and will be ready at
+            // the start of the next open instead of creating a staggered flash.
+            card.dataset.socialPreviewDeferred = 'true';
+            card.classList.remove('has-social-preview');
+        });
+        return true;
+    }
+
+    function revealSocialPanelAfterPreviews(openGeneration) {
+        void prepareOpeningSocialPreviews(openGeneration).then(prepared => {
+            if (!prepared) return;
+            window.requestAnimationFrame(() => {
+                if (openGeneration !== socialOpenGeneration
+                    || !socialsButton?.classList.contains('open')) return;
+                // Start the note's exit and the prepared panel's entrance in
+                // the same paint. Previously the note vanished up to 240ms
+                // before slow social previews were ready, leaving a blank gap.
+                hideNoteImage();
+                socialLinksShell?.classList.add('active');
+                socialLinksPanel?.setAttribute('aria-hidden', 'false');
+            });
+        });
     }
 
     function observeSocialCardPreviews() {
@@ -2872,11 +3048,15 @@ document.addEventListener("DOMContentLoaded", async function() {
         cards.forEach(card => delete card.dataset.socialPreviewNear);
 
         if (!socialLinksPanel || typeof window.IntersectionObserver !== 'function') {
-            cards.forEach(card => { card.dataset.socialPreviewNear = 'true'; });
+            cards.forEach(card => {
+                card.dataset.socialPreviewNear = 'true';
+                if (isSocialCardVisibleInPanel(card)) initialSocialPreviewCards.add(card);
+            });
             return false;
         }
 
         socialPreviewObserver = new IntersectionObserver(entries => {
+            let cacheNeedsTrim = false;
             entries.forEach(entry => {
                 const card = entry.target;
                 if (!(card instanceof HTMLElement)) return;
@@ -2886,7 +3066,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                     // (including the opening viewport) so scrolling or a quick
                     // close/reopen never flashes an empty background.
                     pauseSocialCardPreview(card, { releaseSource: false });
-                    trimSocialCardPreviewCache();
+                    cacheNeedsTrim = true;
                     return;
                 }
 
@@ -2896,6 +3076,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                 const key = getSocialCardVideoKey(card);
                 if (key) syncSocialCardVideo(key, card, true);
             });
+            if (cacheNeedsTrim) trimSocialCardPreviewCache();
         }, {
             root: socialLinksPanel,
             rootMargin: `${SOCIAL_PREVIEW_ROOT_MARGIN}px 0px`,
@@ -3482,7 +3663,49 @@ document.addEventListener("DOMContentLoaded", async function() {
             syncKofiWidgetHandle();
             setKofiWidgetVisibility(isPublicLinkEnabled('kofi'));
         }
-        syncSocialCardVideos();
+        if (socialsButton?.classList.contains('open')) {
+            const panelAlreadyVisible = socialLinksShell?.classList.contains('active');
+            const stablePaintedCards = panelAlreadyVisible
+                ? new Set(getVisibleSocialOptions().filter(card => {
+                    const key = getSocialCardVideoKey(card);
+                    const expectedUrl = String(siteLinkSettings[`${key}_card_video_url`] || '').trim();
+                    const preview = card.querySelector('.social-link-preview[src]');
+                    return Boolean(expectedUrl
+                        && card.classList.contains('has-social-preview')
+                        && preview?.dataset.source === expectedUrl
+                        && preview.getAttribute('src') === expectedUrl);
+                }))
+                : new Set();
+            // Settings can finish loading while the Socials surface is still
+            // in its preview-preparation window. Invalidate that exact wait,
+            // rebuild its cohort, and reveal only from the replacement run.
+            const replacementGeneration = panelAlreadyVisible
+                ? socialOpenGeneration
+                : ++socialOpenGeneration;
+            if (!panelAlreadyVisible) {
+                getVisibleSocialOptions().forEach(card => {
+                    delete card.dataset.socialPreviewDeferred;
+                });
+            }
+            playSocialCardVideos();
+            if (!panelAlreadyVisible) {
+                revealSocialPanelAfterPreviews(replacementGeneration);
+            } else {
+                // Do not let a newly assigned slow source visibly replace one
+                // card halfway through an already-painted panel. It remains
+                // ready for the next clean open. Only an unchanged source that
+                // was already painted before this settings pass can stay.
+                getVisibleSocialOptions().forEach(card => {
+                    const preview = card.querySelector('.social-link-preview[src]');
+                    if (preview && !stablePaintedCards.has(card)) {
+                        card.dataset.socialPreviewDeferred = 'true';
+                        card.classList.remove('has-social-preview');
+                    }
+                });
+            }
+        } else {
+            syncSocialCardVideos();
+        }
         if (supportMenuButton) {
             const throneEnabled = isPublicLinkEnabled('throne');
             supportMenuButton.href = getPublicLink('throne');
@@ -3689,17 +3912,12 @@ document.addEventListener("DOMContentLoaded", async function() {
     }
     function onSocialPanelScroll(event) {
         queuePanelScrollUpdate(event.currentTarget, socialLinksShell);
-        if (!socialPreviewScrollRaf) {
-            socialPreviewScrollRaf = window.requestAnimationFrame(() => {
-                socialPreviewScrollRaf = 0;
-                hydrateVisibleSocialCardPreviews();
-            });
-        }
     }
     socialLinksPanel?.addEventListener('scroll', onSocialPanelScroll, { passive: true });
 
     function closeSocialsMenu({ restoreNote = true } = {}) {
         if (!socialsButton) return;
+        socialOpenGeneration += 1;
         const wasOpen = socialsButton.classList.contains('open');
         pauseSocialCardVideos();
         socialsButton.classList.remove('open');
@@ -3723,6 +3941,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             option.setAttribute('tabindex', '-1');
         });
         if (wasOpen && restoreNote) {
+            notePeelTarget?.classList.remove('dwl-note-locking');
             notePeelTarget?.classList.remove('hidden');
             noteImage?.classList.remove('hidden');
         }
@@ -3788,8 +4007,15 @@ document.addEventListener("DOMContentLoaded", async function() {
         closeDrawingWidget();
         closeQuestionForm();
         closePostsPanel();
-        hideNoteImage();
+        // Lock immediately so the note cannot be edited/peeled while preview
+        // media settles, but keep it painted until the incoming panel is ready
+        // to cross-fade in the same frame.
+        notePeelTarget?.classList.add('dwl-note-locking');
         resetIconsCollapse();
+        const openGeneration = ++socialOpenGeneration;
+        getVisibleSocialOptions().forEach(card => {
+            delete card.dataset.socialPreviewDeferred;
+        });
         socialsButton.classList.remove('show-glitter');
         socialsButton.classList.add('open');
         socialsButton.setAttribute('aria-expanded', 'true');
@@ -3809,8 +4035,11 @@ document.addEventListener("DOMContentLoaded", async function() {
             syncSocialReservedHeight(true);
             socialLinksShell?.classList.remove('measure-open');
         }
-        socialLinksShell?.classList.add('active');
-        socialLinksPanel?.setAttribute('aria-hidden', 'false');
+        // Start the opening viewport's previews while the shell is still
+        // hidden, then reveal the whole panel together on the next frame. This
+        // avoids showing a base card for one frame before media setup begins.
+        playSocialCardVideos();
+        revealSocialPanelAfterPreviews(openGeneration);
         // Establishes the correct top/bottom fade immediately (e.g. a bottom
         // fade if there are more cards than fit) instead of leaving it fully
         // opaque, undetected, until the user's first scroll event.
@@ -3820,7 +4049,6 @@ document.addEventListener("DOMContentLoaded", async function() {
         getVisibleSocialOptions().forEach(option => {
             option.setAttribute('tabindex', '0');
         });
-        window.requestAnimationFrame(playSocialCardVideos);
     }
 
     applySiteLinkSettingsToDom = applyPublicLinkSettings;
@@ -4160,9 +4388,9 @@ document.addEventListener("DOMContentLoaded", async function() {
         e.stopPropagation();
         if (!acceptTopControlActivation(supportMenuButton)) return;
         if (siteLinkSettings.maintenance_enabled === true) return;
+        if (!isPublicLinkEnabled('throne')) return;
         closeSocialsMenu({ restoreNote: false });
         closeActionMenu();
-        if (!isPublicLinkEnabled('throne')) return;
         const useMockup = siteLinkSettings.throne_checkout_mode !== 'widget';
         // Second press while the mockup panel is open toggles it closed.
         const wishlistPanel = document.getElementById('doll-wishlist-panel');
@@ -4533,14 +4761,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             setSendButtonLoading(sendButton, true);
             const submitSoundMinimum = wait(1000);
             try {
-                let ipAddress = 'unknown';
-                try {
-                    const ipResponse = await fetch('https://api.ipify.org?format=json');
-                    const ipData = await ipResponse.json();
-                    ipAddress = ipData.ip;
-                } catch (ipError) {
-                    // IP address fetch failed
-                }
+                const ipAddress = await getVisitorIdentity();
 
                 const { error } = await window.supabase
                     .from('drawings')
@@ -4639,14 +4860,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                 setSendButtonLoading(sendButton, true);
                 const submitSoundMinimum = wait(1000);
                 try {
-                    let ipAddress = 'unknown';
-                    try {
-                        const ipResponse = await fetch('https://api.ipify.org?format=json');
-                        const ipData = await ipResponse.json();
-                        ipAddress = ipData.ip;
-                    } catch (ipError) {
-                        // IP address fetch failed
-                    }
+                    const ipAddress = await getVisitorIdentity();
 
                     const { error } = await window.supabase
                         .from('questions')
@@ -4794,18 +5008,23 @@ document.addEventListener("DOMContentLoaded", async function() {
 
         function resumeCachedDrawingImages() {
             if (!postsPopup?.classList.contains('active') || !drawingsList) return;
-            const rootRect = postsContentEl?.getBoundingClientRect();
-            drawingsList.querySelectorAll('.post-item > img[data-drawing-id]').forEach(image => {
-                drawingImageObserver?.observe(image);
-                if (!rootRect) {
-                    restoreDrawingImage(image);
-                    return;
-                }
-                const rect = image.getBoundingClientRect();
-                if (rect.bottom >= rootRect.top - 220 && rect.top <= rootRect.bottom + 220) {
-                    restoreDrawingImage(image);
-                }
-            });
+            const drawingImages = Array.from(
+                drawingsList.querySelectorAll('.post-item > img[data-drawing-id]')
+            );
+            if (!drawingImageObserver) {
+                drawingImages.forEach(restoreDrawingImage);
+                return;
+            }
+            // The panel always resets to the top when it closes. Restore a
+            // generous first-viewport cohort immediately; IntersectionObserver
+            // handles the rest. This avoids synchronously measuring every one
+            // of hundreds of archived drawings on each reopen/tab switch.
+            const viewportHeight = postsContentEl?.clientHeight || 320;
+            const openingCount = Math.min(
+                drawingImages.length,
+                Math.max(8, (Math.ceil(viewportHeight / 120) * 2) + 4)
+            );
+            drawingImages.slice(0, openingCount).forEach(restoreDrawingImage);
         }
 
         function getSubmissionsRenderKey(drawings, questions) {
@@ -4885,6 +5104,9 @@ document.addEventListener("DOMContentLoaded", async function() {
         document.querySelectorAll('.tab-button').forEach(btn => {
             btn.addEventListener('click', function() {
                 playUiSound('tap');
+                const switchingTabs = !this.classList.contains('active');
+                if (switchingTabs && postsContentEl) postsContentEl.scrollTop = 0;
+                if (switchingTabs) resetIconsCollapse();
                 document.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active'));
                 document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
                 this.classList.add('active');
@@ -4893,6 +5115,15 @@ document.addEventListener("DOMContentLoaded", async function() {
                 syncPostsMediaPlayback();
                 const activeFeed = this.dataset.tab === 'questions-tab' ? 'questions' : 'drawings';
                 if (activeFeed === 'drawings') resumeCachedDrawingImages();
+                // Doods and Mi can have very different content heights. A tab
+                // switch is a stationary reset-to-top boundary, so rebuild the
+                // frozen viewport/extent here instead of keeping the previous
+                // tab's bottom fade and icon-collapse range.
+                if (switchingTabs) {
+                    syncPostsPanelSpace();
+                } else {
+                    updateScrollEdgeState(postsContentEl, postsPanel);
+                }
                 scheduleVisibleSubmissionPage(activeFeed);
             });
         });
@@ -5178,6 +5409,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                     questionsList.innerHTML = '';
                 }
                 const fragment = document.createDocumentFragment();
+                const newQuestionItems = [];
                 questions.forEach(q => {
                     const el = document.createElement('div');
                     el.className = 'question-item';
@@ -5187,12 +5419,21 @@ document.addEventListener("DOMContentLoaded", async function() {
                         ${answerHtml}
                     `;
                     fragment.appendChild(el);
+                    newQuestionItems.push(el);
                 });
                 const sentinel = questionsList.querySelector('.posts-page-sentinel');
                 questionsList.insertBefore(fragment, sentinel);
-                observePostsMedia();
-                bindQuestionMediaErrors(questionsList);
-                syncPostsMediaPlayback();
+                newQuestionItems.forEach(item => {
+                    observePostsMedia(item);
+                    bindQuestionMediaErrors(item);
+                    getPostsMediaFrames(item).forEach(frame => {
+                        if (shouldPlayPostsMedia() && frame.dataset.postsMediaNear === 'true') {
+                            resumePostsMediaFrame(frame);
+                        } else {
+                            pausePostsMediaFrame(frame);
+                        }
+                    });
+                });
             } catch (error) {
                 console.error("Error loading questions:", error);
                 questionsList.innerHTML = '<p>Error loading Mi. Please refresh.</p>';
@@ -5219,7 +5460,12 @@ document.addEventListener("DOMContentLoaded", async function() {
                     );
                 }
                 updateSubmissionSentinel(feedKey);
-                syncPostsPanelSpace();
+                // Appending a page must not tear down and rebuild the active
+                // scroll-motion viewport under the visitor's finger. Its size
+                // is already frozen for this open session; only refresh the
+                // cached extent and edge fades for the longer content.
+                window.dollRefreshPanelScrollExtent?.(postsContentEl);
+                updateScrollEdgeState(postsContentEl, postsPanel);
                 scheduleVisibleSubmissionPage(feedKey);
             } catch (error) {
                 if (error?.name !== 'AbortError') {
@@ -5297,14 +5543,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                 }
                 
                 // Get user's IP
-                let ipAddress = 'unknown';
-                try {
-                    const ipResponse = await fetch('https://api.ipify.org?format=json');
-                    const ipData = await ipResponse.json();
-                    ipAddress = ipData.ip;
-                } catch (ipError) {
-                    // IP address fetch failed
-                }
+                const ipAddress = await getVisitorIdentity();
                 
                 // Check if user already liked this drawing
                 const { data: existingLike, error: checkError } = await window.supabase
@@ -5464,14 +5703,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                     playUiSound('tap');
                     
                     // Check if user already has this reaction
-                    let ipAddress = 'unknown';
-                    try {
-                        const ipResponse = await fetch('https://api.ipify.org?format=json');
-                        const ipData = await ipResponse.json();
-                        ipAddress = ipData.ip;
-                    } catch (ipError) {
-                        // IP address fetch failed
-                    }
+                    const ipAddress = await getVisitorIdentity();
                     
                     const { data: existingLike } = await window.supabase
                         .from('drawing_likes')
@@ -5557,6 +5789,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                 button.style.opacity = '1';
             });
         }
+        closeActiveReactionPicker = closeReactionPicker;
 
         async function loadReactionCounts(drawingId, picker, currentReaction) {
             try {

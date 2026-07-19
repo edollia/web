@@ -47,11 +47,14 @@ serve(async (req) => {
   try {
     const body = await req.json()
     const itemIds = Array.isArray(body.itemIds)
-      ? body.itemIds.filter((id: unknown) => typeof id === 'string').slice(0, MAX_ITEMS)
+      ? Array.from(new Set(body.itemIds.filter((id: unknown): id is string => typeof id === 'string')))
       : []
 
     if (!itemIds.length) {
       return json({ error: 'no items selected' }, 400)
+    }
+    if (itemIds.length > MAX_ITEMS) {
+      return json({ error: `select up to ${MAX_ITEMS} items at once` }, 400)
     }
 
     const sb = createClient(

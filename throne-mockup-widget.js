@@ -7,12 +7,18 @@
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp2cWRvZHpraG1jcHR3a2psZmV1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg3NjM1NjAsImV4cCI6MjA2NDMzOTU2MH0.i1xbRIhPHVkDIrnDlQFP0ebNklrx8WVQcQo8Iuo9zG8';
     const FETCH_TIMEOUT_MS = 6000;
     const MAX_FEATURED = 30;
+    // Throne's cart endpoint accepts at most ten wishlist entries at once.
+    // Keep the public selection UI honest instead of letting the Edge
+    // function silently trim an 11th (or later) choice.
+    const MAX_CHECKOUT_ITEMS = 10;
     const NAME_MAX = 60;
     const CARD_GAP = 10;
     const PAGE_SIZE = 4;
     const IMAGE_HYDRATE_CONCURRENCY = 6;
     const IMAGE_INITIAL_EXTRA_COUNT = 2;
-    const IMAGE_HYDRATE_MARGIN_PX = 180;
+    const IMAGE_HYDRATE_MARGIN_PX = 320;
+    const IMAGE_DECODE_CACHE_LIMIT = 10;
+    const IMAGE_SCROLL_PRIORITY_IDLE_MS = 120;
     const IMAGE_HYDRATE_TIMEOUT_MS = 8000;
     const IMAGE_REVEAL_TIMEOUT_MS = 1800;
     const SWIPE_HINT_INITIAL_DELAY_MS = 3000;
@@ -67,8 +73,9 @@
     let imageHydrationObserver = null;
     let imageHydrationRoot = null;
     let imageHydrationFallbackHandler = null;
-    let imagePriorityScrollHandler = null;
+    let imagePriorityScrollEndHandler = null;
     let imagePriorityRefreshRaf = 0;
+    let imagePriorityRefreshTimer = 0;
     let imageRevealRun = 0;
     let itemsLoadRun = 0;
     let itemsFetchPromise = null;
@@ -77,6 +84,7 @@
     const imageHydrationQueued = new Set();
     const activeImageHydrations = new Map();
     const imagePriorityWindow = new Set();
+    const imageDecodedRecency = new Map();
 
     function formatPrice(cents) {
         if (typeof cents !== 'number' || !cents) return '';
@@ -185,6 +193,11 @@
         const media = img.closest('.doll-wishlist-media');
         media?.style.setProperty('--dwl-image-ratio', `${img.naturalWidth} / ${img.naturalHeight}`);
         media?.classList.remove('dwl-media-pending', 'dwl-media-error');
+        if (isWishlistPanelVisible()) {
+            imageDecodedRecency.set(img, performance.now());
+        } else {
+            imageDecodedRecency.delete(img);
+        }
         return true;
     }
 
@@ -285,7 +298,9 @@
         delete img.dataset.dwlLoading;
         activeImageHydrations.delete(img);
         signalProductImageSettled(img);
-        scheduleProductImagePriorityRefresh(img.closest('.doll-wishlist-body'));
+        if (isWishlistPanelVisible()) {
+            trimDecodedProductImageCache(img.closest('.doll-wishlist-body'));
+        }
         drainProductImageQueue();
     }
 
@@ -368,11 +383,19 @@
         if (!deferDrain) drainProductImageQueue();
     }
 
-    function releaseOffscreenProductImage(img, { deferDrain = false } = {}) {
+    function releaseOffscreenProductImage(img, { deferDrain = false, force = false } = {}) {
         if (!img || imagePriorityWindow.has(img)) return;
         removeQueuedProductImage(img);
+        // Once a product photo has decoded, keep it for the rest of this open
+        // wishlist session. Releasing a decoded image as soon as it crossed the
+        // observer margin made a fast down/up swipe show empty cards and forced
+        // Safari to decode the same photo repeatedly. The close path still
+        // releases everything outside the small opening cohort, so memory is
+        // bounded between visits without making active scrolling pay for it.
+        if (!force && img.hasAttribute('src') && img.complete && img.naturalWidth) return;
         cancelProductImageRequest(img, { deferDrain: true });
         if (img.hasAttribute('src')) img.removeAttribute('src');
+        imageDecodedRecency.delete(img);
         img.removeAttribute('fetchpriority');
         img.loading = 'lazy';
         delete img.dataset.dwlLoading;
@@ -387,17 +410,20 @@
             imageHydrationRoot.removeEventListener('scroll', imageHydrationFallbackHandler);
             window.removeEventListener('resize', imageHydrationFallbackHandler);
         }
-        if (imageHydrationRoot && imagePriorityScrollHandler) {
-            imageHydrationRoot.removeEventListener('scroll', imagePriorityScrollHandler);
-            window.removeEventListener('resize', imagePriorityScrollHandler);
+        if (imageHydrationRoot && imagePriorityScrollEndHandler) {
+            imageHydrationRoot.removeEventListener('scrollend', imagePriorityScrollEndHandler);
         }
         if (imagePriorityRefreshRaf) {
             window.cancelAnimationFrame(imagePriorityRefreshRaf);
             imagePriorityRefreshRaf = 0;
         }
+        if (imagePriorityRefreshTimer) {
+            window.clearTimeout(imagePriorityRefreshTimer);
+            imagePriorityRefreshTimer = 0;
+        }
         imageHydrationRoot = null;
         imageHydrationFallbackHandler = null;
-        imagePriorityScrollHandler = null;
+        imagePriorityScrollEndHandler = null;
     }
 
     function stopProgressiveItemImages({
@@ -411,6 +437,7 @@
         imageHydrationQueue.length = 0;
         imageHydrationQueued.clear();
         imagePriorityWindow.clear();
+        imageDecodedRecency.clear();
 
         activeImageHydrations.forEach((request, img) => {
             if (preserveRetainedRequests && retainLoaded instanceof Set && retainLoaded.has(img)) {
@@ -454,11 +481,11 @@
             .filter(img => String(img.dataset.src || '').trim());
     }
 
-    function freezeMasonryProductGeometry(img) {
+    function freezeMasonryProductGeometry(img, measuredRect = null) {
         if (wishlistViewMode !== 'masonry' || !img) return;
         const media = img.closest('.doll-wishlist-media');
         if (!media || media.classList.contains('dwl-media-frozen')) return;
-        const rect = media.getBoundingClientRect();
+        const rect = measuredRect || media.getBoundingClientRect();
         if (rect.width <= 0 || rect.height <= 0) return;
         media.style.setProperty('--dwl-frozen-image-ratio', `${rect.width} / ${rect.height}`);
         media.classList.add('dwl-media-frozen');
@@ -541,12 +568,37 @@
         }
     }
 
+    function trimDecodedProductImageCache(body) {
+        if (!body || !isWishlistPanelVisible()) return;
+        const loadedImages = getHydratableProductImages(body).filter(img => (
+            img.hasAttribute('src') && img.complete && img.naturalWidth
+        ));
+        const protectedImages = new Set(loadedImages.filter(img => (
+            imagePriorityWindow.has(img) || img.dataset.dwlObservedNear === 'true'
+        )));
+        const cacheLimit = Math.max(IMAGE_DECODE_CACHE_LIMIT, protectedImages.size);
+        if (loadedImages.length <= cacheLimit) return;
+        loadedImages
+            .filter(img => !protectedImages.has(img))
+            .sort((a, b) => (imageDecodedRecency.get(a) || 0) - (imageDecodedRecency.get(b) || 0))
+            .slice(0, loadedImages.length - cacheLimit)
+            .forEach(img => releaseOffscreenProductImage(img, {
+                deferDrain: true,
+                force: true,
+            }));
+    }
+
     function refreshProductImagePriorityWindow(body) {
         if (!body || !isWishlistPanelVisible()) return new Set();
         const productImages = getHydratableProductImages(body);
         const nextPriorityWindow = new Set(getPriorityProductImages(body));
         imagePriorityWindow.clear();
         nextPriorityWindow.forEach(img => imagePriorityWindow.add(img));
+        nextPriorityWindow.forEach(img => {
+            if (img.hasAttribute('src') && img.complete && img.naturalWidth) {
+                imageDecodedRecency.set(img, performance.now());
+            }
+        });
         // Rebuild the not-yet-started queue atomically for the new viewport.
         // Otherwise a card that used to be high priority can keep that stale
         // rank after a fast scroll and jump ahead of the newly visible cards.
@@ -564,12 +616,26 @@
                 releaseOffscreenProductImage(img, { deferDrain: true });
             }
         });
+        trimDecodedProductImageCache(body);
         drainProductImageQueue();
         return nextPriorityWindow;
     }
 
-    function scheduleProductImagePriorityRefresh(body) {
-        if (!body || imagePriorityRefreshRaf || !isWishlistPanelVisible()) return;
+    function scheduleProductImagePriorityRefresh(body, delayMs = 0) {
+        if (!body || !isWishlistPanelVisible()) return;
+        if (delayMs > 0) {
+            window.clearTimeout(imagePriorityRefreshTimer);
+            imagePriorityRefreshTimer = window.setTimeout(() => {
+                imagePriorityRefreshTimer = 0;
+                scheduleProductImagePriorityRefresh(body);
+            }, delayMs);
+            return;
+        }
+        if (imagePriorityRefreshTimer) {
+            window.clearTimeout(imagePriorityRefreshTimer);
+            imagePriorityRefreshTimer = 0;
+        }
+        if (imagePriorityRefreshRaf) return;
         imagePriorityRefreshRaf = window.requestAnimationFrame(() => {
             imagePriorityRefreshRaf = 0;
             refreshProductImagePriorityWindow(body);
@@ -583,8 +649,20 @@
 
         productImages.forEach(img => {
             delete img.dataset.dwlFailed;
-            freezeMasonryProductGeometry(img);
         });
+        // Read every masonry rectangle first, then write every frozen ratio.
+        // Interleaving a layout read and class/style write 30 times can force
+        // repeated synchronous layouts on iPhone before the panel even opens.
+        if (wishlistViewMode === 'masonry') {
+            const unfrozenImages = productImages.filter(img => (
+                !img.closest('.doll-wishlist-media')?.classList.contains('dwl-media-frozen')
+            ));
+            const measurements = unfrozenImages.map(img => ({
+                img,
+                rect: img.closest('.doll-wishlist-media')?.getBoundingClientRect() || null,
+            }));
+            measurements.forEach(({ img, rect }) => freezeMasonryProductGeometry(img, rect));
+        }
 
         imageHydrationRoot = wishlistViewMode === 'grid'
             ? body.querySelector('.doll-wishlist-scroll')
@@ -595,10 +673,8 @@
         // Every card actually visible at this screen height is high priority,
         // followed by exactly two more cards in the forward scroll direction.
         refreshProductImagePriorityWindow(body);
-        imagePriorityScrollHandler = () => scheduleProductImagePriorityRefresh(body);
-        imageHydrationRoot.addEventListener('scroll', imagePriorityScrollHandler, { passive: true });
-        window.addEventListener('resize', imagePriorityScrollHandler, { passive: true });
-
+        imagePriorityScrollEndHandler = () => scheduleProductImagePriorityRefresh(body);
+        imageHydrationRoot.addEventListener('scrollend', imagePriorityScrollEndHandler, { passive: true });
         if (typeof window.IntersectionObserver === 'function') {
             imageHydrationObserver = new IntersectionObserver(entries => {
                 entries.forEach(entry => {
@@ -717,7 +793,7 @@
         loader.className = 'dwl-initial-image-loader';
         loader.setAttribute('aria-hidden', 'true');
         loader.innerHTML = renderLoadingState();
-        body.appendChild(loader);
+        body.prepend(loader);
     }
 
     function injectStyles() {
@@ -980,35 +1056,44 @@
                 animation: dollWishlistContentIn 0.32s cubic-bezier(0.2, 0.82, 0.24, 1) both;
             }
 
-            /* Keep the stable paw loader in place until the cards that are
-               actually visible (plus the two-card buffer) have settled. The
-               real cards still participate in layout behind it, so masonry
-               can measure its final geometry without flashing blank tiles. */
+            /* Keep the real, already-sized card placeholders visible while the
+               first viewport settles. The previous version hid every card and
+               painted an opaque full-height layer here, which was the large
+               white block visible during every wishlist open. */
             .doll-wishlist-body.dwl-images-preparing > :not(.dwl-initial-image-loader) {
-                visibility: hidden;
-            }
-            .doll-wishlist-body.dwl-images-preparing {
-                overflow: hidden !important;
-                overscroll-behavior: none;
-                touch-action: none;
-            }
-            .doll-wishlist-body.dwl-images-preparing .doll-wishlist-scroll {
-                overflow: hidden;
+                opacity: 0.38;
+                pointer-events: none;
+                transition: opacity 0.2s ease;
             }
             .dwl-initial-image-loader {
+                position: sticky;
+                top: 0;
+                z-index: 20;
+                display: flex;
+                align-items: flex-start;
+                justify-content: center;
+                width: 100%;
+                height: 1px;
+                overflow: visible;
+                background: transparent;
+                pointer-events: none;
+            }
+            .dwl-fetch-loader {
                 position: absolute;
                 inset: 0;
                 z-index: 20;
-                display: grid;
-                place-items: center;
-                min-height: min(350px, 48vh);
-                background: rgba(255, 250, 253, 0.96);
+                display: flex;
+                align-items: flex-start;
+                justify-content: center;
+                overflow: visible;
+                background: transparent;
                 pointer-events: none;
             }
-            .dwl-initial-image-loader .dwl-loading {
+            .dwl-initial-image-loader .dwl-wishlist-fetch-state,
+            .dwl-fetch-loader .dwl-wishlist-fetch-state {
                 width: 100%;
-                min-height: 100%;
                 margin: 0;
+                transform: translateY(clamp(28px, 12vh, 82px));
             }
 
             @keyframes dollWishlistContentIn {
@@ -1672,94 +1757,6 @@
                 font-family: var(--dwl-cute);
                 font-size: 12px;
                 line-height: 1.5;
-            }
-
-            .dwl-loading {
-                min-height: min(350px, 48vh);
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                justify-content: center;
-                gap: 13px;
-                margin: 0 8px;
-                color: rgba(111, 60, 79, 0.66);
-                font-family: var(--dwl-cute);
-                font-size: 11.5px;
-                text-align: center;
-            }
-            /* The wishlist loader reuses the EXACT paw-print asset and calm
-               stamping cadence of the main site's page loader
-               (.loading-paw-print in styles.css) — same SVG-masked paw, same
-               two-layer shadow+gradient build, same alternating up/down trail,
-               same gentle pop — so opening the wishlist reads as a
-               continuation of the site's own load rather than a different
-               spinner. The one necessary difference: the page loader is
-               progress-driven (paws stamp to the load bar), while the
-               wishlist wait is indeterminate, so here the trail simply stamps
-               across on a gentle repeating loop, staggered left→right. */
-            .dwl-loading-paws {
-                display: flex;
-                align-items: flex-start;
-                gap: 15px;
-                height: 44px;
-            }
-            .dwl-loading-paw {
-                --paw-rotation: 74deg;
-                position: relative;
-                width: 22px;
-                height: 26px;
-                opacity: 0;
-                transform-origin: center;
-                will-change: opacity, transform;
-                /* drop-shadow on the element, not the masked pseudo — same
-                   old-iOS square-edge avoidance as the main site paw. */
-                filter:
-                    drop-shadow(-1px -1px 0 rgba(255, 255, 255, 0.76))
-                    drop-shadow(1px 1px 0 rgba(171, 91, 130, 0.12));
-                animation: dollWishlistPawStamp 2.6s cubic-bezier(0.2, 0.9, 0.32, 1.25) infinite both;
-            }
-            .dwl-loading-paw:nth-child(even) {
-                --paw-rotation: 106deg;
-                margin-top: 16px;
-            }
-            .dwl-loading-paw:nth-child(1) { animation-delay: 0s; }
-            .dwl-loading-paw:nth-child(2) { animation-delay: 0.16s; }
-            .dwl-loading-paw:nth-child(3) { animation-delay: 0.32s; }
-            .dwl-loading-paw:nth-child(4) { animation-delay: 0.48s; }
-            .dwl-loading-paw:nth-child(5) { animation-delay: 0.64s; }
-            .dwl-loading-paw::before,
-            .dwl-loading-paw::after {
-                content: "";
-                position: absolute;
-                inset: 0;
-                -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 54'%3E%3Cellipse cx='7.5' cy='20' rx='5.5' ry='8' transform='rotate(-22 7.5 20)'/%3E%3Cellipse cx='18' cy='11.5' rx='5.8' ry='8.5' transform='rotate(-8 18 11.5)'/%3E%3Cellipse cx='30' cy='11.5' rx='5.8' ry='8.5' transform='rotate(8 30 11.5)'/%3E%3Cellipse cx='40.5' cy='20' rx='5.5' ry='8' transform='rotate(22 40.5 20)'/%3E%3Cpath d='M24 25c-8.5 0-14.5 7.2-13 14.8 1.3 6.6 7.8 8.9 12.5 4.9.3-.3.7-.3 1 0 4.7 4 11.2 1.7 12.5-4.9C38.5 32.2 32.5 25 24 25Z'/%3E%3C/svg%3E") center / contain no-repeat;
-                mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 54'%3E%3Cellipse cx='7.5' cy='20' rx='5.5' ry='8' transform='rotate(-22 7.5 20)'/%3E%3Cellipse cx='18' cy='11.5' rx='5.8' ry='8.5' transform='rotate(-8 18 11.5)'/%3E%3Cellipse cx='30' cy='11.5' rx='5.8' ry='8.5' transform='rotate(8 30 11.5)'/%3E%3Cellipse cx='40.5' cy='20' rx='5.5' ry='8' transform='rotate(22 40.5 20)'/%3E%3Cpath d='M24 25c-8.5 0-14.5 7.2-13 14.8 1.3 6.6 7.8 8.9 12.5 4.9.3-.3.7-.3 1 0 4.7 4 11.2 1.7 12.5-4.9C38.5 32.2 32.5 25 24 25Z'/%3E%3C/svg%3E") center / contain no-repeat;
-            }
-            .dwl-loading-paw::before {
-                background: rgba(171, 91, 130, 0.2);
-                transform: translate(1.2px, 1.2px);
-                filter: blur(0.35px);
-            }
-            .dwl-loading-paw::after {
-                background: linear-gradient(145deg, rgba(140, 77, 108, 0.42), rgba(208, 125, 165, 0.18) 55%, rgba(255, 255, 255, 0.8));
-            }
-            @keyframes dollWishlistPawStamp {
-                0%   { opacity: 0;    transform: translateY(-3px) rotate(var(--paw-rotation)) scale(0.58); }
-                10%  { opacity: 1;    transform: translateY(1px) rotate(var(--paw-rotation)) scale(1.08); }
-                18%  { opacity: 0.92; transform: translateY(0) rotate(var(--paw-rotation)) scale(1); }
-                70%  { opacity: 0.92; transform: translateY(0) rotate(var(--paw-rotation)) scale(1); }
-                84%  { opacity: 0;    transform: translateY(0) rotate(var(--paw-rotation)) scale(0.94); }
-                100% { opacity: 0;    transform: translateY(-3px) rotate(var(--paw-rotation)) scale(0.58); }
-            }
-            @media (prefers-reduced-motion: reduce) {
-                .dwl-loading-paw {
-                    animation: none;
-                    opacity: 0.9;
-                    transform: rotate(var(--paw-rotation)) scale(1);
-                }
-            }
-            .dwl-loading p {
-                margin: 0;
             }
 
             /* The skeleton reuses the real .doll-wishlist-info text-stack
@@ -2567,12 +2564,22 @@
         const postsPopup = document.getElementById('posts-popup');
         const postsButton = document.getElementById('posts-button');
         if (postsPopup?.classList.contains('active')) {
-            forceInstantClose(postsPopup);
-            window.dollClearScrollMotion?.(postsPopup);
-            document.body.classList.remove('has-posts-panel-open');
-            postsPopup.closest('.toggle-container')?.style.removeProperty('--posts-panel-height');
-            postsPopup.querySelector('.popup-content')?.style.removeProperty('--panel-fill-max');
-            if (postsButton) postsButton.textContent = ':3';
+            if (typeof window.dollClosePostsPanel === 'function') {
+                window.dollClosePostsPanel();
+                // The real closer performs all fetch/media/cache cleanup.
+                // Suppress only its visual tail here so two full surfaces do
+                // not overlap for 450ms while Wishlist begins entering.
+                forceInstantClose(postsPopup);
+            } else {
+                // Defensive fallback for an unusually early open before the
+                // main script has installed the full cleanup hook.
+                forceInstantClose(postsPopup);
+                window.dollClearScrollMotion?.(postsPopup);
+                document.body.classList.remove('has-posts-panel-open');
+                postsPopup.closest('.toggle-container')?.style.removeProperty('--posts-panel-height');
+                postsPopup.querySelector('.popup-content')?.style.removeProperty('--panel-fill-max');
+                if (postsButton) postsButton.textContent = ':3';
+            }
         }
     }
 
@@ -2820,7 +2827,10 @@
     function onScroll(event) {
         const scroll = event.currentTarget;
         if (Math.abs(scroll.scrollLeft) > 2) cancelSwipeHintSequence();
-        scheduleProductImagePriorityRefresh(scroll.closest('.doll-wishlist-body'));
+        scheduleProductImagePriorityRefresh(
+            scroll.closest('.doll-wishlist-body'),
+            IMAGE_SCROLL_PRIORITY_IDLE_MS
+        );
         if (scrollRaf) return;
         scrollRaf = window.requestAnimationFrame(() => {
             scrollRaf = 0;
@@ -2856,7 +2866,7 @@
     function onWishlistBodyScroll(event) {
         const body = event.currentTarget;
         if (!body.classList.contains('dwl-scroll-body')) return;
-        scheduleProductImagePriorityRefresh(body);
+        scheduleProductImagePriorityRefresh(body, IMAGE_SCROLL_PRIORITY_IDLE_MS);
         const shell = body.closest('.doll-wishlist-scroll-shell');
         if (window.dollQueuePanelScrollUpdate?.(body, shell)) return;
         window.dollMarkPanelScrollActivity?.();
@@ -2870,15 +2880,9 @@
 
     function renderLoadingState() {
         return `
-            <div class="dwl-loading" role="status" aria-live="polite">
-                <div class="dwl-loading-paws" aria-hidden="true">
-                    <span class="dwl-loading-paw"></span>
-                    <span class="dwl-loading-paw"></span>
-                    <span class="dwl-loading-paw"></span>
-                    <span class="dwl-loading-paw"></span>
-                    <span class="dwl-loading-paw"></span>
-                </div>
-                <p>fetching little wishes…</p>
+            <div class="posts-fetch-state dwl-wishlist-fetch-state" role="status" aria-live="polite">
+                <span class="loading-paw-print posts-fetch-paw" aria-hidden="true"></span>
+                <span>fetching little wishes…</span>
             </div>`;
     }
 
@@ -3059,7 +3063,11 @@
             renderedBodySignature = '';
             pauseSwipeHintSequence();
             body.scrollTop = 0;
-            body.innerHTML = renderLoadingState();
+            // Keep the card layout visible during the network fetch. A tall,
+            // otherwise-empty loader body read as a large white glitch on
+            // iPhone; these existing card-shaped shimmers preserve the final
+            // geometry while the compact paw status floats above them.
+            body.innerHTML = `${renderSkeleton(wishlistViewMode)}<div class="dwl-fetch-loader">${renderLoadingState()}</div>`;
             renderDots();
             return;
         }
@@ -3284,8 +3292,17 @@
     function toggleItem(id) {
         if (!id) return;
         playSound('tap');
-        if (selectedIds.has(id)) selectedIds.delete(id);
-        else selectedIds.add(id);
+        if (selectedIds.has(id)) {
+            selectedIds.delete(id);
+            checkoutStatusMessage = '';
+        } else if (selectedIds.size >= MAX_CHECKOUT_ITEMS) {
+            checkoutStatusMessage = `checkout holds up to ${MAX_CHECKOUT_ITEMS} wishes at once`;
+            renderFoot();
+            return;
+        } else {
+            selectedIds.add(id);
+            checkoutStatusMessage = '';
+        }
         const selected = selectedIds.has(id);
 
         // Update just the one card in place so the carousel keeps its scroll
@@ -3432,6 +3449,17 @@
 
     async function startCheckout() {
         if (checkoutInFlight || !selectedIds.size) return;
+        // Safari only treats window.open() as user-initiated while this click
+        // handler is still synchronous. Reserve the destination tab before
+        // awaiting Supabase, then navigate that same tab when the cart URL is
+        // ready. This matches the social-card navigation guard.
+        let reservedCheckoutTab = null;
+        try {
+            reservedCheckoutTab = window.open('about:blank', '_blank');
+            if (reservedCheckoutTab) reservedCheckoutTab.opener = null;
+        } catch (error) {
+            reservedCheckoutTab = null;
+        }
         checkoutInFlight = true;
         checkoutStatusMessage = '';
         playSound('link');
@@ -3462,6 +3490,8 @@
                 // smaller cart — refresh what's actually still available and
                 // let them retry with an honest selection.
                 checkoutStatusMessage = 'sorry, something you picked just sold out — pick again?';
+                if (reservedCheckoutTab && !reservedCheckoutTab.closed) reservedCheckoutTab.close();
+                reservedCheckoutTab = null;
                 checkoutInFlight = false;
                 await loadItems();
                 const stillValid = new Set(items.map(item => item.throne_item_id));
@@ -3474,9 +3504,17 @@
             if (!res.ok || !body.checkoutUrl) {
                 throw new Error(body.error || `throne-cart ${res.status}`);
             }
-            window.open(body.checkoutUrl, '_blank', 'noopener,noreferrer');
+            if (reservedCheckoutTab && !reservedCheckoutTab.closed) {
+                reservedCheckoutTab.location.replace(body.checkoutUrl);
+                reservedCheckoutTab = null;
+            } else {
+                // A locked-down browser may reject even a synchronous popup;
+                // preserve checkout functionality in that rare case.
+                window.location.assign(body.checkoutUrl);
+            }
             closeThroneMockup();
         } catch (err) {
+            if (reservedCheckoutTab && !reservedCheckoutTab.closed) reservedCheckoutTab.close();
             fallbackToLegacy();
         } finally {
             checkoutInFlight = false;
@@ -3531,9 +3569,9 @@
         // so the frozen panel geometry matches what is actually displayed.
         document.body.classList.add('has-wishlist-panel-open');
 
-        // Reuse already-fetched items on repeat opens. First opens get one
-        // stable paw loader rather than a fake card layout that can morph
-        // when the saved view mode arrives from Supabase.
+        // Reuse already-fetched items on repeat opens. First opens use the
+        // current view mode's stable card shimmers plus a compact paw status;
+        // once settings/items arrive, one render replaces that fetch stage.
         // A successful empty result is cached too. Treating `items.length`
         // as the cache flag would re-query Supabase on every quick reopen of
         // a legitimately empty wishlist.
@@ -3586,6 +3624,12 @@
             retainLoaded: retainedImages,
             preserveRetainedRequests: true,
         });
+        // Do not leave an indeterminate paw animation composited behind the
+        // closed panel. A pending fetch/reopen rebuilds the appropriate loader
+        // from current state, while cached cards are prepared afresh below.
+        wishlistBody?.querySelectorAll('.dwl-initial-image-loader, .dwl-fetch-loader')
+            .forEach(loader => loader.remove());
+        wishlistBody?.classList.remove('dwl-images-preparing', 'dwl-ready-in');
         closePreview();
         cancelSwipeHintSequence();
         document.body.classList.remove('has-wishlist-panel-open', 'has-wishlist-selection');

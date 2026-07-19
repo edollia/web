@@ -164,6 +164,7 @@ const adminListLoadTokens = new Map();
 const adminListErrors = new Map();
 let wishlistSearchTimer = null;
 let adminFullLoadGeneration = 0;
+let submissionMutationBusy = false;
 
 const els = {
     gatePanel: document.getElementById('gate-panel'),
@@ -1038,7 +1039,10 @@ function setSocialVideoBusy(key, busy, message = '') {
     const fileInput = control.querySelector('[data-video-file]');
     const uploadButton = control.querySelector('[data-video-upload]');
     const removeButton = control.querySelector('[data-video-remove]');
-    const hasSavedVideo = Boolean(state.linkSettings[getSocialVideoSettingKey(key, 'url')]);
+    const hasSavedVideo = Boolean(
+        state.linkSettings[getSocialVideoSettingKey(key, 'url')]
+        || state.linkSettings[getSocialVideoSettingKey(key, 'path')]
+    );
     const hasSelectedFile = socialVideoSelectedFiles.has(key);
     control.classList.toggle('is-busy', busy);
     if (fileInput) fileInput.disabled = busy;
@@ -1055,6 +1059,7 @@ function renderSocialVideoControl(key) {
     const removeButton = control.querySelector('[data-video-remove]');
     const pickerLabel = control.querySelector('.admin-video-picker > span');
     const savedUrl = String(state.linkSettings[getSocialVideoSettingKey(key, 'url')] || '');
+    const savedPath = String(state.linkSettings[getSocialVideoSettingKey(key, 'path')] || '');
     const selectedFile = socialVideoSelectedFiles.get(key) || null;
     const hasLocalPreview = socialVideoObjectUrls.has(key);
 
@@ -1067,7 +1072,7 @@ function renderSocialVideoControl(key) {
     }
     if (pickerLabel) pickerLabel.textContent = selectedFile || savedUrl ? 'choose another' : 'choose media';
     if (uploadButton) uploadButton.disabled = !selectedFile;
-    if (removeButton) removeButton.disabled = !savedUrl;
+    if (removeButton) removeButton.disabled = !(savedUrl || savedPath);
 }
 
 function renderAllSocialVideoControls() {
@@ -1373,7 +1378,7 @@ async function removeSocialCardVideo(key) {
     const pathKey = getSocialVideoSettingKey(key, 'path');
     const previousUrl = state.linkSettings[urlKey] || '';
     const previousPath = state.linkSettings[pathKey] || '';
-    if (!previousUrl) return;
+    if (!previousUrl && !previousPath) return;
     if (!window.confirm(`Remove the ${key} card background?`)) return;
 
     setSocialVideoBusy(key, true, 'removing...');
@@ -1636,7 +1641,10 @@ async function syncWishlistNow() {
         setStatus(els.adminStatus, body.synced === false
             ? 'sync already ran recently'
             : `synced ${body.count ?? 0} items (${body.markedUnavailable ?? 0} newly unavailable)`);
-        await loadAdminData();
+        await refreshAdminListSet(['wishlist-items-list'], {
+            refreshWishlistMeta: true,
+            refreshWishlistSync: true
+        });
     } catch (error) {
         setStatus(els.adminStatus, `sync failed: ${error.message}`);
     } finally {
@@ -1702,11 +1710,12 @@ async function featureAllWishlistItems() {
             const failed = results.find(result => result.error);
             if (failed) throw failed.error;
         }
-        await loadAdminData();
+        await refreshAdminListSet(['wishlist-items-list'], { refreshWishlistMeta: true });
+        setStatus(els.adminStatus, `${featuredCount} item${featuredCount === 1 ? '' : 's'} featured`);
     } catch (error) {
         let reloadFailed = false;
         try {
-            await loadAdminData();
+            await refreshAdminListSet(['wishlist-items-list'], { refreshWishlistMeta: true });
         } catch (reloadError) {
             reloadFailed = true;
         }
@@ -1753,11 +1762,16 @@ async function unfeatureAllWishlistItems() {
         const { error } = await updateQuery;
         if (error) throw error;
         mutationCompleted = true;
-        await loadAdminData();
+        await refreshAdminListSet(['wishlist-items-list'], { refreshWishlistMeta: true });
+        setStatus(els.adminStatus, `${targetCount} item${targetCount === 1 ? '' : 's'} unfeatured`);
     } catch (error) {
         if (mutationCompleted) {
             let reloadFailed = false;
-            try { await loadAdminData(); } catch (reloadError) { reloadFailed = true; }
+            try {
+                await refreshAdminListSet(['wishlist-items-list'], { refreshWishlistMeta: true });
+            } catch (reloadError) {
+                reloadFailed = true;
+            }
             setStatus(els.adminStatus, `${targetCount} unfeatured; ${reloadFailed ? 'refresh failed' : 'list refreshed'}`);
         } else {
             setStatus(els.adminStatus, error.message || 'could not unfeature items');
@@ -1966,6 +1980,79 @@ async function loadAdminList(listId) {
     }
 }
 
+async function refreshAdminListSet(listIds, {
+    refreshWishlistMeta = false,
+    refreshWishlistSync = false
+} = {}) {
+    const uniqueListIds = Array.from(new Set(listIds)).filter(listId => ADMIN_LIST_PAGINATION[listId]);
+    if (!uniqueListIds.length) return;
+
+    // A targeted mutation refresh owns the affected dashboard state now.
+    // Prevent an older manual/full refresh from later repainting shared
+    // wishlist metadata with the snapshot it started before the mutation.
+    adminFullLoadGeneration += 1;
+
+    const requestTokens = new Map(uniqueListIds.map(listId => {
+        const token = (adminListLoadTokens.get(listId) || 0) + 1;
+        adminListLoadTokens.set(listId, token);
+        setAdminListBusy(listId, true);
+        return [listId, token];
+    }));
+
+    try {
+        const [listResults, wishlistMetaResult, wishlistSyncResult] = await Promise.all([
+            Promise.allSettled(uniqueListIds.map(fetchAdminListPage)),
+            refreshWishlistMeta
+                ? fetchWishlistFeatureMeta().then(value => ({ value }), error => ({ error }))
+                : Promise.resolve(null),
+            refreshWishlistSync
+                ? adminClient.from('wishlist_sync_state')
+                    .select('last_synced_at')
+                    .eq('id', true)
+                    .maybeSingle()
+                : Promise.resolve(null)
+        ]);
+        let firstError = wishlistMetaResult?.error || wishlistSyncResult?.error || null;
+
+        listResults.forEach((result, index) => {
+            const listId = uniqueListIds[index];
+            if (adminListLoadTokens.get(listId) !== requestTokens.get(listId)) return;
+            if (result.status === 'fulfilled') {
+                applyAdminListPage(listId, result.value);
+                clearAdminListError(listId);
+                renderAdminListById(listId);
+                return;
+            }
+            firstError ||= result.reason;
+            adminListErrors.set(
+                listId,
+                result.reason?.message || `Could not refresh ${ADMIN_LIST_PAGINATION[listId].label}.`
+            );
+        });
+
+        if (wishlistMetaResult?.value) {
+            state.wishlistItemsAvailable = wishlistMetaResult.value.available !== false
+                && state.wishlistItemsAvailable;
+            state.wishlistFeaturedCount = wishlistMetaResult.value.count;
+            state.wishlistFirstFeaturedId = wishlistMetaResult.value.firstId;
+            state.wishlistLastFeaturedId = wishlistMetaResult.value.lastId;
+            if (uniqueListIds.includes('wishlist-items-list')) renderWishlistItems();
+        }
+        if (wishlistSyncResult && !wishlistSyncResult.error) {
+            state.wishlistSyncedAt = wishlistSyncResult.data?.last_synced_at || null;
+            renderWishlistSyncStatus();
+        }
+        renderStats();
+        if (firstError) throw firstError;
+    } finally {
+        uniqueListIds.forEach(listId => {
+            if (adminListLoadTokens.get(listId) === requestTokens.get(listId)) {
+                setAdminListBusy(listId, false);
+            }
+        });
+    }
+}
+
 async function fetchWishlistFeatureMeta() {
     const [countResult, firstResult, lastResult] = await Promise.all([
         adminClient.from('wishlist_items').select('throne_item_id', { count: 'exact', head: true }).eq('featured', true),
@@ -2069,6 +2156,43 @@ function confirmDangerAction(message) {
     return window.confirm(message);
 }
 
+function formatAdminMutationError(error, fallback = 'Could not save.', entity = 'item') {
+    const code = String(error?.code || '').toUpperCase();
+    const message = String(error?.message || error || '').trim();
+    if (code === '23503' || /foreign key constraint/i.test(message)) {
+        return entity === 'dood'
+            ? 'This dood still has reactions attached, so Supabase blocked its deletion. Run drawing-delete-cascade.sql once.'
+            : `This ${entity} still has linked database records, so Supabase blocked the action.`;
+    }
+    if (code === '42501' || /row-level security|permission denied|not authorized/i.test(message)) {
+        return 'Your admin database permission was rejected. Sign out, sign back in, and retry.';
+    }
+    if (code === '57014' || /statement timeout|canceling statement/i.test(message)) {
+        return 'Supabase timed out while finishing that action. The affected list was kept intact; retry once.';
+    }
+    if (/jwt.*expired|invalid.*jwt|session.*expired/i.test(message)) {
+        return 'Your admin session expired. Sign out and sign back in.';
+    }
+    return message || fallback;
+}
+
+function getActionRefreshLists(action, sourceListId) {
+    if (action === 'approve-drawing') {
+        return ['pending-drawings-list', 'published-drawings-list'];
+    }
+    if (action === 'delete-drawing') {
+        return sourceListId ? [sourceListId] : ['pending-drawings-list', 'published-drawings-list'];
+    }
+    if (action === 'save-question') {
+        return ['pending-questions-list', 'published-questions-list'];
+    }
+    if (action === 'delete-question') {
+        return sourceListId ? [sourceListId] : ['pending-questions-list', 'published-questions-list'];
+    }
+    if (WISHLIST_POSITION_ACTIONS.has(action)) return ['wishlist-items-list'];
+    return [];
+}
+
 async function openDashboard() {
     showPanel(els.dashboardPanel);
     try {
@@ -2149,9 +2273,25 @@ async function runAction(button) {
     const action = button.dataset.action;
     if (!id || !action) return;
 
+    const sourceListId = card.closest('.admin-list')?.id || '';
+    const isSubmissionAction = action === 'approve-drawing'
+        || action === 'delete-drawing'
+        || action === 'save-question'
+        || action === 'delete-question';
+    if (isSubmissionAction) {
+        if (submissionMutationBusy) {
+            setStatus(els.adminStatus, 'Another moderation action is still finishing.');
+            return;
+        }
+        submissionMutationBusy = true;
+    }
+
     const isWishlistPositionAction = WISHLIST_POSITION_ACTIONS.has(action);
     if (isWishlistPositionAction) {
-        if (wishlistActionBusy) return;
+        if (wishlistActionBusy) {
+            if (isSubmissionAction) submissionMutationBusy = false;
+            return;
+        }
         wishlistActionBusy = true;
     }
 
@@ -2219,7 +2359,7 @@ async function runAction(button) {
                 if (err1 || !firstWrite) {
                     let reloadFailed = false;
                     try {
-                        await loadAdminData();
+                        await refreshAdminListSet(['wishlist-items-list'], { refreshWishlistMeta: true });
                     } catch (reloadError) {
                         reloadFailed = true;
                     }
@@ -2238,7 +2378,7 @@ async function runAction(button) {
                         .maybeSingle();
                     let reloadFailed = false;
                     try {
-                        await loadAdminData();
+                        await refreshAdminListSet(['wishlist-items-list'], { refreshWishlistMeta: true });
                     } catch (reloadError) {
                         reloadFailed = true;
                     }
@@ -2255,18 +2395,32 @@ async function runAction(button) {
         if (action === 'approve-drawing' || action === 'delete-drawing') {
             forgetAdminSelectionId(id);
         }
-        await loadAdminData();
+        const refreshLists = getActionRefreshLists(action, sourceListId);
+        await refreshAdminListSet(refreshLists, {
+            refreshWishlistMeta: isWishlistPositionAction
+        });
+        setStatus(els.adminStatus, `${mutationLabel} ✓`);
     } catch (error) {
         if (mutationCompleted) {
             let reloadFailed = false;
-            try { await loadAdminData(); } catch (reloadError) { reloadFailed = true; }
+            try {
+                await refreshAdminListSet(getActionRefreshLists(action, sourceListId), {
+                    refreshWishlistMeta: isWishlistPositionAction
+                });
+            } catch (reloadError) {
+                reloadFailed = true;
+            }
             setStatus(els.adminStatus, `${mutationLabel}; ${reloadFailed ? 'refresh failed' : 'list refreshed'}`);
         } else {
-            setStatus(els.adminStatus, error.message || 'Could not save.');
+            const entity = action.includes('drawing')
+                ? 'dood'
+                : (action.includes('question') ? 'ask' : 'item');
+            setStatus(els.adminStatus, formatAdminMutationError(error, 'Could not save.', entity));
         }
     } finally {
         button.disabled = false;
         if (isWishlistPositionAction) wishlistActionBusy = false;
+        if (isSubmissionAction) submissionMutationBusy = false;
     }
 }
 
@@ -2646,38 +2800,54 @@ async function fetchAdminListSnapshot(listId) {
     // transferred, in bounded pages; rows created afterward cannot silently
     // join a later destructive mutation.
     let anchorQuery = adminClient.from(table)
-        .select('id,created_at');
+        .select('id,created_at')
+        .not('created_at', 'is', null);
     anchorQuery = applyAdminListFilter(anchorQuery, listId);
     const { data: anchor, error: anchorError } = await anchorQuery
-        .order('created_at', { ascending: false })
+        // Legacy submissions can have a NULL timestamp. PostgREST puts NULL
+        // first for a descending sort unless told otherwise, which used to
+        // turn the cutoff below into `.lte('created_at', null)` and produce
+        // the intermittent SQL error shown by the dashboard.
+        .order('created_at', { ascending: false, nullsFirst: false })
         .order('id', { ascending: false })
         .limit(1)
         .maybeSingle();
     if (anchorError) throw anchorError;
-    if (!anchor) {
-        return { ids: [], cutoff: '' };
-    }
-    const cutoff = anchor.created_at;
+    const cutoff = anchor?.created_at || '';
     const pageSize = 500;
     const selectedIds = new Set();
-    let start = 0;
-    let expectedTotal = null;
 
-    while (expectedTotal === null || start < expectedTotal) {
-        let query = adminClient.from(table)
-            .select('id', { count: start === 0 ? 'exact' : undefined })
-            .lte('created_at', cutoff);
-        query = applyAdminListFilter(query, listId);
-        const { data, error, count } = await query
-            .order('id', { ascending: true })
-            .range(start, start + pageSize - 1);
-        if (error) throw error;
-        if (expectedTotal === null) expectedTotal = count || 0;
-        const batch = data || [];
-        batch.forEach(item => selectedIds.add(String(item.id)));
-        if (batch.length < pageSize) break;
-        start += pageSize;
+    async function collectSnapshotPartition({ undated = false } = {}) {
+        if (!undated && !cutoff) return;
+        let start = 0;
+        let expectedTotal = null;
+        while (expectedTotal === null || start < expectedTotal) {
+            let query = adminClient.from(table)
+                .select('id', { count: start === 0 ? 'exact' : undefined });
+            // Keep timestamp and pending/answered predicates as independent
+            // query-builder filters. Using a second raw `.or()` here would
+            // collide with the existing pending-list `.or()` on PostgREST.
+            query = undated
+                ? query.is('created_at', null)
+                : query.lte('created_at', cutoff);
+            query = applyAdminListFilter(query, listId);
+            const { data, error, count } = await query
+                .order('id', { ascending: true })
+                .range(start, start + pageSize - 1);
+            if (error) throw error;
+            if (expectedTotal === null) expectedTotal = count || 0;
+            const batch = data || [];
+            batch.forEach(item => selectedIds.add(String(item.id)));
+            if (batch.length < pageSize) break;
+            start += pageSize;
+        }
     }
+
+    // Dated rows are frozen at the newest timestamp seen when the action
+    // started; legacy NULL rows are collected separately so they are never
+    // fed to a timestamp comparison or omitted from "clear waiting."
+    await collectSnapshotPartition();
+    await collectSnapshotPartition({ undated: true });
 
     return { ids: Array.from(selectedIds), cutoff };
 }
@@ -2704,6 +2874,7 @@ async function runDrawingBulkMutation(action, listId, ids) {
         const { data, error } = await query;
         if (error) {
             const bulkError = new Error(error.message || 'Bulk action failed.');
+            bulkError.code = error.code;
             bulkError.completedCount = changed;
             throw bulkError;
         }
@@ -2726,15 +2897,22 @@ async function deleteAdminListSnapshot(listId, ids) {
         const { data, error } = await query;
         if (error) {
             const bulkError = new Error(error.message || 'Bulk delete failed.');
+            bulkError.code = error.code;
             bulkError.completedCount = changed;
             throw bulkError;
         }
+        (data || []).forEach(item => forgetAdminSelectionId(item.id));
         changed += (data || []).length;
     }
     return changed;
 }
 
 async function clearPendingAdminList(button, listId, noun) {
+    if (submissionMutationBusy) {
+        setStatus(els.adminStatus, 'Another moderation action is still finishing.');
+        return;
+    }
+    submissionMutationBusy = true;
     const previousStatus = els.adminStatus?.textContent || '';
     let changed = 0;
     let deleteCompleted = false;
@@ -2757,24 +2935,31 @@ async function clearPendingAdminList(button, listId, noun) {
         changed = await deleteAdminListSnapshot(listId, snapshot.ids);
         deleteCompleted = true;
         clearAdminListSelection(listId);
-        await loadAdminData();
+        await refreshAdminListSet([listId]);
         setStatus(els.adminStatus, `${changed} waiting ${noun} deleted`);
     } catch (error) {
         const completed = Number(error.completedCount) || 0;
         if (deleteCompleted) {
-            setStatus(els.adminStatus, `${changed} waiting ${noun} deleted; refresh failed`);
+            let reloadFailed = false;
+            try { await refreshAdminListSet([listId]); } catch (reloadError) { reloadFailed = true; }
+            setStatus(els.adminStatus, `${changed} waiting ${noun} deleted; ${reloadFailed ? 'refresh failed' : 'list refreshed'}`);
             return;
         }
         let reloadFailed = false;
         if (completed) {
-            try { await loadAdminData(); } catch (reloadError) { reloadFailed = true; }
+            try { await refreshAdminListSet([listId]); } catch (reloadError) { reloadFailed = true; }
         }
         setStatus(els.adminStatus, completed
             ? `${completed} deleted before the error; ${reloadFailed ? 'refresh failed' : 'list refreshed'}`
-            : (error.message || `Could not clear waiting ${noun}.`));
+            : formatAdminMutationError(
+                error,
+                `Could not clear waiting ${noun}.`,
+                listId.includes('drawings') ? 'dood' : 'ask'
+            ));
     } finally {
         setAdminListBusy(listId, false);
         button.disabled = false;
+        submissionMutationBusy = false;
     }
 }
 
@@ -2824,27 +3009,54 @@ async function runBulkAction(button) {
         return;
     }
     if (action === 'delete' && !confirmDangerAction(`Delete ${selectionCount} selected doods? This cannot be undone.`)) return;
+    if (submissionMutationBusy) {
+        setStatus(els.adminStatus, 'Another moderation action is still finishing.');
+        return;
+    }
+    submissionMutationBusy = true;
 
     button.disabled = true;
     setStatus(els.adminStatus, `${action} ${selectionCount}...`);
+    let changed = 0;
+    let mutationCompleted = false;
 
     try {
-        await runDrawingBulkMutation(action, listId, ids);
+        changed = await runDrawingBulkMutation(action, listId, ids);
+        mutationCompleted = true;
         clearAdminListSelection(listId);
-        await loadAdminData();
+        const refreshLists = action === 'approve'
+            ? ['pending-drawings-list', 'published-drawings-list']
+            : [listId];
+        await refreshAdminListSet(refreshLists);
+        setStatus(els.adminStatus, `${changed} dood${changed === 1 ? '' : 's'} ${action === 'approve' ? 'approved' : 'deleted'}`);
     } catch (error) {
-        const completed = Number(error.completedCount) || 0;
+        const completed = mutationCompleted ? changed : (Number(error.completedCount) || 0);
+        let reloadFailed = false;
         try {
-            await loadAdminData();
+            const refreshLists = action === 'approve'
+                ? ['pending-drawings-list', 'published-drawings-list']
+                : [listId];
+            await refreshAdminListSet(refreshLists);
         } catch (reloadError) {
+            reloadFailed = true;
+        }
+        if (mutationCompleted) {
+            setStatus(
+                els.adminStatus,
+                `${changed} dood${changed === 1 ? '' : 's'} ${action === 'approve' ? 'approved' : 'deleted'}; ${reloadFailed ? 'refresh failed' : 'list refreshed'}`
+            );
+            return;
+        }
+        if (reloadFailed) {
             setStatus(els.adminStatus, `${completed} of ${selectionCount} changed before the error; refresh also failed.`);
             return;
         }
         setStatus(els.adminStatus, completed
             ? `${completed} of ${selectionCount} changed before the error; list refreshed.`
-            : (error.message || 'Bulk action failed.'));
+            : formatAdminMutationError(error, 'Bulk action failed.', 'dood'));
     } finally {
         button.disabled = false;
+        submissionMutationBusy = false;
     }
 }
 
