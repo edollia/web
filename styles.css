@@ -2340,7 +2340,8 @@ body.has-posts-panel-open .button-group {
 
 .dwl-motion-ready > .dwl-motion-viewport > .social-links-panel,
 .dwl-motion-ready > .dwl-motion-viewport > .popup-content,
-.dwl-motion-ready > .dwl-motion-viewport > .doll-wishlist-body {
+.dwl-motion-ready > .dwl-motion-viewport > .doll-wishlist-body,
+.dwl-motion-ready > .dwl-motion-viewport > .community-scroll-body {
     height: 100%;
     max-height: none;
 }
@@ -4683,6 +4684,9 @@ body.has-community-hub-open #action-menu-button.open > .menu-back-arrow {
 }
 
 .community-hub {
+    /* Keep the same 12px breathing room beneath the fully collapsed icon pill
+       that the previous visual treatment had, without coupling it to height. */
+    --dwl-collapse-distance: 41px;
     position: absolute;
     top: var(--open-surface-top);
     left: 50%;
@@ -4708,11 +4712,9 @@ body.has-community-hub-open #action-menu-button.open > .menu-back-arrow {
         linear-gradient(rgba(255, 255, 255, 0.79), rgba(255, 246, 251, 0.74)),
         repeating-linear-gradient(90deg, rgba(255, 231, 242, 0.24) 0 12px, rgba(255, 250, 253, 0.24) 12px 24px);
     box-shadow: 0 8px 21px rgba(255, 145, 195, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.84);
-    /* Reclaim the icon-row space upward while growing the internal viewport
-       by the exact same amount. The top therefore rises as intended, but the
-       card's bottom border and footer relationship stay mathematically fixed. */
-    --community-surface-shift: max(0px, calc(var(--dwl-scroll-grow) - 12px));
-    transform: translate3d(0, calc(-1 * var(--community-surface-shift)), 0);
+    /* The shared motion shell preallocates the fully collapsed height once,
+       clips it at the stable footer edge, and moves this layer compositor-side.
+       Never change the native scroller's geometry under the visitor's finger. */
     will-change: transform;
 }
 
@@ -4720,13 +4722,15 @@ body.has-community-hub-open #action-menu-button.open > .menu-back-arrow {
     --dwl-edge-top: 1;
     --dwl-edge-bottom: 1;
     width: 100%;
-    max-height: calc(var(--panel-fill-max, 560px) + var(--community-surface-shift));
-    height: calc(var(--panel-fill-max, 560px) + var(--community-surface-shift));
+    max-height: var(--panel-fill-max, 560px);
+    height: var(--panel-fill-max, 560px);
     overflow-x: hidden;
     overflow-y: auto;
     overscroll-behavior-y: contain;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
+    scroll-timeline-name: --dwl-posts-scroll;
+    scroll-timeline-axis: block;
     transition:
         --dwl-edge-top 0.12s ease-out,
         --dwl-edge-bottom 0.12s ease-out;
@@ -4744,6 +4748,13 @@ body.has-community-hub-open #action-menu-button.open > .menu-back-arrow {
         #000 calc(100% - 22px),
         rgba(0, 0, 0, var(--dwl-edge-bottom)) 100%
     );
+}
+
+/* The unified card owns the posts timeline. Its nested legacy content is
+   visible but no longer a scroller, so it must not compete as a second source
+   with the same timeline name. */
+.community-hub .posts-content {
+    scroll-timeline-name: none;
 }
 
 .community-hub.has-content-above .community-scroll-body {

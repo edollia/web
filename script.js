@@ -2600,7 +2600,9 @@ document.addEventListener("DOMContentLoaded", async function() {
 
     function clearScrollMotion(shell) {
         if (!shell) return;
-        const scroller = shell.querySelector('.social-links-panel, .doll-wishlist-body, .posts-content');
+        const scroller = shell.querySelector(
+            '.social-links-panel, .doll-wishlist-body, .community-scroll-body, .posts-content'
+        );
         const host = shell.closest('.toggle-container');
         if (scroller) panelScrollExtents.delete(scroller);
         shell.classList.remove('dwl-motion-ready');
@@ -2662,7 +2664,9 @@ document.addEventListener("DOMContentLoaded", async function() {
     function getCurrentMotionGrow(panel) {
         const shell = panel?.closest('.dwl-motion-shell');
         if (!shell?.classList.contains('dwl-motion-ready')) return 0;
-        const scroller = shell.querySelector('.social-links-panel, .doll-wishlist-body, .posts-content');
+        const scroller = shell.querySelector(
+            '.social-links-panel, .doll-wishlist-body, .community-scroll-body, .posts-content'
+        );
         const distance = parseFloat(
             window.getComputedStyle(shell).getPropertyValue('--dwl-collapse-distance')
         ) || 0;
@@ -2800,7 +2804,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                 } else if (document.body.classList.contains('has-wishlist-panel-open')) {
                     window.dollSyncWishlistReservedHeight?.(forceSync);
                 } else if (document.body.classList.contains('has-posts-panel-open')) {
-                    syncPostsPanelSpace();
+                    syncPostsPanelSpace(forceSync);
                 }
             });
         }, 120);
@@ -2876,10 +2880,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     function setIconsScrollProgress(scrollTop) {
         cancelIconCollapseTween();
         const shell = getActiveMotionShell();
-        const unifiedCommunityOpen = Boolean(
-            document.querySelector('#community-hub.active .community-scroll-body')
-        );
-        if (!unifiedCommunityOpen && !shell?.classList.contains('dwl-motion-ready')) {
+        if (!shell?.classList.contains('dwl-motion-ready')) {
             setIconCollapseProgress(0);
             return;
         }
@@ -2887,10 +2888,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         setIconCollapseProgress(easeIconCollapseProgress(linearProgress), {
             // Native scroll timelines own the visual properties directly and
             // do not need main-thread style writes on every scroll frame.
-            // The unified community card intentionally uses its whole-card
-            // scroller instead of a legacy motion viewport, so it always
-            // writes the shared progress value directly.
-            writeVisual: unifiedCommunityOpen || !hasNativeScrollCollapse,
+            writeVisual: !hasNativeScrollCollapse,
         });
     }
 
@@ -2904,15 +2902,12 @@ document.addEventListener("DOMContentLoaded", async function() {
         if (!scroller || scroller.scrollTop > ICON_TOP_RELEASE_PX) return false;
         const group = document.querySelector('.button-group');
         const pill = document.getElementById('dwl-icons-pill');
-        const unifiedCommunityOpen = Boolean(
-            document.querySelector('#community-hub.active .community-scroll-body')
-        );
         const stale = group?.classList.contains('icons-pill-active')
             || pill?.style.pointerEvents === 'auto';
         if (stale) {
             cancelIconCollapseTween();
             setIconCollapseProgress(0, {
-                writeVisual: unifiedCommunityOpen || !hasNativeScrollCollapse,
+                writeVisual: !hasNativeScrollCollapse,
             });
         }
         return true;
@@ -2921,8 +2916,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     function reconcilePanelScrollState(scroller = getOpenPanelScroller()) {
         if (!scroller) return;
         if (releaseIconHitTestingAtTop(scroller)) {
-            if (!hasNativeScrollCollapse
-                || document.querySelector('#community-hub.active .community-scroll-body')) {
+            if (!hasNativeScrollCollapse) {
                 setIconCollapseProgress(0);
             }
             return;
@@ -3262,7 +3256,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         if (postsMediaStagingRoot === root) postsMediaStagingRoot = null;
     }
 
-    function syncPostsPanelSpace() {
+    function syncPostsPanelSpace(force = false) {
         if (!postsPanel?.classList.contains('active')) return;
         const host = postsPanel.closest('.toggle-container');
         const card = postsPanel.querySelector('.popup-content');
@@ -3271,27 +3265,23 @@ document.addEventListener("DOMContentLoaded", async function() {
         // once. Its negative margin and added height cancel exactly, so this
         // outer bottom is identical before, during and after the conversion.
         if (isCommunityHubOpen()) {
-            const communityVisualShift = Math.max(
-                0,
-                (communityHub?.getBoundingClientRect().top || 0)
-                    - (communitySurface?.getBoundingClientRect().top || 0)
-            );
-            setPanelFillMax(communityScrollBody, {
-                reservedPad: 4,
-                openMargin: 24,
-                bottomGap: 10,
-                visualShift: communityVisualShift,
-            });
+            const motionFrozen = communityHub?.classList.contains('dwl-motion-ready');
+            if (!motionFrozen || force) {
+                setPanelFillMax(communityScrollBody, {
+                    reservedPad: 4,
+                    openMargin: 24,
+                    bottomGap: 10,
+                });
+                configureScrollMotion(
+                    communityHub,
+                    communityScrollBody,
+                    communitySurface
+                );
+            }
         } else {
             setPanelFillMax(card, { reservedPad: 14, openMargin: 18, bottomGap: 16 });
+            configureScrollMotion(postsPanel, postsContentEl, card);
         }
-        // The unified :3 wall is already embedded inside a taller composer.
-        // Expanding and translating its legacy popup viewport exposes an
-        // empty strip beneath the capped feed and makes the edge masks slice
-        // through cards on iOS. Keep :3 as one stable native scroller; the
-        // original motion treatment remains available to the legacy surface.
-        if (isCommunityHubOpen()) clearScrollMotion(postsPanel);
-        else configureScrollMotion(postsPanel, postsContentEl, card);
         const surface = isCommunityHubOpen() ? communityHub : postsPanel;
         const panelRect = surface.getBoundingClientRect();
         const hostRect = host.getBoundingClientRect();
@@ -3310,6 +3300,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         document.body.classList.toggle('has-posts-panel-open', open);
         const host = postsPanel?.closest('.toggle-container');
         if (!open) {
+            clearScrollMotion(communityHub);
             clearScrollMotion(postsPanel);
             host?.style.removeProperty('--posts-panel-height');
             postsPanel?.querySelector('.popup-content')?.style.removeProperty('--panel-fill-max');
