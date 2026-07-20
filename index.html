@@ -79,7 +79,7 @@
           "about": {
             "@id": "https://doll.gg/#lia"
           },
-          "dateModified": "2026-07-18T10:21:30-07:00",
+          "dateModified": "2026-07-19T12:00:00-07:00",
           "inLanguage": "en"
         },
         {
@@ -98,14 +98,15 @@
           "mainEntity": {
             "@id": "https://doll.gg/#lia"
           },
-          "dateModified": "2026-07-18T10:21:30-07:00",
+          "dateModified": "2026-07-19T12:00:00-07:00",
           "inLanguage": "en"
         }
       ]
     }
     </script>
 
-    <link rel="stylesheet" href="styles.css?v=12.79">
+    <meta name="doll-build" content="2026.07.19.4">
+    <link rel="stylesheet" href="styles.css?v=12.89&r=2026.07.19.4">
 </head>
 <body>
     <!-- Loading Screen -->
@@ -155,14 +156,9 @@
                         <img src="site-images/wishlist.png?v=13" alt="Wishlist" class="menu-main-icon" width="185" height="192">
                         <span class="menu-close-icon" aria-hidden="true">&times;</span>
                     </a>
-                    <div id="action-menu-button" class="next-button support-menu-button action-menu-button" role="button" tabindex="0" aria-label="Open actions" aria-expanded="false">
+                    <div id="action-menu-button" class="next-button support-menu-button action-menu-button" role="button" tabindex="0" aria-label="Open :3" aria-expanded="false">
                         <span class="action-menu-label menu-main-icon">𓏲ּ𝄢</span>
-                        <span class="menu-back-arrow" aria-hidden="true">↢</span>
-                        <span class="support-options action-options" aria-hidden="true">
-                            <span id="toggle-button" class="support-option action-option pencil-option" role="button" tabindex="-1" aria-label="Doodle">✎</span>
-                            <span id="ask-button" class="support-option action-option question-option" role="button" tabindex="-1" aria-label="Ask">?</span>
-                            <span id="posts-button" class="support-option action-option" role="button" tabindex="-1">:3</span>
-                        </span>
+                        <span class="menu-back-arrow" aria-hidden="true">&times;</span>
                     </div>
                 </div>
                 <button type="button" id="dwl-icons-pill" class="dwl-icons-pill" aria-label="Show menu icons" tabindex="-1">
@@ -342,6 +338,16 @@
                     </div>
                 </div>
 
+                <section id="community-hub" class="community-hub" aria-label="Ask, doodle, and visitor wall" aria-hidden="true">
+                    <div class="community-surface">
+                    <div class="community-scroll-body">
+                    <div class="community-create-tabs" role="tablist" aria-label="Create something">
+                        <button type="button" id="ask-button" class="community-create-tab active" role="tab" aria-label="Ask a question" title="Ask a question" aria-selected="true" aria-controls="ask-form-container">?</button>
+                        <button type="button" id="toggle-button" class="community-create-tab" role="tab" aria-label="Draw a doodle" title="Draw a doodle" aria-selected="false" aria-controls="drawing-widget">✎</button>
+                    </div>
+                    <span id="posts-button" class="community-posts-trigger" aria-hidden="true" hidden>:3</span>
+
+                    <div class="community-composer-slot">
                 <div id="ask-form-container" class="ask-form-container">
                     <span class="ask-deco ask-sparkle-left" aria-hidden="true">✧</span>
                     <span class="ask-deco ask-sparkle-right" aria-hidden="true">✧</span>
@@ -355,7 +361,7 @@
                 </div>
                 
                 <!-- Drawing Widget -->
-                <div class="drawing-widget">
+                <div class="drawing-widget" id="drawing-widget">
                     <div class="canvas-container">
                         <div class="drawing-controls">
                             <button id="undo-button" title="Undo last action">↻</button>
@@ -369,6 +375,9 @@
                         <button id="send-drawing" class="send-button">Send anonymously</button>
                     </div>
                 </div>
+                    </div>
+
+                    <div class="community-wall-title" aria-hidden="true"></div>
 
                 <div class="posts-popup posts-panel dwl-motion-shell scroll-edge-bottom-mask" id="posts-popup">
                     <div class="dwl-motion-viewport">
@@ -376,27 +385,21 @@
                         <span class="posts-deco posts-sparkle-left" aria-hidden="true">✧</span>
                         <span class="posts-deco posts-sparkle-right" aria-hidden="true">✧</span>
                         <span class="posts-deco posts-heart-right" aria-hidden="true">♡</span>
-                        <div class="posts-header">
-                            <div class="posts-tabs">
-                                <button class="tab-button active" data-tab="drawings-tab">Doods</button>
-                                <button class="tab-button" data-tab="questions-tab">Mi</button>
-                            </div>
-                        </div>
-                        
                         <div class="posts-scroll-shell scroll-edge-top-mask">
                             <div class="posts-content">
-                                <div id="drawings-tab" class="tab-content active">
-                                    <div class="posts-list" id="drawings-list"></div>
+                                <div id="questions-tab" class="tab-content active">
+                                    <div class="posts-list community-wall-list" id="community-wall-list"></div>
                                 </div>
-
-                                <div id="questions-tab" class="tab-content">
-                                    <div class="posts-list" id="questions-list"></div>
-                                </div>
+                                <div id="drawings-list" hidden></div>
+                                <div id="questions-list" hidden></div>
                             </div>
                         </div>
                     </div>
                     </div>
                 </div>
+                    </div>
+                    </div>
+                </section>
             </div>
         </div>
 
@@ -452,11 +455,12 @@
         </div>
     </section>
 
-    <script src="social-card-media-config.js?v=3"></script>
-    <script src="throne-overlay-widget.js?v=3.8"></script>
-    <script src="throne-mockup-widget.js?v=49"></script>
-    <script src="kofi-overlay-widget.js?v=5.17"></script>
-    <script src="script.js?v=10.74"></script>
+    <script src="social-card-media-config.js?v=4&r=2026.07.19.4"></script>
+    <script src="throne-overlay-widget.js?v=3.8&r=2026.07.19.4"></script>
+    <script src="wishlist-fallback.js?v=1&r=2026.07.19.4"></script>
+    <script src="throne-mockup-widget.js?v=52&r=2026.07.19.4"></script>
+    <script src="kofi-overlay-widget.js?v=5.17&r=2026.07.19.4"></script>
+    <script src="script.js?v=10.87&r=2026.07.19.4"></script>
     
     <!-- GoatCounter Analytics -->
     <script data-goatcounter="https://dollia.goatcounter.com/count"

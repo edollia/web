@@ -1201,6 +1201,10 @@ body.has-posts-panel-open .site-brand-footer {
        viewport-based footer push is needed anywhere. */
     margin: 56px auto 0;
     padding-bottom: max(14px, env(safe-area-inset-bottom));
+    /* Reserve the complete pill + safe-area strip in every layout
+       calculation. Open panels are shortened before this footer is allowed
+       to leave the visible viewport. */
+    min-height: calc(30px + max(14px, env(safe-area-inset-bottom)));
     opacity: 0;
     transform: translateY(6px);
     pointer-events: none;
@@ -1302,6 +1306,7 @@ body.has-posts-panel-open .site-brand-footer {
     body.has-posts-panel-open .main-screen .site-brand-footer {
         margin-top: 6px !important;
         padding-bottom: max(8px, env(safe-area-inset-bottom));
+        min-height: calc(26px + max(8px, env(safe-area-inset-bottom)));
     }
 
     body.has-social-panel-open .site-brand-footer a,
@@ -2074,9 +2079,11 @@ body.has-posts-panel-open .button-group {
     height: 20px;
     flex: 0 0 auto;
     color: #d7c0c5;
-    font-size: 19px;
+    font-family: ui-rounded, "Arial Rounded MT Bold", system-ui, sans-serif;
+    font-size: 20px;
+    font-weight: 400;
     line-height: 1;
-    transform: translateY(-1px);
+    transform: none;
     text-shadow: none;
 }
 
@@ -2242,7 +2249,7 @@ body.has-posts-panel-open .button-group {
     width: 20px;
     height: 20px;
     flex: 0 0 auto;
-    color: rgba(184, 74, 117, 0.88);
+    color: #d7c0c5;
     font-family: ui-rounded, "Arial Rounded MT Bold", system-ui, sans-serif;
     font-size: 20px;
     font-weight: 400;
@@ -2291,7 +2298,10 @@ body.has-posts-panel-open .button-group {
 .social-links-panel {
     position: relative;
     width: 100%;
-    max-height: max(300px, var(--panel-fill-max, 0px));
+    /* The measured cap owns short-screen sizing. A hard 300px floor pushed
+       the footer under Safari's toolbar on 667px iPhones. */
+    max-height: var(--panel-fill-max, 300px);
+    height: var(--panel-fill-max, auto);
     overflow-y: auto;
     overflow-x: hidden;
     overscroll-behavior-y: contain;
@@ -2473,7 +2483,8 @@ body.has-social-panel-open .site-brand-footer {
 
 /* Animated card backgrounds (video or GIF) stay softly masked beneath the
    existing icon, copy, and arrow without changing the card structure. */
-.social-link-preview {
+.social-link-preview,
+.social-link-poster {
     position: absolute;
     inset: 0;
     z-index: 0;
@@ -2495,8 +2506,21 @@ body.has-social-panel-open .site-brand-footer {
     transition: opacity 0.22s ease;
 }
 
+.social-link-poster {
+    object-fit: contain;
+    padding: 2px 18%;
+    opacity: 0.1;
+    filter: saturate(0.62) blur(0.35px);
+    transform: translateZ(0) scale(1.35);
+    -webkit-transform: translateZ(0) scale(1.35);
+}
+
 .social-link-card.has-social-preview .social-link-preview {
     opacity: 0.34;
+}
+
+.social-link-card.has-social-preview .social-link-poster {
+    opacity: 0;
 }
 
 .social-link-card::after {
@@ -2514,7 +2538,7 @@ body.has-social-panel-open .site-brand-footer {
     opacity: 1;
 }
 
-.social-link-card > :not(.social-link-preview) {
+.social-link-card > :not(.social-link-preview):not(.social-link-poster) {
     position: relative;
     z-index: 2;
 }
@@ -3527,7 +3551,7 @@ body.first-visit-tour-active .tour-highlight-target {
     /* Free-floating, no card chrome — matches .doll-wishlist-panel's own
        background-less treatment. Only .posts-content (below) scrolls. */
     width: min(88vw, 300px);
-    max-height: max(420px, var(--panel-fill-max, 0px));
+    max-height: var(--panel-fill-max, 420px);
     position: relative;
     display: flex;
     flex-direction: column;
@@ -4620,3 +4644,397 @@ body.first-visit-tour-active .tour-highlight-target {
 
 /* Prevent Ko-fi icon link from showing underline */
 /* Ko-fi icon now uses .email-button class - no separate styling needed */
+
+/* Unified :3 community surface. This layer only rearranges the existing Ask,
+   Doodle, and public-post components; their data, media, and submission styles
+   above remain the source of truth. */
+body.has-community-hub-open #action-menu-button.open {
+    width: 46px;
+    min-width: 46px;
+    flex-basis: 46px;
+    padding: 0;
+    gap: 0;
+}
+
+body.has-community-hub-open .toggle-container {
+    min-height: var(--posts-panel-height, 590px);
+}
+
+/* :3 owns one internal native scroller. Prevent an iOS bottom-edge swipe
+   from chaining into the page and carrying the otherwise-correct footer out
+   of the visual viewport. Socials/Wishlist keep their existing page rules. */
+body.has-posts-panel-open.has-community-hub-open {
+    overflow: hidden;
+}
+
+body.has-community-hub-open .site-brand-footer {
+    margin-top: 24px;
+}
+
+body.has-community-hub-open #action-menu-button.open .action-options {
+    display: none;
+}
+
+body.has-community-hub-open #action-menu-button.open > .menu-back-arrow {
+    font-family: ui-rounded, "Arial Rounded MT Bold", system-ui, sans-serif;
+    font-size: 20px;
+    font-weight: 400;
+    transform: none;
+}
+
+.community-hub {
+    position: absolute;
+    top: var(--open-surface-top);
+    left: 50%;
+    z-index: 11;
+    width: min(90vw, 320px);
+    padding: 0;
+    opacity: 0;
+    visibility: hidden;
+    color: var(--glass-pink-text);
+    transform: translateX(-50%) translateY(-8px) scale(0.985);
+    transform-origin: 50% 0;
+    pointer-events: none;
+    transition: opacity 0.34s ease, transform 0.42s cubic-bezier(0.22, 1, 0.36, 1), visibility 0s linear 0.42s;
+}
+
+.community-surface {
+    width: 100%;
+    padding: 7px 8px 9px;
+    overflow: hidden;
+    border: 1px solid rgba(255, 174, 207, 0.5);
+    border-radius: 20px;
+    background:
+        linear-gradient(rgba(255, 255, 255, 0.79), rgba(255, 246, 251, 0.74)),
+        repeating-linear-gradient(90deg, rgba(255, 231, 242, 0.24) 0 12px, rgba(255, 250, 253, 0.24) 12px 24px);
+    box-shadow: 0 8px 21px rgba(255, 145, 195, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.84);
+    /* Reclaim the icon-row space upward while growing the internal viewport
+       by the exact same amount. The top therefore rises as intended, but the
+       card's bottom border and footer relationship stay mathematically fixed. */
+    --community-surface-shift: max(0px, calc(var(--dwl-scroll-grow) - 12px));
+    transform: translate3d(0, calc(-1 * var(--community-surface-shift)), 0);
+    will-change: transform;
+}
+
+.community-scroll-body {
+    --dwl-edge-top: 1;
+    --dwl-edge-bottom: 1;
+    width: 100%;
+    max-height: calc(var(--panel-fill-max, 560px) + var(--community-surface-shift));
+    height: calc(var(--panel-fill-max, 560px) + var(--community-surface-shift));
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    transition:
+        --dwl-edge-top 0.12s ease-out,
+        --dwl-edge-bottom 0.12s ease-out;
+    -webkit-mask-image: linear-gradient(
+        to bottom,
+        rgba(0, 0, 0, var(--dwl-edge-top)) 0,
+        #000 22px,
+        #000 calc(100% - 22px),
+        rgba(0, 0, 0, var(--dwl-edge-bottom)) 100%
+    );
+    mask-image: linear-gradient(
+        to bottom,
+        rgba(0, 0, 0, var(--dwl-edge-top)) 0,
+        #000 22px,
+        #000 calc(100% - 22px),
+        rgba(0, 0, 0, var(--dwl-edge-bottom)) 100%
+    );
+}
+
+.community-hub.has-content-above .community-scroll-body {
+    --dwl-edge-top: 0;
+}
+
+.community-hub.has-content-below .community-scroll-body {
+    --dwl-edge-bottom: 0;
+}
+
+.community-scroll-body::-webkit-scrollbar {
+    display: none;
+}
+
+.community-hub.active {
+    opacity: 1;
+    visibility: visible;
+    transform: translateX(-50%) translateY(0) scale(1);
+    pointer-events: auto;
+    transition-delay: 0s;
+}
+
+.community-create-tabs {
+    display: flex;
+    width: 94px;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    margin: 0 auto 6px;
+    padding: 2px;
+    border: 1px solid rgba(255, 180, 212, 0.34);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.55);
+    box-shadow: 0 2px 6px rgba(255, 157, 205, 0.14);
+}
+
+.community-create-tab,
+#ask-button.community-create-tab,
+#toggle-button.community-create-tab {
+    display: flex;
+    width: auto;
+    min-width: 43px;
+    height: 23px;
+    min-height: 23px;
+    max-height: 23px;
+    flex: 1 1 0;
+    align-items: center;
+    justify-content: center;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 999px;
+    color: var(--glass-pink-text);
+    background: transparent;
+    box-shadow: none;
+    font-family: "Comic Sans MS", "Trebuchet MS", cursive;
+    font-size: 16px;
+    font-weight: 700;
+    line-height: 1;
+    text-shadow: none;
+    cursor: pointer;
+    transition: color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.community-create-tab.active,
+#ask-button.community-create-tab.active,
+#toggle-button.community-create-tab.active {
+    color: #d84488;
+    background: #fff;
+    box-shadow: 0 1px 4px rgba(255, 145, 198, 0.22);
+}
+
+.community-create-tab.site-link-hidden {
+    display: none;
+}
+
+.community-posts-trigger {
+    display: none !important;
+}
+
+.community-composer-slot {
+    position: relative;
+    min-height: 148px;
+    transition: min-height 0.26s ease;
+}
+
+.community-hub.is-doodle-mode .community-composer-slot {
+    min-height: 282px;
+}
+
+.community-hub.has-no-composer .community-create-tabs,
+.community-hub.has-no-composer .community-composer-slot {
+    display: none;
+}
+
+.community-hub .ask-form-container,
+.community-hub .ask-form-container[style*="block"] {
+    position: relative;
+    inset: auto;
+    display: block;
+    width: min(100%, 240px);
+    min-height: 134px;
+    margin: 0 auto;
+    transform: none;
+    animation: none;
+    z-index: 1;
+}
+
+.community-hub.is-doodle-mode .ask-form-container {
+    display: none;
+}
+
+.community-hub .drawing-widget,
+.community-hub .drawing-widget.active {
+    position: relative;
+    inset: auto;
+    display: none;
+    width: 100%;
+    opacity: 1;
+    transform: none;
+    pointer-events: auto;
+}
+
+.community-hub.is-doodle-mode .drawing-widget.active {
+    display: block;
+}
+
+.community-hub .canvas-container {
+    width: 100%;
+    padding: 10px;
+}
+
+.community-hub .drawing-controls {
+    gap: 8px;
+    margin-bottom: 3px;
+}
+
+.community-hub #drawing-canvas {
+    display: block;
+    width: min(100%, 240px);
+    height: auto;
+    aspect-ratio: 330 / 230;
+    margin: 6px 0;
+}
+
+.community-hub #send-drawing {
+    margin-top: 3px;
+}
+
+.community-wall-title {
+    height: 1px;
+    margin: 3px 2px 5px;
+    background: linear-gradient(90deg, transparent, rgba(255, 174, 207, 0.6), transparent);
+}
+
+.community-hub .posts-popup,
+.community-hub .posts-popup.active {
+    position: relative;
+    inset: auto;
+    display: block;
+    width: 100%;
+    height: auto;
+    margin-top: 0;
+    padding: 0;
+    overflow: visible;
+    opacity: 1;
+    transform: none;
+    pointer-events: auto;
+    -webkit-mask-image: none;
+    mask-image: none;
+}
+
+.community-hub .posts-popup .dwl-motion-viewport,
+.community-hub .posts-popup.dwl-motion-ready > .dwl-motion-viewport {
+    position: relative;
+    inset: auto;
+    width: 100%;
+    height: auto;
+    transform: none;
+    animation: none;
+    will-change: auto;
+    -webkit-mask-image: none;
+    mask-image: none;
+}
+
+.community-hub .posts-popup .popup-content,
+.community-hub .posts-popup.dwl-motion-ready > .dwl-motion-viewport > .popup-content {
+    width: 100%;
+    height: auto;
+    max-height: none;
+    padding: 0;
+}
+
+.community-hub .posts-scroll-shell {
+    width: 100%;
+    -webkit-mask-image: none;
+    mask-image: none;
+}
+
+.community-hub .posts-content {
+    max-height: none;
+    padding: 8px 6px 14px;
+    border-radius: 12px;
+    overflow: visible;
+    scrollbar-width: none;
+    -webkit-mask-image: none;
+    mask-image: none;
+}
+
+.community-hub .posts-content::-webkit-scrollbar {
+    display: none;
+}
+
+.community-hub .posts-content.posts-is-fetching {
+    min-height: 210px;
+}
+
+.community-hub .posts-loading-overlay {
+    min-height: 210px;
+}
+
+.community-hub .community-wall-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+    gap: 10px;
+    padding: 11px 8px 18px;
+}
+
+.community-hub .community-wall-list.is-single {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+.community-masonry-column {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.community-wall-list .post-item,
+.community-wall-list .question-item {
+    width: 100%;
+    min-width: 0;
+    display: block;
+    margin: 0;
+    opacity: 1;
+    animation: none;
+    break-inside: avoid;
+    transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.community-wall-list .posts-fetch-state {
+    grid-column: 1 / -1;
+}
+
+.community-wall-list .community-pin-1 { --pin-rot: -2deg; transform: rotate(-2deg); }
+.community-wall-list .community-pin-2 { --pin-rot: 1.6deg; transform: rotate(1.6deg); }
+.community-wall-list .community-pin-3 { --pin-rot: -1.4deg; transform: rotate(-1.4deg); }
+.community-wall-list .community-pin-4 { --pin-rot: 2deg; transform: rotate(2deg); }
+
+.community-wall-list .question-item:hover {
+    transform: rotate(var(--pin-rot, 0deg)) translateY(-2px);
+}
+
+.community-wall-list .question-text,
+.community-wall-list .answer-text {
+    overflow-wrap: anywhere;
+}
+
+.community-wall-list .post-item > img {
+    width: 100%;
+    height: auto;
+    aspect-ratio: auto;
+    object-fit: contain;
+}
+
+@media (max-width: 390px) {
+    .community-hub {
+        width: min(92vw, 314px);
+        padding-inline: 8px;
+    }
+
+    .community-hub .posts-content {
+        max-height: none;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .community-hub,
+    .community-composer-slot {
+        transition: none;
+    }
+}

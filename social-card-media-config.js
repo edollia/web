@@ -14,5 +14,11 @@ window.DOLL_SOCIAL_CARD_MEDIA = Object.freeze({
         instagram: 'instagram-1784157862017-5c21bdee-1cdb-49d4-b6fb-8ff7d571a618.mp4?v=2',
         kofi: 'kofi-1784080551947-443af2fb-e7a3-49ee-a4cc-488a5acdeb37.mp4?v=2',
         telegram: 'telegram-1784148350733-7a473db5-d8ee-4b22-a548-646280fcb89c-2.mp4?v=2'
+    }),
+    localPosters: Object.freeze({
+        snapchat: 'social-icons/snapchat.png?v=1',
+        instagram: 'social-icons/instagram.png?v=1',
+        kofi: 'social-icons/kofi.png?v=1',
+        telegram: 'social-icons/telegram.png?v=1'
     })
 });

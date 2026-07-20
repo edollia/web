@@ -34,11 +34,20 @@ const socialVideoPickerTimers = new Map();
 const socialVideoPendingInputs = new Map();
 const SOCIAL_VIDEO_PICKER_SESSION_KEY = 'doll_social_video_picker_pending';
 const SOCIAL_VIDEO_CLEANUP_STORAGE_KEY = 'doll_social_video_cleanup_pending_v1';
-const PUBLIC_SITE_SETTINGS_CACHE_KEY = 'doll_public_site_settings_v1';
+const DOLL_BUILD_ID = document.querySelector('meta[name="doll-build"]')?.content || '2026.07.19.1';
+const PUBLIC_SITE_SETTINGS_CACHE_KEY = 'doll_public_site_settings_v2';
+const LEGACY_PUBLIC_SITE_SETTINGS_CACHE_KEY = 'doll_public_site_settings_v1';
+const PUBLIC_SITE_SETTINGS_CACHE_SCHEMA = 2;
 
 function cachePublicSiteSettings(settings) {
     try {
-        localStorage.setItem(PUBLIC_SITE_SETTINGS_CACHE_KEY, JSON.stringify(settings));
+        localStorage.removeItem(LEGACY_PUBLIC_SITE_SETTINGS_CACHE_KEY);
+        localStorage.setItem(PUBLIC_SITE_SETTINGS_CACHE_KEY, JSON.stringify({
+            schema: PUBLIC_SITE_SETTINGS_CACHE_SCHEMA,
+            buildId: DOLL_BUILD_ID,
+            savedAt: Date.now(),
+            value: settings
+        }));
     } catch (error) {
         // The public page still has a complete static fallback if storage is unavailable.
     }
@@ -669,7 +678,7 @@ function normalizeLinkSettings(value) {
         social_card_order: normalizeSocialCardOrder(settings.social_card_order),
         throne_url: String(settings.throne_url || DEFAULT_LINK_SETTINGS.throne_url),
         throne_enabled: readBooleanSetting(settings, 'throne_enabled'),
-        throne_checkout_mode: settings.throne_checkout_mode === 'widget' ? 'widget' : 'mockup',
+        throne_checkout_mode: 'mockup',
         wishlist_view_mode: WISHLIST_VIEW_MODES.includes(settings.wishlist_view_mode) ? settings.wishlist_view_mode : 'masonry',
         homepage_note_text: String(settings.homepage_note_text || '').slice(0, 220),
         homepage_note_font_size: Math.min(17, Math.max(9, Number(settings.homepage_note_font_size) || DEFAULT_LINK_SETTINGS.homepage_note_font_size)),
@@ -809,7 +818,7 @@ function renderLinkSettings({ preserveDraft = false } = {}) {
     if (els.throneEnabled) els.throneEnabled.checked = settings.throne_enabled !== false;
     if (els.throneUrl) els.throneUrl.value = settings.throne_url || '';
     if (els.throneState) els.throneState.textContent = settings.throne_enabled !== false ? 'visible' : 'hidden';
-    if (els.throneCheckoutMode) els.throneCheckoutMode.value = settings.throne_checkout_mode === 'widget' ? 'widget' : 'mockup';
+    if (els.throneCheckoutMode) els.throneCheckoutMode.value = 'mockup';
     if (els.wishlistViewMode) els.wishlistViewMode.value = WISHLIST_VIEW_MODES.includes(settings.wishlist_view_mode) ? settings.wishlist_view_mode : 'masonry';
     if (els.homepageNoteText) els.homepageNoteText.value = settings.homepage_note_text || '';
     if (els.maintenanceEnabled) els.maintenanceEnabled.checked = settings.maintenance_enabled === true;
@@ -888,7 +897,7 @@ function getDraftLinkSettings() {
         social_card_order: normalizeSocialCardOrder(state.linkSettings.social_card_order),
         throne_url: els.throneUrl?.value.trim() || state.linkSettings.throne_url || DEFAULT_LINK_SETTINGS.throne_url,
         throne_enabled: els.throneEnabled?.checked !== false,
-        throne_checkout_mode: els.throneCheckoutMode?.value === 'widget' ? 'widget' : 'mockup',
+        throne_checkout_mode: 'mockup',
         wishlist_view_mode: WISHLIST_VIEW_MODES.includes(els.wishlistViewMode?.value) ? els.wishlistViewMode.value : 'masonry',
         homepage_note_text: (els.homepageNoteText?.value || '').slice(0, 220),
         homepage_note_font_size: Math.min(17, Math.max(9, Number(state.linkSettings.homepage_note_font_size) || DEFAULT_LINK_SETTINGS.homepage_note_font_size)),
@@ -2598,7 +2607,7 @@ async function persistLatestLinkSettings(requestId, { overrides = null, onCommit
             social_card_order: normalizeSocialCardOrder(state.linkSettings.social_card_order),
             throne_url: cleanUrl(els.throneUrl?.value || state.linkSettings.throne_url, 'Throne'),
             throne_enabled: els.throneEnabled?.checked !== false,
-            throne_checkout_mode: els.throneCheckoutMode?.value === 'widget' ? 'widget' : 'mockup',
+            throne_checkout_mode: 'mockup',
             wishlist_view_mode: WISHLIST_VIEW_MODES.includes(els.wishlistViewMode?.value) ? els.wishlistViewMode.value : 'masonry',
             homepage_note_text: (els.homepageNoteText?.value || '').slice(0, 220),
             homepage_note_font_size: Math.min(17, Math.max(9, Number(state.linkSettings.homepage_note_font_size) || DEFAULT_LINK_SETTINGS.homepage_note_font_size)),

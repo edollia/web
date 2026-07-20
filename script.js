@@ -6,7 +6,8 @@ document.addEventListener("DOMContentLoaded", async function() {
     // an absent config must not unexpectedly resume Supabase media egress.
     const SOCIAL_CARD_MEDIA_CONFIG = window.DOLL_SOCIAL_CARD_MEDIA || Object.freeze({
         mode: 'github',
-        localVideos: Object.freeze({})
+        localVideos: Object.freeze({}),
+        localPosters: Object.freeze({})
     });
     const SOCIAL_CARD_VIDEO_SOURCE_MODE = SOCIAL_CARD_MEDIA_CONFIG.mode === 'supabase'
         ? 'supabase'
@@ -14,6 +15,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     const MAIN_SUPABASE_URL = 'https://zvqdodzkhmcptwkjlfeu.supabase.co';
     const MAIN_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp2cWRvZHpraG1jcHR3a2psZmV1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg3NjM1NjAsImV4cCI6MjA2NDMzOTU2MH0.i1xbRIhPHVkDIrnDlQFP0ebNklrx8WVQcQo8Iuo9zG8';
     const LOCAL_SOCIAL_CARD_VIDEOS = SOCIAL_CARD_MEDIA_CONFIG.localVideos || {};
+    const LOCAL_SOCIAL_CARD_POSTERS = SOCIAL_CARD_MEDIA_CONFIG.localPosters || {};
     const LOCAL_SOCIAL_CARD_PRELOAD_TIMEOUT_MS = 8000;
     const LOCAL_SOCIAL_FRAME_PREPARE_TIMEOUT_MS = 6500;
 
@@ -88,12 +90,67 @@ document.addEventListener("DOMContentLoaded", async function() {
         return document.getElementById(id);
     }
 
+    function ensureSocialCardPoster(key, card = getMountedSocialCardForKey(key)) {
+        const source = String(LOCAL_SOCIAL_CARD_POSTERS[key] || '').trim();
+        if (!card || !source) return null;
+        let poster = card.querySelector('.social-link-poster');
+        if (!poster) {
+            poster = document.createElement('img');
+            poster.className = 'social-link-poster';
+            poster.alt = '';
+            poster.setAttribute('aria-hidden', 'true');
+            poster.decoding = 'async';
+            poster.addEventListener('error', () => poster.remove(), { once: true });
+            card.prepend(poster);
+        }
+        if (poster.getAttribute('src') !== source) poster.src = source;
+        return poster;
+    }
+
+    function recordSocialPreviewReliability(key, state, reason = '') {
+        const diagnostics = window.dollReliabilityDiagnostics ||= {};
+        const social = diagnostics.social ||= {};
+        social[key] = { state, reason, recordedAt: new Date().toISOString() };
+        const card = getMountedSocialCardForKey(key);
+        card?.setAttribute('data-social-preview-state', state);
+        if (reason) card?.setAttribute('data-social-preview-reason', reason);
+        else card?.removeAttribute('data-social-preview-reason');
+    }
+
+    function buildSocialPreviewRetryUrl(source) {
+        try {
+            const url = new URL(source, window.location.href);
+            url.searchParams.set('_doll_media_retry', DOLL_BUILD_ID);
+            return url.href;
+        } catch (error) {
+            return source;
+        }
+    }
+
+    function retryMountedSocialVideo(key, video, canonicalSource, reason) {
+        if (!(video instanceof HTMLVideoElement)
+            || video.dataset.socialRetryUsed === 'true') return false;
+        video.dataset.socialRetryUsed = 'true';
+        video.dataset.configuredSource = canonicalSource;
+        video.dataset.source = buildSocialPreviewRetryUrl(canonicalSource);
+        delete video.dataset.socialFrameReady;
+        delete video.dataset.socialPreviewFailed;
+        video.pause();
+        video.removeAttribute('src');
+        video.load();
+        video.src = video.dataset.source;
+        video.load();
+        recordSocialPreviewReliability(key, 'retrying', reason);
+        return true;
+    }
+
     function ensureMountedLocalSocialVideo(key, source) {
         const card = getMountedSocialCardForKey(key);
         if (!card || !source) return null;
+        ensureSocialCardPoster(key, card);
 
         let video = card.querySelector('video.social-link-preview');
-        if (video && video.dataset.source !== source) {
+        if (video && (video.dataset.configuredSource || video.dataset.source) !== source) {
             video.pause();
             delete video.dataset.socialFrameReady;
             video.removeAttribute('src');
@@ -117,14 +174,15 @@ document.addEventListener("DOMContentLoaded", async function() {
         video.setAttribute('muted', '');
         video.setAttribute('playsinline', '');
         video.setAttribute('webkit-playsinline', '');
-        video.dataset.source = source;
+        video.dataset.configuredSource = source;
+        if (!video.dataset.source) video.dataset.source = source;
 
         if (video.dataset.localSocialLifecycle !== 'true') {
             video.dataset.localSocialLifecycle = 'true';
             const revealAfterPaint = () => {
                 if (!video.isConnected || video.parentElement !== card
-                    || video.dataset.source !== source
-                    || video.getAttribute('src') !== source
+                    || video.dataset.configuredSource !== source
+                    || video.getAttribute('src') !== video.dataset.source
                     || video.readyState < 2) return;
                 const socialsAreOpen = document.getElementById('socials-button')
                     ?.classList.contains('open');
@@ -132,9 +190,11 @@ document.addEventListener("DOMContentLoaded", async function() {
                     pauseAfterFrame: !socialsAreOpen,
                 }).then(painted => {
                     if (!painted || !video.isConnected || video.parentElement !== card
-                        || video.dataset.source !== source
-                        || video.getAttribute('src') !== source) return;
+                        || video.dataset.configuredSource !== source
+                        || video.getAttribute('src') !== video.dataset.source) return;
                     delete video.dataset.socialPreviewFailed;
+                    delete video.dataset.socialRetryUsed;
+                    recordSocialPreviewReliability(key, 'ready');
                     if (card.dataset.socialPreviewDeferred !== 'true') {
                         card.classList.add('has-social-preview');
                     }
@@ -143,17 +203,21 @@ document.addEventListener("DOMContentLoaded", async function() {
             video.addEventListener('loadeddata', revealAfterPaint);
             video.addEventListener('error', () => {
                 if (!video.isConnected || video.parentElement !== card
-                    || video.dataset.source !== source
-                    || video.getAttribute('src') !== source) return;
+                    || video.dataset.configuredSource !== source
+                    || video.getAttribute('src') !== video.dataset.source) return;
                 delete video.dataset.socialFrameReady;
+                if (retryMountedSocialVideo(key, video, source, 'media-error')) return;
                 video.dataset.socialPreviewFailed = 'true';
                 card.classList.remove('has-social-preview');
+                recordSocialPreviewReliability(key, 'fallback', 'media-error-after-retry');
             });
         }
 
-        if (video.getAttribute('src') !== source) {
+        video.dataset.configuredSource = source;
+        if (!video.dataset.source) video.dataset.source = source;
+        if (video.getAttribute('src') !== video.dataset.source) {
             delete video.dataset.socialFrameReady;
-            video.src = source;
+            video.src = video.dataset.source;
             video.load();
         }
         if (video.readyState >= 2) {
@@ -248,14 +312,29 @@ document.addEventListener("DOMContentLoaded", async function() {
         seo_description: "Lia's little space",
         site_tagline: "Lia's little space."
     };
-    const SITE_SETTINGS_CACHE_KEY = 'doll_public_site_settings_v1';
+    const DOLL_BUILD_ID = document.querySelector('meta[name="doll-build"]')?.content || 'dev';
+    const SITE_SETTINGS_CACHE_KEY = 'doll_public_site_settings_v2';
+    const LEGACY_SITE_SETTINGS_CACHE_KEY = 'doll_public_site_settings_v1';
+    const SITE_SETTINGS_CACHE_SCHEMA = 2;
+    const SITE_SETTINGS_CACHE_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 
     function readCachedSiteLinkSettings() {
         try {
+            // v1 stored an unversioned settings object forever. In particular,
+            // a historical `widget` value could keep routing a returning
+            // visitor differently long after the live setting changed.
+            localStorage.removeItem(LEGACY_SITE_SETTINGS_CACHE_KEY);
             const cached = JSON.parse(localStorage.getItem(SITE_SETTINGS_CACHE_KEY) || 'null');
-            return cached && typeof cached === 'object'
-                ? normalizeSiteLinkSettings(cached)
-                : null;
+            const savedAt = Number(cached?.savedAt || 0);
+            const isCurrent = cached?.schema === SITE_SETTINGS_CACHE_SCHEMA
+                && cached.value && typeof cached.value === 'object'
+                && savedAt > 0
+                && Date.now() - savedAt <= SITE_SETTINGS_CACHE_MAX_AGE_MS;
+            if (!isCurrent) {
+                localStorage.removeItem(SITE_SETTINGS_CACHE_KEY);
+                return null;
+            }
+            return normalizeSiteLinkSettings(cached.value);
         } catch (error) {
             return null;
         }
@@ -263,7 +342,12 @@ document.addEventListener("DOMContentLoaded", async function() {
 
     function cacheSiteLinkSettings(settings) {
         try {
-            localStorage.setItem(SITE_SETTINGS_CACHE_KEY, JSON.stringify(settings));
+            localStorage.setItem(SITE_SETTINGS_CACHE_KEY, JSON.stringify({
+                schema: SITE_SETTINGS_CACHE_SCHEMA,
+                buildId: DOLL_BUILD_ID,
+                savedAt: Date.now(),
+                value: settings
+            }));
         } catch (error) {
             // Private browsing and locked-down storage still use static defaults.
         }
@@ -1341,61 +1425,91 @@ document.addEventListener("DOMContentLoaded", async function() {
         if (loadingSlowMessage) loadingSlowMessage.hidden = true;
     }
 
-    async function verifyCurrentSiteRelease() {
-        const currentScript = document.querySelector('script[src^="script.js?v="]');
-        const currentVersion = currentScript
-            ? new URL(currentScript.src, window.location.href).searchParams.get('v')
-            : '';
-        if (!currentVersion) return;
+    let releaseVerificationPromise = null;
+    let lastReleaseVerificationAt = 0;
 
-        const controller = typeof AbortController === 'function' ? new AbortController() : null;
-        let timeoutId = 0;
-        try {
-            const checkUrl = new URL(window.location.href);
-            checkUrl.searchParams.delete('_doll_release');
-            checkUrl.searchParams.set('_doll_release_check', String(Date.now()));
-            const response = await Promise.race([
-                fetch(checkUrl, {
-                    cache: 'no-store',
-                    signal: controller?.signal,
-                    headers: { Accept: 'text/html' }
-                }),
-                new Promise(resolve => {
-                    timeoutId = window.setTimeout(() => {
-                        controller?.abort();
-                        resolve(null);
-                    }, 2500);
-                })
-            ]);
-            if (!response?.ok) return;
-            const latestHtml = await response.text();
-            const latestDocument = new DOMParser().parseFromString(latestHtml, 'text/html');
-            const latestScript = latestDocument.querySelector('script[src^="script.js?v="]');
-            const latestVersion = latestScript
-                ? new URL(latestScript.getAttribute('src'), checkUrl).searchParams.get('v')
-                : '';
-            if (!latestVersion || latestVersion === currentVersion) {
-                if (new URL(window.location.href).searchParams.has('_doll_release')) {
-                    const cleanUrl = new URL(window.location.href);
-                    cleanUrl.searchParams.delete('_doll_release');
-                    window.history.replaceState(window.history.state, '', cleanUrl);
-                }
-                return;
-            }
-
-            const recoveryKey = 'doll-release-recovery';
-            if (sessionStorage.getItem(recoveryKey) === latestVersion) return;
-            sessionStorage.setItem(recoveryKey, latestVersion);
-            const recoveryUrl = new URL(window.location.href);
-            recoveryUrl.searchParams.delete('_doll_release_check');
-            recoveryUrl.searchParams.set('_doll_release', latestVersion);
-            window.location.replace(recoveryUrl);
-        } catch (error) {
-            // Offline or constrained visitors continue through the bounded
-            // local loader rather than being blocked by the release check.
-        } finally {
-            window.clearTimeout(timeoutId);
+    function verifyCurrentSiteRelease({ force = false } = {}) {
+        const now = Date.now();
+        if (!force && now - lastReleaseVerificationAt < 5 * 60 * 1000) {
+            return releaseVerificationPromise || Promise.resolve();
         }
+        if (releaseVerificationPromise) return releaseVerificationPromise;
+
+        releaseVerificationPromise = (async () => {
+            const currentBuild = document.querySelector('meta[name="doll-build"]')?.content || '';
+            if (!currentBuild) return;
+
+            const controller = typeof AbortController === 'function' ? new AbortController() : null;
+            let timeoutId = 0;
+            try {
+                const checkUrl = new URL(window.location.href);
+                checkUrl.searchParams.delete('_doll_release');
+                checkUrl.searchParams.delete('_doll_release_check');
+                checkUrl.searchParams.set('_doll_release_check', String(Date.now()));
+                const response = await Promise.race([
+                    fetch(checkUrl, {
+                        cache: 'no-store',
+                        signal: controller?.signal,
+                        headers: { Accept: 'text/html' }
+                    }),
+                    new Promise(resolve => {
+                        timeoutId = window.setTimeout(() => {
+                            controller?.abort();
+                            resolve(null);
+                        }, 3000);
+                    })
+                ]);
+                if (!response?.ok) return;
+                const latestHtml = await response.text();
+                const latestDocument = new DOMParser().parseFromString(latestHtml, 'text/html');
+                const latestBuild = latestDocument.querySelector('meta[name="doll-build"]')?.content || '';
+                if (!latestBuild || latestBuild === currentBuild) {
+                    const cleanUrl = new URL(window.location.href);
+                    if (cleanUrl.searchParams.has('_doll_release')) {
+                        cleanUrl.searchParams.delete('_doll_release');
+                        window.history.replaceState(window.history.state, '', cleanUrl);
+                    }
+                    try { sessionStorage.removeItem('doll-release-recovery-v2'); } catch (error) {}
+                    return;
+                }
+
+                const recoveryKey = 'doll-release-recovery-v2';
+                let recovery = null;
+                try {
+                    recovery = JSON.parse(sessionStorage.getItem(recoveryKey) || 'null');
+                } catch (error) {}
+                const releaseQueryParts = String(
+                    new URL(window.location.href).searchParams.get('_doll_release') || ''
+                ).split('.');
+                const queryAttempt = Number(releaseQueryParts[releaseQueryParts.length - 1]) || 0;
+                const storedAttempts = recovery?.from === currentBuild && recovery?.to === latestBuild
+                    ? Number(recovery.attempts || 0)
+                    : 0;
+                const attempts = Math.max(queryAttempt, storedAttempts);
+                if (attempts >= 2) return;
+                try {
+                    sessionStorage.setItem(recoveryKey, JSON.stringify({
+                        from: currentBuild,
+                        to: latestBuild,
+                        attempts: attempts + 1,
+                        checkedAt: Date.now()
+                    }));
+                } catch (error) {}
+                const recoveryUrl = new URL(window.location.href);
+                recoveryUrl.searchParams.delete('_doll_release_check');
+                recoveryUrl.searchParams.set('_doll_release', `${latestBuild}.${attempts + 1}`);
+                window.location.replace(recoveryUrl);
+            } catch (error) {
+                // Offline or constrained visitors continue through the bounded
+                // local loader rather than being blocked by the release check.
+            } finally {
+                window.clearTimeout(timeoutId);
+                lastReleaseVerificationAt = Date.now();
+            }
+        })().finally(() => {
+            releaseVerificationPromise = null;
+        });
+        return releaseVerificationPromise;
     }
 
     function retireLoadingScreen() {
@@ -1586,7 +1700,11 @@ document.addEventListener("DOMContentLoaded", async function() {
             video.addEventListener('loadeddata', onReady, { once: true });
             video.addEventListener('error', onError, { once: true });
             timeoutId = window.setTimeout(
-                () => finish(hasRenderedSocialVideoFrame(video)),
+                () => {
+                    const ready = hasRenderedSocialVideoFrame(video);
+                    if (!ready) retryMountedSocialVideo(key, video, source, 'preload-timeout');
+                    finish(ready);
+                },
                 LOCAL_SOCIAL_CARD_PRELOAD_TIMEOUT_MS
             );
             if (video.readyState >= 2) onReady();
@@ -1869,7 +1987,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             social_card_order: normalizeSocialCardOrder(settings.social_card_order),
             throne_url: String(settings.throne_url || DEFAULT_LINK_SETTINGS.throne_url),
             throne_enabled: readBooleanSetting(settings, 'throne_enabled'),
-            throne_checkout_mode: settings.throne_checkout_mode === 'widget' ? 'widget' : 'mockup',
+            throne_checkout_mode: 'mockup',
             wishlist_view_mode: ['grid', 'list', 'masonry'].includes(settings.wishlist_view_mode) ? settings.wishlist_view_mode : 'masonry',
             homepage_note_text: String(settings.homepage_note_text || '').slice(0, 220),
             homepage_note_font_size: Math.min(17, Math.max(9, Number(settings.homepage_note_font_size) || DEFAULT_LINK_SETTINGS.homepage_note_font_size)),
@@ -2387,7 +2505,10 @@ document.addEventListener("DOMContentLoaded", async function() {
             return document.querySelector('.doll-wishlist-scroll-shell');
         }
         if (document.body.classList.contains('has-posts-panel-open')) {
-            return document.getElementById('posts-popup');
+            const communityHub = document.getElementById('community-hub');
+            return communityHub?.classList.contains('active')
+                ? communityHub
+                : document.getElementById('posts-popup');
         }
         return null;
     }
@@ -2398,7 +2519,8 @@ document.addEventListener("DOMContentLoaded", async function() {
             : document.body.classList.contains('has-wishlist-panel-open')
                 ? document.querySelector('.doll-wishlist-body')
                 : document.body.classList.contains('has-posts-panel-open')
-                    ? document.querySelector('.posts-content')
+                    ? document.querySelector('#community-hub.active .community-scroll-body')
+                        || document.querySelector('.posts-content')
                     : null;
     }
 
@@ -2522,46 +2644,92 @@ document.addEventListener("DOMContentLoaded", async function() {
     // Size the open panel's base scroll window to the real screen height
     // instead of a fixed cap. A ready motion viewport may be visually shifted
     // upward by a known amount; normalizing that transform below gives us one
-    // stable expanded-state top for --panel-fill-max. Small screens retain the
-    // baseline cap and tall screens use their available space.
+    // stable expanded-state top for --panel-fill-max. Short screens receive a
+    // genuinely shorter internal scroller; tall screens use all useful space.
     //
-    // visualViewport.height, NOT 100dvh: dvh resolves to the toolbar-RETRACTED
-    // (tallest) viewport, which would size the panel past what's actually
-    // visible and tuck the pill under the iOS toolbar. visualViewport tracks
-    // the currently-visible area, keeping the pill on-screen as the toolbar
-    // shows/hides. The footer's own padding-bottom already covers the safe-area
-    // inset, so footerH (a border-box height) must not add it again.
+    // Use the smaller of visualViewport and 100svh. `dvh` resolves toward the
+    // toolbar-retracted viewport and can tuck the pill under Safari chrome;
+    // raw visualViewport follows the toolbar animation and can visibly resize
+    // a bordered card. `svh` provides the stable toolbar-visible cap, while
+    // visualViewport still wins for a genuinely smaller keyboard/zoom view.
+    // The footer's own padding-bottom already covers the safe-area inset, so
+    // footerH (a border-box height) must not add it again.
     //
     // extraReserve is any chrome that renders BELOW the element being grown but
     // still inside the panel (e.g. the wishlist's checkout foot sits under its
     // scroll body), so the grown element must stop short by that much to keep
     // that chrome — and the pill under it — on screen.
-    function setPanelFillMax(panel, { reservedPad = 4, openMargin = 10, bottomGap = 16, extraReserve = 0 } = {}) {
+    let stableSmallViewportHeight = 0;
+    let stableSmallViewportWidth = 0;
+
+    function getStableSmallViewportHeight() {
+        const viewportWidth = window.visualViewport?.width || window.innerWidth;
+        if (stableSmallViewportHeight > 0
+            && Math.abs(viewportWidth - stableSmallViewportWidth) <= 2) {
+            return stableSmallViewportHeight;
+        }
+        stableSmallViewportWidth = viewportWidth;
+        if (!window.CSS?.supports?.('height: 100svh')) {
+            stableSmallViewportHeight = 0;
+            return 0;
+        }
+        const probe = document.createElement('span');
+        probe.setAttribute('aria-hidden', 'true');
+        probe.style.cssText = 'position:fixed;inset:0 auto auto 0;width:0;height:100svh;visibility:hidden;pointer-events:none;';
+        document.body.appendChild(probe);
+        stableSmallViewportHeight = Math.max(0, probe.getBoundingClientRect().height);
+        probe.remove();
+        return stableSmallViewportHeight;
+    }
+
+    function getStableVisibleViewportBottom() {
+        const visualViewport = window.visualViewport;
+        if (!visualViewport) return window.innerHeight;
+        const currentBottom = visualViewport.offsetTop + visualViewport.height;
+        const smallHeight = getStableSmallViewportHeight();
+        return smallHeight > 0
+            ? Math.min(currentBottom, visualViewport.offsetTop + smallHeight)
+            : currentBottom;
+    }
+
+    function setPanelFillMax(panel, {
+        reservedPad = 4,
+        openMargin = 10,
+        bottomGap = 16,
+        extraReserve = 0,
+        visualShift = 0,
+    } = {}) {
         if (!panel) return;
         const footer = document.querySelector('.site-brand-footer');
-        const viewportHeight = window.visualViewport?.height || window.innerHeight;
+        // getBoundingClientRect() is expressed in layout-viewport coordinates.
+        // iOS can pan its smaller visual viewport inside that layout viewport,
+        // so height alone is not the visible bottom edge. Cap against 100svh
+        // as well: Safari toolbar animation can then change visualViewport
+        // without resizing a bordered panel after the visitor stops scrolling.
+        const viewportBottom = getStableVisibleViewportBottom();
         const renderedPanelTop = panel.getBoundingClientRect().top;
         // A ready motion viewport may already be visually translated upward.
         // Normalize that transform back to its expanded-state top before
         // calculating a new stationary fill cap.
         const scrollGrow = getCurrentMotionGrow(panel);
-        const panelTop = renderedPanelTop + scrollGrow;
+        const panelTop = renderedPanelTop + scrollGrow + Math.max(0, visualShift);
         const footerHeight = footer ? (footer.getBoundingClientRect().height || 0) : 44;
-        const avail = viewportHeight - panelTop - (footerHeight + reservedPad + openMargin + bottomGap + extraReserve);
+        const avail = viewportBottom - panelTop
+            - (footerHeight + reservedPad + openMargin + bottomGap + extraReserve);
         panel.style.setProperty('--panel-fill-max', `${Math.max(0, Math.floor(avail))}px`);
     }
     window.dollSetPanelFillMax = setPanelFillMax;
 
-    // Safari changes visualViewport height while its browser chrome retracts.
-    // Once a panel opens, height-only changes are ignored for that entire open
-    // session; the next open measures afresh. Width/orientation changes remain
-    // legitimate layout changes and are applied after active scrolling ends.
+    // Toolbar-only visualViewport changes collapse to the same stable `svh`
+    // bottom and therefore do not resize an open card. Width/orientation and a
+    // genuinely smaller keyboard viewport still settle through this scheduler.
     let panelFillTimer = 0;
     let panelScrollIdleTimer = 0;
     let panelScrolling = false;
     let panelFillPending = false;
     let panelFillForcePending = false;
     let lastPanelViewportWidth = window.visualViewport?.width || window.innerWidth;
+    let lastPanelViewportBottom = getStableVisibleViewportBottom();
 
     function hasOpenScrollPanel() {
         return document.body.classList.contains('has-social-panel-open')
@@ -2609,10 +2777,17 @@ document.addEventListener("DOMContentLoaded", async function() {
     }
 
     function handlePanelViewportResize() {
-        const nextWidth = window.visualViewport?.width || window.innerWidth;
+        const visualViewport = window.visualViewport;
+        const nextWidth = visualViewport?.width || window.innerWidth;
+        const nextBottom = getStableVisibleViewportBottom();
         const widthChanged = Math.abs(nextWidth - lastPanelViewportWidth) > 2;
+        // Growing browser space can remain frozen for scroll stability. If
+        // Safari makes the visible area shorter, however, recalculate after
+        // momentum settles so the footer cannot stay beneath its toolbar.
+        const visibleBottomShrank = nextBottom < lastPanelViewportBottom - 2;
         lastPanelViewportWidth = nextWidth;
-        schedulePanelFillSync({ force: widthChanged });
+        lastPanelViewportBottom = nextBottom;
+        schedulePanelFillSync({ force: widthChanged || visibleBottomShrank });
     }
     window.addEventListener('resize', handlePanelViewportResize);
     window.visualViewport?.addEventListener('resize', handlePanelViewportResize);
@@ -2671,7 +2846,10 @@ document.addEventListener("DOMContentLoaded", async function() {
     function setIconsScrollProgress(scrollTop) {
         cancelIconCollapseTween();
         const shell = getActiveMotionShell();
-        if (!shell?.classList.contains('dwl-motion-ready')) {
+        const unifiedCommunityOpen = Boolean(
+            document.querySelector('#community-hub.active .community-scroll-body')
+        );
+        if (!unifiedCommunityOpen && !shell?.classList.contains('dwl-motion-ready')) {
             setIconCollapseProgress(0);
             return;
         }
@@ -2679,7 +2857,10 @@ document.addEventListener("DOMContentLoaded", async function() {
         setIconCollapseProgress(easeIconCollapseProgress(linearProgress), {
             // Native scroll timelines own the visual properties directly and
             // do not need main-thread style writes on every scroll frame.
-            writeVisual: !hasNativeScrollCollapse,
+            // The unified community card intentionally uses its whole-card
+            // scroller instead of a legacy motion viewport, so it always
+            // writes the shared progress value directly.
+            writeVisual: unifiedCommunityOpen || !hasNativeScrollCollapse,
         });
     }
 
@@ -2693,11 +2874,16 @@ document.addEventListener("DOMContentLoaded", async function() {
         if (!scroller || scroller.scrollTop > ICON_TOP_RELEASE_PX) return false;
         const group = document.querySelector('.button-group');
         const pill = document.getElementById('dwl-icons-pill');
+        const unifiedCommunityOpen = Boolean(
+            document.querySelector('#community-hub.active .community-scroll-body')
+        );
         const stale = group?.classList.contains('icons-pill-active')
             || pill?.style.pointerEvents === 'auto';
         if (stale) {
             cancelIconCollapseTween();
-            setIconCollapseProgress(0, { writeVisual: !hasNativeScrollCollapse });
+            setIconCollapseProgress(0, {
+                writeVisual: unifiedCommunityOpen || !hasNativeScrollCollapse,
+            });
         }
         return true;
     }
@@ -2705,7 +2891,8 @@ document.addEventListener("DOMContentLoaded", async function() {
     function reconcilePanelScrollState(scroller = getOpenPanelScroller()) {
         if (!scroller) return;
         if (releaseIconHitTestingAtTop(scroller)) {
-            if (!hasNativeScrollCollapse) {
+            if (!hasNativeScrollCollapse
+                || document.querySelector('#community-hub.active .community-scroll-body')) {
                 setIconCollapseProgress(0);
             }
             return;
@@ -2802,8 +2989,68 @@ document.addEventListener("DOMContentLoaded", async function() {
     const drawingWidget = document.querySelector('.drawing-widget');
     const postsPanel = document.getElementById('posts-popup');
     const postsButton = document.getElementById('posts-button');
+    const communityHub = document.getElementById('community-hub');
+    const communityScrollBody = communityHub?.querySelector('.community-scroll-body');
+    const communitySurface = communityHub?.querySelector('.community-surface');
+    const communityWallList = document.getElementById('community-wall-list');
+    let openCommunityPosts = null;
     let postsPanelResizeObserver = null;
+    let postsPanelSpaceRaf = 0;
     let postsOpenGeneration = 0;
+
+    communityScrollBody?.addEventListener('scroll', event => {
+        queuePanelScrollUpdate(event.currentTarget, communityHub);
+    }, { passive: true });
+
+    function isCommunityHubOpen() {
+        return Boolean(communityHub?.classList.contains('active'));
+    }
+
+    function setCommunityComposerMode(requestedMode, { focus = false } = {}) {
+        if (!communityHub) return;
+        const askForm = document.getElementById('ask-form-container');
+        const askTab = document.getElementById('ask-button');
+        const doodleTab = document.getElementById('toggle-button');
+        const questionsEnabled = siteLinkSettings.questions_enabled !== false;
+        const drawingsEnabled = siteLinkSettings.drawings_enabled !== false;
+        const mode = requestedMode === 'doodle' && drawingsEnabled
+            ? 'doodle'
+            : questionsEnabled ? 'ask' : drawingsEnabled ? 'doodle' : 'wall';
+        const askActive = mode === 'ask';
+        const doodleActive = mode === 'doodle';
+
+        communityHub.classList.toggle('is-doodle-mode', doodleActive);
+        communityHub.classList.toggle('has-no-composer', mode === 'wall');
+        askForm?.style.setProperty('display', askActive ? 'block' : 'none');
+        drawingWidget?.classList.toggle('active', doodleActive);
+        askTab?.classList.toggle('active', askActive);
+        doodleTab?.classList.toggle('active', doodleActive);
+        askTab?.setAttribute('aria-selected', String(askActive));
+        doodleTab?.setAttribute('aria-selected', String(doodleActive));
+        askForm?.setAttribute('aria-hidden', String(!askActive));
+        drawingWidget?.setAttribute('aria-hidden', String(!doodleActive));
+        if (askActive) {
+            loadDeferredImage(askForm?.querySelector('.ask-corner-mascot'), 'questionSrc');
+            if (focus) document.getElementById('ask-textarea')?.focus({ preventScroll: true });
+        }
+        if (postsPanel?.classList.contains('active')) {
+            window.requestAnimationFrame(syncPostsPanelSpace);
+        }
+    }
+
+    function setCommunityHubOpen(open) {
+        communityHub?.classList.toggle('active', open);
+        communityHub?.setAttribute('aria-hidden', String(!open));
+        document.body.classList.toggle('has-community-hub-open', open);
+        if (open && communityScrollBody) communityScrollBody.scrollTop = 0;
+        if (!open) communityHub?.classList.remove('is-doodle-mode', 'has-no-composer');
+    }
+
+    communityHub?.addEventListener('transitionend', event => {
+        if (!isCommunityHubOpen()) return;
+        if (event.propertyName !== 'transform' && event.propertyName !== 'min-height') return;
+        window.requestAnimationFrame(syncPostsPanelSpace);
+    });
 
     function shouldPlayPostsMedia() {
         return Boolean(
@@ -2856,7 +3103,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                 }
             });
         }, {
-            root: postsContentEl,
+            root: communityScrollBody || postsContentEl,
             rootMargin: '140px 0px'
         })
         : null;
@@ -2894,6 +3141,77 @@ document.addEventListener("DOMContentLoaded", async function() {
         resumePostsMedia();
     }
 
+    function primeCommittedPostsMedia(root = communityWallList) {
+        if (!root) return;
+
+        // Safari can keep an image/GIF that was decoded in the off-screen
+        // preparation stage in an unpainted state after that same node is
+        // moved into the visible masonry wall. Reassert every prepared source
+        // after the move and ask decoded images to join the visible paint.
+        root.querySelectorAll([
+            '.post-item > img[data-posts-src]',
+            'img.like-icon[data-posts-src]',
+            'img.answer-gif[data-posts-src]',
+            'video[data-posts-src]',
+            'iframe[data-posts-src]'
+        ].join(',')).forEach(media => {
+            const source = media.dataset.postsSrc;
+            const currentSource = media.getAttribute('src');
+            if (source && (!currentSource || currentSource === 'about:blank')) {
+                media.src = source;
+                if (media instanceof HTMLVideoElement) media.load();
+            }
+            if (media instanceof HTMLImageElement
+                && media.complete
+                && media.naturalWidth > 0
+                && typeof media.decode === 'function') {
+                media.decode().catch(() => {});
+            }
+        });
+
+        // IntersectionObserver may take its first snapshot from the old,
+        // off-screen staging geometry on iOS and then wait for a scroll before
+        // reporting again. Seed the frames that are already near the real
+        // scroller so their first paint never depends on visitor movement.
+        const scroller = communityScrollBody || postsContentEl;
+        const scrollerRect = scroller?.getBoundingClientRect();
+        if (scrollerRect) {
+            getPostsMediaFrames(root).forEach(frame => {
+                const frameRect = frame.getBoundingClientRect();
+                const isNear = frameRect.bottom >= scrollerRect.top - 140
+                    && frameRect.top <= scrollerRect.bottom + 140;
+                if (!isNear) return;
+                frame.dataset.postsMediaNear = 'true';
+                if (shouldPlayPostsMedia()) resumePostsMediaFrame(frame);
+            });
+        }
+
+        // Reading the committed wall's extent establishes its masonry layout
+        // before the loading cover is removed on the following paint.
+        void root.offsetHeight;
+    }
+
+    async function settleCommittedPostsPaint(root, openGeneration, signal) {
+        const assertCurrentOpen = () => {
+            if (signal.aborted || openGeneration !== postsOpenGeneration
+                || !postsPanel?.classList.contains('active')) {
+                throw createSubmissionsAbortError();
+            }
+        };
+
+        await new Promise(resolve => window.requestAnimationFrame(resolve));
+        assertCurrentOpen();
+        syncPostsPanelSpace();
+        primeCommittedPostsMedia(root);
+
+        // A second frame gives WebKit one complete layout/paint boundary with
+        // the cards in their final columns. Previously the first user scroll
+        // supplied this boundary, which is why the feed appeared only then.
+        await new Promise(resolve => window.requestAnimationFrame(resolve));
+        assertCurrentOpen();
+        primeCommittedPostsMedia(root);
+    }
+
     function releasePostsMediaSources(root) {
         if (!root) return;
         root.querySelectorAll('.post-item > img, img.answer-gif, video, iframe').forEach(media => {
@@ -2922,13 +3240,40 @@ document.addEventListener("DOMContentLoaded", async function() {
         // Establish the base fill cap, then allocate the final motion viewport
         // once. Its negative margin and added height cancel exactly, so this
         // outer bottom is identical before, during and after the conversion.
-        setPanelFillMax(card, { reservedPad: 14, openMargin: 18, bottomGap: 16 });
-        configureScrollMotion(postsPanel, postsContentEl, card);
-        const panelRect = postsPanel.getBoundingClientRect();
+        if (isCommunityHubOpen()) {
+            const communityVisualShift = Math.max(
+                0,
+                (communityHub?.getBoundingClientRect().top || 0)
+                    - (communitySurface?.getBoundingClientRect().top || 0)
+            );
+            setPanelFillMax(communityScrollBody, {
+                reservedPad: 4,
+                openMargin: 24,
+                bottomGap: 10,
+                visualShift: communityVisualShift,
+            });
+        } else {
+            setPanelFillMax(card, { reservedPad: 14, openMargin: 18, bottomGap: 16 });
+        }
+        // The unified :3 wall is already embedded inside a taller composer.
+        // Expanding and translating its legacy popup viewport exposes an
+        // empty strip beneath the capped feed and makes the edge masks slice
+        // through cards on iOS. Keep :3 as one stable native scroller; the
+        // original motion treatment remains available to the legacy surface.
+        if (isCommunityHubOpen()) clearScrollMotion(postsPanel);
+        else configureScrollMotion(postsPanel, postsContentEl, card);
+        const surface = isCommunityHubOpen() ? communityHub : postsPanel;
+        const panelRect = surface.getBoundingClientRect();
         const hostRect = host.getBoundingClientRect();
-        const neededHeight = Math.max(310, Math.ceil(panelRect.bottom - hostRect.top + 14));
+        // The unified surface already owns its outer padding. The legacy
+        // popup still needs its historical 26px tail, but applying that tail
+        // to :3 would spend the footer clearance a second time.
+        const reserveTail = isCommunityHubOpen() ? 4 : 26;
+        const neededHeight = Math.max(60, Math.ceil(panelRect.bottom - hostRect.top + reserveTail));
         host.style.setProperty('--posts-panel-height', `${neededHeight}px`);
-        updateScrollEdgeState(postsContentEl, postsPanel);
+        const scroller = isCommunityHubOpen() ? communityScrollBody : postsContentEl;
+        refreshPanelScrollExtent(scroller);
+        updateScrollEdgeState(scroller, isCommunityHubOpen() ? communityHub : postsPanel);
     }
 
     function setPostsPanelLayoutOpen(open) {
@@ -2938,22 +3283,29 @@ document.addEventListener("DOMContentLoaded", async function() {
             clearScrollMotion(postsPanel);
             host?.style.removeProperty('--posts-panel-height');
             postsPanel?.querySelector('.popup-content')?.style.removeProperty('--panel-fill-max');
+            communityScrollBody?.style.removeProperty('--panel-fill-max');
             postsPanelResizeObserver?.disconnect();
             postsPanelResizeObserver = null;
+            window.cancelAnimationFrame(postsPanelSpaceRaf);
+            postsPanelSpaceRaf = 0;
             return;
         }
 
         window.requestAnimationFrame(syncPostsPanelSpace);
-        const card = postsPanel?.querySelector('.popup-content');
-        if (card && typeof window.ResizeObserver === 'function') {
+        const measuredSurface = isCommunityHubOpen()
+            ? communitySurface
+            : postsPanel?.querySelector('.popup-content');
+        if (measuredSurface && typeof window.ResizeObserver === 'function') {
             postsPanelResizeObserver?.disconnect();
             postsPanelResizeObserver = new ResizeObserver(() => {
-                // Configuring the final viewport changes this card once. It
-                // remains frozen afterward, so that known resize is ignored.
-                if (panelScrolling || postsPanel.classList.contains('dwl-motion-ready')) return;
-                syncPostsPanelSpace();
+                if (panelScrolling) return;
+                window.cancelAnimationFrame(postsPanelSpaceRaf);
+                postsPanelSpaceRaf = window.requestAnimationFrame(() => {
+                    postsPanelSpaceRaf = 0;
+                    syncPostsPanelSpace();
+                });
             });
-            postsPanelResizeObserver.observe(card);
+            postsPanelResizeObserver.observe(measuredSurface);
         }
     }
 
@@ -3021,9 +3373,13 @@ document.addEventListener("DOMContentLoaded", async function() {
         // reopening doesn't show a scrolled-down list underneath icons that
         // have already reset to their expanded state.
         resetIconsCollapse();
-        if (postsContentEl) {
-            postsContentEl.scrollTop = 0;
-            updateScrollEdgeState(postsContentEl, postsPanel);
+        const postsScroller = isCommunityHubOpen() ? communityScrollBody : postsContentEl;
+        if (postsScroller) {
+            postsScroller.scrollTop = 0;
+            updateScrollEdgeState(
+                postsScroller,
+                isCommunityHubOpen() ? communityHub : postsPanel
+            );
         }
         if (!postsPanel || !postsButton) return;
         postsPanel.classList.remove('active');
@@ -3051,6 +3407,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         closeQuestionForm();
         closePostsPanel();
         closeActionMenu();
+        setCommunityHubOpen(false);
         notePeelTarget?.classList.remove('dwl-note-locking');
         notePeelTarget?.classList.remove('hidden');
         noteImage?.classList.remove('hidden');
@@ -3065,6 +3422,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         closeDrawingWidget();
         closeQuestionForm();
         closePostsPanel();
+        setCommunityHubOpen(false);
         notePeelTarget?.classList.remove('hidden');
         noteImage?.classList.remove('hidden');
     }
@@ -3078,6 +3436,10 @@ document.addEventListener("DOMContentLoaded", async function() {
                 return;
             }
             playUiSound('tap');
+            if (isCommunityHubOpen()) {
+                setCommunityComposerMode('doodle');
+                return;
+            }
             const open = drawingWidget.classList.contains('active');
             if (open) {
                 showNoteImage();
@@ -3243,6 +3605,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             }
             preview.remove();
         }
+        card.querySelector('.social-link-poster')?.remove();
         card.classList.remove('has-social-preview');
     }
 
@@ -3304,6 +3667,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             removeSocialCardVideo(card);
             return;
         }
+        if (SOCIAL_CARD_VIDEO_SOURCE_MODE === 'github') ensureSocialCardPoster(key, card);
 
         const useGif = isGifSocialCardMedia(url);
         let preview = card.querySelector('.social-link-preview');
@@ -3312,11 +3676,13 @@ document.addEventListener("DOMContentLoaded", async function() {
             : !(preview instanceof HTMLVideoElement));
         if (hasWrongPreviewType) {
             removeSocialCardVideo(card);
+            if (SOCIAL_CARD_VIDEO_SOURCE_MODE === 'github') ensureSocialCardPoster(key, card);
             preview = null;
         }
 
-        if (preview && preview.dataset.source !== url) {
+        if (preview && (preview.dataset.configuredSource || preview.dataset.source) !== url) {
             removeSocialCardVideo(card);
+            if (SOCIAL_CARD_VIDEO_SOURCE_MODE === 'github') ensureSocialCardPoster(key, card);
             preview = null;
         }
 
@@ -3362,6 +3728,8 @@ document.addEventListener("DOMContentLoaded", async function() {
                         || !ready || !expected || preview.getAttribute('src') !== expected
                         || (current && current !== expectedAbsolute)) return;
                     delete preview.dataset.socialPreviewFailed;
+                    delete preview.dataset.socialRetryUsed;
+                    recordSocialPreviewReliability(key, 'ready');
                     if (card.dataset.socialPreviewDeferred !== 'true') {
                         card.classList.add('has-social-preview');
                     }
@@ -3374,18 +3742,23 @@ document.addEventListener("DOMContentLoaded", async function() {
                 if (!preview.isConnected || preview.parentElement !== card) return;
                 if (preview.getAttribute('src') !== preview.dataset.source) return;
                 if (preview instanceof HTMLVideoElement) delete preview.dataset.socialFrameReady;
+                if (SOCIAL_CARD_VIDEO_SOURCE_MODE === 'github'
+                    && retryMountedSocialVideo(key, preview, url, 'media-error')) return;
                 preview.dataset.socialPreviewFailed = 'true';
                 card.classList.remove('has-social-preview');
+                recordSocialPreviewReliability(key, 'fallback', 'media-error-after-retry');
             });
             card.prepend(preview);
         }
 
-        preview.dataset.source = url;
+        preview.dataset.configuredSource = url;
+        if (!preview.dataset.source) preview.dataset.source = url;
 
         if (!loadMedia) return;
 
         const sourceFailed = preview.dataset.socialPreviewFailed === 'true';
-        const alreadyHasCurrentSource = preview.getAttribute('src') === url;
+        const alreadyHasCurrentSource = preview.dataset.configuredSource === url
+            && Boolean(preview.getAttribute('src'));
         if (!alreadyHasCurrentSource || sourceFailed) {
             // Safari can leave a media element permanently poisoned after one
             // interrupted/decode error. Reset that element before assigning
@@ -3399,7 +3772,12 @@ document.addEventListener("DOMContentLoaded", async function() {
             }
             delete preview.dataset.socialPreviewFailed;
             if (preview instanceof HTMLVideoElement) delete preview.dataset.socialFrameReady;
-            preview.src = url;
+            const requestedSource = sourceFailed && SOCIAL_CARD_VIDEO_SOURCE_MODE === 'github'
+                ? buildSocialPreviewRetryUrl(url)
+                : url;
+            preview.dataset.source = requestedSource;
+            if (sourceFailed) preview.dataset.socialRetryUsed = 'true';
+            preview.src = requestedSource;
             delete preview.dataset.socialPausedSrc;
             if (preview instanceof HTMLVideoElement) preview.load();
         }
@@ -3546,9 +3924,13 @@ document.addEventListener("DOMContentLoaded", async function() {
             }
             if (SOCIAL_CARD_VIDEO_SOURCE_MODE === 'github') {
                 // A local file that missed the bounded entrance deadline may
-                // still finish moments later. Let its loadeddata handler reveal
-                // it during this same opening instead of suppressing it until
-                // the visitor closes and reopens Socials.
+                // be holding a poisoned partial response in Safari. Give that
+                // exact card one clean cache-busted rebuild; its permanent
+                // poster remains visible while the retry decodes.
+                const key = getSocialCardVideoKey(card);
+                if (key && preview instanceof HTMLVideoElement) {
+                    retryMountedSocialVideo(key, preview, getSocialCardVideoUrl(key), 'open-timeout');
+                }
                 delete card.dataset.socialPreviewDeferred;
                 return;
             }
@@ -4165,13 +4547,13 @@ document.addEventListener("DOMContentLoaded", async function() {
         if (toggleButton) {
             toggleButton.classList.toggle('site-link-hidden', !drawingsEnabled);
             toggleButton.setAttribute('aria-hidden', drawingsEnabled ? 'false' : 'true');
-            toggleButton.setAttribute('tabindex', drawingsEnabled ? '-1' : '-1');
+            toggleButton.setAttribute('tabindex', drawingsEnabled && isCommunityHubOpen() ? '0' : '-1');
             if (!drawingsEnabled) closeDrawingWidget();
         }
         if (publicAskButton) {
             publicAskButton.classList.toggle('site-link-hidden', !questionsEnabled);
             publicAskButton.setAttribute('aria-hidden', questionsEnabled ? 'false' : 'true');
-            publicAskButton.setAttribute('tabindex', questionsEnabled ? '-1' : '-1');
+            publicAskButton.setAttribute('tabindex', questionsEnabled && isCommunityHubOpen() ? '0' : '-1');
             if (!questionsEnabled) closeQuestionForm();
         }
         if (actionMenuButton) {
@@ -4456,13 +4838,17 @@ document.addEventListener("DOMContentLoaded", async function() {
         const wasOpen = actionMenuButton.classList.contains('open');
         actionMenuButton.classList.remove('open');
         actionMenuButton.setAttribute('aria-expanded', 'false');
+        actionMenuButton.setAttribute('aria-label', 'Open :3');
         actionOptions?.setAttribute('aria-hidden', 'true');
         if (wasOpen) {
             closeActionPanels();
         }
+        setCommunityHubOpen(false);
         actionMenuButton.querySelectorAll('.action-option').forEach(option => {
             option.setAttribute('tabindex', '-1');
         });
+        publicAskButton?.setAttribute('tabindex', '-1');
+        toggleButton?.setAttribute('tabindex', '-1');
     }
 
     function addMenuActivation(element, handler) {
@@ -4553,12 +4939,17 @@ document.addEventListener("DOMContentLoaded", async function() {
         } else if (socialsButton?.classList.contains('open')) {
             playSocialCardVideos();
         }
+        if (!document.hidden) void verifyCurrentSiteRelease();
         if (!document.hidden && backgroundMusicRequested) {
             startBackgroundMusic();
         }
         syncPostsMediaPlayback();
     });
-    window.addEventListener('pageshow', () => {
+    window.addEventListener('pageshow', event => {
+        // Safari can restore an old, fully alive page from BFCache without
+        // re-requesting HTML or scripts. Revalidate the release immediately
+        // on that path so returning visitors do not stay on a mixed release.
+        if (event.persisted) void verifyCurrentSiteRelease({ force: true });
         if (backgroundMusicRequested) {
             startBackgroundMusic();
         }
@@ -4606,7 +4997,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         const steps = [
             { element: socialsButton, label: 'contact', placement: 'up' },
             { element: supportMenuButton, label: 'wishlist', placement: 'down' },
-            { element: actionMenuButton, label: ':p', placement: 'up' }
+            { element: actionMenuButton, label: ':3', placement: 'up' }
         ].filter(step => step.element && !step.element.classList.contains('site-link-hidden'));
         if (!steps.length) return;
 
@@ -4889,19 +5280,20 @@ document.addEventListener("DOMContentLoaded", async function() {
         if (!isPublicLinkEnabled('throne')) return;
         closeSocialsMenu({ restoreNote: false });
         closeActionMenu();
-        const useMockup = siteLinkSettings.throne_checkout_mode !== 'widget';
         // Second press while the mockup panel is open toggles it closed.
         const wishlistPanel = document.getElementById('doll-wishlist-panel');
-        if (useMockup && wishlistPanel?.classList.contains('active')) {
+        if (wishlistPanel?.classList.contains('active')) {
             window.closeThroneMockup();
             return;
         }
         playUiSound('link');
-        if (useMockup && typeof window.openThroneMockup === 'function') {
+        // The on-site custom panel is the public Wishlist experience. A stale
+        // cached setting must never silently replace it with the legacy iframe.
+        if (typeof window.openThroneMockup === 'function') {
             window.openThroneMockup();
-        } else if (typeof window.openThroneOverlay === 'function') {
-            window.openThroneOverlay();
         } else {
+            // If the critical widget script itself was blocked, use the honest
+            // full destination rather than trapping the visitor in an iframe.
             window.open(getPublicLink('throne'), '_blank', 'noopener,noreferrer');
         }
     }
@@ -4916,28 +5308,29 @@ document.addEventListener("DOMContentLoaded", async function() {
     });
 
     function handleActionMenuActivate(e) {
-        if (e.target.closest('.action-option')) {
-            return;
-        }
-
         e.preventDefault();
         e.stopPropagation();
         if (!acceptTopControlActivation(actionMenuButton)) return;
-        if (!actionMenuButton.classList.contains('open')) {
-            closeSocialsMenu();
-            closeSupportMenu();
+        playUiSound('tap');
+        if (actionMenuButton.classList.contains('open')) {
+            showNoteImage();
+            return;
         }
 
-        playUiSound('tap');
-        const isOpen = actionMenuButton.classList.toggle('open');
-        actionMenuButton.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
-        actionOptions?.setAttribute('aria-hidden', isOpen ? 'false' : 'true');
-        if (!isOpen) {
-            closeActionPanels();
-        }
-        actionMenuButton.querySelectorAll('.action-option').forEach(option => {
-            option.setAttribute('tabindex', isOpen ? '0' : '-1');
-        });
+        closeSocialsMenu();
+        closeSupportMenu();
+        if (typeof window.closeThroneMockup === 'function') window.closeThroneMockup();
+        resetIconsCollapse();
+        hideNoteImage();
+        actionMenuButton.classList.add('open');
+        actionMenuButton.setAttribute('aria-expanded', 'true');
+        actionMenuButton.setAttribute('aria-label', 'Close :3');
+        setCommunityHubOpen(true);
+        setCommunityComposerMode(
+            siteLinkSettings.questions_enabled !== false ? 'ask' : 'doodle'
+        );
+        renderSubmissionControls();
+        void openCommunityPosts?.();
     }
 
     addMenuActivation(actionMenuButton, handleActionMenuActivate);
@@ -4949,7 +5342,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         }
     });
 
-    [...socialCardDefinitions.map(({ option }) => option), toggleButton].forEach(option => {
+    socialCardDefinitions.map(({ option }) => option).forEach(option => {
         option?.addEventListener('keydown', function(e) {
             if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
@@ -5222,7 +5615,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             if (sendButton.disabled) return;
             if (siteLinkSettings.drawings_enabled === false) {
                 showSubmitPopup("Doodles are paused for a bit.");
-                showNoteImage();
+                if (!isCommunityHubOpen()) showNoteImage();
                 return;
             }
             const qualityError = getDrawingQualityError();
@@ -5261,7 +5654,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                 resetCanvasHistory();
                 await submitSoundMinimum;
                 await showSubmitPopupAndWait("Got it! ^-^");
-                showNoteImage();
+                if (!isCommunityHubOpen()) showNoteImage();
             } catch (error) {
                 console.error("Error submitting drawing:", error);
                 showSubmitPopup(`Failed to submit drawing: ${error.message || 'Please try again.'}`);
@@ -5291,6 +5684,10 @@ document.addEventListener("DOMContentLoaded", async function() {
                     return;
                 }
                 playUiSound('tap');
+                if (isCommunityHubOpen()) {
+                    setCommunityComposerMode('ask', { focus: true });
+                    return;
+                }
                 const open = askFormContainer.style.display === 'block';
                 if (!open) {
                     loadDeferredImage(
@@ -5329,7 +5726,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                 if (sendButton.disabled) return;
                 if (siteLinkSettings.questions_enabled === false) {
                     showSubmitPopup("Questions are paused for a bit.");
-                    showNoteImage();
+                    if (!isCommunityHubOpen()) showNoteImage();
                     return;
                 }
                 const question = askTextarea.value.trim();
@@ -5359,7 +5756,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                     charCount.textContent = '0/200';
                     await submitSoundMinimum;
                     await showSubmitPopupAndWait("Got it! ^-^");
-                    showNoteImage();
+                    if (!isCommunityHubOpen()) showNoteImage();
                 } catch (error) {
                     console.error("Error saving question:", error);
                     showSubmitPopup("Failed to submit question. Please try again.");
@@ -5388,7 +5785,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                     initLikeSystem(item, drawingId);
                 });
             }, {
-                root: postsPopup,
+                root: communityScrollBody || postsPopup,
                 rootMargin: '160px 0px'
             })
             : null;
@@ -5457,42 +5854,48 @@ document.addEventListener("DOMContentLoaded", async function() {
         }
 
         async function initPostsSystem() {
-            postsButton?.addEventListener('click', async (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                if (!acceptTopControlActivation(postsButton, 220)) return;
-                playUiSound('tap');
-                const open = postsPopup?.classList.contains('active');
-                if (open) {
-                    showNoteImage();
-                } else {
+            async function openPostsSurface({ playTap = false } = {}) {
+                if (postsPopup?.classList.contains('active')) return;
+                if (playTap) playUiSound('tap');
+                if (!isCommunityHubOpen()) {
                     closeDrawingWidget();
                     closeQuestionForm();
                     if (typeof window.closeThroneMockup === 'function') window.closeThroneMockup();
                     hideNoteImage();
-                    const freshLoad = beginFreshPostsLoad();
-                    const openGeneration = freshLoad.generation;
-                    postsPopup?.classList.add('active');
-                    setPostsPanelLayoutOpen(true);
-                    postsButton.textContent = '×';
-                    showSubmissionsLoadingState();
-                    await waitForPostsLoaderPaint();
-                    if (openGeneration !== postsOpenGeneration
-                        || !postsPopup?.classList.contains('active')) return;
-                    discardPostsRetainedResourcesForFreshLoad();
-                    try {
-                        await renderSubmissions(openGeneration, freshLoad.signal);
-                    } catch (error) {
-                        if (openGeneration !== postsOpenGeneration) return;
-                        if (error?.name === 'AbortError') return;
-                        console.error('Error fetching public submissions:', error);
-                        showSubmissionsLoadError();
-                    }
-                    if (openGeneration !== postsOpenGeneration
-                        || !postsPopup?.classList.contains('active')) return;
-                    syncPostsMediaPlayback();
-                    syncPostsPanelSpace();
                 }
+                const freshLoad = beginFreshPostsLoad();
+                const openGeneration = freshLoad.generation;
+                postsPopup?.classList.add('active');
+                setPostsPanelLayoutOpen(true);
+                showSubmissionsLoadingState();
+                await waitForPostsLoaderPaint();
+                if (openGeneration !== postsOpenGeneration
+                    || !postsPopup?.classList.contains('active')) return;
+                discardPostsRetainedResourcesForFreshLoad();
+                try {
+                    await renderSubmissions(openGeneration, freshLoad.signal);
+                } catch (error) {
+                    if (openGeneration !== postsOpenGeneration) return;
+                    if (error?.name === 'AbortError') return;
+                    console.error('Error fetching public submissions:', error);
+                    showSubmissionsLoadError();
+                }
+                if (openGeneration !== postsOpenGeneration
+                    || !postsPopup?.classList.contains('active')) return;
+                syncPostsMediaPlayback();
+                syncPostsPanelSpace();
+            }
+
+            openCommunityPosts = () => openPostsSurface();
+            postsButton?.addEventListener('click', async (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (!acceptTopControlActivation(postsButton, 220)) return;
+                if (postsPopup?.classList.contains('active')) {
+                    showNoteImage();
+                    return;
+                }
+                await openPostsSurface({ playTap: true });
             });
 
             postsButton?.addEventListener('keydown', (e) => {
@@ -5850,6 +6253,9 @@ document.addEventListener("DOMContentLoaded", async function() {
                 if (signal.aborted) throw createSubmissionsAbortError();
                 const el = document.createElement('div');
                 el.className = 'post-item';
+                el.dataset.communityType = 'doodle';
+                el.dataset.createdAt = String(drawing.created_at || '');
+                el.dataset.submissionId = String(drawing.id || '');
                 const drawingSrc = getDrawingSrcForDrawing(drawing);
                 if (drawingSrc) {
                     const image = document.createElement('img');
@@ -5906,6 +6312,9 @@ document.addEventListener("DOMContentLoaded", async function() {
                 if (signal.aborted) throw createSubmissionsAbortError();
                 const el = document.createElement('div');
                 el.className = 'question-item';
+                el.dataset.communityType = 'question';
+                el.dataset.createdAt = String(q.created_at || '');
+                el.dataset.submissionId = String(q.id || '');
                 const answerHtml = q.answer ? `<p class="answer-text">${linkifyText(q.answer)}</p>` : '';
                 el.innerHTML = `
                     <p class="question-text">"${escapeHtml(q.question)}"</p>
@@ -5956,20 +6365,37 @@ document.addEventListener("DOMContentLoaded", async function() {
                     throw createSubmissionsAbortError();
                 }
 
-                const drawingsFragment = document.createDocumentFragment();
-                const questionsFragment = document.createDocumentFragment();
-                while (drawingsStage.container.firstChild) {
-                    drawingsFragment.appendChild(drawingsStage.container.firstChild);
-                }
-                while (questionsStage.container.firstChild) {
-                    questionsFragment.appendChild(questionsStage.container.firstChild);
-                }
+                const wallFragment = document.createDocumentFragment();
+                const wallItems = [...drawingsStage.items, ...questionsStage.items]
+                    .sort((left, right) => {
+                        const leftTime = Date.parse(left.dataset.createdAt || '') || 0;
+                        const rightTime = Date.parse(right.dataset.createdAt || '') || 0;
+                        if (rightTime !== leftTime) return rightTime - leftTime;
+                        return String(right.dataset.submissionId || '')
+                            .localeCompare(String(left.dataset.submissionId || ''));
+                    });
+                const wallColumns = [0, 1].map(index => {
+                    const column = document.createElement('div');
+                    column.className = 'community-masonry-column';
+                    column.dataset.column = String(index + 1);
+                    return column;
+                });
+                wallItems.forEach((item, index) => {
+                    item.classList.add(`community-pin-${(index % 4) + 1}`);
+                    item.setAttribute('aria-posinset', String(index + 1));
+                    item.setAttribute('aria-setsize', String(wallItems.length));
+                    wallColumns[index % 2].appendChild(item);
+                });
+                if (wallItems.length) wallFragment.append(...wallColumns);
                 drawingLikesObserver?.disconnect();
                 postsMediaObserver?.disconnect();
-                drawingsList.replaceChildren(drawingsFragment);
-                questionsList.replaceChildren(questionsFragment);
-                hideSubmissionsLoadingState();
-                committed = true;
+                drawingsList?.replaceChildren();
+                questionsList?.replaceChildren();
+                communityWallList?.classList.toggle('is-single', wallItems.length === 1);
+                communityWallList?.replaceChildren(wallFragment);
+                if (!wallItems.length && communityWallList) {
+                    communityWallList.innerHTML = submissionsStatusMarkup('nothing is pinned here yet ♡');
+                }
                 stage.remove();
                 if (postsMediaStagingRoot === stage) postsMediaStagingRoot = null;
 
@@ -5980,8 +6406,15 @@ document.addEventListener("DOMContentLoaded", async function() {
                     else initLikeSystem(item, drawingId);
                 });
                 questionsStage.items.forEach(item => bindQuestionMediaErrors(item));
-                observePostsMedia(questionsList);
+                observePostsMedia(communityWallList);
                 syncPostsMediaPlayback();
+                await settleCommittedPostsPaint(
+                    communityWallList,
+                    openGeneration,
+                    signal
+                );
+                hideSubmissionsLoadingState();
+                committed = true;
             } finally {
                 if (!committed) disposePostsMediaStaging(stage);
             }
@@ -5992,6 +6425,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             postsMediaObserver?.disconnect();
             drawingsList?.replaceChildren();
             questionsList?.replaceChildren();
+            communityWallList?.replaceChildren();
             if (!preserveLoader) hideSubmissionsLoadingState();
         };
 

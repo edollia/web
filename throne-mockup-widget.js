@@ -29,6 +29,9 @@
     const SWIPE_HINT_REPEAT_DELAY_MS = 5000;
     const SWIPE_HINT_SECOND_VISIBLE_MS = 2000;
     const FULL_WISHLIST_URL = 'https://throne.com/edoll';
+    const WISHLIST_ITEMS_CACHE_KEY = 'doll_wishlist_items_v2';
+    const WISHLIST_ITEMS_CACHE_SCHEMA = 2;
+    const WISHLIST_ITEMS_CACHE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 
     const HEART_PATH = 'M12 20.3s-7.6-4.5-9.9-9C.6 7.7 2.3 4.3 5.9 4c2.2-.2 4.2 1 6.1 3.4C13.9 5 15.9 3.8 18.1 4c3.6.3 5.3 3.7 3.8 7.3-2.3 4.5-9.9 9-9.9 9z';
     const ICON_HEART = `<svg class="dwl-heart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${HEART_PATH}"/></svg>`;
@@ -106,6 +109,65 @@
         return clean.slice(0, NAME_MAX - 1).trimEnd() + '…';
     }
 
+    function sanitizeWishlistItems(value) {
+        if (!Array.isArray(value)) return [];
+        return value.slice(0, MAX_FEATURED).map((item, index) => ({
+            throne_item_id: String(item?.throne_item_id || '').trim(),
+            name: String(item?.name || '').trim(),
+            price_cents: Number.isFinite(Number(item?.price_cents))
+                ? Number(item.price_cents)
+                : 0,
+            image_url: String(item?.image_url || '').trim(),
+            position: Number.isFinite(Number(item?.position))
+                ? Number(item.position)
+                : index
+        })).filter(item => item.throne_item_id && item.name);
+    }
+
+    function recordWishlistReliability(source, reason = '') {
+        const diagnostics = window.dollReliabilityDiagnostics ||= {};
+        diagnostics.wishlist = {
+            source,
+            reason: String(reason || ''),
+            itemCount: items.length,
+            recordedAt: new Date().toISOString()
+        };
+        panel?.setAttribute('data-wishlist-source', source);
+        if (reason) panel?.setAttribute('data-wishlist-reason', String(reason));
+        else panel?.removeAttribute('data-wishlist-reason');
+    }
+
+    function cacheWishlistItems(value) {
+        const safeItems = sanitizeWishlistItems(value);
+        if (!safeItems.length) return;
+        try {
+            localStorage.setItem(WISHLIST_ITEMS_CACHE_KEY, JSON.stringify({
+                schema: WISHLIST_ITEMS_CACHE_SCHEMA,
+                savedAt: Date.now(),
+                items: safeItems
+            }));
+        } catch (error) {}
+    }
+
+    function readWishlistItemsFallback() {
+        try {
+            const cached = JSON.parse(localStorage.getItem(WISHLIST_ITEMS_CACHE_KEY) || 'null');
+            const savedAt = Number(cached?.savedAt || 0);
+            if (cached?.schema === WISHLIST_ITEMS_CACHE_SCHEMA
+                && savedAt > 0
+                && Date.now() - savedAt <= WISHLIST_ITEMS_CACHE_MAX_AGE_MS) {
+                const cachedItems = sanitizeWishlistItems(cached.items);
+                if (cachedItems.length) return { items: cachedItems, source: 'browser-cache' };
+            }
+            if (cached) localStorage.removeItem(WISHLIST_ITEMS_CACHE_KEY);
+        } catch (error) {}
+
+        const bundledItems = sanitizeWishlistItems(window.DOLL_WISHLIST_FALLBACK);
+        return bundledItems.length
+            ? { items: bundledItems, source: 'bundled-snapshot' }
+            : { items: [], source: 'unavailable' };
+    }
+
     function playSound(type) {
         if (typeof window.dollPlayUiSound === 'function') {
             window.dollPlayUiSound(type);
@@ -146,16 +208,6 @@
         event.preventDefault();
         playSound('link');
         window.open(FULL_WISHLIST_URL, '_blank', 'noopener,noreferrer');
-    }
-
-    function fallbackToLegacy() {
-        closeThroneMockup();
-        if (typeof window.openThroneOverlay === 'function') {
-            window.openThroneOverlay();
-            return;
-        }
-        const url = window.dollThroneUrl || 'https://throne.com/edoll';
-        window.open(url, '_blank', 'noopener,noreferrer');
     }
 
     function withTimeout(promise, ms, onTimeout = null) {
@@ -1059,6 +1111,8 @@
             }
             .doll-wishlist-body {
                 position: relative;
+                max-height: var(--panel-fill-max, 380px);
+                overflow: hidden;
             }
             .doll-wishlist-scroll-shell {
                 position: relative;
@@ -1073,7 +1127,11 @@
                reach away, right under the visible items, no matter how
                long the list is. */
             .doll-wishlist-body.dwl-scroll-body {
-                max-height: max(380px, var(--panel-fill-max, 0px));
+                /* Use the real visible-viewport allowance even when it is
+                   below 380px; that is what keeps the Throne footer visible
+                   on short iPhones while the items remain scrollable. */
+                max-height: var(--panel-fill-max, 380px);
+                height: var(--panel-fill-max, auto);
                 overflow-y: auto;
                 overflow-x: hidden;
                 overscroll-behavior-y: contain;
@@ -1881,8 +1939,10 @@
 
             .doll-wishlist-state {
                 display: flex;
+                flex-direction: column;
                 align-items: center;
                 justify-content: center;
+                gap: 10px;
                 min-height: 142px;
                 margin: 10px 4px;
                 padding: 26px 16px;
@@ -1895,6 +1955,25 @@
                 font-family: var(--dwl-cute);
                 font-size: 12px;
                 line-height: 1.5;
+            }
+            .doll-wishlist-state-actions {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 8px;
+            }
+            .doll-wishlist-state button,
+            .doll-wishlist-state a {
+                min-height: 34px;
+                padding: 7px 12px;
+                border: 1px solid rgba(239, 109, 159, 0.34);
+                border-radius: 999px;
+                background: rgba(255, 244, 249, 0.92);
+                color: #b84f7a;
+                font: 600 11px/1 var(--dwl-cute);
+                text-decoration: none;
+                cursor: pointer;
+                -webkit-tap-highlight-color: transparent;
             }
 
             /* The skeleton reuses the real .doll-wishlist-info text-stack
@@ -2237,11 +2316,12 @@
                 width: 20px;
                 height: 20px;
                 flex: 0 0 auto;
-                color: rgba(184, 74, 117, 0.88);
+                color: #d7c0c5;
                 font-family: ui-rounded, "Arial Rounded MT Bold", system-ui, sans-serif;
                 font-size: 20px;
                 font-weight: 400;
                 line-height: 1;
+                transform: none;
             }
             #support-menu-button.dwl-open > .menu-main-icon {
                 display: none;
@@ -3167,14 +3247,34 @@
         if (loadState === 'failed') {
             renderedBodySignature = '';
             cancelSwipeHintSequence();
-            body.innerHTML = `<div class="doll-wishlist-state">couldn't load the wishlist here.<br>opening the full site instead…</div>`;
+            body.innerHTML = `<div class="doll-wishlist-state">
+                <span>the wishlist couldn't connect just now.</span>
+                <span class="doll-wishlist-state-actions">
+                    <button type="button" data-wishlist-retry>try again</button>
+                    <a href="${FULL_WISHLIST_URL}" target="_blank" rel="noopener noreferrer">full wishlist</a>
+                </span>
+            </div>`;
+            body.querySelector('[data-wishlist-retry]')?.addEventListener('click', () => {
+                playSound('tap');
+                void loadItems();
+            });
             renderDots();
             return;
         }
         if (loadState === 'ready' && !items.length) {
             renderedBodySignature = '';
             cancelSwipeHintSequence();
-            body.innerHTML = `<div class="doll-wishlist-state">nothing featured yet.<br>opening the full site instead…</div>`;
+            body.innerHTML = `<div class="doll-wishlist-state">
+                <span>nothing is available here just now.</span>
+                <span class="doll-wishlist-state-actions">
+                    <button type="button" data-wishlist-retry>refresh</button>
+                    <a href="${FULL_WISHLIST_URL}" target="_blank" rel="noopener noreferrer">full wishlist</a>
+                </span>
+            </div>`;
+            body.querySelector('[data-wishlist-retry]')?.addEventListener('click', () => {
+                playSound('tap');
+                void loadItems();
+            });
             renderDots();
             return;
         }
@@ -3495,10 +3595,10 @@
         const client = await waitForSupabaseClient(30, signal);
         if (!client) throw new Error('supabase client unavailable');
 
-        // Synchronize first, then read. The old fire-and-forget order queried
-        // the previous snapshot and only refreshed it after cards appeared.
-        await triggerBackgroundSync(signal);
-        if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+        // A Throne synchronization is useful, but it must not sit in front of
+        // the public panel's read. Start it in parallel and use the mirrored
+        // table immediately; the sync refreshes the next read if it is slower.
+        void triggerBackgroundSync(signal).catch(() => {});
         const [itemsResult, viewMode] = await Promise.all([
             withSupabaseTimeout(
                 client.from('wishlist_items')
@@ -3517,6 +3617,50 @@
         return { items: Array.isArray(data) ? data : [], viewMode };
     }
 
+    async function prepareAndRevealWishlistItems(nextItems, run, {
+        viewMode = null,
+        source = 'live',
+        reason = ''
+    } = {}) {
+        if (run !== itemsLoadRun) return false;
+        items = sanitizeWishlistItems(nextItems);
+        if (viewMode) wishlistViewMode = viewMode;
+        if (source === 'live' && items.length) cacheWishlistItems(items);
+        recordWishlistReliability(source, reason);
+
+        const currentImageUrls = new Set(items.map(item => String(item.image_url || '').trim()));
+        imageDims.forEach((_dims, url) => {
+            if (!currentImageUrls.has(url)) imageDims.delete(url);
+        });
+        if (!isWishlistPanelVisible()) return false;
+        if (!items.length) {
+            loadState = source === 'unavailable' ? 'failed' : 'ready';
+            renderBody();
+            renderFoot();
+            return false;
+        }
+
+        loadState = 'preparing';
+        renderBody();
+        renderFoot();
+        const body = panel?.querySelector('.doll-wishlist-body');
+        await loadAndDecodeAllWishlistImages(body, run);
+        if (run !== itemsLoadRun || !isWishlistPanelVisible()) return false;
+
+        loadState = 'ready';
+        if (!revealPreparedWishlistBody(body, run)) return false;
+        renderDots();
+        renderFoot();
+        syncReservedHeight(true);
+        window.requestAnimationFrame(() => {
+            if (run !== itemsLoadRun || !isWishlistPanelVisible()) return;
+            syncTitleMarquees(body);
+            scheduleSwipeHint();
+            updateWishlistEdgeFade(body);
+        });
+        return true;
+    }
+
     async function loadItems({ bodyPrepared = false } = {}) {
         itemsFetchController?.abort();
         const controller = typeof window.AbortController === 'function'
@@ -3531,50 +3675,27 @@
         try {
             const result = await fetchWishlistItemsFresh(controller?.signal);
             if (run !== itemsLoadRun) return;
-            items = result.items;
-            if (result.viewMode) wishlistViewMode = result.viewMode;
-            const currentImageUrls = new Set(items.map(item => String(item.image_url || '').trim()));
-            imageDims.forEach((_dims, url) => {
-                if (!currentImageUrls.has(url)) imageDims.delete(url);
-            });
-            if (!isWishlistPanelVisible()) return;
-            if (!items.length) {
-                loadState = 'ready';
-                renderBody();
-                renderFoot();
-                window.setTimeout(() => {
-                    if (run === itemsLoadRun && isWishlistPanelVisible()) fallbackToLegacy();
-                }, 900);
+            const liveItems = sanitizeWishlistItems(result.items);
+            if (liveItems.length) {
+                await prepareAndRevealWishlistItems(liveItems, run, {
+                    viewMode: result.viewMode,
+                    source: 'live'
+                });
                 return;
             }
-
-            loadState = 'preparing';
-            renderBody();
-            renderFoot();
-            const body = panel?.querySelector('.doll-wishlist-body');
-            await loadAndDecodeAllWishlistImages(body, run);
-            if (run !== itemsLoadRun || !isWishlistPanelVisible()) return;
-
-            loadState = 'ready';
-            if (!revealPreparedWishlistBody(body, run)) return;
-            renderDots();
-            renderFoot();
-            syncReservedHeight(true);
-            window.requestAnimationFrame(() => {
-                if (run !== itemsLoadRun || !isWishlistPanelVisible()) return;
-                syncTitleMarquees(body);
-                scheduleSwipeHint();
-                updateWishlistEdgeFade(body);
+            const fallback = readWishlistItemsFallback();
+            await prepareAndRevealWishlistItems(fallback.items, run, {
+                viewMode: result.viewMode,
+                source: fallback.source,
+                reason: 'live-empty'
             });
         } catch (err) {
             if (run !== itemsLoadRun) return;
-            loadState = 'failed';
-            if (isWishlistPanelVisible()) {
-                renderBody();
-                window.setTimeout(() => {
-                    if (run === itemsLoadRun && isWishlistPanelVisible()) fallbackToLegacy();
-                }, 900);
-            }
+            const fallback = readWishlistItemsFallback();
+            await prepareAndRevealWishlistItems(fallback.items, run, {
+                source: fallback.source,
+                reason: err?.name === 'AbortError' ? 'aborted' : 'live-error'
+            });
         } finally {
             if (itemsFetchController === controller) itemsFetchController = null;
         }
@@ -3637,7 +3758,11 @@
                 || panelSessionRun !== itemsLoadRun
                 || !isWishlistPanelVisible();
             if (staleRequest) return;
-            fallbackToLegacy();
+            checkoutStatusMessage = 'checkout couldn\'t connect — please try again or use the full wishlist below';
+            recordWishlistReliability(
+                panel?.getAttribute('data-wishlist-source') || 'unknown',
+                'checkout-error'
+            );
         } finally {
             if (requestRun === checkoutRequestRun) {
                 if (checkoutRequestController === checkoutController) checkoutRequestController = null;
