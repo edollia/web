@@ -2234,11 +2234,6 @@ document.addEventListener("DOMContentLoaded", async function() {
         loadingScreen.style.opacity = 0;
         setTimeout(() => {
             retireLoadingScreen();
-            const iconContainer = document.querySelector('.icon-container');
-            if (iconContainer) {
-                iconContainer.style.visibility = "visible";
-                iconContainer.style.opacity = 1;
-            }
             initApp();
         }, 500);
     }).catch(e => {
@@ -2249,11 +2244,6 @@ document.addEventListener("DOMContentLoaded", async function() {
         loadingScreen.style.opacity = 0;
         setTimeout(() => {
             retireLoadingScreen();
-            const iconContainer = document.querySelector('.icon-container');
-            if (iconContainer) {
-                iconContainer.style.visibility = "visible";
-                iconContainer.style.opacity = 1;
-            }
             initApp();
         }, 500);
     });
@@ -2519,6 +2509,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     });
     const ICON_COLLAPSE_RAMP = 0.2;
     const ICON_COLLAPSE_PEAK_RATE = 1 / (1 - ICON_COLLAPSE_RAMP);
+    const ICON_PILL_INTERACTION_PROGRESS = 0.92;
     let iconCollapseTweenRaf = 0;
     let iconCollapseDisplayed = 0;
     const panelScrollExtents = new WeakMap();
@@ -2830,7 +2821,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         if (!group) return;
         const pill = document.getElementById('dwl-icons-pill');
         if (!pill) return;
-        const interactive = progress > 0.78;
+        const interactive = progress > ICON_PILL_INTERACTION_PROGRESS;
         const expectedPointerEvents = interactive ? 'auto' : 'none';
         const expectedTabIndex = interactive ? 0 : -1;
         const stateIsStale = group.classList.contains('icons-pill-active') !== interactive
@@ -3016,36 +3007,77 @@ document.addEventListener("DOMContentLoaded", async function() {
     const communityHub = document.getElementById('community-hub');
     const communityScrollBody = communityHub?.querySelector('.community-scroll-body');
     const communitySurface = communityHub?.querySelector('.community-surface');
+    const communityComposerSlot = communityHub?.querySelector('.community-composer-slot');
     const communityWallList = document.getElementById('community-wall-list');
     let openCommunityPosts = null;
     let postsPanelResizeObserver = null;
     let postsPanelSpaceRaf = 0;
+    let postsPanelSpaceForcePending = false;
     let postsOpenGeneration = 0;
+    let communityComposerTransitionGeneration = 0;
+    let communityComposerTransitionRaf = 0;
+    let communityComposerTransitionTimer = 0;
+    let communityViewportSettleTimer = 0;
+    let communityComposerTargetMode = communityHub?.dataset.composerMode || 'ask';
+    let communityComposerFocusAfterTransition = false;
+    let communityComposerPreservedScrollTop = 0;
+    let communityOpenRaf = 0;
+    let communityOpenSettleTimer = 0;
+
+    const COMMUNITY_COMPOSER_MIN_HEIGHTS = Object.freeze({
+        ask: 148,
+        doodle: 282,
+        wall: 0,
+    });
 
     communityScrollBody?.addEventListener('scroll', event => {
         queuePanelScrollUpdate(event.currentTarget, communityHub);
     }, { passive: true });
 
     function isCommunityHubOpen() {
-        return Boolean(communityHub?.classList.contains('active'));
+        return Boolean(
+            communityHub?.classList.contains('active')
+            || communityHub?.classList.contains('is-preparing-open')
+        );
     }
 
-    function setCommunityComposerMode(requestedMode, { focus = false } = {}) {
-        if (!communityHub) return;
+    function resolveCommunityComposerMode(requestedMode) {
+        const questionsEnabled = siteLinkSettings.questions_enabled !== false;
+        const drawingsEnabled = siteLinkSettings.drawings_enabled !== false;
+        return requestedMode === 'doodle' && drawingsEnabled
+            ? 'doodle'
+            : questionsEnabled ? 'ask' : drawingsEnabled ? 'doodle' : 'wall';
+    }
+
+    function getCommunityComposerPane(mode) {
+        if (mode === 'ask') return document.getElementById('ask-form-container');
+        if (mode === 'doodle') return drawingWidget;
+        return null;
+    }
+
+    function measureCommunityComposerHeight(mode) {
+        const pane = getCommunityComposerPane(mode);
+        const minimum = COMMUNITY_COMPOSER_MIN_HEIGHTS[mode] || 0;
+        return pane ? Math.max(minimum, Math.ceil(pane.offsetHeight)) : minimum;
+    }
+
+    function applyCommunityComposerState(mode) {
         const askForm = document.getElementById('ask-form-container');
         const askTab = document.getElementById('ask-button');
         const doodleTab = document.getElementById('toggle-button');
-        const questionsEnabled = siteLinkSettings.questions_enabled !== false;
-        const drawingsEnabled = siteLinkSettings.drawings_enabled !== false;
-        const mode = requestedMode === 'doodle' && drawingsEnabled
-            ? 'doodle'
-            : questionsEnabled ? 'ask' : drawingsEnabled ? 'doodle' : 'wall';
         const askActive = mode === 'ask';
         const doodleActive = mode === 'doodle';
 
+        communityHub.dataset.composerMode = mode;
+        // Data attributes own the current layout. Mirror the two former class
+        // flags as a compatibility bridge in case a returning visitor briefly
+        // receives the new script alongside the previous cached stylesheet.
         communityHub.classList.toggle('is-doodle-mode', doodleActive);
         communityHub.classList.toggle('has-no-composer', mode === 'wall');
-        askForm?.style.setProperty('display', askActive ? 'block' : 'none');
+        // Legacy standalone helpers may leave an inline display value behind.
+        // Inside the unified hub, data-composer-mode is the primary visibility
+        // owner, so clear that old inline state before committing the new mode.
+        askForm?.style.removeProperty('display');
         drawingWidget?.classList.toggle('active', doodleActive);
         askTab?.classList.toggle('active', askActive);
         doodleTab?.classList.toggle('active', doodleActive);
@@ -3053,27 +3085,205 @@ document.addEventListener("DOMContentLoaded", async function() {
         doodleTab?.setAttribute('aria-selected', String(doodleActive));
         askForm?.setAttribute('aria-hidden', String(!askActive));
         drawingWidget?.setAttribute('aria-hidden', String(!doodleActive));
+        if (askForm) askForm.inert = !askActive;
+        if (drawingWidget) drawingWidget.inert = !doodleActive;
         if (askActive) {
             loadDeferredImage(askForm?.querySelector('.ask-corner-mascot'), 'questionSrc');
-            if (focus) document.getElementById('ask-textarea')?.focus({ preventScroll: true });
-        }
-        if (postsPanel?.classList.contains('active')) {
-            window.requestAnimationFrame(syncPostsPanelSpace);
         }
     }
 
-    function setCommunityHubOpen(open) {
-        communityHub?.classList.toggle('active', open);
-        communityHub?.setAttribute('aria-hidden', String(!open));
+    function focusCommunityAskField() {
+        const askTextarea = document.getElementById('ask-textarea');
+        if (communityHub?.dataset.composerMode !== 'ask' || !isCommunityHubOpen()) return;
+        try {
+            askTextarea?.focus({ preventScroll: true });
+        } catch (error) {
+            askTextarea?.focus();
+        }
+    }
+
+    function restoreCommunityComposerScrollPosition() {
+        if (!communityScrollBody) return;
+        const maxScroll = Math.max(
+            0,
+            communityScrollBody.scrollHeight - communityScrollBody.clientHeight
+        );
+        communityScrollBody.scrollTop = Math.min(communityComposerPreservedScrollTop, maxScroll);
+    }
+
+    function finishCommunityComposerTransition(generation = communityComposerTransitionGeneration) {
+        if (generation !== communityComposerTransitionGeneration || !communityComposerSlot) return;
+        window.cancelAnimationFrame(communityComposerTransitionRaf);
+        communityComposerTransitionRaf = 0;
+        window.clearTimeout(communityComposerTransitionTimer);
+        communityComposerTransitionTimer = 0;
+        communityComposerSlot.classList.remove('is-switching');
+        communityComposerSlot.style.height = `${measureCommunityComposerHeight(communityComposerTargetMode)}px`;
+        restoreCommunityComposerScrollPosition();
+        refreshPanelScrollExtent(communityScrollBody);
+        updateScrollEdgeState(communityScrollBody, communityHub);
+        reconcilePanelScrollState(communityScrollBody);
+        schedulePostsPanelSpaceSync();
+        if (communityComposerFocusAfterTransition) {
+            communityComposerFocusAfterTransition = false;
+            window.requestAnimationFrame(focusCommunityAskField);
+        }
+    }
+
+    function syncCommunityComposerHeight({ immediate = true } = {}) {
+        if (!communityComposerSlot || !communityHub) return;
+        const mode = resolveCommunityComposerMode(communityHub.dataset.composerMode || 'ask');
+        const targetHeight = measureCommunityComposerHeight(mode);
+        if (immediate) {
+            communityComposerSlot.style.transition = 'none';
+            communityComposerSlot.style.height = `${targetHeight}px`;
+            void communityComposerSlot.offsetHeight;
+            communityComposerSlot.style.removeProperty('transition');
+        } else {
+            communityComposerSlot.style.height = `${targetHeight}px`;
+        }
+    }
+
+    function scheduleCommunityViewportSettle(generation) {
+        window.clearTimeout(communityViewportSettleTimer);
+        communityViewportSettleTimer = window.setTimeout(() => {
+            communityViewportSettleTimer = 0;
+            if (generation !== communityComposerTransitionGeneration
+                || communityComposerTargetMode === 'ask'
+                || !isCommunityHubOpen()) return;
+            // iOS reports a series of visualViewport sizes while dismissing
+            // its keyboard. At this stationary mode-switch boundary, rebuild
+            // once from the settled viewport instead of retaining the shorter
+            // keyboard-era card until the entire menu is closed.
+            if (postsPanel?.classList.contains('active')) syncPostsPanelSpace(true);
+            restoreCommunityComposerScrollPosition();
+        }, 380);
+    }
+
+    function setCommunityComposerMode(requestedMode, { focus = false, immediate = false } = {}) {
+        if (!communityHub) return;
+        immediate ||= prefersReducedLoadingMotion;
+        const askForm = document.getElementById('ask-form-container');
+        const mode = resolveCommunityComposerMode(requestedMode);
+        const previousMode = communityHub.dataset.composerMode || 'ask';
+        const askOwnsFocus = Boolean(askForm?.contains(document.activeElement));
+
+        if (mode !== 'ask' && askOwnsFocus) document.activeElement?.blur();
+        communityComposerFocusAfterTransition = Boolean(focus && mode === 'ask');
+        communityComposerTargetMode = mode;
+        communityComposerPreservedScrollTop = communityScrollBody?.scrollTop || 0;
+
+        window.cancelAnimationFrame(communityComposerTransitionRaf);
+        communityComposerTransitionRaf = 0;
+        window.clearTimeout(communityComposerTransitionTimer);
+        communityComposerTransitionTimer = 0;
+        window.clearTimeout(communityViewportSettleTimer);
+        communityViewportSettleTimer = 0;
+        const generation = ++communityComposerTransitionGeneration;
+        if (mode !== 'ask' && askOwnsFocus) scheduleCommunityViewportSettle(generation);
+
+        if (!communityComposerSlot || immediate || mode === previousMode || mode === 'wall') {
+            applyCommunityComposerState(mode);
+            syncCommunityComposerHeight({ immediate: true });
+            restoreCommunityComposerScrollPosition();
+            if (postsPanel?.classList.contains('active')) schedulePostsPanelSpaceSync();
+            if (communityComposerFocusAfterTransition) {
+                communityComposerFocusAfterTransition = false;
+                window.requestAnimationFrame(focusCommunityAskField);
+            }
+            return;
+        }
+
+        const currentHeight = communityComposerSlot.getBoundingClientRect().height
+            || measureCommunityComposerHeight(previousMode);
+        const targetHeight = measureCommunityComposerHeight(mode);
+        communityComposerSlot.style.height = `${currentHeight}px`;
+        communityComposerSlot.classList.add('is-switching');
+        applyCommunityComposerState(mode);
+        restoreCommunityComposerScrollPosition();
+        void communityComposerSlot.offsetHeight;
+        communityComposerTransitionRaf = window.requestAnimationFrame(() => {
+            communityComposerTransitionRaf = 0;
+            if (generation !== communityComposerTransitionGeneration) return;
+            communityComposerSlot.style.height = `${targetHeight}px`;
+            restoreCommunityComposerScrollPosition();
+        });
+        communityComposerTransitionTimer = window.setTimeout(
+            () => finishCommunityComposerTransition(generation),
+            340
+        );
+    }
+
+    function cancelCommunityOpenReveal() {
+        window.cancelAnimationFrame(communityOpenRaf);
+        communityOpenRaf = 0;
+        window.clearTimeout(communityOpenSettleTimer);
+        communityOpenSettleTimer = 0;
+    }
+
+    function finishCommunityOpenTransition() {
+        if (!communityHub?.classList.contains('is-opening')) return;
+        communityHub.classList.remove('is-opening');
+        window.clearTimeout(communityOpenSettleTimer);
+        communityOpenSettleTimer = 0;
+        schedulePostsPanelSpaceSync();
+    }
+
+    function revealPreparedCommunityHub() {
+        if (!communityHub?.classList.contains('is-preparing-open')) return;
+        communityHub.classList.add('measure-open');
+        syncCommunityComposerHeight({ immediate: true });
+        if (postsPanel?.classList.contains('active')) syncPostsPanelSpace(true);
+        communityHub.classList.remove('measure-open');
+        // Commit the hidden start transform before revealing, mirroring the
+        // Socials/Wishlist preparation flow.
+        void communityHub.offsetWidth;
+        communityOpenRaf = window.requestAnimationFrame(() => {
+            communityOpenRaf = 0;
+            if (!communityHub.classList.contains('is-preparing-open')) return;
+            hideNoteImage();
+            communityHub.classList.remove('is-preparing-open');
+            communityHub.classList.add('active', 'is-opening');
+            communityHub.setAttribute('aria-hidden', 'false');
+            communityOpenSettleTimer = window.setTimeout(
+                finishCommunityOpenTransition,
+                520
+            );
+        });
+    }
+
+    function setCommunityHubOpen(open, { deferReveal = false } = {}) {
+        if (!communityHub) return;
+        if (!open) {
+            cancelCommunityOpenReveal();
+            communityComposerTransitionGeneration += 1;
+            window.cancelAnimationFrame(communityComposerTransitionRaf);
+            communityComposerTransitionRaf = 0;
+            window.clearTimeout(communityComposerTransitionTimer);
+            communityComposerTransitionTimer = 0;
+            window.clearTimeout(communityViewportSettleTimer);
+            communityViewportSettleTimer = 0;
+            communityComposerFocusAfterTransition = false;
+            communityComposerSlot?.classList.remove('is-switching');
+        }
+        communityHub.classList.toggle('is-preparing-open', Boolean(open && deferReveal));
+        communityHub.classList.toggle('active', Boolean(open && !deferReveal));
+        if (!open) communityHub.classList.remove('measure-open', 'is-opening');
+        communityHub.setAttribute('aria-hidden', String(!open || deferReveal));
         document.body.classList.toggle('has-community-hub-open', open);
         if (open && communityScrollBody) communityScrollBody.scrollTop = 0;
-        if (!open) communityHub?.classList.remove('is-doodle-mode', 'has-no-composer');
+        if (!open) communityHub.classList.remove('has-no-composer');
     }
 
     communityHub?.addEventListener('transitionend', event => {
         if (!isCommunityHubOpen()) return;
-        if (event.propertyName !== 'transform' && event.propertyName !== 'min-height') return;
-        window.requestAnimationFrame(syncPostsPanelSpace);
+        if (event.target !== communityHub || event.propertyName !== 'transform') return;
+        finishCommunityOpenTransition();
+    });
+
+    communityComposerSlot?.addEventListener('transitionend', event => {
+        if (event.target !== communityComposerSlot || event.propertyName !== 'height') return;
+        finishCommunityComposerTransition();
     });
 
     function shouldPlayPostsMedia() {
@@ -3256,15 +3466,35 @@ document.addEventListener("DOMContentLoaded", async function() {
         if (postsMediaStagingRoot === root) postsMediaStagingRoot = null;
     }
 
+    function schedulePostsPanelSpaceSync(force = false) {
+        postsPanelSpaceForcePending ||= force;
+        if (postsPanelSpaceRaf) return;
+        postsPanelSpaceRaf = window.requestAnimationFrame(() => {
+            postsPanelSpaceRaf = 0;
+            const forceSync = postsPanelSpaceForcePending;
+            postsPanelSpaceForcePending = false;
+            syncPostsPanelSpace(forceSync);
+        });
+    }
+
     function syncPostsPanelSpace(force = false) {
         if (!postsPanel?.classList.contains('active')) return;
         const host = postsPanel.closest('.toggle-container');
         const card = postsPanel.querySelector('.popup-content');
         if (!host || !card) return;
+        if (isCommunityHubOpen()
+            && !force
+            && (communityHub.classList.contains('is-preparing-open')
+                || communityHub.classList.contains('is-opening'))) {
+            refreshPanelScrollExtent(communityScrollBody);
+            updateScrollEdgeState(communityScrollBody, communityHub);
+            return;
+        }
         // Establish the base fill cap, then allocate the final motion viewport
         // once. Its negative margin and added height cancel exactly, so this
         // outer bottom is identical before, during and after the conversion.
         if (isCommunityHubOpen()) {
+            if (force) syncCommunityComposerHeight({ immediate: true });
             const motionFrozen = communityHub?.classList.contains('dwl-motion-ready');
             if (!motionFrozen || force) {
                 setPanelFillMax(communityScrollBody, {
@@ -3309,10 +3539,11 @@ document.addEventListener("DOMContentLoaded", async function() {
             postsPanelResizeObserver = null;
             window.cancelAnimationFrame(postsPanelSpaceRaf);
             postsPanelSpaceRaf = 0;
+            postsPanelSpaceForcePending = false;
             return;
         }
 
-        window.requestAnimationFrame(syncPostsPanelSpace);
+        schedulePostsPanelSpaceSync();
         const measuredSurface = isCommunityHubOpen()
             ? communitySurface
             : postsPanel?.querySelector('.popup-content');
@@ -3320,11 +3551,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             postsPanelResizeObserver?.disconnect();
             postsPanelResizeObserver = new ResizeObserver(() => {
                 if (panelScrolling) return;
-                window.cancelAnimationFrame(postsPanelSpaceRaf);
-                postsPanelSpaceRaf = window.requestAnimationFrame(() => {
-                    postsPanelSpaceRaf = 0;
-                    syncPostsPanelSpace();
-                });
+                schedulePostsPanelSpaceSync();
             });
             postsPanelResizeObserver.observe(measuredSurface);
         }
@@ -3444,6 +3671,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         closeQuestionForm();
         closePostsPanel();
         setCommunityHubOpen(false);
+        notePeelTarget?.classList.remove('dwl-note-locking');
         notePeelTarget?.classList.remove('hidden');
         noteImage?.classList.remove('hidden');
     }
@@ -4584,6 +4812,13 @@ document.addEventListener("DOMContentLoaded", async function() {
             actionMenuButton.setAttribute('tabindex', hasActions ? '0' : '-1');
             if (!hasActions) closeActionMenu();
         }
+        if (isCommunityHubOpen()) {
+            const currentMode = communityHub?.dataset.composerMode || 'ask';
+            const availableMode = resolveCommunityComposerMode(currentMode);
+            if (availableMode !== currentMode) {
+                setCommunityComposerMode(availableMode);
+            }
+        }
     }
 
     function applyPublicLinkSettings() {
@@ -5342,16 +5577,18 @@ document.addEventListener("DOMContentLoaded", async function() {
         closeSupportMenu();
         if (typeof window.closeThroneMockup === 'function') window.closeThroneMockup();
         resetIconsCollapse();
-        hideNoteImage();
+        notePeelTarget?.classList.add('dwl-note-locking');
         actionMenuButton.classList.add('open');
         actionMenuButton.setAttribute('aria-expanded', 'true');
         actionMenuButton.setAttribute('aria-label', 'Close :3');
-        setCommunityHubOpen(true);
+        setCommunityHubOpen(true, { deferReveal: true });
         setCommunityComposerMode(
-            siteLinkSettings.questions_enabled !== false ? 'ask' : 'doodle'
+            siteLinkSettings.questions_enabled !== false ? 'ask' : 'doodle',
+            { immediate: true }
         );
         renderSubmissionControls();
         void openCommunityPosts?.();
+        revealPreparedCommunityHub();
     }
 
     addMenuActivation(actionMenuButton, handleActionMenuActivate);
@@ -5401,7 +5638,8 @@ document.addEventListener("DOMContentLoaded", async function() {
             const checkVisibility = function() {
                 const computedStyle = window.getComputedStyle(iconContainer);
                 const mainScreenStyle = mainScreen ? window.getComputedStyle(mainScreen) : null;
-                const isVisible = computedStyle.visibility !== 'hidden' && 
+                const isVisible = mainScreen?.classList.contains('ui-ready')
+                                 && computedStyle.visibility !== 'hidden' &&
                                  computedStyle.opacity !== '0' &&
                                  iconContainer.offsetParent !== null &&
                                  (!mainScreen || mainScreenStyle.display !== 'none');
@@ -6025,7 +6263,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                     return `<a href="${escapeHtml(originalHref)}" target="_blank" rel="nofollow ugc noopener noreferrer" class="answer-gif-link answer-gif-link-small"><img data-posts-src="${safeMediaUrl}" alt="GIF reply" class="answer-gif" loading="lazy" referrerpolicy="no-referrer" data-media-url="${safeMediaUrl}"></a>`;
                 }
                 const embedHref = `https://tenor.com/embed/${encodeURIComponent(postId)}`;
-                return `<span class="answer-media-frame answer-tenor-frame"><iframe src="about:blank" data-posts-src="${escapeHtml(embedHref)}" title="Tenor GIF reply" loading="lazy" allow="autoplay; fullscreen" referrerpolicy="strict-origin-when-cross-origin"></iframe><a href="${escapeHtml(originalHref)}" target="_blank" rel="nofollow ugc noopener noreferrer" class="answer-media-source">Tenor</a></span>`;
+                return `<span class="answer-media-frame answer-tenor-frame"><iframe src="about:blank" data-posts-src="${escapeHtml(embedHref)}" title="GIF reply" tabindex="-1" aria-hidden="true" loading="lazy" allow="autoplay; fullscreen" referrerpolicy="strict-origin-when-cross-origin"></iframe><a href="${escapeHtml(originalHref)}" target="_blank" rel="nofollow ugc noopener noreferrer" class="answer-media-click-target" aria-label="Open GIF"></a></span>`;
             }
             // Giphy's iframe preserves its own source ratio inside our tiny
             // 4:3 reply card, producing the large top/bottom letterbox gaps.
@@ -6033,7 +6271,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             // cropped inside the same small card without a nested player.
             const directMediaUrl = `https://media.giphy.com/media/${encodeURIComponent(postId)}/200w.gif`;
             const safeMediaUrl = escapeHtml(directMediaUrl);
-            return `<a href="${escapeHtml(originalHref)}" target="_blank" rel="nofollow ugc noopener noreferrer" class="answer-gif-link answer-gif-link-small answer-giphy-link"><img data-posts-src="${safeMediaUrl}" alt="GIF reply" class="answer-gif answer-giphy-gif" loading="lazy" referrerpolicy="no-referrer" data-media-url="${safeMediaUrl}"><span class="answer-media-source" aria-hidden="true">Giphy</span></a>`;
+            return `<a href="${escapeHtml(originalHref)}" target="_blank" rel="nofollow ugc noopener noreferrer" class="answer-gif-link answer-gif-link-small answer-giphy-link"><img data-posts-src="${safeMediaUrl}" alt="GIF reply" class="answer-gif answer-giphy-gif" loading="lazy" referrerpolicy="no-referrer" data-media-url="${safeMediaUrl}"></a>`;
         }
 
         function isDirectAnswerImage(url) {
@@ -6153,8 +6391,10 @@ document.addEventListener("DOMContentLoaded", async function() {
 
             if (media instanceof HTMLIFrameElement) {
                 const frame = media.closest('.answer-media-frame');
-                const source = frame?.querySelector('.answer-media-source');
-                const href = source?.href || media.dataset.postsSrc || '';
+                const clickTarget = frame?.querySelector(
+                    '.answer-media-click-target, .answer-media-source'
+                );
+                const href = clickTarget?.href || media.dataset.postsSrc || '';
                 if (frame) frame.replaceWith(createPostsMediaFallback(href, 'GIF link'));
             }
         }

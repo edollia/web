@@ -566,6 +566,50 @@ function renderQuestions(list, container, published) {
     `).join('');
 }
 
+function getGifReplyUrlFromClipboard(clipboardData) {
+    if (!clipboardData) return '';
+    // Plain URLs already paste correctly into the textarea and are handled by
+    // the public Giphy/Tenor/direct-image renderer. Only intervene when a GIF
+    // keyboard supplies rich HTML without a usable text representation.
+    if (/https?:\/\/\S+/i.test(clipboardData.getData('text/plain') || '')) return '';
+    const html = clipboardData.getData('text/html') || '';
+    if (!html) return '';
+    const documentFragment = new DOMParser().parseFromString(html, 'text/html');
+    const candidates = Array.from(documentFragment.querySelectorAll('a[href], img[src]'));
+    for (const element of candidates) {
+        const isImage = element.matches('img');
+        const candidate = element.getAttribute(isImage ? 'src' : 'href');
+        if (!candidate) continue;
+        try {
+            const url = new URL(candidate);
+            if (url.protocol !== 'https:' && url.protocol !== 'http:') continue;
+            const hostname = url.hostname.toLowerCase();
+            const isKnownGifProvider = hostname === 'giphy.com'
+                || hostname.endsWith('.giphy.com')
+                || hostname === 'tenor.com'
+                || hostname.endsWith('.tenor.com');
+            const isDirectGifMedia = /\.(?:gif|webp)(?:$|[?#])/i.test(
+                `${url.pathname}${url.search}${url.hash}`
+            );
+            if (isImage || isKnownGifProvider || isDirectGifMedia) return url.href;
+        } catch (error) {}
+    }
+    return '';
+}
+
+function insertGifReplyUrl(textarea, url) {
+    if (!textarea || !url) return;
+    const start = Number.isInteger(textarea.selectionStart)
+        ? textarea.selectionStart
+        : textarea.value.length;
+    const end = Number.isInteger(textarea.selectionEnd) ? textarea.selectionEnd : start;
+    const before = textarea.value.slice(0, start);
+    const after = textarea.value.slice(end);
+    const insertion = `${before && !/\s$/.test(before) ? ' ' : ''}${url}${after && !/^\s/.test(after) ? ' ' : ''}`;
+    textarea.setRangeText(insertion, start, end, 'end');
+    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
 function normalizeSocialCardOrder(value) {
     const requested = Array.isArray(value) ? value : [];
     const valid = requested.filter((key, index) =>
@@ -3272,6 +3316,27 @@ async function init() {
             const textarea = event.target.closest('textarea[data-answer-for]');
             if (!textarea) return;
             adminQuestionDrafts.set(String(textarea.dataset.answerFor), textarea.value);
+        });
+        list.addEventListener('paste', event => {
+            const textarea = event.target.closest('textarea[data-answer-for]');
+            if (!textarea) return;
+            const gifUrl = getGifReplyUrlFromClipboard(event.clipboardData);
+            if (gifUrl) {
+                event.preventDefault();
+                insertGifReplyUrl(textarea, gifUrl);
+                setStatus(els.adminStatus, 'GIF link added — save the reply when ready.');
+                return;
+            }
+            const pastedImageOnly = Array.from(event.clipboardData?.items || []).some(item => (
+                item.kind === 'file' && item.type.startsWith('image/')
+            ));
+            if (pastedImageOnly
+                && !(event.clipboardData?.getData('text/plain') || '').trim()) {
+                setStatus(
+                    els.adminStatus,
+                    'That GIF keyboard pasted an image file without a link. Use its Copy Link option instead.'
+                );
+            }
         });
     });
 

@@ -801,9 +801,8 @@ button {
     justify-content: center;
     flex-wrap: wrap;
     margin: 0;
-    opacity: 0;
-    transition: opacity 3s ease;
-    visibility: hidden;
+    opacity: 1;
+    visibility: visible;
 }
 
 .socials-button {
@@ -2096,15 +2095,22 @@ body.has-posts-panel-open .button-group {
 }
 
 .support-menu-button:not(.open) > .menu-main-icon {
-    animation: softIconIdle 4.8s ease-in-out infinite;
+    transform: translateY(0) scale(1);
 }
 
-#support-menu-button:not(.open) > .menu-main-icon {
-    animation-delay: 0.55s;
+.main-screen.ui-ready .support-menu-button:not(.open) > .menu-main-icon {
+    /* Begin only after iconButtonSettle has completed. Starting this loop
+       behind the loader left its phase dependent on loading speed, which was
+       most visible as a twitch in the larger swirl glyph. */
+    animation: softIconIdle 4.8s ease-in-out 0.52s infinite;
 }
 
-#action-menu-button:not(.open) > .menu-main-icon {
-    animation-delay: 1.1s;
+.main-screen.ui-ready #support-menu-button:not(.open) > .menu-main-icon {
+    animation-delay: 1.07s;
+}
+
+.main-screen.ui-ready #action-menu-button:not(.open) > .menu-main-icon {
+    animation-delay: 1.62s;
 }
 
 @keyframes softIconIdle {
@@ -2120,7 +2126,7 @@ body.has-posts-panel-open .button-group {
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .support-menu-button:not(.open) > .menu-main-icon {
+    .main-screen.ui-ready .support-menu-button:not(.open) > .menu-main-icon {
         animation: none;
     }
 }
@@ -3706,17 +3712,17 @@ body.first-visit-tour-active .tour-highlight-target {
 }
 
 /* Hit-testing follows the native scroll timeline independently of the visual
-   transforms. This prevents async Safari scrolling from showing restored icons
-   while a delayed JavaScript class still has their row disabled. The 72%
-   timeline point matches the JS interaction threshold after easing. */
+   transforms. Keep the original controls active until their eased visual
+   opacity is about 8%; switching earlier made still-visible icons appear
+   broken. The 84% timeline point matches the JS 92% eased threshold. */
 @keyframes dwlIconRowHitTesting {
-    0%, 72% { pointer-events: auto; }
-    72.01%, 100% { pointer-events: none; }
+    0%, 84% { pointer-events: auto; }
+    84.01%, 100% { pointer-events: none; }
 }
 
 @keyframes dwlIconsPillHitTesting {
-    0%, 72% { pointer-events: none; }
-    72.01%, 100% { pointer-events: auto; }
+    0%, 84% { pointer-events: none; }
+    84.01%, 100% { pointer-events: auto; }
 }
 
 @keyframes dwlPanelViewportReveal {
@@ -4147,25 +4153,24 @@ body.first-visit-tour-active .tour-highlight-target {
     object-fit: contain;
 }
 
-.answer-media-source {
+.answer-media-click-target {
     position: absolute;
-    right: 6px;
-    bottom: 5px;
+    inset: 0;
     z-index: 1;
-    padding: 2px 6px;
-    border-radius: 999px;
-    color: rgba(127, 82, 104, 0.68);
-    background: rgba(255, 255, 255, 0.68);
-    font-size: 8px;
-    line-height: 1.35;
-    text-decoration: none;
-    backdrop-filter: blur(5px);
-    -webkit-backdrop-filter: blur(5px);
+    display: block;
+    border-radius: inherit;
+    -webkit-tap-highlight-color: transparent;
 }
 
-.answer-media-source:focus-visible {
+.answer-media-click-target:focus-visible {
     outline: 2px solid rgba(218, 112, 162, 0.5);
-    outline-offset: 2px;
+    outline-offset: -3px;
+}
+
+/* Compatibility for question cards retained from the previous renderer or a
+   briefly mixed cached release: provider pills should never remain visible. */
+.answer-media-source {
+    display: none !important;
 }
 
 .answer-media-unavailable {
@@ -4690,7 +4695,10 @@ body.has-community-hub-open #action-menu-button.open > .menu-back-arrow {
     position: absolute;
     top: var(--open-surface-top);
     left: 50%;
-    z-index: 11;
+    /* Match Wishlist's layer: the shared icon controls are z-index 10. The
+       motion shell preallocates a transparent strip above the visible card;
+       keeping it below the controls prevents that strip stealing icon taps. */
+    z-index: 9;
     width: min(90vw, 320px);
     padding: 0;
     opacity: 0;
@@ -4700,6 +4708,13 @@ body.has-community-hub-open #action-menu-button.open > .menu-back-arrow {
     transform-origin: 50% 0;
     pointer-events: none;
     transition: opacity 0.34s ease, transform 0.42s cubic-bezier(0.22, 1, 0.36, 1), visibility 0s linear 0.42s;
+}
+
+/* Used only for a synchronous final-geometry measurement before opening.
+   The hidden start state is restored and committed before .active is added. */
+.community-hub.measure-open {
+    transform: translateX(-50%) translateY(0) scale(1);
+    transition: none;
 }
 
 .community-surface {
@@ -4726,6 +4741,7 @@ body.has-community-hub-open #action-menu-button.open > .menu-back-arrow {
     height: var(--panel-fill-max, 560px);
     overflow-x: hidden;
     overflow-y: auto;
+    overflow-anchor: none;
     overscroll-behavior-y: contain;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
@@ -4837,12 +4853,20 @@ body.has-community-hub-open #action-menu-button.open > .menu-back-arrow {
 
 .community-composer-slot {
     position: relative;
-    min-height: 148px;
-    transition: min-height 0.26s ease;
+    height: 148px;
+    min-height: 0;
+    overflow: hidden;
+    transition: height 0.26s cubic-bezier(0.2, 0.82, 0.24, 1);
 }
 
+.community-composer-slot.is-switching {
+    will-change: height;
+}
+
+.community-hub[data-composer-mode="doodle"] .community-composer-slot,
 .community-hub.is-doodle-mode .community-composer-slot {
-    min-height: 282px;
+    /* JS replaces this fallback with the measured canvas/control height. */
+    height: 282px;
 }
 
 .community-hub.has-no-composer .community-create-tabs,
@@ -4852,34 +4876,47 @@ body.has-community-hub-open #action-menu-button.open > .menu-back-arrow {
 
 .community-hub .ask-form-container,
 .community-hub .ask-form-container[style*="block"] {
-    position: relative;
-    inset: auto;
+    position: absolute;
+    inset: 0 0 auto;
     display: block;
     width: min(100%, 240px);
     min-height: 134px;
     margin: 0 auto;
-    transform: none;
     animation: none;
     z-index: 1;
 }
 
-.community-hub.is-doodle-mode .ask-form-container {
-    display: none;
-}
-
 .community-hub .drawing-widget,
 .community-hub .drawing-widget.active {
-    position: relative;
-    inset: auto;
-    display: none;
+    position: absolute;
+    inset: 0 0 auto;
+    display: block;
     width: 100%;
-    opacity: 1;
-    transform: none;
-    pointer-events: auto;
+    margin: 0 auto;
 }
 
-.community-hub.is-doodle-mode .drawing-widget.active {
-    display: block;
+.community-hub .community-composer-slot > .ask-form-container,
+.community-hub .community-composer-slot > .drawing-widget,
+.community-hub .community-composer-slot > .drawing-widget.active {
+    opacity: 0;
+    visibility: hidden;
+    transform: translate3d(0, 5px, 0) scale(0.995);
+    pointer-events: none;
+    transition:
+        opacity 0.18s ease,
+        transform 0.22s cubic-bezier(0.2, 0.82, 0.24, 1),
+        visibility 0s linear 0.22s;
+}
+
+.community-hub:not(.is-doodle-mode)[data-composer-mode="ask"] .community-composer-slot > .ask-form-container,
+.community-hub:not([data-composer-mode]) .community-composer-slot > .ask-form-container[style*="block"],
+.community-hub[data-composer-mode="doodle"] .community-composer-slot > .drawing-widget,
+.community-hub.is-doodle-mode .community-composer-slot > .drawing-widget.active {
+    opacity: 1;
+    visibility: visible;
+    transform: translate3d(0, 0, 0) scale(1);
+    pointer-events: auto;
+    transition-delay: 0s;
 }
 
 .community-hub .canvas-container {
