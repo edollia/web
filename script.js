@@ -1719,46 +1719,76 @@ document.addEventListener("DOMContentLoaded", async function() {
         return error;
     }
 
-    function applySubmissionCursor(query, state) {
+    async function fetchPublicSubmissionPageFromRest(state, signal) {
+        const url = new URL(`${MAIN_SUPABASE_URL}/rest/v1/${state.key}`);
+        if (state.key === 'drawings') {
+            url.searchParams.set('select', 'id,imageData,created_at');
+            url.searchParams.set('approved', 'eq.true');
+        } else {
+            url.searchParams.set('select', 'id,question,answer,created_at');
+            url.searchParams.set('answer', 'not.is.null');
+        }
+        if (state.phase === 'undated') {
+            url.searchParams.set('created_at', 'is.null');
+            url.searchParams.set('order', 'id.desc');
+        } else {
+            url.searchParams.set('created_at', 'not.is.null');
+            url.searchParams.set('order', 'created_at.desc.nullslast,id.desc');
+        }
         const cursor = state?.cursor;
-        if (!cursor?.id) return query;
-        if (state.phase === 'undated') return query.lt('id', cursor.id);
-        if (!cursor.createdAt) return query;
-        return query.or(
-            `created_at.lt.${cursor.createdAt},and(created_at.eq.${cursor.createdAt},id.lt.${cursor.id})`
-        );
+        if (cursor?.id) {
+            if (state.phase === 'undated') {
+                url.searchParams.set('id', `lt.${cursor.id}`);
+            } else if (cursor.createdAt) {
+                url.searchParams.set(
+                    'or',
+                    `(created_at.lt.${cursor.createdAt},and(created_at.eq.${cursor.createdAt},id.lt.${cursor.id}))`
+                );
+            }
+        }
+        url.searchParams.set('limit', String(state.pageSize));
+
+        const response = await fetch(url, {
+            cache: 'no-store',
+            signal,
+            headers: {
+                apikey: MAIN_SUPABASE_ANON_KEY,
+                Authorization: `Bearer ${MAIN_SUPABASE_ANON_KEY}`,
+                Accept: 'application/json'
+            }
+        });
+        if (signal.aborted) throw createSubmissionsAbortError();
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) {
+            const error = new Error(
+                payload?.message || `Public submissions request failed (${response.status}).`
+            );
+            error.status = response.status;
+            error.code = payload?.code || '';
+            throw error;
+        }
+        return Array.isArray(payload) ? payload : [];
     }
 
     async function fetchPublicSubmissionPage(state, signal) {
-        if (window.supabase?.__dollUnavailable) {
-            throw new Error('Connection is unavailable right now. Please try again.');
+        let lastError = null;
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+            try {
+                // The public wall deliberately bypasses the authenticated SDK
+                // client. Its result can therefore never differ because an
+                // older browser has an admin, expired, or malformed auth token
+                // in localStorage, and it remains available if the esm.sh
+                // module itself failed to initialize.
+                return await fetchPublicSubmissionPageFromRest(state, signal);
+            } catch (error) {
+                if (signal.aborted || error?.name === 'AbortError') {
+                    throw createSubmissionsAbortError();
+                }
+                lastError = error;
+                if (attempt === 0) await wait(180);
+            }
         }
-
-        let query;
-        if (state.key === 'drawings') {
-            query = window.supabase
-                .from('drawings')
-                .select('id,imageData,created_at')
-                .eq('approved', true);
-        } else {
-            query = window.supabase
-                .from('questions')
-                .select('id,question,answer,created_at')
-                .not('answer', 'is', null);
-        }
-        query = state.phase === 'undated'
-            ? query.is('created_at', null)
-            : query.not('created_at', 'is', null)
-                .order('created_at', { ascending: false, nullsFirst: false });
-        query = applySubmissionCursor(query, state)
-            .order('id', { ascending: false })
-            .limit(state.pageSize)
-            .abortSignal(signal);
-        const result = await query;
-
-        if (signal.aborted) throw createSubmissionsAbortError();
-        if (result.error) throw result.error;
-        return Array.isArray(result.data) ? result.data : [];
+        throw lastError || new Error('Public submissions request failed.');
     }
 
     function loadSubmissionFeedPage(feedKey) {
