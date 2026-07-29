@@ -2700,6 +2700,7 @@
         panel.id = panelId;
         panel.className = 'doll-wishlist-panel';
         panel.setAttribute('aria-hidden', 'true');
+        panel.inert = true;
         panel.innerHTML = `
             <div class="doll-wishlist-scroll-shell dwl-motion-shell scroll-edge-bottom-mask">
                 <div class="dwl-motion-viewport scroll-edge-top-mask">
@@ -3881,6 +3882,7 @@
         }
 
         panelOpening = true;
+        el.inert = false;
         closeOtherContentPanels();
         // Lock the note's interactivity now, but defer its actual hide
         // transition to the same rAF that adds .active below — starting
@@ -3934,6 +3936,7 @@
     function closeThroneMockup(silent = false) {
         const wasOpening = panelOpening;
         const wasOpen = Boolean(panel?.classList.contains('active'));
+        const focusWasInside = Boolean(panel?.contains(document.activeElement));
         if (panelOpenRaf) {
             window.cancelAnimationFrame(panelOpenRaf);
             panelOpenRaf = 0;
@@ -3961,7 +3964,11 @@
         if (!silent) playSound('tap');
         panel.classList.remove('active');
         panel.setAttribute('aria-hidden', 'true');
+        panel.inert = true;
         showNoteImage();
+        if (focusWasInside) {
+            wishlistButton?.focus({ preventScroll: true });
+        }
         scheduleWishlistReleaseAfterExit(wasOpen);
     }
 

@@ -16,8 +16,127 @@ document.addEventListener("DOMContentLoaded", async function() {
     const MAIN_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp2cWRvZHpraG1jcHR3a2psZmV1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg3NjM1NjAsImV4cCI6MjA2NDMzOTU2MH0.i1xbRIhPHVkDIrnDlQFP0ebNklrx8WVQcQo8Iuo9zG8';
     const LOCAL_SOCIAL_CARD_VIDEOS = SOCIAL_CARD_MEDIA_CONFIG.localVideos || {};
     const LOCAL_SOCIAL_CARD_POSTERS = SOCIAL_CARD_MEDIA_CONFIG.localPosters || {};
-    const LOCAL_SOCIAL_CARD_PRELOAD_TIMEOUT_MS = 8000;
     const LOCAL_SOCIAL_FRAME_PREPARE_TIMEOUT_MS = 6500;
+    const socialPreviewSourceLoads = new WeakMap();
+    const localSafariSocialBlobCache = new Map();
+    let socialPreviewSourceLoadId = 0;
+
+    function shouldUseLocalSafariSocialBlobTransport() {
+        const hostname = window.location.hostname.toLowerCase();
+        const isLocalHttp = (window.location.protocol === 'http:'
+                || window.location.protocol === 'https:')
+            && (hostname === 'localhost'
+                || hostname === '127.0.0.1'
+                || hostname === '::1'
+                || hostname.endsWith('.localhost'));
+        const userAgent = navigator.userAgent || '';
+        const isSafari = navigator.vendor === 'Apple Computer, Inc.'
+            && /Safari/i.test(userAgent)
+            && !/(?:CriOS|FxiOS|EdgiOS|OPiOS|Chrome|Chromium|Android)/i.test(userAgent);
+        return SOCIAL_CARD_VIDEO_SOURCE_MODE === 'github' && isLocalHttp && isSafari;
+    }
+
+    function invalidateSocialPreviewSourceLoad(video) {
+        if (!(video instanceof HTMLVideoElement)) return;
+        video.dataset.socialSourceLoadId = String(++socialPreviewSourceLoadId);
+        delete video.dataset.socialPendingSource;
+        socialPreviewSourceLoads.delete(video);
+    }
+
+    function revokeSocialPreviewBlobUrl(video) {
+        if (!(video instanceof HTMLVideoElement)) return;
+        const blobUrl = String(video.dataset.socialBlobUrl || '');
+        if (blobUrl) URL.revokeObjectURL(blobUrl);
+        delete video.dataset.socialBlobUrl;
+    }
+
+    function getLocalSafariSocialVideoBlob(source) {
+        let absoluteSource;
+        try {
+            absoluteSource = new URL(source, window.location.href).href;
+        } catch (error) {
+            return Promise.reject(error);
+        }
+        const cached = localSafariSocialBlobCache.get(absoluteSource);
+        if (cached) return cached;
+
+        const request = fetch(absoluteSource, {
+            cache: 'force-cache',
+            credentials: 'same-origin',
+        }).then(async response => {
+            if (!response.ok) {
+                throw new Error(`Social preview request failed with HTTP ${response.status}`);
+            }
+            const blob = await response.blob();
+            if (!blob.size) throw new Error('Social preview response was empty');
+            return blob.type ? blob : blob.slice(0, blob.size, 'video/mp4');
+        }).catch(error => {
+            if (localSafariSocialBlobCache.get(absoluteSource) === request) {
+                localSafariSocialBlobCache.delete(absoluteSource);
+            }
+            throw error;
+        });
+        localSafariSocialBlobCache.set(absoluteSource, request);
+        return request;
+    }
+
+    function assignSocialPreviewVideoSource(key, video, canonicalSource, requestedSource) {
+        if (!(video instanceof HTMLVideoElement)) return null;
+        const source = String(requestedSource || canonicalSource || '').trim();
+        if (!source) return null;
+
+        const loadId = String(++socialPreviewSourceLoadId);
+        video.dataset.socialSourceLoadId = loadId;
+        video.dataset.configuredSource = canonicalSource;
+        delete video.dataset.socialFrameReady;
+
+        if (!shouldUseLocalSafariSocialBlobTransport()) {
+            delete video.dataset.socialPendingSource;
+            socialPreviewSourceLoads.delete(video);
+            revokeSocialPreviewBlobUrl(video);
+            video.dataset.source = source;
+            video.src = source;
+            video.load();
+            return null;
+        }
+
+        video.dataset.socialPendingSource = source;
+        recordSocialPreviewReliability(key, 'loading', 'safari-localhost-blob-transport');
+        const sourceLoad = getLocalSafariSocialVideoBlob(source)
+            .then(blob => {
+                if (!video.isConnected
+                    || video.dataset.socialSourceLoadId !== loadId
+                    || video.dataset.configuredSource !== canonicalSource) return false;
+                const blobUrl = URL.createObjectURL(blob);
+                revokeSocialPreviewBlobUrl(video);
+                video.dataset.socialBlobUrl = blobUrl;
+                video.dataset.source = blobUrl;
+                video.src = blobUrl;
+                video.load();
+                return true;
+            })
+            .catch(() => {
+                if (!video.isConnected
+                    || video.dataset.socialSourceLoadId !== loadId
+                    || video.dataset.configuredSource !== canonicalSource) return false;
+                // If an ordinary fetch is unavailable for an unrelated local
+                // setup, preserve the browser's standard media request path.
+                revokeSocialPreviewBlobUrl(video);
+                video.dataset.source = source;
+                video.src = source;
+                video.load();
+                return false;
+            })
+            .finally(() => {
+                if (video.dataset.socialSourceLoadId !== loadId) return;
+                delete video.dataset.socialPendingSource;
+                if (socialPreviewSourceLoads.get(video) === sourceLoad) {
+                    socialPreviewSourceLoads.delete(video);
+                }
+            });
+        socialPreviewSourceLoads.set(video, sourceLoad);
+        return sourceLoad;
+    }
 
     function hasRenderedSocialVideoFrame(video) {
         return video instanceof HTMLVideoElement
@@ -32,12 +151,13 @@ document.addEventListener("DOMContentLoaded", async function() {
         pauseAfterFrame = false,
     } = {}) {
         if (!(video instanceof HTMLVideoElement)) return Promise.resolve(false);
-        const expectedSource = String(video.dataset.source || video.getAttribute('src') || '');
+        const expectedConfiguredSource = String(video.dataset.configuredSource || '');
         const sourceIsReady = () => (
             video.isConnected
             && video.readyState >= 2
-            && String(video.dataset.source || '') === expectedSource
-            && video.getAttribute('src') === expectedSource
+            && String(video.dataset.configuredSource || '') === expectedConfiguredSource
+            && Boolean(video.dataset.source)
+            && video.getAttribute('src') === video.dataset.source
         );
         const finishPlaybackState = ready => {
             if (ready) {
@@ -59,6 +179,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         return new Promise(resolve => {
             let settled = false;
             let timeoutId = 0;
+            let observedSourceLoadId = String(video.dataset.socialSourceLoadId || '');
             const cleanup = () => {
                 window.clearTimeout(timeoutId);
                 video.removeEventListener('loadeddata', onReady);
@@ -72,7 +193,19 @@ document.addEventListener("DOMContentLoaded", async function() {
                 resolve(finishPlaybackState(Boolean(ready && sourceIsReady())));
             };
             const onReady = () => finish(true);
-            const onError = () => finish(false);
+            const onError = () => {
+                // The permanent media-error listener can start a fresh source
+                // assignment before this readiness listener runs. Keep this
+                // wait attached to that recovery instead of settling early
+                // against the failed first request.
+                const currentSourceLoadId = String(video.dataset.socialSourceLoadId || '');
+                if (currentSourceLoadId && currentSourceLoadId !== observedSourceLoadId) {
+                    observedSourceLoadId = currentSourceLoadId;
+                    return;
+                }
+                if (socialPreviewSourceLoads.has(video)) return;
+                finish(false);
+            };
 
             video.addEventListener('loadeddata', onReady);
             video.addEventListener('canplay', onReady);
@@ -81,10 +214,10 @@ document.addEventListener("DOMContentLoaded", async function() {
             if (sourceIsReady()) finish(true);
         });
     }
-    // Same-origin social videos load behind the entrance screen directly in
-    // their final cards. Moving a decoded, detached <video> into the live DOM
-    // made Safari occasionally discard its painted frame until a second open.
-    // Keeping one mounted element for its whole lifecycle removes that race.
+    // Social videos are created on demand directly inside their final cards.
+    // Moving a decoded, detached <video> into the live DOM made Safari
+    // occasionally discard its painted frame, so each loaded element remains
+    // mounted for the rest of its card lifecycle.
     function getMountedSocialCardForKey(key) {
         const id = key === 'kofi' ? 'donate-option' : `${key}-option`;
         return document.getElementById(id);
@@ -132,116 +265,23 @@ document.addEventListener("DOMContentLoaded", async function() {
             || video.dataset.socialRetryUsed === 'true') return false;
         video.dataset.socialRetryUsed = 'true';
         video.dataset.configuredSource = canonicalSource;
-        video.dataset.source = buildSocialPreviewRetryUrl(canonicalSource);
         delete video.dataset.socialFrameReady;
         delete video.dataset.socialPreviewFailed;
         video.pause();
         video.removeAttribute('src');
         video.load();
-        video.src = video.dataset.source;
-        video.load();
+        invalidateSocialPreviewSourceLoad(video);
+        revokeSocialPreviewBlobUrl(video);
+        assignSocialPreviewVideoSource(
+            key,
+            video,
+            canonicalSource,
+            buildSocialPreviewRetryUrl(canonicalSource)
+        );
         recordSocialPreviewReliability(key, 'retrying', reason);
         return true;
     }
 
-    function ensureMountedLocalSocialVideo(key, source) {
-        const card = getMountedSocialCardForKey(key);
-        if (!card || !source) return null;
-        ensureSocialCardPoster(key, card);
-
-        let video = card.querySelector('video.social-link-preview');
-        if (video && (video.dataset.configuredSource || video.dataset.source) !== source) {
-            video.pause();
-            delete video.dataset.socialFrameReady;
-            video.removeAttribute('src');
-            video.load();
-            video.remove();
-            video = null;
-        }
-        if (!video) {
-            video = document.createElement('video');
-            video.className = 'social-link-preview';
-            video.setAttribute('aria-hidden', 'true');
-            video.tabIndex = -1;
-            card.prepend(video);
-        }
-
-        video.muted = true;
-        video.defaultMuted = true;
-        video.loop = true;
-        video.playsInline = true;
-        video.preload = 'auto';
-        video.setAttribute('muted', '');
-        video.setAttribute('playsinline', '');
-        video.setAttribute('webkit-playsinline', '');
-        video.dataset.configuredSource = source;
-        if (!video.dataset.source) video.dataset.source = source;
-
-        if (video.dataset.localSocialLifecycle !== 'true') {
-            video.dataset.localSocialLifecycle = 'true';
-            const revealAfterPaint = () => {
-                if (!video.isConnected || video.parentElement !== card
-                    || video.dataset.configuredSource !== source
-                    || video.getAttribute('src') !== video.dataset.source
-                    || video.readyState < 2) return;
-                const socialsAreOpen = document.getElementById('socials-button')
-                    ?.classList.contains('open');
-                void waitForRenderedSocialVideoFrame(video, {
-                    pauseAfterFrame: !socialsAreOpen,
-                }).then(painted => {
-                    if (!painted || !video.isConnected || video.parentElement !== card
-                        || video.dataset.configuredSource !== source
-                        || video.getAttribute('src') !== video.dataset.source) return;
-                    delete video.dataset.socialPreviewFailed;
-                    delete video.dataset.socialRetryUsed;
-                    recordSocialPreviewReliability(key, 'ready');
-                    if (card.dataset.socialPreviewDeferred !== 'true') {
-                        card.classList.add('has-social-preview');
-                    }
-                });
-            };
-            video.addEventListener('loadeddata', revealAfterPaint);
-            video.addEventListener('error', () => {
-                if (!video.isConnected || video.parentElement !== card
-                    || video.dataset.configuredSource !== source
-                    || video.getAttribute('src') !== video.dataset.source) return;
-                delete video.dataset.socialFrameReady;
-                if (retryMountedSocialVideo(key, video, source, 'media-error')) return;
-                video.dataset.socialPreviewFailed = 'true';
-                card.classList.remove('has-social-preview');
-                recordSocialPreviewReliability(key, 'fallback', 'media-error-after-retry');
-            });
-        }
-
-        video.dataset.configuredSource = source;
-        if (!video.dataset.source) video.dataset.source = source;
-        if (video.getAttribute('src') !== video.dataset.source) {
-            delete video.dataset.socialFrameReady;
-            video.src = video.dataset.source;
-            video.load();
-        }
-        if (video.readyState >= 2) {
-            const socialsAreOpen = document.getElementById('socials-button')
-                ?.classList.contains('open');
-            void waitForRenderedSocialVideoFrame(video, {
-                pauseAfterFrame: !socialsAreOpen,
-            });
-        }
-        return video;
-    }
-
-    function primeConfiguredLocalSocialVideoFrames() {
-        if (SOCIAL_CARD_VIDEO_SOURCE_MODE !== 'github') return;
-        Object.entries(LOCAL_SOCIAL_CARD_VIDEOS).forEach(([key, value]) => {
-            const source = String(value || '').trim();
-            const video = ensureMountedLocalSocialVideo(key, source);
-            if (!video || hasRenderedSocialVideoFrame(video)) return;
-            void waitForRenderedSocialVideoFrame(video, {
-                timeoutMs: 2400,
-                pauseAfterFrame: true,
-            });
-        });
-    }
     const DEFAULT_LINK_SETTINGS = {
         snapchat_url: 'https://www.snapchat.com/add/dumidoll',
         snapchat_username: 'dumidoll',
@@ -1331,12 +1371,10 @@ document.addEventListener("DOMContentLoaded", async function() {
     const PUBLIC_DRAWINGS_PAGE_SIZE = 12;
     const PUBLIC_QUESTIONS_PAGE_SIZE = 20;
     const PUBLIC_SUBMISSIONS_TIMEOUT_MS = 10000;
-    const PUBLIC_SUBMISSIONS_MEDIA_TIMEOUT_MS = 8000;
-    const PUBLIC_SUBMISSIONS_MEDIA_CONCURRENCY = 8;
     const PUBLIC_SUBMISSIONS_EXIT_DURATION_MS = 450;
     const PUBLIC_SUBMISSIONS_RELEASE_DELAY_MS = 1000;
     const STATIC_RESOURCE_PROGRESS_END = 58;
-    const SOCIAL_MEDIA_PROGRESS_END = 82;
+    const CLIENT_SETUP_PROGRESS_START = 82;
     let loadingBarShown = false;
     let loadingProgress = 0;
     let displayedLoadingProgress = 0;
@@ -1414,6 +1452,11 @@ document.addEventListener("DOMContentLoaded", async function() {
     }
 
     function markSubmissionsDirty() {
+        // Public questions remain hidden until answered and doodles remain
+        // hidden until approved. Do not invalidate a wall that is currently
+        // open: doing so would make its next near-bottom page restart from
+        // the newest records and replace the reader's current position.
+        if (document.getElementById('posts-popup')?.classList.contains('active')) return;
         submissionsRevision += 1;
         abortSubmissionLoads();
         submissionsLoadPromise = null;
@@ -1625,90 +1668,12 @@ document.addEventListener("DOMContentLoaded", async function() {
         }
     }
     
-    // Static images hand the paw trail to the local social-video preloader.
-    // Supabase setup and final app data still own the last 18%.
+    // Critical static images own the first part of the entrance trail.
+    // Client setup and final app data own the remaining progress.
     function updateLoadingBar(loadedCount, totalResources) {
         if (!totalResources) return;
         const resourceProgress = (loadedCount / totalResources) * STATIC_RESOURCE_PROGRESS_END;
         setLoadingProgress(resourceProgress);
-    }
-
-    async function preloadConfiguredLocalSocialVideos() {
-        if (SOCIAL_CARD_VIDEO_SOURCE_MODE !== 'github') {
-            setLoadingProgress(SOCIAL_MEDIA_PROGRESS_END);
-            return;
-        }
-
-        const entries = Object.entries(LOCAL_SOCIAL_CARD_VIDEOS)
-            .map(([key, source]) => [key, String(source || '').trim()])
-            .filter(([, source]) => Boolean(source));
-        if (!entries.length) {
-            setLoadingProgress(SOCIAL_MEDIA_PROGRESS_END);
-            return;
-        }
-
-        // .main-screen is normally display:none until the visitor enters.
-        // Safari cannot paint a video frame anywhere in a display:none tree,
-        // so make the real final cards renderable beneath the fully opaque
-        // loading/entry overlays. The screen remains inert and effectively
-        // invisible; dismissEntryGate() removes this preparation state at the
-        // exact moment the normal main-screen entrance begins.
-        const preparingMainScreen = document.getElementById('main-screen');
-        if (preparingMainScreen) {
-            preparingMainScreen.classList.add('social-media-preparing');
-            preparingMainScreen.setAttribute('aria-hidden', 'true');
-            preparingMainScreen.inert = true;
-        }
-
-        let completed = 0;
-        setLoadingProgress(STATIC_RESOURCE_PROGRESS_END);
-        await Promise.allSettled(entries.map(([key, source]) => new Promise(resolve => {
-            const video = ensureMountedLocalSocialVideo(key, source);
-            if (!video) {
-                completed += 1;
-                setLoadingProgress(
-                    STATIC_RESOURCE_PROGRESS_END
-                    + (completed / entries.length)
-                        * (SOCIAL_MEDIA_PROGRESS_END - STATIC_RESOURCE_PROGRESS_END)
-                );
-                resolve(false);
-                return;
-            }
-            let settled = false;
-            let timeoutId = 0;
-            const finish = ready => {
-                if (settled) return;
-                settled = true;
-                window.clearTimeout(timeoutId);
-                video.removeEventListener('loadeddata', onReady);
-                video.removeEventListener('error', onError);
-                completed += 1;
-                setLoadingProgress(
-                    STATIC_RESOURCE_PROGRESS_END
-                    + (completed / entries.length)
-                        * (SOCIAL_MEDIA_PROGRESS_END - STATIC_RESOURCE_PROGRESS_END)
-                );
-                resolve(ready);
-            };
-            const onReady = () => {
-                void waitForRenderedSocialVideoFrame(video, {
-                    timeoutMs: LOCAL_SOCIAL_FRAME_PREPARE_TIMEOUT_MS,
-                    pauseAfterFrame: true,
-                }).then(finish);
-            };
-            const onError = () => finish(false);
-            video.addEventListener('loadeddata', onReady, { once: true });
-            video.addEventListener('error', onError, { once: true });
-            timeoutId = window.setTimeout(
-                () => {
-                    const ready = hasRenderedSocialVideoFrame(video);
-                    if (!ready) retryMountedSocialVideo(key, video, source, 'preload-timeout');
-                    finish(ready);
-                },
-                LOCAL_SOCIAL_CARD_PRELOAD_TIMEOUT_MS
-            );
-            if (video.readyState >= 2) onReady();
-        })));
     }
 
     setLoadingProgress(4);
@@ -1877,32 +1842,12 @@ document.addEventListener("DOMContentLoaded", async function() {
         return pagePromise;
     }
 
-    async function loadEntireSubmissionFeed(feedKey) {
-        const state = submissionFeeds[feedKey];
-        if (!state) return [];
-
-        while (!state.done) {
-            const previousPhase = state.phase;
-            const previousCursorId = String(state.cursor?.id || '');
-            await loadSubmissionFeedPage(feedKey);
-
-            // A malformed response must never leave the paw loader spinning
-            // forever. A legitimate final dated page advances into the
-            // undated phase, and every other non-final page advances its ID
-            // cursor, so neither valid path reaches this guard.
-            const cursorAdvanced = previousCursorId !== String(state.cursor?.id || '');
-            if (!state.done && previousPhase === state.phase && !cursorAdvanced) {
-                throw new Error(`Could not advance the ${feedKey} submissions cursor.`);
-            }
-        }
-
-        return state.items;
-    }
-
-    function loadSubmissionsFromSupabase() {
+    function loadNextSubmissionBatch() {
         if (submissionsLoadPromise) return submissionsLoadPromise;
         const requestRevision = submissionsRevision;
-        const feedsToLoad = Object.values(submissionFeeds).map(state => state.key);
+        const feedsToLoad = Object.values(submissionFeeds)
+            .filter(state => !state.done)
+            .map(state => state.key);
         if (!feedsToLoad.length) {
             return Promise.resolve({
                 drawings: preloadedSubmissions.drawings,
@@ -1911,7 +1856,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         }
 
         let requestPromise;
-        requestPromise = Promise.all(feedsToLoad.map(loadEntireSubmissionFeed))
+        requestPromise = Promise.all(feedsToLoad.map(loadSubmissionFeedPage))
             .then(() => {
                 return {
                     drawings: preloadedSubmissions.drawings,
@@ -2178,12 +2123,9 @@ document.addEventListener("DOMContentLoaded", async function() {
                 }
             }, 8000);
         }),
-        // Load the same-origin card videos in their final card elements while
-        // the entrance screen is still covering the page.
-        preloadConfiguredLocalSocialVideos().catch(() => {})
     ]).then(async () => {
         // Load Supabase only after the initial loading is complete
-        setLoadingProgress(SOCIAL_MEDIA_PROGRESS_END);
+        setLoadingProgress(CLIENT_SETUP_PROGRESS_START);
 
         const supabaseModulePromise = import('https://esm.sh/@supabase/supabase-js@2');
         try {
@@ -2226,11 +2168,6 @@ document.addEventListener("DOMContentLoaded", async function() {
         // It is fetched only if the visitor opens that panel, so base64
         // drawings can never contend with the entrance interaction.
         await loadSiteLinkSettingsWithTimeout();
-        // Ko-fi is the one social-card exception that opens an on-page iframe.
-        // Build and prewarm it behind the loader so its card still has the
-        // same 300ms pop cadence as every other destination.
-        kofiWidgetMayPrepare = true;
-        prepareKofiWidget();
         clearInterval(progressTick);
         setLoadingProgress(100);
 
@@ -2269,9 +2206,6 @@ document.addEventListener("DOMContentLoaded", async function() {
     function dismissEntryGate(trigger = null) {
         if (!popup || entryDismissalInProgress) return;
         entryDismissalInProgress = true;
-        // This is a trusted visitor gesture. Use it to prepare media before
-        // the main UI can be tapped.
-        primeConfiguredLocalSocialVideoFrames();
         primeBackgroundMusic();
         // This hidden sticker is needed only after the visitor enters. Starting
         // it now gives the transition time to load without delaying the loader
@@ -2288,11 +2222,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                 popup.style.display = "none";
                 const mainScreen = document.getElementById("main-screen");
                 if (mainScreen) {
-                    // Keep display:block continuously while swapping out the
-                    // invisible preload state, preserving Safari's painted
-                    // video frames for an immediate first Socials opening.
                     mainScreen.style.display = "block";
-                    mainScreen.classList.remove('social-media-preparing');
                     mainScreen.removeAttribute('aria-hidden');
                     mainScreen.inert = false;
                     mainScreen.classList.remove('ui-ready', 'note-ready');
@@ -2426,7 +2356,6 @@ document.addEventListener("DOMContentLoaded", async function() {
 
         if (entryBubbleRemaining === 0) {
             entryBubbleField.inert = true;
-            primeConfiguredLocalSocialVideoFrames();
             primeBackgroundMusic();
             window.setTimeout(() => dismissEntryGate(), 620);
         }
@@ -3385,16 +3314,13 @@ document.addEventListener("DOMContentLoaded", async function() {
     function primeCommittedPostsMedia(root = communityWallList) {
         if (!root) return;
 
-        // Safari can keep an image/GIF that was decoded in the off-screen
-        // preparation stage in an unpainted state after that same node is
-        // moved into the visible masonry wall. Reassert every prepared source
-        // after the move and ask decoded images to join the visible paint.
+        // Drawings and the small local reaction asset can begin painting as
+        // soon as their cards are committed. Answer GIF/video/iframe sources
+        // remain owned by the nearby-frame observer below, so media far down
+        // the wall does not compete with the first visible page.
         root.querySelectorAll([
             '.post-item > img[data-posts-src]',
-            'img.like-icon[data-posts-src]',
-            'img.answer-gif[data-posts-src]',
-            'video[data-posts-src]',
-            'iframe[data-posts-src]'
+            'img.like-icon[data-posts-src]'
         ].join(',')).forEach(media => {
             const source = media.dataset.postsSrc;
             const currentSource = media.getAttribute('src');
@@ -3718,6 +3644,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     const socialsButton = document.getElementById('socials-button');
     const socialLinksPanel = document.getElementById('social-links-panel');
     const socialLinksShell = socialLinksPanel?.closest('.social-links-shell');
+    const socialLinksLoading = document.getElementById('social-links-loading');
     const snapchatOption = document.getElementById('snapchat-option');
     const instagramOption = document.getElementById('instagram-option');
     const telegramOption = document.getElementById('telegram-option');
@@ -3789,7 +3716,6 @@ document.addEventListener("DOMContentLoaded", async function() {
     const FIRST_VISIT_TOUR_FORCE = new URLSearchParams(window.location.search).get('previewTour') === '1';
     let kofiWidgetInitialized = false;
     let activeKofiWidgetHandle = '';
-    let kofiWidgetMayPrepare = false;
     const socialCardDefinitions = [
         { key: 'snapchat', option: snapchatOption, label: 'Snapchat' },
         { key: 'instagram', option: instagramOption, label: 'Instagram', withAt: true },
@@ -3805,13 +3731,16 @@ document.addEventListener("DOMContentLoaded", async function() {
     let socialPreviewObserver = null;
     let socialPreviewReleaseTimer = 0;
     let socialOpenGeneration = 0;
+    let socialAtomicRevealCleanups = [];
     const SOCIAL_PREVIEW_ROOT_MARGIN = 120;
     const SOCIAL_PREVIEW_RELEASE_DELAY_MS = 30000;
     const SOCIAL_PREVIEW_CACHE_LIMIT = 6;
-    // Normally this resolves immediately because the entrance loader painted
-    // the first frames already. The bounded wait only covers an iOS decode
-    // that was deferred until the Socials tap itself.
-    const SOCIAL_PREVIEW_OPEN_WAIT_MS = 1400;
+    // Social videos are intentionally non-critical to the homepage. The
+    // Socials surface owns their first load and waits for one atomic reveal,
+    // matching Wishlist's paw-first lifecycle. A stalled or data-saver-blocked
+    // video can never hold that surface longer than this deadline.
+    const SOCIAL_PREVIEW_OPEN_WAIT_MS = 8000;
+    const SOCIAL_PREVIEW_MIN_LOADER_MS = 900;
     const initialSocialPreviewCards = new Set();
     const socialPreviewRecency = new Map();
 
@@ -3856,6 +3785,8 @@ document.addEventListener("DOMContentLoaded", async function() {
                 preview.pause();
                 preview.removeAttribute('src');
                 preview.load();
+                invalidateSocialPreviewSourceLoad(preview);
+                revokeSocialPreviewBlobUrl(preview);
             } else {
                 preview.removeAttribute('src');
             }
@@ -3899,6 +3830,8 @@ document.addEventListener("DOMContentLoaded", async function() {
                 card.classList.remove('has-social-preview');
                 preview.removeAttribute('src');
                 preview.load();
+                invalidateSocialPreviewSourceLoad(preview);
+                revokeSocialPreviewBlobUrl(preview);
                 preview.remove();
                 socialPreviewRecency.delete(card);
             }
@@ -3942,9 +3875,9 @@ document.addEventListener("DOMContentLoaded", async function() {
             preview = null;
         }
 
-        // Supabase mode preserves the old on-open lazy behavior to control
-        // egress. GitHub mode already has its final, mounted card element
-        // loading behind the entrance screen.
+        // A preview element is created only when its surface requests media.
+        // GitHub mode requests the complete fixed set on the first Socials
+        // press; Supabase mode can still restrict work to nearby cards.
         if (!preview && !loadMedia) {
             card.classList.remove('has-social-preview');
             return;
@@ -4013,8 +3946,11 @@ document.addEventListener("DOMContentLoaded", async function() {
         if (!loadMedia) return;
 
         const sourceFailed = preview.dataset.socialPreviewFailed === 'true';
+        const sourceAssignmentPending = preview instanceof HTMLVideoElement
+            && preview.dataset.configuredSource === url
+            && socialPreviewSourceLoads.has(preview);
         const alreadyHasCurrentSource = preview.dataset.configuredSource === url
-            && Boolean(preview.getAttribute('src'));
+            && (Boolean(preview.getAttribute('src')) || sourceAssignmentPending);
         if (!alreadyHasCurrentSource || sourceFailed) {
             // Safari can leave a media element permanently poisoned after one
             // interrupted/decode error. Reset that element before assigning
@@ -4025,17 +3961,24 @@ document.addEventListener("DOMContentLoaded", async function() {
                 if (preview instanceof HTMLVideoElement) delete preview.dataset.socialFrameReady;
                 preview.removeAttribute('src');
                 if (preview instanceof HTMLVideoElement) preview.load();
+                if (preview instanceof HTMLVideoElement) {
+                    invalidateSocialPreviewSourceLoad(preview);
+                    revokeSocialPreviewBlobUrl(preview);
+                }
             }
             delete preview.dataset.socialPreviewFailed;
             if (preview instanceof HTMLVideoElement) delete preview.dataset.socialFrameReady;
             const requestedSource = sourceFailed && SOCIAL_CARD_VIDEO_SOURCE_MODE === 'github'
                 ? buildSocialPreviewRetryUrl(url)
                 : url;
-            preview.dataset.source = requestedSource;
             if (sourceFailed) preview.dataset.socialRetryUsed = 'true';
-            preview.src = requestedSource;
             delete preview.dataset.socialPausedSrc;
-            if (preview instanceof HTMLVideoElement) preview.load();
+            if (preview instanceof HTMLVideoElement) {
+                assignSocialPreviewVideoSource(key, preview, url, requestedSource);
+            } else {
+                preview.dataset.source = requestedSource;
+                preview.src = requestedSource;
+            }
         }
         touchSocialCardPreview(card);
         if (alreadyHasCurrentSource
@@ -4090,6 +4033,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         if (!(preview instanceof HTMLVideoElement)
             || document.hidden
             || !socialsButton?.classList.contains('open')
+            || !preview.getAttribute('src')
             || !preview.paused
             || preview.dataset.socialPlayPending === 'true') return;
 
@@ -4122,10 +4066,23 @@ document.addEventListener("DOMContentLoaded", async function() {
             });
     }
 
-    function waitForSocialPreviewReady(preview, timeoutMs) {
+    async function waitForSocialPreviewReady(preview, timeoutMs) {
         if (preview instanceof HTMLVideoElement) {
+            const startedAt = performance.now();
+            const sourceLoad = socialPreviewSourceLoads.get(preview);
+            if (sourceLoad) {
+                let timer = 0;
+                await Promise.race([
+                    Promise.resolve(sourceLoad).catch(() => false),
+                    new Promise(resolve => {
+                        timer = window.setTimeout(() => resolve(false), timeoutMs);
+                    }),
+                ]);
+                window.clearTimeout(timer);
+            }
+            const remainingMs = Math.max(0, timeoutMs - (performance.now() - startedAt));
             return waitForRenderedSocialVideoFrame(preview, {
-                timeoutMs,
+                timeoutMs: remainingMs,
                 pauseAfterFrame: false,
             });
         }
@@ -4151,51 +4108,104 @@ document.addEventListener("DOMContentLoaded", async function() {
         });
     }
 
+    function clearSocialAtomicRevealWatchers() {
+        socialAtomicRevealCleanups.forEach(cleanup => cleanup());
+        socialAtomicRevealCleanups = [];
+    }
+
+    function revealSocialPreviewSetTogether(candidates, openGeneration) {
+        clearSocialAtomicRevealWatchers();
+        let revealFrame = 0;
+        const tryReveal = () => {
+            if (openGeneration !== socialOpenGeneration
+                || !socialsButton?.classList.contains('open')) {
+                clearSocialAtomicRevealWatchers();
+                return;
+            }
+            const completeSetIsReady = candidates.every(({ card, preview }) => (
+                preview.isConnected
+                && preview.parentElement === card
+                && isSocialPreviewReady(preview)
+            ));
+            if (!completeSetIsReady || revealFrame) return;
+            revealFrame = window.requestAnimationFrame(() => {
+                revealFrame = 0;
+                if (openGeneration !== socialOpenGeneration
+                    || !socialsButton?.classList.contains('open')) return;
+                candidates.forEach(({ card }) => {
+                    delete card.dataset.socialPreviewDeferred;
+                    card.classList.add('has-social-preview');
+                });
+                clearSocialAtomicRevealWatchers();
+            });
+        };
+
+        candidates.forEach(({ preview }) => {
+            if (isSocialPreviewReady(preview)) return;
+            const eventName = preview instanceof HTMLVideoElement
+                ? 'doll-social-frame-ready'
+                : 'load';
+            preview.addEventListener(eventName, tryReveal);
+            socialAtomicRevealCleanups.push(() => {
+                preview.removeEventListener(eventName, tryReveal);
+            });
+        });
+        tryReveal();
+    }
+
     async function prepareOpeningSocialPreviews(openGeneration) {
         if (openGeneration !== socialOpenGeneration
             || !socialsButton?.classList.contains('open')) return false;
-        const cards = Array.from(initialSocialPreviewCards).filter(card => isSocialCardVisibleInPanel(card));
+        const cards = getVisibleSocialOptions().filter(card => {
+            const key = getSocialCardVideoKey(card);
+            return Boolean(key && getSocialCardVideoUrl(key));
+        });
         const candidates = cards.map(card => ({
             card,
-            preview: card.querySelector('.social-link-preview[src]'),
+            // Safari-localhost Blob transport has a real preview node while
+            // its ordinary file fetch is pending, but no src until the Blob
+            // URL exists. That pending fetch is part of opening readiness.
+            preview: card.querySelector('.social-link-preview'),
         })).filter(({ preview }) => preview);
-        const results = await Promise.all(candidates.map(async ({ card, preview }) => ({
+        const readiness = Promise.all(candidates.map(async ({ card, preview }) => ({
             card,
             preview,
             ready: await waitForSocialPreviewReady(preview, SOCIAL_PREVIEW_OPEN_WAIT_MS),
         })));
+        await Promise.all([
+            readiness,
+            new Promise(resolve => {
+                window.setTimeout(resolve, SOCIAL_PREVIEW_MIN_LOADER_MS);
+            }),
+        ]);
         // A settings refresh, close, or second open can replace/remove these
         // exact preview nodes while the readiness wait is pending. Never let
         // that stale preparation mutate the new opening cohort.
         if (openGeneration !== socialOpenGeneration
             || !socialsButton?.classList.contains('open')) return false;
-        results.forEach(({ card, preview, ready }) => {
-            if (ready && preview.isConnected && preview.parentElement === card) {
+        const completeSetIsReady = candidates.every(({ card, preview }) => (
+            preview.isConnected
+            && preview.parentElement === card
+            && isSocialPreviewReady(preview)
+        ));
+        if (completeSetIsReady) {
+            candidates.forEach(({ card, preview }) => {
                 delete card.dataset.socialPreviewDeferred;
                 card.classList.add('has-social-preview');
                 if (preview instanceof HTMLVideoElement && !document.hidden) {
                     playSocialPreview(preview);
                 }
-                return;
-            }
-            if (SOCIAL_CARD_VIDEO_SOURCE_MODE === 'github') {
-                // A local file that missed the bounded entrance deadline may
-                // be holding a poisoned partial response in Safari. Give that
-                // exact card one clean cache-busted rebuild; its permanent
-                // poster remains visible while the retry decodes.
-                const key = getSocialCardVideoKey(card);
-                if (key && preview instanceof HTMLVideoElement) {
-                    retryMountedSocialVideo(key, preview, getSocialCardVideoUrl(key), 'open-timeout');
-                }
-                delete card.dataset.socialPreviewDeferred;
-                return;
-            }
-            // Do not let one slow preview visibly replace its card halfway
-            // through this open. Its source keeps loading and will be ready at
-            // the start of the next open instead of creating a staggered flash.
-            card.dataset.socialPreviewDeferred = 'true';
-            card.classList.remove('has-social-preview');
-        });
+            });
+        } else {
+            // If even one preview misses the deadline, reveal a consistent
+            // poster-only set. Keep every video deferred until the complete
+            // set is ready, then cross-fade all of them in on the same frame.
+            candidates.forEach(({ card }) => {
+                card.dataset.socialPreviewDeferred = 'true';
+                card.classList.remove('has-social-preview');
+            });
+            revealSocialPreviewSetTogether(candidates, openGeneration);
+        }
         return true;
     }
 
@@ -4205,12 +4215,12 @@ document.addEventListener("DOMContentLoaded", async function() {
             window.requestAnimationFrame(() => {
                 if (openGeneration !== socialOpenGeneration
                     || !socialsButton?.classList.contains('open')) return;
-                // Start the note's exit and the prepared panel's entrance in
-                // the same paint. Previously the note vanished up to 240ms
-                // before slow social previews were ready, leaving a blank gap.
-                hideNoteImage();
-                socialLinksShell?.classList.add('active');
+                socialLinksShell?.classList.remove('is-loading');
+                if (socialLinksLoading) socialLinksLoading.setAttribute('aria-hidden', 'true');
                 socialLinksPanel?.setAttribute('aria-hidden', 'false');
+                getVisibleSocialOptions().forEach(option => {
+                    option.setAttribute('tabindex', '0');
+                });
             });
         });
     }
@@ -4277,9 +4287,9 @@ document.addEventListener("DOMContentLoaded", async function() {
         window.clearTimeout(socialPreviewReleaseTimer);
         socialPreviewReleaseTimer = 0;
         const usingObserver = observeSocialCardPreviews();
-        // Same-origin configured files are a small, fixed set and are promised
-        // by the entrance loader. Always synchronize/retry all of them here;
-        // the observer still decides which decoded videos actively play.
+        // Same-origin configured files are a small, fixed set. Their first
+        // request starts only after Socials is pressed; the observer still
+        // decides which decoded videos actively play.
         if (SOCIAL_CARD_VIDEO_SOURCE_MODE === 'github' || !usingObserver) {
             syncSocialCardVideos(true);
         }
@@ -4855,11 +4865,11 @@ document.addEventListener("DOMContentLoaded", async function() {
         });
         if (donateOption) {
             const kofiEnabled = isPublicLinkEnabled('kofi');
-            if (kofiEnabled && kofiWidgetMayPrepare) prepareKofiWidget();
             setKofiWidgetVisibility(kofiEnabled);
         }
         if (socialsButton?.classList.contains('open')) {
-            const panelAlreadyVisible = socialLinksShell?.classList.contains('active');
+            const panelAlreadyVisible = socialLinksShell?.classList.contains('active')
+                && !socialLinksShell.classList.contains('is-loading');
             const stablePaintedCards = panelAlreadyVisible
                 ? new Set(getVisibleSocialOptions().filter(card => {
                     const key = getSocialCardVideoKey(card);
@@ -4867,8 +4877,8 @@ document.addEventListener("DOMContentLoaded", async function() {
                     const preview = card.querySelector('.social-link-preview[src]');
                     return Boolean(expectedUrl
                         && card.classList.contains('has-social-preview')
-                        && preview?.dataset.source === expectedUrl
-                        && preview.getAttribute('src') === expectedUrl);
+                        && preview?.dataset.configuredSource === expectedUrl
+                        && preview.getAttribute('src') === preview.dataset.source);
                 }))
                 : new Set();
             // Settings can finish loading while the Socials surface is still
@@ -4879,7 +4889,14 @@ document.addEventListener("DOMContentLoaded", async function() {
                 : ++socialOpenGeneration;
             if (!panelAlreadyVisible) {
                 getVisibleSocialOptions().forEach(card => {
-                    delete card.dataset.socialPreviewDeferred;
+                    const key = getSocialCardVideoKey(card);
+                    const hasPreview = Boolean(key && getSocialCardVideoUrl(key));
+                    if (hasPreview) {
+                        card.dataset.socialPreviewDeferred = 'true';
+                        card.classList.remove('has-social-preview');
+                    } else {
+                        delete card.dataset.socialPreviewDeferred;
+                    }
                 });
             }
             playSocialCardVideos();
@@ -5056,12 +5073,15 @@ document.addEventListener("DOMContentLoaded", async function() {
     function closeSocialsMenu({ restoreNote = true } = {}) {
         if (!socialsButton) return;
         socialOpenGeneration += 1;
+        clearSocialAtomicRevealWatchers();
         const wasOpen = socialsButton.classList.contains('open');
         pauseSocialCardVideos();
         socialsButton.classList.remove('open');
         socialsButton.setAttribute('aria-expanded', 'false');
         socialsButton.setAttribute('aria-label', 'Open socials');
         socialLinksShell?.classList.remove('active');
+        socialLinksShell?.classList.remove('is-loading');
+        if (socialLinksLoading) socialLinksLoading.setAttribute('aria-hidden', 'true');
         socialLinksPanel?.setAttribute('aria-hidden', 'true');
         clearScrollMotion(socialLinksShell);
         document.body.classList.remove('has-social-panel-open');
@@ -5149,14 +5169,20 @@ document.addEventListener("DOMContentLoaded", async function() {
         closeDrawingWidget();
         closeQuestionForm();
         closePostsPanel();
-        // Lock immediately so the note cannot be edited/peeled while preview
-        // media settles, but keep it painted until the incoming panel is ready
-        // to cross-fade in the same frame.
+        // Lock immediately while the Socials loader replaces the note.
         notePeelTarget?.classList.add('dwl-note-locking');
         resetIconsCollapse();
         const openGeneration = ++socialOpenGeneration;
+        clearSocialAtomicRevealWatchers();
         getVisibleSocialOptions().forEach(card => {
-            delete card.dataset.socialPreviewDeferred;
+            const key = getSocialCardVideoKey(card);
+            const hasPreview = Boolean(key && getSocialCardVideoUrl(key));
+            if (hasPreview) {
+                card.dataset.socialPreviewDeferred = 'true';
+                card.classList.remove('has-social-preview');
+            } else {
+                delete card.dataset.socialPreviewDeferred;
+            }
         });
         socialsButton.classList.remove('show-glitter');
         socialsButton.classList.add('open');
@@ -5166,6 +5192,8 @@ document.addEventListener("DOMContentLoaded", async function() {
         // the reserved height is based on the exact geometry that will stay
         // in force for the whole open session.
         document.body.classList.add('has-social-panel-open');
+        socialLinksShell?.classList.add('is-loading');
+        if (socialLinksLoading) socialLinksLoading.setAttribute('aria-hidden', 'false');
         if (socialLinksPanel) {
             socialLinksPanel.scrollTop = 0;
             updateSocialEdgeFade(socialLinksPanel);
@@ -5177,9 +5205,10 @@ document.addEventListener("DOMContentLoaded", async function() {
             syncSocialReservedHeight(true);
             socialLinksShell?.classList.remove('measure-open');
         }
-        // Start the opening viewport's previews while the shell is still
-        // hidden, then reveal the whole panel together on the next frame. This
-        // avoids showing a base card for one frame before media setup begins.
+        // Reveal the paw state immediately, then replace it atomically with
+        // the complete card set once every configured preview has settled.
+        hideNoteImage();
+        socialLinksShell?.classList.add('active');
         playSocialCardVideos();
         revealSocialPanelAfterPreviews(openGeneration);
         // Establishes the correct top/bottom fade immediately (e.g. a bottom
@@ -5188,9 +5217,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         if (socialLinksPanel) {
             window.requestAnimationFrame(() => updateSocialEdgeFade(socialLinksPanel));
         }
-        getVisibleSocialOptions().forEach(option => {
-            option.setAttribute('tabindex', '0');
-        });
+        getVisibleSocialOptions().forEach(option => option.setAttribute('tabindex', '-1'));
     }
 
     applySiteLinkSettingsToDom = applyPublicLinkSettings;
@@ -5607,6 +5634,32 @@ document.addEventListener("DOMContentLoaded", async function() {
         }
     });
 
+    document.addEventListener('keydown', function(event) {
+        if (event.key !== 'Escape' || event.defaultPrevented) return;
+
+        // This listener is registered before the lazily-created Ko-fi widget's
+        // own key handler. Close only the top overlay here so the same Escape
+        // event cannot fall through and close Socials underneath it.
+        if (document.querySelector('[data-kofi-open="true"]')) {
+            event.preventDefault();
+            if (typeof window.closeKofiOverlay === 'function') window.closeKofiOverlay();
+            return;
+        }
+
+        if (socialsButton?.classList.contains('open')) {
+            event.preventDefault();
+            closeSocialsMenu();
+            socialsButton.focus({ preventScroll: true });
+            return;
+        }
+
+        if (actionMenuButton?.classList.contains('open')) {
+            event.preventDefault();
+            showNoteImage();
+            actionMenuButton.focus({ preventScroll: true });
+        }
+    });
+
     socialCardDefinitions.map(({ option }) => option).forEach(option => {
         option?.addEventListener('keydown', function(e) {
             if (e.key === 'Enter' || e.key === ' ') {
@@ -6020,6 +6073,8 @@ document.addEventListener("DOMContentLoaded", async function() {
                     
                     askTextarea.value = '';
                     charCount.textContent = '0/200';
+                    charCount.style.color = 'rgba(255, 132, 187, 0.82)';
+                    askFormContainer.classList.remove('has-text');
                     await submitSoundMinimum;
                     await showSubmitPopupAndWait("Got it! ^-^");
                     if (!isCommunityHubOpen()) showNoteImage();
@@ -6037,6 +6092,8 @@ document.addEventListener("DOMContentLoaded", async function() {
         const drawingsList = document.getElementById('drawings-list');
         const questionsList = document.getElementById('questions-list');
         let postsLoadingOverlay = null;
+        let postsLoadMoreObserver = null;
+        let postsLoadMorePromise = null;
         const drawingDataInfoCache = new WeakMap();
         const drawingLikesObserver = 'IntersectionObserver' in window
             ? new IntersectionObserver(entries => {
@@ -6406,112 +6463,6 @@ document.addEventListener("DOMContentLoaded", async function() {
             }
         }
 
-        function waitForStagedPostsMedia(media, signal) {
-            return new Promise((resolve, reject) => {
-                if (signal.aborted) {
-                    reject(createSubmissionsAbortError());
-                    return;
-                }
-
-                const isImage = media instanceof HTMLImageElement;
-                const isVideo = media instanceof HTMLVideoElement;
-                const isFrame = media instanceof HTMLIFrameElement;
-                const readyEvent = isVideo ? 'loadeddata' : 'load';
-                const source = String(media.dataset.postsSrc || media.getAttribute('src') || '');
-                let settled = false;
-                let timeoutId = 0;
-
-                const cleanup = () => {
-                    window.clearTimeout(timeoutId);
-                    media.removeEventListener(readyEvent, handleReady);
-                    media.removeEventListener('error', handleError);
-                    signal.removeEventListener('abort', handleAbort);
-                };
-                const finish = ready => {
-                    if (settled) return;
-                    settled = true;
-                    cleanup();
-                    resolve({ media, ready });
-                };
-                const handleReady = () => {
-                    if (isImage && typeof media.decode === 'function') {
-                        media.decode()
-                            .catch(() => {})
-                            .finally(() => finish(media.naturalWidth > 0));
-                        return;
-                    }
-                    finish(isVideo ? media.readyState >= 2 : true);
-                };
-                const handleError = () => finish(false);
-                const handleAbort = () => {
-                    if (settled) return;
-                    settled = true;
-                    cleanup();
-                    reject(createSubmissionsAbortError());
-                };
-
-                media.addEventListener(readyEvent, handleReady);
-                media.addEventListener('error', handleError);
-                signal.addEventListener('abort', handleAbort, { once: true });
-                timeoutId = window.setTimeout(
-                    () => finish(false),
-                    PUBLIC_SUBMISSIONS_MEDIA_TIMEOUT_MS
-                );
-
-                if (isImage) media.loading = 'eager';
-                if (isFrame) media.loading = 'eager';
-                if (isVideo) media.preload = 'auto';
-                if (media.getAttribute('src') !== source) media.src = source;
-                if (isVideo) media.load();
-
-                if (isImage && media.complete) {
-                    Promise.resolve().then(() => {
-                        if (media.naturalWidth > 0) handleReady();
-                        else handleError();
-                    });
-                } else if (isVideo && media.readyState >= 2) {
-                    Promise.resolve().then(handleReady);
-                }
-            });
-        }
-
-        async function prepareStagedPostsMedia(stage, signal) {
-            const mediaElements = Array.from(stage.querySelectorAll([
-                '.post-item > img',
-                'img.like-icon[data-posts-src]',
-                'img.answer-gif',
-                'video[data-posts-src]',
-                'iframe[data-posts-src]'
-            ].join(',')));
-            const results = new Array(mediaElements.length);
-            let cursor = 0;
-            const worker = async () => {
-                while (!signal.aborted && cursor < mediaElements.length) {
-                    const index = cursor;
-                    cursor += 1;
-                    results[index] = await waitForStagedPostsMedia(
-                        mediaElements[index],
-                        signal
-                    );
-                }
-            };
-            const workerCount = Math.min(
-                PUBLIC_SUBMISSIONS_MEDIA_CONCURRENCY,
-                mediaElements.length
-            );
-            await Promise.all(Array.from({ length: workerCount }, () => worker()));
-            if (signal.aborted) throw createSubmissionsAbortError();
-            const fallbackMedia = results
-                .filter(result => !result.ready)
-                .map(result => replaceUnavailablePostsMedia(result.media))
-                .filter(Boolean);
-            if (fallbackMedia.length) {
-                await Promise.all(fallbackMedia.map(media => (
-                    waitForStagedPostsMedia(media, signal)
-                )));
-            }
-        }
-
         function buildStagedDrawings(drawings, signal) {
             const container = document.createElement('div');
             container.className = 'posts-list posts-staging-list';
@@ -6528,10 +6479,11 @@ document.addEventListener("DOMContentLoaded", async function() {
                 if (drawingSrc) {
                     const image = document.createElement('img');
                     image.alt = 'User drawing';
-                    image.loading = 'eager';
+                    image.loading = 'lazy';
                     image.decoding = 'async';
                     image.dataset.drawingId = String(drawing.id);
                     image.dataset.postsSrc = drawingSrc;
+                    image.src = drawingSrc;
                     el.appendChild(image);
                 } else {
                     const unavailable = document.createElement('div');
@@ -6542,7 +6494,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                 el.insertAdjacentHTML('beforeend', `
                     <div class="like-sticker" data-drawing-id="${drawing.id}">
                         <div class="like-button">
-                            <img data-posts-src="site-images/reactions.png" alt="Like" class="like-icon" width="96" height="88" decoding="async">
+                            <img src="site-images/reactions.png" data-posts-src="site-images/reactions.png" alt="Like" class="like-icon" width="96" height="88" decoding="async">
                         </div>
                     </div>
                 `);
@@ -6594,101 +6546,170 @@ document.addEventListener("DOMContentLoaded", async function() {
             return { container, items };
         }
 
-        async function renderSubmissions(openGeneration, signal) {
-            await loadSubmissionsFromSupabase();
+        function hasMoreSubmissionPages() {
+            return Object.values(submissionFeeds).some(state => !state.done);
+        }
+
+        function disconnectPostsLoadMoreObserver() {
+            postsLoadMoreObserver?.disconnect();
+            postsLoadMoreObserver = null;
+        }
+
+        function bindProgressiveWallMediaErrors(root) {
+            root?.querySelectorAll('.post-item > img, img.like-icon').forEach(image => {
+                if (image.dataset.mediaErrorBound === 'true') return;
+                image.dataset.mediaErrorBound = 'true';
+                image.addEventListener('error', () => {
+                    if (!image.getAttribute('src') && image.dataset.postsSrc) return;
+                    replaceUnavailablePostsMedia(image);
+                });
+            });
+            bindQuestionMediaErrors(root);
+        }
+
+        async function loadMoreCommunitySubmissions(openGeneration, signal, control) {
+            if (postsLoadMorePromise || !hasMoreSubmissionPages()) return;
+            control.disabled = true;
+            control.classList.add('is-loading');
+            control.textContent = 'pinning more...';
+
+            const loadPromise = loadNextSubmissionBatch();
+            postsLoadMorePromise = loadPromise;
+            try {
+                await loadPromise;
+                if (signal.aborted || openGeneration !== postsOpenGeneration
+                    || !postsPopup?.classList.contains('active')) {
+                    throw createSubmissionsAbortError();
+                }
+                postsLoadMorePromise = null;
+                await renderCurrentSubmissions(openGeneration, signal);
+            } catch (error) {
+                if (error?.name === 'AbortError') return;
+                console.error('Error fetching more public submissions:', error);
+                if (control.isConnected) {
+                    control.disabled = false;
+                    control.classList.remove('is-loading');
+                    control.textContent = 'couldn’t load more — retry';
+                }
+            } finally {
+                if (postsLoadMorePromise === loadPromise) postsLoadMorePromise = null;
+            }
+        }
+
+        function createPostsLoadMoreControl(openGeneration, signal) {
+            if (!hasMoreSubmissionPages()) return null;
+            const control = document.createElement('button');
+            control.type = 'button';
+            control.className = 'community-load-more';
+            control.textContent = 'more pins...';
+            control.addEventListener('click', () => {
+                void loadMoreCommunitySubmissions(openGeneration, signal, control);
+            });
+            return control;
+        }
+
+        async function renderCurrentSubmissions(openGeneration, signal) {
             if (signal.aborted || openGeneration !== postsOpenGeneration
                 || !postsPopup?.classList.contains('active')) {
                 throw createSubmissionsAbortError();
             }
 
-            const stage = document.createElement('div');
-            stage.className = 'posts-media-staging';
-            stage.setAttribute('aria-hidden', 'true');
+            const wallScroller = communityScrollBody || postsContentEl;
+            const wallScrollerRect = wallScroller?.getBoundingClientRect();
+            const visibleAnchor = wallScrollerRect
+                ? Array.from(communityWallList?.querySelectorAll('[data-submission-id]') || [])
+                    .find(item => item.getBoundingClientRect().bottom > wallScrollerRect.top + 8)
+                : null;
+            const visibleAnchorId = String(visibleAnchor?.dataset.submissionId || '');
+            const visibleAnchorOffset = visibleAnchor && wallScrollerRect
+                ? visibleAnchor.getBoundingClientRect().top - wallScrollerRect.top
+                : 0;
+
             const drawingsStage = buildStagedDrawings(preloadedSubmissions.drawings, signal);
             const questionsStage = buildStagedQuestions(preloadedSubmissions.questions, signal);
-            stage.append(drawingsStage.container, questionsStage.container);
-            postsMediaStagingRoot = stage;
-            let committed = false;
-
-            try {
-                // Bind every readiness/error listener and assign its source
-                // before connecting the hidden stage. In particular, this
-                // prevents an iframe's initial about:blank load from being
-                // mistaken for the requested GIF embed becoming ready.
-                const mediaReady = prepareStagedPostsMedia(stage, signal);
-                document.body.appendChild(stage);
-                await mediaReady;
-                if (signal.aborted || openGeneration !== postsOpenGeneration
-                    || !postsPopup?.classList.contains('active')) {
-                    throw createSubmissionsAbortError();
-                }
-
-                // Yield one paint while the paw is still the only visible
-                // state, then move both fully prepared feeds synchronously.
-                // Browsers cannot paint between these two replaceChildren
-                // calls, so Doods and Mi become available as one reveal.
-                await new Promise(resolve => window.requestAnimationFrame(resolve));
-                if (signal.aborted || openGeneration !== postsOpenGeneration
-                    || !postsPopup?.classList.contains('active')) {
-                    throw createSubmissionsAbortError();
-                }
-
-                const wallFragment = document.createDocumentFragment();
-                const wallItems = [...drawingsStage.items, ...questionsStage.items]
-                    .sort((left, right) => {
-                        const leftTime = Date.parse(left.dataset.createdAt || '') || 0;
-                        const rightTime = Date.parse(right.dataset.createdAt || '') || 0;
-                        if (rightTime !== leftTime) return rightTime - leftTime;
-                        return String(right.dataset.submissionId || '')
-                            .localeCompare(String(left.dataset.submissionId || ''));
-                    });
-                const wallColumns = [0, 1].map(index => {
-                    const column = document.createElement('div');
-                    column.className = 'community-masonry-column';
-                    column.dataset.column = String(index + 1);
-                    return column;
+            const wallFragment = document.createDocumentFragment();
+            const wallItems = [...drawingsStage.items, ...questionsStage.items]
+                .sort((left, right) => {
+                    const leftTime = Date.parse(left.dataset.createdAt || '') || 0;
+                    const rightTime = Date.parse(right.dataset.createdAt || '') || 0;
+                    if (rightTime !== leftTime) return rightTime - leftTime;
+                    return String(right.dataset.submissionId || '')
+                        .localeCompare(String(left.dataset.submissionId || ''));
                 });
-                wallItems.forEach((item, index) => {
-                    item.classList.add(`community-pin-${(index % 4) + 1}`);
-                    item.setAttribute('aria-posinset', String(index + 1));
-                    item.setAttribute('aria-setsize', String(wallItems.length));
-                    wallColumns[index % 2].appendChild(item);
-                });
-                if (wallItems.length) wallFragment.append(...wallColumns);
-                drawingLikesObserver?.disconnect();
-                postsMediaObserver?.disconnect();
-                drawingsList?.replaceChildren();
-                questionsList?.replaceChildren();
-                communityWallList?.classList.toggle('is-single', wallItems.length === 1);
-                communityWallList?.replaceChildren(wallFragment);
-                if (!wallItems.length && communityWallList) {
-                    communityWallList.innerHTML = submissionsStatusMarkup('nothing is pinned here yet ♡');
-                }
-                stage.remove();
-                if (postsMediaStagingRoot === stage) postsMediaStagingRoot = null;
+            const wallColumns = [0, 1].map(index => {
+                const column = document.createElement('div');
+                column.className = 'community-masonry-column';
+                column.dataset.column = String(index + 1);
+                return column;
+            });
+            wallItems.forEach((item, index) => {
+                item.classList.add(`community-pin-${(index % 4) + 1}`);
+                item.setAttribute('aria-posinset', String(index + 1));
+                item.setAttribute('aria-setsize', String(wallItems.length));
+                wallColumns[index % 2].appendChild(item);
+            });
+            if (wallItems.length) wallFragment.append(...wallColumns);
 
-                drawingsStage.items.forEach(item => {
-                    const drawingId = item.querySelector('.like-sticker')?.dataset.drawingId;
-                    if (!drawingId) return;
-                    if (drawingLikesObserver) drawingLikesObserver.observe(item);
-                    else initLikeSystem(item, drawingId);
+            disconnectPostsLoadMoreObserver();
+            drawingLikesObserver?.disconnect();
+            postsMediaObserver?.disconnect();
+            drawingsList?.replaceChildren();
+            questionsList?.replaceChildren();
+            communityWallList?.classList.toggle('is-single', wallItems.length === 1);
+            communityWallList?.replaceChildren(wallFragment);
+            if (!wallItems.length && communityWallList) {
+                communityWallList.innerHTML = submissionsStatusMarkup('nothing is pinned here yet ♡');
+            }
+
+            const loadMoreControl = createPostsLoadMoreControl(openGeneration, signal);
+            if (loadMoreControl) communityWallList?.appendChild(loadMoreControl);
+
+            if (visibleAnchorId && wallScroller && wallScrollerRect) {
+                const nextAnchor = Array.from(
+                    communityWallList?.querySelectorAll('[data-submission-id]') || []
+                ).find(item => item.dataset.submissionId === visibleAnchorId);
+                if (nextAnchor) {
+                    const nextOffset = nextAnchor.getBoundingClientRect().top - wallScrollerRect.top;
+                    wallScroller.scrollTop += nextOffset - visibleAnchorOffset;
+                }
+            }
+
+            drawingsStage.items.forEach(item => {
+                const drawingId = item.querySelector('.like-sticker')?.dataset.drawingId;
+                if (!drawingId) return;
+                if (drawingLikesObserver) drawingLikesObserver.observe(item);
+                else initLikeSystem(item, drawingId);
+            });
+            bindProgressiveWallMediaErrors(communityWallList);
+            observePostsMedia(communityWallList);
+            syncPostsMediaPlayback();
+            await settleCommittedPostsPaint(
+                communityWallList,
+                openGeneration,
+                signal
+            );
+            hideSubmissionsLoadingState();
+
+            if (loadMoreControl && 'IntersectionObserver' in window) {
+                postsLoadMoreObserver = new IntersectionObserver(entries => {
+                    if (!entries.some(entry => entry.isIntersecting)) return;
+                    void loadMoreCommunitySubmissions(openGeneration, signal, loadMoreControl);
+                }, {
+                    root: communityScrollBody || postsContentEl,
+                    rootMargin: '260px 0px'
                 });
-                questionsStage.items.forEach(item => bindQuestionMediaErrors(item));
-                observePostsMedia(communityWallList);
-                syncPostsMediaPlayback();
-                await settleCommittedPostsPaint(
-                    communityWallList,
-                    openGeneration,
-                    signal
-                );
-                hideSubmissionsLoadingState();
-                committed = true;
-            } finally {
-                if (!committed) disposePostsMediaStaging(stage);
+                postsLoadMoreObserver.observe(loadMoreControl);
             }
         }
 
+        async function renderSubmissions(openGeneration, signal) {
+            await loadNextSubmissionBatch();
+            await renderCurrentSubmissions(openGeneration, signal);
+        }
+
         clearRenderedSubmissionsCache = ({ preserveLoader = false } = {}) => {
+            disconnectPostsLoadMoreObserver();
+            postsLoadMorePromise = null;
             drawingLikesObserver?.disconnect();
             postsMediaObserver?.disconnect();
             drawingsList?.replaceChildren();

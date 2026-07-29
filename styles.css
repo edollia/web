@@ -268,38 +268,6 @@ canvas {
     transition: filter 0.18s ease, opacity 0.18s ease, transform 0.18s ease;
 }
 
-/* Local social-card MP4s must paint a real first frame while the opaque
-   loading/entry overlays are still covering the page. display:none prevents
-   Safari from decoding/compositing any descendant video, so this temporary
-   state lays out the final card elements at a nearly transparent opacity.
-   JS also marks the whole screen inert + aria-hidden until normal entry. */
-.main-screen.social-media-preparing {
-    display: block;
-    opacity: 0.001;
-    pointer-events: none;
-}
-
-.main-screen.social-media-preparing .social-links-shell {
-    visibility: visible;
-    opacity: 1;
-    transition: none;
-}
-
-.main-screen.social-media-preparing .button-group {
-    opacity: 1;
-    transition: none;
-}
-
-.main-screen.social-media-preparing .social-link-preview {
-    opacity: 1 !important;
-}
-
-/* display:block would otherwise let the normal header entrance finish behind
-   the loader. Resume it from frame zero only when preparation is removed. */
-.main-screen.social-media-preparing header {
-    animation-play-state: paused;
-}
-
 .main-screen .button-group,
 .main-screen .note-peel-target.active-content {
     opacity: 0;
@@ -2299,6 +2267,46 @@ body.has-posts-panel-open .button-group {
         transform 0.42s cubic-bezier(0.22, 1, 0.36, 1),
         visibility 0s linear 0.42s;
     will-change: opacity, transform;
+}
+
+.social-links-loading {
+    position: absolute;
+    inset: 0;
+    z-index: 4;
+    display: none;
+    min-height: 150px;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    color: rgba(139, 91, 115, 0.62);
+    font-family: "Comic Sans MS", "Trebuchet MS", cursive;
+    font-size: 10px;
+    letter-spacing: 0.01em;
+    text-align: center;
+}
+
+.social-links-shell.is-loading .social-links-loading {
+    display: flex;
+}
+
+.social-links-shell.is-loading > .dwl-motion-viewport {
+    /* Safari can defer video decoding in a visibility:hidden or fully
+       transparent subtree. Keep the final cards paintable at an imperceptible
+       opacity behind the paw so loadeddata/first-frame readiness can settle. */
+    opacity: 0.001;
+    pointer-events: none;
+    transition: none;
+}
+
+.social-links-shell.is-loading .social-link-preview {
+    opacity: 1 !important;
+}
+
+.social-links-shell > .dwl-motion-viewport {
+    opacity: 1;
+    visibility: visible;
+    transition: opacity 0.22s ease;
 }
 
 .social-links-panel {
@@ -5025,6 +5033,29 @@ body.has-community-hub-open #action-menu-button.open > .menu-back-arrow {
     grid-template-columns: minmax(0, 1fr);
 }
 
+.community-load-more {
+    grid-column: 1 / -1;
+    justify-self: center;
+    min-width: 118px;
+    min-height: 32px;
+    margin: 2px auto 0;
+    padding: 5px 13px;
+    border: 1px solid rgba(255, 180, 212, 0.52);
+    border-radius: 999px;
+    background: rgba(255, 246, 251, 0.9);
+    color: rgba(145, 86, 117, 0.82);
+    font-family: "Comic Sans MS", "Trebuchet MS", cursive;
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+    box-shadow: 0 3px 9px rgba(222, 137, 177, 0.12);
+}
+
+.community-load-more.is-loading {
+    cursor: wait;
+    opacity: 0.72;
+}
+
 .community-masonry-column {
     display: flex;
     min-width: 0;
@@ -5065,7 +5096,7 @@ body.has-community-hub-open #action-menu-button.open > .menu-back-arrow {
 .community-wall-list .post-item > img {
     width: 100%;
     height: auto;
-    aspect-ratio: auto;
+    aspect-ratio: 330 / 230;
     object-fit: contain;
 }
 
