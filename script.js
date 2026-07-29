@@ -309,7 +309,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         questions_enabled: true,
         rooms_enabled: false,
         seo_title: 'Lia ⋆౨ৎ˚⟡',
-        seo_description: "Lia's little space",
+        seo_description: "The official doll.gg, Lia's little space",
         site_tagline: "Lia's little space."
     };
     const DOLL_BUILD_ID = document.querySelector('meta[name="doll-build"]')?.content || 'dev';
@@ -1961,6 +1961,13 @@ document.addEventListener("DOMContentLoaded", async function() {
             : DEFAULT_LINK_SETTINGS[key];
     }
 
+    function normalizeSeoDescription(value) {
+        const description = String(value || '').trim();
+        return !description || description === "Lia's little space"
+            ? DEFAULT_LINK_SETTINGS.seo_description
+            : description;
+    }
+
     function normalizeSiteLinkSettings(value) {
         const settings = value && typeof value === 'object' ? value : {};
         return {
@@ -2032,7 +2039,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             questions_enabled: readBooleanSetting(settings, 'questions_enabled'),
             rooms_enabled: readBooleanSetting(settings, 'rooms_enabled'),
             seo_title: String(settings.seo_title || DEFAULT_LINK_SETTINGS.seo_title),
-            seo_description: String(settings.seo_description || DEFAULT_LINK_SETTINGS.seo_description),
+            seo_description: normalizeSeoDescription(settings.seo_description),
             site_tagline: String(settings.site_tagline || DEFAULT_LINK_SETTINGS.site_tagline)
         };
     }
