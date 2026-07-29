@@ -21,7 +21,7 @@
     const IMAGE_SCROLL_PRIORITY_IDLE_MS = 120;
     const IMAGE_HYDRATE_TIMEOUT_MS = 8000;
     const IMAGE_DECODE_TIMEOUT_MS = 2500;
-    const WISHLIST_MEDIA_PREPARE_TIMEOUT_MS = 12000;
+    const WISHLIST_INITIAL_MEDIA_PREPARE_TIMEOUT_MS = 8000;
     const WISHLIST_EXIT_TRANSITION_FALLBACK_MS = 520;
     const WISHLIST_RELEASE_DELAY_MS = 1000;
     const SWIPE_HINT_INITIAL_DELAY_MS = 3000;
@@ -77,6 +77,7 @@
     let previewImageGeneration = 0;
     let previewImageReleaseTimer = 0;
     let marqueeRuleCounter = 0;
+    let titleMarqueeObserver = null;
     let imageHydrationRun = 0;
     let imageHydrationObserver = null;
     let imageHydrationRoot = null;
@@ -889,8 +890,8 @@
         });
     }
 
-    async function loadAndDecodeAllWishlistImages(body, run) {
-        const productImages = getHydratableProductImages(body);
+    async function loadAndDecodeInitialWishlistImages(body, run) {
+        const productImages = getPriorityProductImages(body, { atStart: true });
         if (!productImages.length) return;
         let cursor = 0;
         let deadlineReached = false;
@@ -910,7 +911,7 @@
                 deadlineTimer = window.setTimeout(() => {
                     deadlineReached = true;
                     resolve();
-                }, WISHLIST_MEDIA_PREPARE_TIMEOUT_MS);
+                }, WISHLIST_INITIAL_MEDIA_PREPARE_TIMEOUT_MS);
             }),
         ]);
         if (deadlineTimer) window.clearTimeout(deadlineTimer);
@@ -1509,6 +1510,13 @@
                 display: inline-block;
                 animation-timing-function: linear;
                 animation-iteration-count: infinite;
+            }
+            .doll-wishlist-name.dwl-marquee > span {
+                animation-play-state: paused;
+            }
+            .doll-wishlist-name.dwl-marquee.dwl-marquee-visible > span,
+            .doll-wishlist-preview-name.dwl-marquee > span {
+                animation-play-state: running;
                 will-change: transform, opacity;
             }
             @media (prefers-reduced-motion: reduce) {
@@ -3212,6 +3220,8 @@
     function renderBody() {
         if (!panel) return;
         const body = panel.querySelector('.doll-wishlist-body');
+        titleMarqueeObserver?.disconnect();
+        titleMarqueeObserver = null;
         stopProgressiveItemImages();
         window.dollClearScrollMotion?.(body.closest('.doll-wishlist-scroll-shell'));
         const readyScrollable = (loadState === 'preparing' || loadState === 'ready')
@@ -3408,6 +3418,8 @@
 
     function syncTitleMarquees(root = panel) {
         if (!root) return;
+        titleMarqueeObserver?.disconnect();
+        titleMarqueeObserver = null;
         const sheet = getMarqueeStyleSheet();
         while (sheet.cssRules.length) sheet.deleteRule(0);
         marqueeRuleCounter = 0;
@@ -3432,6 +3444,23 @@
             name.innerHTML = `<span style="animation-name:${keyframeName};animation-duration:${duration.toFixed(2)}s;">${escapeHtml(label)}</span>`;
             name.classList.add('dwl-marquee');
         });
+
+        const marqueeNames = Array.from(root.querySelectorAll('.doll-wishlist-name.dwl-marquee'));
+        if (!marqueeNames.length) return;
+        if (typeof window.IntersectionObserver !== 'function') {
+            marqueeNames.forEach(name => name.classList.add('dwl-marquee-visible'));
+            return;
+        }
+        titleMarqueeObserver = new IntersectionObserver(entries => {
+            entries.forEach(entry => {
+                entry.target.classList.toggle('dwl-marquee-visible', entry.isIntersecting);
+            });
+        }, {
+            root: root.classList.contains('dwl-scroll-body') ? root : null,
+            rootMargin: '32px 0px',
+            threshold: 0,
+        });
+        marqueeNames.forEach(name => titleMarqueeObserver.observe(name));
     }
 
     // The preview lightbox only ever shows one title at a time, so it gets
@@ -3645,11 +3674,16 @@
         renderBody();
         renderFoot();
         const body = panel?.querySelector('.doll-wishlist-body');
-        await loadAndDecodeAllWishlistImages(body, run);
+        // Decode only the opening viewport plus a small forward buffer. The
+        // progressive observer below hydrates the rest as it approaches,
+        // keeping full-resolution offscreen photos out of Safari's scrolling
+        // paint path.
+        await loadAndDecodeInitialWishlistImages(body, run);
         if (run !== itemsLoadRun || !isWishlistPanelVisible()) return false;
 
         loadState = 'ready';
         if (!revealPreparedWishlistBody(body, run)) return false;
+        setupProgressiveItemImages(body);
         renderDots();
         renderFoot();
         syncReservedHeight(true);
@@ -3798,6 +3832,8 @@
     function releaseClosedWishlistResources() {
         wishlistReleaseTimer = 0;
         if (panelOpening || panel?.classList.contains('active')) return;
+        titleMarqueeObserver?.disconnect();
+        titleMarqueeObserver = null;
         cancelAtomicImageWaits();
         cancelCheckoutRequest();
         stopProgressiveItemImages({ releaseLoaded: true });
