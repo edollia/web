@@ -1197,6 +1197,25 @@
                 padding: 9px 8px 15px;
             }
 
+            /* Safari can drop the painted layer for an otherwise live,
+               clickable card inside a scrolling CSS multicol fragment. The
+               initial multicol pass is kept only to calculate the same
+               balanced split while the loading cover hides it. Before the
+               cards are revealed, JS materializes that split into these two
+               ordinary columns, which never enter WebKit's fragment painter. */
+            .doll-wishlist-masonry.dwl-masonry-materialized {
+                columns: auto;
+            }
+            .dwl-masonry-columns {
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                align-items: start;
+                column-gap: ${CARD_GAP}px;
+            }
+            .dwl-masonry-column {
+                min-width: 0;
+            }
+
             .doll-wishlist-item {
                 position: relative;
                 display: flex;
@@ -3280,6 +3299,54 @@
         return `<div class="doll-wishlist-masonry">${list.map((item, index) => cardMarkup(item, 'masonry', index)).join('')}${seeMoreMarkup('masonry', list.length)}</div>`;
     }
 
+    function materializeMasonryColumns(body) {
+        if (wishlistViewMode !== 'masonry' || !body) return;
+        const masonry = body.querySelector('.doll-wishlist-masonry');
+        if (!masonry || masonry.classList.contains('dwl-masonry-materialized')) return;
+
+        const cards = Array.from(masonry.children).filter(child => (
+            child.classList.contains('doll-wishlist-item')
+        ));
+        if (!cards.length) {
+            masonry.classList.add('dwl-masonry-materialized');
+            return;
+        }
+
+        // Read the browser's already-balanced hidden multicol layout before
+        // moving anything. Transforms can shift a card edge by a pixel, so
+        // group by each card's center relative to the container center rather
+        // than requiring identical left coordinates.
+        const masonryRect = masonry.getBoundingClientRect();
+        let leftCards = cards.filter(card => {
+            const rect = card.getBoundingClientRect();
+            return (rect.left + rect.right) / 2 < (masonryRect.left + masonryRect.right) / 2;
+        });
+        let rightCards = cards.filter(card => !leftCards.includes(card));
+
+        // A zero-sized hidden ancestor or an unusual one-item result can make
+        // the geometry indistinguishable. Keep the result usable and ordered
+        // with a deterministic split in that fallback case.
+        if (!leftCards.length || !rightCards.length) {
+            const splitAt = Math.max(1, Math.ceil(cards.length / 2));
+            leftCards = cards.slice(0, splitAt);
+            rightCards = cards.slice(splitAt);
+        }
+
+        const columns = document.createElement('div');
+        columns.className = 'dwl-masonry-columns';
+        const leftColumn = document.createElement('div');
+        const rightColumn = document.createElement('div');
+        leftColumn.className = 'dwl-masonry-column';
+        rightColumn.className = 'dwl-masonry-column';
+        leftCards.forEach(card => leftColumn.appendChild(card));
+        rightCards.forEach(card => rightColumn.appendChild(card));
+        columns.append(leftColumn, rightColumn);
+
+        const moreCard = masonry.querySelector(':scope > .doll-wishlist-more-card');
+        masonry.insertBefore(columns, moreCard || null);
+        masonry.classList.add('dwl-masonry-materialized');
+    }
+
     function seeMoreMarkup(mode = wishlistViewMode, featuredCount = items.length) {
         const modeClass = mode === 'list' ? ' dwl-row' : mode === 'masonry' ? ' dwl-pin' : '';
         const countClass = mode === 'masonry'
@@ -3906,6 +3973,12 @@
         // paint path.
         await loadAndDecodeInitialWishlistImages(body, run);
         if (run !== itemsLoadRun || !isWishlistPanelVisible()) return false;
+
+        // CSS columns are used only for the hidden balancing pass. Safari can
+        // intermittently fail to paint a live card inside that fragmented
+        // layout, even though its decoded image and hit target are intact.
+        // Materialize the measured split before revealing any real cards.
+        materializeMasonryColumns(body);
 
         loadState = 'ready';
         if (!revealPreparedWishlistBody(body, run)) return false;
