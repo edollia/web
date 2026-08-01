@@ -55,6 +55,9 @@
     // list stay in the code as the other two options that setting can pick.
     let wishlistViewMode = 'masonry'; // 'grid' | 'list' | 'masonry'
     const WISHLIST_VIEW_MODES = ['grid', 'list', 'masonry'];
+    let laceInviteTimer = 0;
+    let laceInviteRun = 0;
+    let recentLaceInviteIds = new Set();
     let checkoutInFlight = false;
     let checkoutStatusMessage = '';
     let checkoutRequestRun = 0;
@@ -535,6 +538,7 @@
         });
         panel?.querySelectorAll('.doll-wishlist-product-img').forEach(img => {
             delete img.dataset.dwlObservedNear;
+            img.closest('.doll-wishlist-item')?.classList.remove('dwl-card-visible');
         });
 
         if (releaseLoaded || retainLoaded instanceof Set) {
@@ -1633,6 +1637,106 @@
                 -webkit-tap-highlight-color: transparent;
                 transition: transform 0.16s cubic-bezier(0.2, 0.8, 0.25, 1.25), background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, color 0.18s ease;
             }
+            /* Lace Carousel travels in one-shot waves. JS assigns the class to
+               several random visible/unselected cards, each heart pulses once,
+               then the class moves to a different randomized group. Selection
+               removes the effect through :not(.selected); deselected cards are
+               eligible for a later wave without a rebuild or scroll reset. */
+            .doll-wishlist-cart-btn::before,
+            .doll-wishlist-cart-btn::after {
+                content: "";
+                position: absolute;
+                z-index: 0;
+                pointer-events: none;
+                border-radius: inherit;
+                opacity: 0;
+            }
+            .doll-wishlist-cart-btn::before {
+                inset: -8px;
+                background: repeating-conic-gradient(
+                    from 0deg,
+                    rgba(226, 91, 146, 0.72) 0 7deg,
+                    rgba(255, 208, 228, 0.24) 7deg 10deg,
+                    transparent 10deg 24deg
+                );
+                -webkit-mask: radial-gradient(
+                    circle,
+                    transparent 57%,
+                    #000 59% 67%,
+                    transparent 69%
+                );
+                mask: radial-gradient(
+                    circle,
+                    transparent 57%,
+                    #000 59% 67%,
+                    transparent 69%
+                );
+                filter: drop-shadow(0 0 3px rgba(226, 91, 146, 0.24));
+                rotate: var(--dwl-lace-angle, 0deg);
+            }
+            .doll-wishlist-cart-btn::after {
+                inset: -3px;
+                border: 1px solid rgba(238, 142, 181, 0.42);
+                box-shadow:
+                    0 0 7px rgba(232, 102, 154, 0.16),
+                    inset 0 0 4px rgba(255, 210, 229, 0.26);
+            }
+            .doll-wishlist-cart-btn svg {
+                position: relative;
+                z-index: 1;
+            }
+            .doll-wishlist-item.dwl-card-visible.dwl-lace-invite:not(.selected) .doll-wishlist-cart-btn::before {
+                animation:
+                    dollWishlistLaceTurn var(--dwl-lace-pulse, 2.9s) ease-in-out var(--dwl-lace-delay, 0s) 1 both,
+                    dollWishlistLaceBreathe var(--dwl-lace-pulse, 2.9s) ease-in-out var(--dwl-lace-delay, 0s) 1 both;
+                animation-direction: var(--dwl-lace-direction, normal), normal;
+            }
+            .doll-wishlist-item.dwl-card-visible.dwl-lace-invite:not(.selected) .doll-wishlist-cart-btn::after {
+                animation: dollWishlistLaceInner var(--dwl-lace-pulse, 2.9s) ease-in-out var(--dwl-lace-delay, 0s) 1 both;
+            }
+            .doll-wishlist-item.dwl-card-visible.dwl-lace-invite:not(.selected) .doll-wishlist-cart-btn .dwl-heart {
+                transform-origin: center;
+                animation: dollWishlistLaceHeart var(--dwl-lace-pulse, 2.9s) ease-in-out var(--dwl-lace-delay, 0s) 1 both;
+            }
+            @keyframes dollWishlistLaceTurn {
+                to { rotate: calc(var(--dwl-lace-angle, 0deg) + 0.42turn); }
+            }
+            @keyframes dollWishlistLaceBreathe {
+                0% {
+                    opacity: 0;
+                    transform: scale(0.84);
+                }
+                42% {
+                    opacity: 0.78;
+                    transform: scale(1.08);
+                }
+                100% {
+                    opacity: 0;
+                    transform: scale(1.18);
+                }
+            }
+            @keyframes dollWishlistLaceInner {
+                0% {
+                    opacity: 0;
+                    transform: scale(0.88);
+                }
+                44% {
+                    opacity: 0.66;
+                    transform: scale(1.13);
+                }
+                100% {
+                    opacity: 0;
+                    transform: scale(1.2);
+                }
+            }
+            @keyframes dollWishlistLaceHeart {
+                0%, 100% {
+                    transform: scale(1);
+                }
+                44% {
+                    transform: scale(1.075);
+                }
+            }
             .doll-wishlist-cart-btn:active { transform: scale(0.88); }
             .doll-wishlist-cart-btn:focus-visible {
                 outline: 2px solid rgba(220, 77, 132, 0.68);
@@ -1647,6 +1751,11 @@
                 box-shadow:
                     0 5px 11px rgba(202, 70, 123, 0.26),
                     inset 0 1px 0 rgba(255, 255, 255, 0.55);
+            }
+            .doll-wishlist-item.selected .doll-wishlist-cart-btn::before,
+            .doll-wishlist-item.selected .doll-wishlist-cart-btn::after {
+                animation: none;
+                opacity: 0;
             }
             .doll-wishlist-item.selected .dwl-heart { display: none; }
             .doll-wishlist-item.selected .dwl-heart-filled {
@@ -2194,6 +2303,7 @@
                 font-size: 11.5px;
                 font-weight: 600;
                 color: #713b50;
+                text-shadow: 0 1px 1.6px rgba(88, 42, 60, 0.16);
             }
             .doll-wishlist-count small {
                 margin-top: 2px;
@@ -2201,6 +2311,7 @@
                 font-size: 8.5px;
                 font-weight: 500;
                 color: rgba(113, 59, 80, 0.52);
+                text-shadow: 0 1px 1.5px rgba(88, 42, 60, 0.12);
             }
 
             .doll-wishlist-checkout-wrap {
@@ -2303,6 +2414,9 @@
                 .doll-wishlist-media img,
                 .doll-wishlist-more-card,
                 .doll-wishlist-cart-btn,
+                .doll-wishlist-cart-btn::before,
+                .doll-wishlist-cart-btn::after,
+                .doll-wishlist-cart-btn .dwl-heart,
                 .doll-wishlist-checkout,
                 .doll-wishlist-checkout-art,
                 .doll-wishlist-throne-footer-link.is-swipe-hint,
@@ -3181,6 +3295,104 @@
         </a>`;
     }
 
+    function randomLaceHeartStyle() {
+        const pulse = 2.4 + Math.random() * 0.7;
+        const delay = Math.random() * 0.36;
+        const angle = Math.random() * 360;
+        const direction = Math.random() < 0.5 ? 'normal' : 'reverse';
+        return {
+            cssText: [
+            `--dwl-lace-pulse:${pulse.toFixed(2)}s`,
+            `--dwl-lace-delay:${delay.toFixed(2)}s`,
+            `--dwl-lace-angle:${angle.toFixed(1)}deg`,
+            `--dwl-lace-direction:${direction}`,
+            ].join(';'),
+            totalMs: Math.ceil((pulse + delay) * 1000),
+        };
+    }
+
+    function shuffleLaceCards(cards) {
+        const shuffled = [...cards];
+        for (let index = shuffled.length - 1; index > 0; index -= 1) {
+            const swapIndex = Math.floor(Math.random() * (index + 1));
+            [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
+        }
+        return shuffled;
+    }
+
+    function removeLaceInviteStyles(card) {
+        const button = card?.querySelector('.doll-wishlist-cart-btn');
+        card?.classList.remove('dwl-lace-invite');
+        if (!button) return;
+        [
+            '--dwl-lace-pulse',
+            '--dwl-lace-delay',
+            '--dwl-lace-angle',
+            '--dwl-lace-direction',
+        ].forEach(property => button.style.removeProperty(property));
+        if (!button.getAttribute('style')) button.removeAttribute('style');
+    }
+
+    function stopLaceInviteRotation() {
+        laceInviteRun += 1;
+        if (laceInviteTimer) {
+            window.clearTimeout(laceInviteTimer);
+            laceInviteTimer = 0;
+        }
+        recentLaceInviteIds.clear();
+        panel?.querySelectorAll('.doll-wishlist-item.dwl-lace-invite')
+            .forEach(removeLaceInviteStyles);
+    }
+
+    function chooseLaceWaveCards(body) {
+        const eligible = Array.from(body?.querySelectorAll(
+            '.doll-wishlist-item.dwl-card-visible:not(.selected)'
+        ) || []);
+        if (!eligible.length) return [];
+
+        const minimum = eligible.length >= 3 ? 2 : 1;
+        const maximum = Math.min(3, Math.max(minimum, Math.ceil(eligible.length / 3)));
+        const count = minimum + Math.floor(Math.random() * (maximum - minimum + 1));
+        let pool = eligible.filter(card => !recentLaceInviteIds.has(card.dataset.itemId));
+        if (pool.length < count) pool = eligible;
+        return shuffleLaceCards(pool).slice(0, Math.min(count, pool.length));
+    }
+
+    function runLaceInviteWave(body, run) {
+        if (run !== laceInviteRun || !body?.isConnected || !isWishlistPanelVisible()) return;
+        body.querySelectorAll('.doll-wishlist-item.dwl-lace-invite')
+            .forEach(removeLaceInviteStyles);
+
+        const waveCards = chooseLaceWaveCards(body);
+        if (!waveCards.length) {
+            laceInviteTimer = window.setTimeout(() => runLaceInviteWave(body, run), 420);
+            return;
+        }
+
+        recentLaceInviteIds = new Set(waveCards.map(card => card.dataset.itemId));
+        let longestPulseMs = 0;
+        waveCards.forEach(card => {
+            const button = card.querySelector('.doll-wishlist-cart-btn');
+            if (!button) return;
+            const pulse = randomLaceHeartStyle();
+            button.setAttribute('style', pulse.cssText);
+            card.classList.add('dwl-lace-invite');
+            longestPulseMs = Math.max(longestPulseMs, pulse.totalMs);
+        });
+
+        const quietGapMs = 360 + Math.floor(Math.random() * 620);
+        laceInviteTimer = window.setTimeout(
+            () => runLaceInviteWave(body, run),
+            longestPulseMs + quietGapMs
+        );
+    }
+
+    function startLaceInviteRotation(body) {
+        stopLaceInviteRotation();
+        const run = laceInviteRun;
+        laceInviteTimer = window.setTimeout(() => runLaceInviteWave(body, run), 220);
+    }
+
     function cardMarkup(item, mode = wishlistViewMode, itemIndex = 0) {
         const selected = selectedIds.has(item.throne_item_id);
         const fullLabel = String(item.name || '').trim() || 'wishlist item';
@@ -3220,6 +3432,7 @@
     function renderBody() {
         if (!panel) return;
         const body = panel.querySelector('.doll-wishlist-body');
+        stopLaceInviteRotation();
         titleMarqueeObserver?.disconnect();
         titleMarqueeObserver = null;
         stopProgressiveItemImages();
@@ -3350,6 +3563,7 @@
         if (loadState === 'ready') {
             window.requestAnimationFrame(() => {
                 syncTitleMarquees(body);
+                startLaceInviteRotation(body);
                 scheduleSwipeHint();
                 updateWishlistEdgeFade(body);
             });
@@ -3445,22 +3659,27 @@
             name.classList.add('dwl-marquee');
         });
 
-        const marqueeNames = Array.from(root.querySelectorAll('.doll-wishlist-name.dwl-marquee'));
-        if (!marqueeNames.length) return;
+        const wishlistNames = Array.from(root.querySelectorAll('.doll-wishlist-name'));
+        if (!wishlistNames.length) return;
         if (typeof window.IntersectionObserver !== 'function') {
-            marqueeNames.forEach(name => name.classList.add('dwl-marquee-visible'));
+            wishlistNames.forEach(name => {
+                name.classList.add('dwl-marquee-visible');
+                name.closest('.doll-wishlist-item')?.classList.add('dwl-card-visible');
+            });
             return;
         }
         titleMarqueeObserver = new IntersectionObserver(entries => {
             entries.forEach(entry => {
                 entry.target.classList.toggle('dwl-marquee-visible', entry.isIntersecting);
+                entry.target.closest('.doll-wishlist-item')
+                    ?.classList.toggle('dwl-card-visible', entry.isIntersecting);
             });
         }, {
             root: root.classList.contains('dwl-scroll-body') ? root : null,
             rootMargin: '32px 0px',
             threshold: 0,
         });
-        marqueeNames.forEach(name => titleMarqueeObserver.observe(name));
+        wishlistNames.forEach(name => titleMarqueeObserver.observe(name));
     }
 
     // The preview lightbox only ever shows one title at a time, so it gets
@@ -3546,6 +3765,13 @@
             if (btn) {
                 btn.setAttribute('aria-pressed', String(selected));
                 btn.setAttribute('aria-label', `${selected ? 'Remove ' : 'Add '}${label}`);
+            }
+            // Selecting cancels this card's current one-shot wave completely.
+            // If it is deselected later, it simply rejoins the eligible pool
+            // for a future full wave instead of restarting under the old
+            // timer and getting cut off partway through.
+            if (selected && card.classList.contains('dwl-lace-invite')) {
+                removeLaceInviteStyles(card);
             }
         }
 
@@ -3690,6 +3916,7 @@
         window.requestAnimationFrame(() => {
             if (run !== itemsLoadRun || !isWishlistPanelVisible()) return;
             syncTitleMarquees(body);
+            startLaceInviteRotation(body);
             scheduleSwipeHint();
             updateWishlistEdgeFade(body);
         });
@@ -3842,6 +4069,7 @@
         items = [];
         loadState = 'idle';
         renderedBodySignature = '';
+        stopLaceInviteRotation();
         imageDims.clear();
 
         const body = panel?.querySelector('.doll-wishlist-body');
@@ -3985,6 +4213,7 @@
             cancelCheckoutRequest();
         }
         closePreview();
+        stopLaceInviteRotation();
         cancelSwipeHintSequence();
         document.body.classList.remove('has-wishlist-panel-open', 'has-wishlist-selection');
         window.dollResetIconsCollapse?.();
