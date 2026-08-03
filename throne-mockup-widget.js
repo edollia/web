@@ -2678,10 +2678,10 @@
         throneFooterLink.setAttribute('aria-label', 'View the full wishlist on Throne');
         throneFooterLink.setAttribute('aria-live', 'polite');
         throneFooterLink.innerHTML = `
-            <span class="doll-wishlist-footer-brand">
+            <span class="doll-wishlist-footer-brand" data-nosnippet>
                 <span class="site-brand-name">throne</span><span class="site-brand-dot">.</span><span class="site-brand-gg">com</span>
             </span>
-            <span class="doll-wishlist-footer-hint" aria-hidden="true">
+            <span class="doll-wishlist-footer-hint" aria-hidden="true" data-nosnippet>
                 <span class="doll-wishlist-footer-swipe-copy">swipe for more</span>
                 <span class="doll-wishlist-footer-swipe-arrow">→</span>
             </span>
@@ -2704,6 +2704,7 @@
         previewOverlay = document.createElement('div');
         previewOverlay.className = 'doll-wishlist-preview-overlay';
         previewOverlay.setAttribute('aria-hidden', 'true');
+        previewOverlay.setAttribute('data-nosnippet', '');
         previewOverlay.innerHTML = `
             <button type="button" class="doll-wishlist-preview-close" aria-label="Close preview">&times;</button>
             <figure class="doll-wishlist-preview-card">

@@ -125,7 +125,7 @@ const DEFAULT_LINK_SETTINGS = {
     questions_enabled: true,
     rooms_enabled: false,
     seo_title: 'Lia ⋆౨ৎ˚⟡',
-    seo_description: "The official doll.gg, Lia's little space",
+    seo_description: "The official doll.gg, Lia's little space.",
     site_tagline: "Lia's little space."
 };
 
@@ -637,8 +637,12 @@ function readBooleanSetting(settings, key) {
 }
 
 function normalizeSeoDescription(value) {
-    const description = String(value || '').trim();
-    return !description || description === "Lia's little space"
+    const description = String(value || '').trim()
+        .replace(/(?:&#39;|&#x27;|&apos;)/gi, "'");
+    return !description
+        || description === "Lia's little space"
+        || description === "Lia's little space."
+        || description === "The official doll.gg, Lia's little space"
         ? DEFAULT_LINK_SETTINGS.seo_description
         : description;
 }

@@ -611,6 +611,7 @@
         overlay.id = widgetId;
         overlay.className = 'doll-throne-overlay';
         overlay.setAttribute('aria-hidden', 'true');
+        overlay.setAttribute('data-nosnippet', '');
         overlay.setAttribute('tabindex', '-1');
         overlay.innerHTML = `
             <div class="doll-throne-scrim" data-throne-close></div>

@@ -349,7 +349,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         questions_enabled: true,
         rooms_enabled: false,
         seo_title: 'Lia ⋆౨ৎ˚⟡',
-        seo_description: "The official doll.gg, Lia's little space",
+        seo_description: "The official doll.gg, Lia's little space.",
         site_tagline: "Lia's little space."
     };
     const DOLL_BUILD_ID = document.querySelector('meta[name="doll-build"]')?.content || 'dev';
@@ -846,6 +846,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             popup.className = 'submit-popup';
             popup.id = 'submit-popup';
             popup.setAttribute('aria-hidden', 'true');
+            popup.setAttribute('data-nosnippet', '');
             popup.innerHTML = '<div class="submit-popup-card"><p id="submit-popup-message"></p></div>';
             document.body.appendChild(popup);
             popupMessage = document.getElementById('submit-popup-message');
@@ -1907,8 +1908,12 @@ document.addEventListener("DOMContentLoaded", async function() {
     }
 
     function normalizeSeoDescription(value) {
-        const description = String(value || '').trim();
-        return !description || description === "Lia's little space"
+        const description = String(value || '').trim()
+            .replace(/(?:&#39;|&#x27;|&apos;)/gi, "'");
+        return !description
+            || description === "Lia's little space"
+            || description === "Lia's little space."
+            || description === "The official doll.gg, Lia's little space"
             ? DEFAULT_LINK_SETTINGS.seo_description
             : description;
     }
@@ -5294,6 +5299,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         const overlay = document.createElement('div');
         overlay.className = 'first-visit-tour';
         overlay.setAttribute('aria-hidden', 'true');
+        overlay.setAttribute('data-nosnippet', '');
         overlay.innerHTML = `
             <div class="tour-veil-layer"></div>
             <span class="tour-bubble tour-bubble-one"></span>
@@ -5487,6 +5493,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         clone.removeAttribute('rel');
         clone.removeAttribute('tabindex');
         clone.setAttribute('aria-hidden', 'true');
+        clone.setAttribute('data-nosnippet', '');
         clone.querySelectorAll('[id]').forEach(element => element.removeAttribute('id'));
         // A cloned <video> does not retain the source element's decoded frame
         // reliably on iPhone. The card's own glass background is a cleaner pop

@@ -415,6 +415,7 @@ var kofiWidgetOverlayFloatingChatBuilder = kofiWidgetOverlayFloatingChatBuilder 
 
         scrim = document.createElement('div');
         scrim.id = 'doll-kofi-scrim';
+        scrim.setAttribute('data-nosnippet', '');
         scrim.style = 'position:fixed!important;inset:0!important;z-index:9999!important;opacity:0!important;pointer-events:none!important;background:radial-gradient(circle at 50% 44%, rgba(255,214,235,0.72), transparent 34%), rgba(255,247,251,0.3)!important;backdrop-filter:blur(0px)!important;-webkit-backdrop-filter:blur(0px)!important;transition:opacity 0.5s ease, backdrop-filter 0.55s ease, -webkit-backdrop-filter 0.55s ease!important;';
         scrim.addEventListener('click', function() {
             if (typeof window.closeKofiOverlay === 'function') window.closeKofiOverlay();
@@ -555,6 +556,7 @@ var kofiWidgetOverlayFloatingChatBuilder = kofiWidgetOverlayFloatingChatBuilder 
         popup.id = popupId;
         popup.classList = selectors.popupClass;
         popup.setAttribute('aria-hidden', 'true');
+        popup.setAttribute('data-nosnippet', '');
         popup.setAttribute('tabindex', '-1');
         popup.style = `z-index:10000;height: 0px; width:0px; opacity: 0; transition: all 0.6s ease 0s;`;
 
@@ -892,6 +894,7 @@ var kofiWidgetOverlay = kofiWidgetOverlay || (function () {
             else {
                 var div = document.createElement('div');
                 div.setAttribute("id", parentButtonWrapperId);
+                div.setAttribute('data-nosnippet', '');
                 document.body.appendChild(div);
             }
             isFirstRender = false;
