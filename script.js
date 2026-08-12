@@ -417,12 +417,22 @@ document.addEventListener("DOMContentLoaded", async function() {
     let backgroundMusicUnlocked = false;
     let backgroundMusicRetryArmed = false;
     let backgroundMusicPlayPromise = null;
-    const UI_SOUND_VERSION = '5';
+    const UI_SOUND_VERSION = '6';
     const uiSounds = {
         tap: `CUT1.mp3?v=${UI_SOUND_VERSION}`,
         link: `CUT2.mp3?v=${UI_SOUND_VERSION}`,
-        submit: `CUT3.mp3?v=${UI_SOUND_VERSION}`
+        submit: `CUT3.mp3?v=${UI_SOUND_VERSION}`,
+        submitOkiedokie: `okiedokielokie.mp3?v=${UI_SOUND_VERSION}`,
+        submitBooorin: `booorin.mp3?v=${UI_SOUND_VERSION}`,
+        bubble: 'bubble.mp3?v=1'
     };
+    const anonymousSubmitSoundTypes = Object.freeze([
+        'submit',
+        'submitOkiedokie',
+        'submitBooorin'
+    ]);
+    let anonymousSubmitSoundQueue = [];
+    let lastAnonymousSubmitSoundType = '';
     function setBackgroundMusicVolume(volume) {
         backgroundMusicRequestedVolume = volume;
         applyBackgroundMusicVolume();
@@ -485,11 +495,15 @@ document.addEventListener("DOMContentLoaded", async function() {
         const retry = () => {
             backgroundMusicRetryArmed = false;
             document.removeEventListener('pointerdown', retry, true);
+            document.removeEventListener('pointerup', retry, true);
+            document.removeEventListener('click', retry, true);
             document.removeEventListener('keydown', retry, true);
             // Keep play() inside this trusted event so Safari accepts it.
             startBackgroundMusic();
         };
         document.addEventListener('pointerdown', retry, { once: true, capture: true });
+        document.addEventListener('pointerup', retry, { once: true, capture: true });
+        document.addEventListener('click', retry, { once: true, capture: true });
         document.addEventListener('keydown', retry, { once: true, capture: true });
     }
 
@@ -732,6 +746,36 @@ document.addEventListener("DOMContentLoaded", async function() {
         lastUiSoundAt.set(type, now);
         resumeUiAudioMixer();
         if (!playMixedUiSound(type)) playFallbackUiSound(type);
+    }
+
+    function refillAnonymousSubmitSoundQueue() {
+        anonymousSubmitSoundQueue = [...anonymousSubmitSoundTypes];
+        for (let index = anonymousSubmitSoundQueue.length - 1; index > 0; index -= 1) {
+            const swapIndex = Math.floor(Math.random() * (index + 1));
+            [anonymousSubmitSoundQueue[index], anonymousSubmitSoundQueue[swapIndex]] = [
+                anonymousSubmitSoundQueue[swapIndex],
+                anonymousSubmitSoundQueue[index]
+            ];
+        }
+
+        // Each shuffled cycle contains every sound exactly once. Also guard
+        // the cycle boundary so the last sound from one shuffle can never be
+        // the first sound from the next shuffle.
+        if (anonymousSubmitSoundQueue[0] === lastAnonymousSubmitSoundType) {
+            const swapIndex = 1 + Math.floor(Math.random() * (anonymousSubmitSoundQueue.length - 1));
+            [anonymousSubmitSoundQueue[0], anonymousSubmitSoundQueue[swapIndex]] = [
+                anonymousSubmitSoundQueue[swapIndex],
+                anonymousSubmitSoundQueue[0]
+            ];
+        }
+    }
+
+    function playAnonymousSubmitSound() {
+        if (!anonymousSubmitSoundQueue.length) refillAnonymousSubmitSoundQueue();
+        const type = anonymousSubmitSoundQueue.shift();
+        if (!type) return;
+        lastAnonymousSubmitSoundType = type;
+        playUiSound(type);
     }
 
     window.dollPlayUiSound = playUiSound;
@@ -2309,7 +2353,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         // media finish. retireLoadingScreen() will schedule the real visible
         // countdown, so do not consume the one-time hint here.
         if (!loaderIsGone || !bubblesAreVisible) return;
-        entryBubbleHintTimer = window.setTimeout(showEntryBubbleHint, 2000);
+        entryBubbleHintTimer = window.setTimeout(showEntryBubbleHint, 1000);
     }
 
     function createEntryBubbleBurst(bubble, host = entryBubbleField, extraClass = '') {
@@ -2346,22 +2390,48 @@ document.addEventListener("DOMContentLoaded", async function() {
         window.setTimeout(() => burst.remove(), 920);
     }
 
-    function popEntryBubble(bubble) {
+    function primeBackgroundMusicOnPointerRelease(pointerId) {
+        const cleanup = () => {
+            document.removeEventListener('pointerup', handlePointerUp, true);
+            document.removeEventListener('pointercancel', handlePointerCancel, true);
+        };
+        const handlePointerUp = event => {
+            if (event.pointerId !== pointerId) return;
+            cleanup();
+            primeBackgroundMusic();
+        };
+        const handlePointerCancel = event => {
+            if (event.pointerId !== pointerId) return;
+            cleanup();
+        };
+        document.addEventListener('pointerup', handlePointerUp, true);
+        document.addEventListener('pointercancel', handlePointerCancel, true);
+    }
+
+    function popEntryBubble(bubble, { backgroundPointerId = null } = {}) {
         if (!bubble || bubble.classList.contains('popping') || entryDismissalInProgress) return;
         cancelEntryBubbleHint();
         createEntryBubbleBurst(bubble);
         bubble.classList.add('popping');
         bubble.disabled = true;
         entryBubbleRemaining -= 1;
-        playUiSound('tap');
+        const isFinalEntryBubble = entryBubbleRemaining === 0;
+        // Pointer bubbles animate immediately on pointerdown, but stricter
+        // mobile browsers authorize persistent media only once that same
+        // activation completes. Keyboard/assistive clicks are already a
+        // completed trusted activation and can start immediately.
+        if (isFinalEntryBubble) {
+            if (backgroundPointerId === null) primeBackgroundMusic();
+            else primeBackgroundMusicOnPointerRelease(backgroundPointerId);
+        }
+        playUiSound('bubble');
         entryBubbleField.setAttribute('aria-label', entryBubbleRemaining
             ? `${entryBubbleRemaining} bubble${entryBubbleRemaining === 1 ? '' : 's'} left to pop`
             : 'All bubbles popped. Entering the site.');
         window.setTimeout(() => bubble.remove(), 360);
 
-        if (entryBubbleRemaining === 0) {
+        if (isFinalEntryBubble) {
             entryBubbleField.inert = true;
-            primeBackgroundMusic();
             window.setTimeout(() => dismissEntryGate(), 620);
         }
     }
@@ -2396,7 +2466,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             bubble.addEventListener('pointerdown', event => {
                 if (!event.isPrimary || event.button > 0) return;
                 event.preventDefault();
-                popEntryBubble(bubble);
+                popEntryBubble(bubble, { backgroundPointerId: event.pointerId });
             });
             bubble.addEventListener('click', event => {
                 // Pointer input is handled on pointerdown for immediate iOS
@@ -2660,7 +2730,7 @@ document.addEventListener("DOMContentLoaded", async function() {
 
     function setPanelFillMax(panel, {
         reservedPad = 4,
-        openMargin = 10,
+        openMargin = null,
         bottomGap = 16,
         extraReserve = 0,
         visualShift = 0,
@@ -2680,8 +2750,14 @@ document.addEventListener("DOMContentLoaded", async function() {
         const scrollGrow = getCurrentMotionGrow(panel);
         const panelTop = renderedPanelTop + scrollGrow + Math.max(0, visualShift);
         const footerHeight = footer ? (footer.getBoundingClientRect().height || 0) : 44;
+        const computedFooterMargin = footer
+            ? Number.parseFloat(window.getComputedStyle(footer).marginTop)
+            : 0;
+        const footerMargin = Number.isFinite(openMargin)
+            ? Math.max(0, openMargin)
+            : Math.max(0, Number.isFinite(computedFooterMargin) ? computedFooterMargin : 0);
         const avail = viewportBottom - panelTop
-            - (footerHeight + reservedPad + openMargin + bottomGap + extraReserve);
+            - (footerHeight + reservedPad + footerMargin + bottomGap + extraReserve);
         panel.style.setProperty('--panel-fill-max', `${Math.max(0, Math.floor(avail))}px`);
     }
     window.dollSetPanelFillMax = setPanelFillMax;
@@ -3435,10 +3511,15 @@ document.addEventListener("DOMContentLoaded", async function() {
             if (force) syncCommunityComposerHeight({ immediate: true });
             const motionFrozen = communityHub?.classList.contains('dwl-motion-ready');
             if (!motionFrozen || force) {
+                const communityBottomChrome = Math.max(
+                    0,
+                    communitySurface.getBoundingClientRect().bottom
+                        - communityScrollBody.getBoundingClientRect().bottom
+                );
                 setPanelFillMax(communityScrollBody, {
                     reservedPad: 4,
-                    openMargin: 24,
-                    bottomGap: 10,
+                    bottomGap: 0,
+                    extraReserve: communityBottomChrome,
                 });
                 configureScrollMotion(
                     communityHub,
@@ -5058,7 +5139,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         if (!host) return;
         // Establish the base fill cap, then allocate the final viewport once.
         // The shell's stationary bottom is what the host reserves.
-        setPanelFillMax(socialLinksPanel, { reservedPad: 4, openMargin: 10, bottomGap: 16 });
+        setPanelFillMax(socialLinksPanel, { reservedPad: 4, bottomGap: 0 });
         configureScrollMotion(socialLinksShell, socialLinksPanel, socialLinksPanel);
         const panelRect = socialLinksShell.getBoundingClientRect();
         const hostRect = host.getBoundingClientRect();
@@ -5459,7 +5540,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     siteBrandButton?.addEventListener('click', event => {
         if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
         event.preventDefault();
-        playUiSound('tap');
+        playUiSound('bubble');
         addFooterBubble();
     });
 
@@ -5958,9 +6039,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                 return;
             }
             
-            playUiSound('submit');
             setSendButtonLoading(sendButton, true);
-            const submitSoundMinimum = wait(1000);
             try {
                 const ipAddress = await getVisitorIdentity();
 
@@ -5973,6 +6052,8 @@ document.addEventListener("DOMContentLoaded", async function() {
 
                 if (error) throw error;
                 markSubmissionsDirty();
+                playAnonymousSubmitSound();
+                const submitSoundMinimum = wait(1000);
                 
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
                 ctx.fillStyle = "#ffffff";
@@ -6000,6 +6081,39 @@ document.addEventListener("DOMContentLoaded", async function() {
         const askTextarea = document.getElementById('ask-textarea');
         const charCount = document.getElementById('char-count');
         const sendQuestionBtn = document.getElementById('send-question');
+        const askHandleReminder = document.getElementById('ask-handle-reminder');
+        let askHandleReminderStartTimer = 0;
+        let askHandleReminderHideTimer = 0;
+        let askHandleReminderShownForDraft = false;
+
+        function hideAskHandleReminder({ resetDraft = false } = {}) {
+            window.clearTimeout(askHandleReminderStartTimer);
+            window.clearTimeout(askHandleReminderHideTimer);
+            askHandleReminderStartTimer = 0;
+            askHandleReminderHideTimer = 0;
+            askHandleReminder?.classList.remove('is-visible');
+            askHandleReminder?.setAttribute('aria-hidden', 'true');
+            if (resetDraft) askHandleReminderShownForDraft = false;
+        }
+
+        function scheduleAskHandleReminder() {
+            if (!askHandleReminder
+                || askHandleReminderShownForDraft
+                || askHandleReminderStartTimer
+                || !askTextarea.value.trim()) return;
+            askHandleReminderStartTimer = window.setTimeout(() => {
+                askHandleReminderStartTimer = 0;
+                if (!askTextarea.value.trim()) return;
+                askHandleReminderShownForDraft = true;
+                askHandleReminder.setAttribute('aria-hidden', 'false');
+                askHandleReminder.classList.add('is-visible');
+                askHandleReminderHideTimer = window.setTimeout(() => {
+                    askHandleReminderHideTimer = 0;
+                    askHandleReminder.classList.remove('is-visible');
+                    askHandleReminder.setAttribute('aria-hidden', 'true');
+                }, 3200);
+            }, 2000);
+        }
 
         if (askButton && askFormContainer) {
             askButton.addEventListener('click', (e) => {
@@ -6027,6 +6141,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                 } else {
                     notePeelTarget?.classList.remove('hidden');
                     noteImage?.classList.remove('hidden');
+                    hideAskHandleReminder();
                 }
                 askFormContainer.style.display = open ? 'none' : 'block';
                 askButton.textContent = open ? '?' : '×';
@@ -6045,6 +6160,8 @@ document.addEventListener("DOMContentLoaded", async function() {
                 charCount.textContent = `${len}/200`;
                 charCount.style.color = len > 180 ? '#ff6b6b' : 'rgba(255, 132, 187, 0.82)';
                 askFormContainer.classList.toggle('has-text', len > 0);
+                if (this.value.trim()) scheduleAskHandleReminder();
+                else hideAskHandleReminder({ resetDraft: true });
             });
 
             sendQuestionBtn?.addEventListener('click', async function() {
@@ -6061,9 +6178,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                     return;
                 }
 
-                playUiSound('submit');
                 setSendButtonLoading(sendButton, true);
-                const submitSoundMinimum = wait(1000);
                 try {
                     const ipAddress = await getVisitorIdentity();
 
@@ -6077,11 +6192,14 @@ document.addEventListener("DOMContentLoaded", async function() {
                     
                     if (error) throw error;
                     markSubmissionsDirty();
+                    playAnonymousSubmitSound();
+                    const submitSoundMinimum = wait(1000);
                     
                     askTextarea.value = '';
                     charCount.textContent = '0/200';
                     charCount.style.color = 'rgba(255, 132, 187, 0.82)';
                     askFormContainer.classList.remove('has-text');
+                    hideAskHandleReminder({ resetDraft: true });
                     await submitSoundMinimum;
                     await showSubmitPopupAndWait("Got it! ^-^");
                     if (!isCommunityHubOpen()) showNoteImage();

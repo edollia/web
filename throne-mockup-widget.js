@@ -1057,15 +1057,21 @@
                 margin-left: 1px;
                 white-space: nowrap;
             }
-            .doll-wishlist-throne-footer-link {
+            .site-brand-footer .doll-wishlist-throne-footer-link {
                 position: relative;
-                /* Wide enough that the "com" chip has doll.gg's same easy
-                   breathing room, never clipped by the overflow:hidden below
-                   (which exists for the swipe-hint width tween). */
-                width: 108px;
+                /* Keep the normal destination compact while leaving enough
+                   room for the "com" chip. The temporary swipe hint expands
+                   independently below. */
+                width: 90px;
+                padding-inline: 4px;
                 justify-content: center;
                 overflow: hidden;
                 transition: width 0.26s cubic-bezier(0.2, 0.84, 0.24, 1), color 0.2s ease;
+            }
+            @media (max-height: 720px) {
+                body.has-wishlist-panel-open .site-brand-footer .doll-wishlist-throne-footer-link:not(.is-swipe-hint) {
+                    padding-inline: 5px;
+                }
             }
             .doll-wishlist-footer-brand,
             .doll-wishlist-footer-hint {
@@ -3031,7 +3037,11 @@
                 ?? body.getBoundingClientRect().bottom;
             const prePanelBottom = panel.getBoundingClientRect().bottom;
             const belowBody = Math.max(0, prePanelBottom - preShellBottom);
-            window.dollSetPanelFillMax?.(body, { reservedPad: 4, openMargin: 10, bottomGap: 16, extraReserve: belowBody });
+            // The wishlist host already adds its four-pixel reserve when it
+            // derives --dwl-wishlist-height below. Do not subtract that tail
+            // a second time from the scroll body or its footer pill sits four
+            // pixels higher than the other two submenu pills.
+            window.dollSetPanelFillMax?.(body, { reservedPad: 0, bottomGap: 0, extraReserve: belowBody });
             window.dollConfigureScrollMotion?.(shell, body, body, {
                 enabled: body.classList.contains('dwl-scroll-body'),
             });
@@ -4088,7 +4098,10 @@
                 throw new Error(body.error || `throne-cart ${res.status}`);
             }
             openCheckoutDestination(body.checkoutUrl);
-            closeThroneMockup();
+            // Checkout already played the link sound (CUT2). Close silently so
+            // the normal manual-close tap sound (CUT1) does not play as the
+            // selected-item checkout opens on Throne.
+            closeThroneMockup(true);
         } catch (err) {
             const staleRequest = requestRun !== checkoutRequestRun
                 || panelSessionRun !== itemsLoadRun
