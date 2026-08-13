@@ -121,6 +121,7 @@ const DEFAULT_LINK_SETTINGS = {
     maintenance_message: 'Please check back soon.',
     maintenance_eta: '',
     entrance_mode: 'bubbles',
+    first_visit_tour_enabled: true,
     drawings_enabled: true,
     questions_enabled: true,
     rooms_enabled: false,
@@ -282,6 +283,8 @@ const els = {
     maintenanceState: document.getElementById('maintenance-state'),
     entranceMode: document.getElementById('entrance-mode'),
     entranceModeState: document.getElementById('entrance-mode-state'),
+    firstVisitTourEnabled: document.getElementById('first-visit-tour-enabled'),
+    firstVisitTourState: document.getElementById('first-visit-tour-state'),
     drawingsEnabled: document.getElementById('drawings-enabled'),
     questionsEnabled: document.getElementById('questions-enabled'),
     submissionsState: document.getElementById('submissions-state'),
@@ -744,6 +747,7 @@ function normalizeLinkSettings(value) {
         entrance_mode: ['paw', 'bubbles'].includes(settings.entrance_mode)
             ? settings.entrance_mode
             : DEFAULT_LINK_SETTINGS.entrance_mode,
+        first_visit_tour_enabled: readBooleanSetting(settings, 'first_visit_tour_enabled'),
         drawings_enabled: readBooleanSetting(settings, 'drawings_enabled'),
         questions_enabled: readBooleanSetting(settings, 'questions_enabled'),
         rooms_enabled: readBooleanSetting(settings, 'rooms_enabled'),
@@ -883,6 +887,8 @@ function renderLinkSettings({ preserveDraft = false } = {}) {
     if (els.maintenanceState) els.maintenanceState.textContent = settings.maintenance_enabled === true ? 'on' : 'off';
     if (els.entranceMode) els.entranceMode.value = settings.entrance_mode === 'bubbles' ? 'bubbles' : 'paw';
     if (els.entranceModeState) els.entranceModeState.textContent = settings.entrance_mode === 'bubbles' ? 'pop bubbles' : 'paw press';
+    if (els.firstVisitTourEnabled) els.firstVisitTourEnabled.checked = settings.first_visit_tour_enabled !== false;
+    if (els.firstVisitTourState) els.firstVisitTourState.textContent = settings.first_visit_tour_enabled !== false ? 'on' : 'off';
     if (els.drawingsEnabled) els.drawingsEnabled.checked = settings.drawings_enabled !== false;
     if (els.questionsEnabled) els.questionsEnabled.checked = settings.questions_enabled !== false;
     if (els.submissionsState) els.submissionsState.textContent = getSubmissionsStateLabel(settings);
@@ -961,6 +967,7 @@ function getDraftLinkSettings() {
         maintenance_message: els.maintenanceMessage?.value.trim() || DEFAULT_LINK_SETTINGS.maintenance_message,
         maintenance_eta: els.maintenanceEta?.value.trim() || '',
         entrance_mode: els.entranceMode?.value === 'bubbles' ? 'bubbles' : 'paw',
+        first_visit_tour_enabled: els.firstVisitTourEnabled?.checked !== false,
         drawings_enabled: els.drawingsEnabled?.checked !== false,
         questions_enabled: els.questionsEnabled?.checked !== false,
         rooms_enabled: els.roomsMasterEnabled?.checked !== false,
@@ -997,6 +1004,7 @@ function syncLinkDraftLabels(settings = getDraftLinkSettings()) {
     document.querySelector('[data-link-card="homepage-note"]')?.classList.toggle('is-disabled', !homepageNoteText);
     if (els.maintenanceState) els.maintenanceState.textContent = settings.maintenance_enabled === true ? 'on' : 'off';
     if (els.entranceModeState) els.entranceModeState.textContent = settings.entrance_mode === 'bubbles' ? 'pop bubbles' : 'paw press';
+    if (els.firstVisitTourState) els.firstVisitTourState.textContent = settings.first_visit_tour_enabled !== false ? 'on' : 'off';
     if (els.submissionsState) els.submissionsState.textContent = getSubmissionsStateLabel(settings);
     if (els.roomsMasterState) els.roomsMasterState.textContent = settings.rooms_enabled !== false ? 'enabled' : 'disabled';
     els.roomsDisabledBanner?.classList.toggle('hidden', settings.rooms_enabled !== false);
@@ -2671,6 +2679,7 @@ async function persistLatestLinkSettings(requestId, { overrides = null, onCommit
             maintenance_message: els.maintenanceMessage?.value.trim() || DEFAULT_LINK_SETTINGS.maintenance_message,
             maintenance_eta: els.maintenanceEta?.value.trim() || '',
             entrance_mode: els.entranceMode?.value === 'bubbles' ? 'bubbles' : 'paw',
+            first_visit_tour_enabled: els.firstVisitTourEnabled?.checked !== false,
             drawings_enabled: els.drawingsEnabled?.checked !== false,
             questions_enabled: els.questionsEnabled?.checked !== false,
             rooms_enabled: els.roomsMasterEnabled?.checked !== false,

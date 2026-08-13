@@ -345,6 +345,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         maintenance_message: '',
         maintenance_eta: '',
         entrance_mode: 'bubbles',
+        first_visit_tour_enabled: true,
         drawings_enabled: true,
         questions_enabled: true,
         rooms_enabled: false,
@@ -2029,6 +2030,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             entrance_mode: ['paw', 'bubbles'].includes(settings.entrance_mode)
                 ? settings.entrance_mode
                 : DEFAULT_LINK_SETTINGS.entrance_mode,
+            first_visit_tour_enabled: readBooleanSetting(settings, 'first_visit_tour_enabled'),
             drawings_enabled: readBooleanSetting(settings, 'drawings_enabled'),
             questions_enabled: readBooleanSetting(settings, 'questions_enabled'),
             rooms_enabled: readBooleanSetting(settings, 'rooms_enabled'),
@@ -5383,6 +5385,9 @@ document.addEventListener("DOMContentLoaded", async function() {
     }
 
     function scheduleFirstVisitTour() {
+        // Keep the explicit preview URL available to the admin/developer even
+        // when the public first-visit experience is switched off.
+        if (!FIRST_VISIT_TOUR_FORCE && siteLinkSettings.first_visit_tour_enabled === false) return;
         if (!FIRST_VISIT_TOUR_FORCE) {
             if (hasSeenFirstVisitTour()) return;
             markFirstVisitTourSeen();
@@ -5391,6 +5396,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     }
 
     function startFirstVisitTour() {
+        if (!FIRST_VISIT_TOUR_FORCE && siteLinkSettings.first_visit_tour_enabled === false) return;
         if (siteLinkSettings.maintenance_enabled === true) return;
         const steps = [
             { element: socialsButton, label: 'contact', placement: 'up' },
