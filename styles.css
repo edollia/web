@@ -773,12 +773,18 @@ button {
 }
 
 .icon-container {
+    position: relative;
     display: flex;
-    justify-content: center;
-    flex-wrap: wrap;
+    width: 46px;
+    height: 61px;
+    flex: 0 0 46px;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
     margin: 0;
     opacity: 1;
     visibility: visible;
+    transition: transform 0.18s ease;
 }
 
 .socials-button {
@@ -3303,6 +3309,125 @@ body.first-visit-tour-active .tour-highlight-target {
     line-height: 1;
 }
 
+/* Desktop-study visual language, applied only to the production top controls.
+   The wrappers carry the labels and the existing shared row still owns every
+   open-panel collapse transform, opacity transition, and hit-testing switch. */
+.dwl-icons-row .support-menu-button {
+    width: 46px;
+    min-width: 46px;
+    height: 46px;
+    flex: 0 0 46px;
+    padding: 0;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.8);
+    border-radius: 50%;
+    background: linear-gradient(155deg, rgba(255, 255, 255, 0.82), rgba(255, 229, 241, 0.65));
+    color: rgba(126, 102, 113, 0.58);
+    box-shadow: 0 6px 14px rgba(183, 98, 136, 0.11), inset 0 1px 0 rgba(255, 255, 255, 0.94);
+    backdrop-filter: blur(9px);
+    -webkit-backdrop-filter: blur(9px);
+    transition:
+        width 0.24s cubic-bezier(0.2, 0.86, 0.28, 1),
+        border-color 0.2s ease,
+        background 0.22s ease,
+        box-shadow 0.2s ease,
+        color 0.2s ease,
+        transform 0.18s ease;
+}
+
+.dwl-icon-name {
+    position: absolute;
+    left: 50%;
+    bottom: 0;
+    color: rgba(130, 87, 107, 0.6);
+    font-family: "Comic Sans MS", "Trebuchet MS", cursive;
+    font-size: 9.5px;
+    font-weight: 400;
+    line-height: 1;
+    white-space: nowrap;
+    transform: translateX(-50%);
+    transition: transform 0.18s ease;
+    pointer-events: none;
+}
+
+.dwl-icons-row .socials-menu-label {
+    min-width: 0;
+    margin-top: -3px;
+    color: rgba(126, 102, 113, 0.58);
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 30px;
+    font-weight: 400;
+}
+
+.dwl-icons-row #support-menu-button > img.menu-main-icon {
+    width: 29px;
+    height: auto;
+    object-fit: contain;
+    opacity: 0.68;
+    filter: none;
+}
+
+.dwl-icons-row .action-menu-label {
+    min-width: 0;
+    margin-top: -2px;
+    color: rgba(126, 102, 113, 0.58);
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 22px;
+    font-weight: 400;
+}
+
+.dwl-icons-row #socials-button > .socials-close-icon,
+.dwl-icons-row #support-menu-button > .menu-close-icon,
+.dwl-icons-row #action-menu-button > .menu-back-arrow {
+    width: 100%;
+    height: 100%;
+    color: #c7578a;
+    font-family: "Comic Sans MS", "Bradley Hand", "Segoe Print", cursive;
+    font-size: 26px;
+    font-weight: 400;
+    line-height: 1;
+    transform: rotate(-4deg) scale(1);
+    transition: opacity 0.16s ease, transform 0.2s ease;
+}
+
+.dwl-icons-row .support-menu-button.open,
+.dwl-icons-row #support-menu-button.dwl-open {
+    border-color: rgba(229, 135, 177, 0.62);
+    border-radius: 50%;
+    color: #c9578b;
+}
+
+.dwl-icons-row .support-menu-button:focus-visible {
+    outline: 2px solid rgba(229, 105, 161, 0.35);
+    outline-offset: 3px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+    .dwl-icons-row .icon-container:hover {
+        transform: none;
+    }
+
+    .dwl-icons-row .icon-container:hover > .support-menu-button {
+        transform: translateY(-2px);
+        border-color: rgba(239, 158, 195, 0.7);
+        background: linear-gradient(155deg, rgba(255, 255, 255, 0.88), rgba(255, 229, 241, 0.7));
+        color: rgba(200, 78, 133, 0.8);
+        box-shadow: 0 9px 19px rgba(183, 98, 136, 0.15), inset 0 1px 0 #fff;
+    }
+
+    .dwl-icons-row .icon-container:hover > #support-menu-button.dwl-open {
+        transform: translateY(-2px);
+    }
+
+    .dwl-icons-row .icon-container:hover > .dwl-icon-name {
+        transform: translate(-50%, -2px);
+    }
+}
+
+.dwl-icons-row .support-menu-button:active {
+    transform: translateY(1px) scale(0.965);
+}
+
 .action-option,
 #ask-button.action-option {
     min-width: 34px;
@@ -4768,10 +4893,10 @@ body.has-community-hub-open #action-menu-button.open .action-options {
 }
 
 body.has-community-hub-open #action-menu-button.open > .menu-back-arrow {
-    font-family: ui-rounded, "Arial Rounded MT Bold", system-ui, sans-serif;
-    font-size: 20px;
+    font-family: "Comic Sans MS", "Bradley Hand", "Segoe Print", cursive;
+    font-size: 26px;
     font-weight: 400;
-    transform: none;
+    transform: rotate(-4deg) scale(1);
 }
 
 .community-hub {

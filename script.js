@@ -2610,6 +2610,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         shell.classList.remove('dwl-motion-ready');
         shell.style.removeProperty('--dwl-motion-base-height');
         shell.style.removeProperty('--dwl-motion-range');
+        shell.style.removeProperty('--dwl-collapse-distance');
         // The row and pill are siblings of the motion shell, so their native
         // animations inherit the measured range from this common host. Keep a
         // range owned by another ready shell; otherwise remove the stale value.
@@ -2629,23 +2630,44 @@ document.addEventListener("DOMContentLoaded", async function() {
         if (!enabled) return false;
 
         const baseHeight = baseElement.getBoundingClientRect().height;
-        const distance = parseFloat(
+        let distance = parseFloat(
             window.getComputedStyle(shell).getPropertyValue('--dwl-collapse-distance')
         ) || 0;
         const baseOverflow = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+        const isSocialPanel = document.body.classList.contains('has-social-panel-open');
+        // On a narrow band of medium-height phones, Socials can scroll but its
+        // normal 38px viewport growth would consume most of that short range.
+        // Cap only the shell's growth to half the available overflow so the
+        // content still expands upward and the icon-to-pill motion can finish.
+        // Long Socials lists keep the full, established 38px treatment.
+        if (isSocialPanel && baseOverflow > 0 && baseOverflow - distance < distance) {
+            const adaptiveDistance = Math.floor(baseOverflow / 2);
+            if (adaptiveDistance > 0) {
+                distance = adaptiveDistance;
+                shell.style.setProperty('--dwl-collapse-distance', `${distance}px`);
+            }
+        }
         const finalOverflow = Math.max(0, baseOverflow - distance);
-        const desiredRange = document.body.classList.contains('has-social-panel-open')
+        const desiredRange = isSocialPanel
             ? ICON_COLLAPSE_RANGES.social
             : document.body.classList.contains('has-wishlist-panel-open')
                 ? ICON_COLLAPSE_RANGES.wishlist
                 : ICON_COLLAPSE_RANGES.posts;
-        const minimumSafeRange = Math.ceil(distance * 1.6);
+        // Socials can have a small amount of genuine overflow on medium-height
+        // phones. Requiring the shared 1.6x runway disabled its collapse
+        // entirely at those heights (for example, 56px of usable scroll for a
+        // 38px reclaim), even though the panel visibly scrolled. A one-to-one
+        // runway remains smooth and is enough to complete the Socials pill;
+        // keep the more conservative guard for Wishlist and :3.
+        const minimumSafeRange = isSocialPanel
+            ? Math.ceil(distance)
+            : Math.ceil(distance * 1.6);
         const configuredRange = Math.min(desiredRange, Math.floor(finalOverflow));
 
-        // Slightly short surfaces may use their available range, but never a
-        // range below 1.6 scroll pixels per reclaimed pixel. That removes the
-        // abrupt full-range/no-morph cutoff without bringing back the fast,
-        // unnatural content velocity that the Safari fix replaced.
+        // Slightly short surfaces may use their available range. Socials has
+        // already adapted its growth above and can safely use a one-to-one
+        // runway; the larger Wishlist and :3 surfaces keep the conservative
+        // 1.6 scroll-pixels-per-reclaimed-pixel guard.
         if (!(baseHeight > 0 && distance > 0 && configuredRange >= minimumSafeRange)) {
             refreshPanelScrollExtent(scroller);
             refreshMotionBodyState();
