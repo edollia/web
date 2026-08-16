@@ -3546,6 +3546,11 @@ body.first-visit-tour-active .tour-highlight-target {
     height: 35px;
 }
 
+.links-tail-icon,
+.pill-mini {
+    position: relative;
+}
+
 .wishes-swirl {
     width: 31px;
     height: 31px;
@@ -3567,8 +3572,34 @@ body.first-visit-tour-active .tour-highlight-target {
     width: auto;
     height: 35px;
     object-fit: contain;
-    transform-origin: 52% 96%;
-    will-change: transform;
+}
+
+/* The source PNG stays in the exact production slot as a no-JS/load-error
+   fallback. The canvas is slightly wider/taller than the painted cutout so
+   the living bend has breathing room without changing the button geometry. */
+.links-tail-canvas {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    display: block;
+    width: 36px;
+    height: 39px;
+    opacity: 0;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+}
+
+.links-tail-canvas--mini {
+    width: 14px;
+    height: 17px;
+}
+
+.tail-renderer-ready > .links-tail-raster {
+    visibility: hidden;
+}
+
+.tail-renderer-ready > .links-tail-canvas {
+    opacity: 1;
 }
 
 /* Override the legacy .email-button img treatment: it darkens all button
@@ -3577,28 +3608,6 @@ body.first-visit-tour-active .tour-highlight-target {
     width: auto;
     height: 35px;
     filter: none;
-}
-
-.main-screen.ui-ready #socials-button:not(.open) .links-tail-raster {
-    animation: linksTailRasterWag 6.4s ease-in-out 0.7s infinite;
-}
-
-@keyframes linksTailRasterWag {
-    0%, 15%, 33%, 60%, 82%, 100% { transform: rotate(0deg) skewX(0deg) scaleX(1); }
-    18% { transform: rotate(-2.5deg) skewX(-1.5deg) scaleX(0.99); }
-    21.5% { transform: rotate(3.25deg) skewX(2deg) scaleX(1.012); }
-    25% { transform: rotate(-1.75deg) skewX(-1deg) scaleX(0.995); }
-    29% { transform: rotate(1deg) skewX(0.6deg) scaleX(1.004); }
-    64% { transform: rotate(2.25deg) skewX(1.3deg) scaleX(1.008); }
-    69% { transform: rotate(-3.5deg) skewX(-2deg) scaleX(0.988); }
-    74% { transform: rotate(2deg) skewX(1.1deg) scaleX(1.006); }
-    78% { transform: rotate(-0.75deg) skewX(-0.4deg) scaleX(0.998); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .main-screen.ui-ready #socials-button:not(.open) .links-tail-raster {
-        animation: none;
-    }
 }
 
 .wishes-swirl {
