@@ -5,11 +5,45 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="robots" content="noindex, nofollow">
     <meta name="referrer" content="strict-origin-when-cross-origin">
-    <meta name="doll-build" content="2026.08.15.1">
+    <meta name="doll-build" content="2026.08.16.2">
     <title>Lia Admin</title>
-    <link rel="stylesheet" href="../admin.css?v=5.8&r=2026.08.15.1">
+    <link rel="stylesheet" href="../admin.css?v=6.1&r=2026.08.16.2">
 </head>
 <body>
+    <svg class="admin-icon-sprite" aria-hidden="true">
+        <symbol id="admin-i-review" viewBox="0 0 24 24"><path d="M5 4.5h14v15H5zM8 8h8M8 12h5M8 16h7"/></symbol>
+        <symbol id="admin-i-published" viewBox="0 0 24 24"><path d="M6 5h12v15H6zM8.5 3.5h7v4h-7zM9 13l2 2 4.5-5"/></symbol>
+        <symbol id="admin-i-site" viewBox="0 0 24 24"><path d="M4 11.5 12 5l8 6.5M6.5 10v9h11v-9M10 19v-5h4v5"/></symbol>
+        <symbol id="admin-i-links" viewBox="0 0 24 24"><path d="M9.5 14.5 14.5 9M7.5 16.5l-1 1a3.5 3.5 0 0 1-5-5l3.5-3.5a3.5 3.5 0 0 1 5 0M16.5 7.5l1-1a3.5 3.5 0 1 1 5 5L19 15a3.5 3.5 0 0 1-5 0"/></symbol>
+        <symbol id="admin-i-wishlist" viewBox="0 0 24 24"><path d="M12 20S4.5 16 4.5 9.5A4 4 0 0 1 12 7a4 4 0 0 1 7.5 2.5C19.5 16 12 20 12 20Z"/></symbol>
+        <symbol id="admin-i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6"/><path d="m15 15 5 5"/></symbol>
+        <symbol id="admin-i-rooms" viewBox="0 0 24 24"><path d="M4 18v-7a4 4 0 0 1 4-4h8a4 4 0 0 1 4 4v7M8 18v2M16 18v2M8.5 12h.01M15.5 12h.01M10 15h4"/></symbol>
+        <symbol id="admin-i-lock" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v2"/></symbol>
+        <symbol id="admin-i-refresh" viewBox="0 0 24 24"><path d="M20 7v5h-5M4 17v-5h5M18.5 10A7 7 0 0 0 6 7.5L4 12M5.5 14A7 7 0 0 0 18 16.5l2-4.5"/></symbol>
+        <symbol id="admin-i-home" viewBox="0 0 24 24"><path d="M4 11.5 12 5l8 6.5M6.5 10v9h11v-9M10 19v-5h4v5"/></symbol>
+        <symbol id="admin-i-logout" viewBox="0 0 24 24"><path d="M10 5H5v14h5M14 8l4 4-4 4M8 12h10"/></symbol>
+        <symbol id="admin-i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/></symbol>
+        <symbol id="admin-i-grid" viewBox="0 0 24 24"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/></symbol>
+        <symbol id="admin-i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="19" cy="12" r="1.4"/></symbol>
+        <symbol id="admin-i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+        <symbol id="admin-i-check" viewBox="0 0 24 24"><path d="m5 12 4.2 4.2L19 6.8"/></symbol>
+        <symbol id="admin-i-trash" viewBox="0 0 24 24"><path d="M5 7h14M9 7V4h6v3M7 7l1 13h8l1-13M10 10v7M14 10v7"/></symbol>
+        <symbol id="admin-i-edit" viewBox="0 0 24 24"><path d="m14.5 5.5 4 4M4 20l1-5L16.5 3.5l4 4L9 19Z"/></symbol>
+        <symbol id="admin-i-upload" viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M5 15v5h14v-5"/></symbol>
+        <symbol id="admin-i-media" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m5 17 5-5 3 3 2-2 4 4"/></symbol>
+        <symbol id="admin-i-external" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 13v7H4V6h7"/></symbol>
+        <symbol id="admin-i-arrow-left" viewBox="0 0 24 24"><path d="m14.5 5-7 7 7 7"/></symbol>
+        <symbol id="admin-i-arrow-right" viewBox="0 0 24 24"><path d="m9.5 5 7 7-7 7"/></symbol>
+        <symbol id="admin-i-arrow-up" viewBox="0 0 24 24"><path d="m5 14 7-7 7 7"/></symbol>
+        <symbol id="admin-i-arrow-down" viewBox="0 0 24 24"><path d="m5 10 7 7 7-7"/></symbol>
+        <symbol id="admin-i-drag" viewBox="0 0 24 24"><circle cx="9" cy="7" r="1"/><circle cx="15" cy="7" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="9" cy="17" r="1"/><circle cx="15" cy="17" r="1"/></symbol>
+        <symbol id="admin-i-power" viewBox="0 0 24 24"><path d="M12 3v9M7 5.5a8 8 0 1 0 10 0"/></symbol>
+        <symbol id="admin-i-spark" viewBox="0 0 24 24"><path d="m12 3 1.2 4.4L17 9l-3.8 1.6L12 15l-1.2-4.4L7 9l3.8-1.6ZM19 15l.6 2.1L22 18l-2.4.9L19 21l-.6-2.1L16 18l2.4-.9Z"/></symbol>
+        <symbol id="admin-i-note" viewBox="0 0 24 24"><path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5"/></symbol>
+        <symbol id="admin-i-question" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.8 9a2.4 2.4 0 1 1 3.2 2.3c-.8.3-1 1-1 1.7M12 17h.01"/></symbol>
+        <symbol id="admin-i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+        <symbol id="admin-i-eye" viewBox="0 0 24 24"><path d="M3 12s3.4-6 9-6 9 6 9 6-3.4 6-9 6-9-6-9-6Z"/><circle cx="12" cy="12" r="2.5"/></symbol>
+    </svg>
     <main class="admin-shell">
         <section class="admin-auth-panel" id="gate-panel">
             <div class="admin-auth-card">
@@ -37,14 +71,36 @@
         </section>
 
         <section class="admin-dashboard hidden" id="dashboard-panel">
+            <nav class="admin-tabs" id="admin-tabs">
+                <button class="active" data-panel="review-panel"><svg aria-hidden="true"><use href="#admin-i-review"></use></svg><span>review <b id="review-tab-count">0</b></span><svg class="admin-nav-drag" aria-hidden="true"><use href="#admin-i-drag"></use></svg></button>
+                <button data-panel="published-panel"><svg aria-hidden="true"><use href="#admin-i-published"></use></svg><span>published <b id="published-tab-count">0</b></span><svg class="admin-nav-drag" aria-hidden="true"><use href="#admin-i-drag"></use></svg></button>
+                <button data-panel="site-panel"><svg aria-hidden="true"><use href="#admin-i-site"></use></svg><span>site</span><svg class="admin-nav-drag" aria-hidden="true"><use href="#admin-i-drag"></use></svg></button>
+                <button data-panel="links-panel"><svg aria-hidden="true"><use href="#admin-i-links"></use></svg><span>links <b id="links-tab-count">0/4</b></span><svg class="admin-nav-drag" aria-hidden="true"><use href="#admin-i-drag"></use></svg></button>
+                <button data-panel="wishlist-panel"><svg aria-hidden="true"><use href="#admin-i-wishlist"></use></svg><span>wishlist</span><svg class="admin-nav-drag" aria-hidden="true"><use href="#admin-i-drag"></use></svg></button>
+                <button data-panel="search-panel"><svg aria-hidden="true"><use href="#admin-i-search"></use></svg><span>search + SEO</span><svg class="admin-nav-drag" aria-hidden="true"><use href="#admin-i-drag"></use></svg></button>
+                <button data-panel="rooms-panel"><svg aria-hidden="true"><use href="#admin-i-rooms"></use></svg><span>rooms</span><svg class="admin-nav-drag" aria-hidden="true"><use href="#admin-i-drag"></use></svg></button>
+                <button class="admin-mobile-more" type="button" id="admin-mobile-more"><svg aria-hidden="true"><use href="#admin-i-more"></use></svg><span>more</span></button>
+            </nav>
+
+            <div class="admin-dashboard-main">
             <header class="admin-header">
                 <div class="admin-title-block">
+                    <svg class="admin-brand-icon" aria-hidden="true"><use href="#admin-i-wishlist"></use></svg>
                     <h1>dashboard</h1>
                 </div>
+                <button class="admin-command-trigger soft" type="button" id="admin-command-open">
+                    <svg aria-hidden="true"><use href="#admin-i-search"></use></svg>
+                    <span>jump to any tool or setting…</span>
+                    <kbd>⌘ K</kbd>
+                </button>
                 <div class="admin-header-actions">
-                    <a class="admin-back-home" href="../index.html">back</a>
-                    <button id="refresh-admin">refresh</button>
-                    <button id="logout-admin">logout</button>
+                    <span class="admin-save-state" id="admin-save-state" role="status" aria-live="polite">
+                        <span aria-hidden="true"></span><strong>ready</strong>
+                    </span>
+                    <button class="soft" type="button" id="admin-density-toggle" aria-pressed="false" title="Use compact density"><svg aria-hidden="true"><use href="#admin-i-grid"></use></svg><span>compact</span></button>
+                    <a class="admin-back-home" href="../index.html"><svg aria-hidden="true"><use href="#admin-i-home"></use></svg><span>site</span></a>
+                    <button id="refresh-admin"><svg aria-hidden="true"><use href="#admin-i-refresh"></use></svg><span>refresh</span></button>
+                    <button id="logout-admin"><svg aria-hidden="true"><use href="#admin-i-logout"></use></svg><span>logout</span></button>
                 </div>
             </header>
 
@@ -55,16 +111,6 @@
 
             <section class="admin-stats" id="admin-stats"></section>
 
-            <nav class="admin-tabs" id="admin-tabs">
-                <button class="active" data-panel="review-panel"><span>review <b id="review-tab-count">0</b></span></button>
-                <button data-panel="published-panel"><span>published <b id="published-tab-count">0</b></span></button>
-                <button data-panel="site-panel"><span>site</span></button>
-                <button data-panel="links-panel"><span>links <b id="links-tab-count">0/4</b></span></button>
-                <button data-panel="wishlist-panel"><span>wishlist</span></button>
-                <button data-panel="search-panel"><span>search</span></button>
-                <button data-panel="rooms-panel"><span>rooms</span></button>
-            </nav>
-
             <p class="admin-status" id="admin-status"></p>
 
             <section class="admin-panel active" id="review-panel">
@@ -73,9 +119,14 @@
                         <p class="admin-kicker">inbox</p>
                         <h2>waiting room</h2>
                     </div>
+                    <div class="admin-lane-tabs" role="tablist" aria-label="Review queue">
+                        <button class="active" type="button" data-admin-review-lane="doods" role="tab" aria-selected="true">doods</button>
+                        <button type="button" data-admin-review-lane="asks" role="tab" aria-selected="false">asks</button>
+                        <button type="button" data-admin-review-lane="safety" role="tab" aria-selected="false">safety</button>
+                    </div>
                 </div>
                 <div class="admin-review-grid">
-                    <section class="admin-review-lane">
+                    <section class="admin-review-lane" data-admin-review-content="doods">
                         <div class="admin-section-heading">
                             <h2>waiting doods</h2>
                             <div class="admin-bulk-bar compact">
@@ -85,10 +136,22 @@
                                 <button class="danger emergency" data-bulk-action="delete-all-pending-drawings" data-list="pending-drawings-list">clear waiting</button>
                             </div>
                         </div>
-                        <div class="admin-list admin-doods-list" id="pending-drawings-list"></div>
+                        <div class="admin-review-dood-layout">
+                            <div class="admin-review-primary">
+                                <div class="admin-list admin-doods-list" id="pending-drawings-list"></div>
+                            </div>
+                            <aside class="admin-selection-preview" id="admin-selection-preview" aria-live="polite">
+                                <div class="admin-card-title-row"><h2>selection preview</h2><span class="admin-preview-pill" data-selection-count>0 selected</span></div>
+                                <div data-selection-items class="admin-selection-items"><p class="admin-tool-note">Choose doods to preview the exact bulk action set.</p></div>
+                                <div class="admin-bulk-bar compact" data-selection-actions hidden>
+                                    <button data-bulk-action="approve" data-list="pending-drawings-list">approve selected</button>
+                                    <button class="danger" data-bulk-action="delete" data-list="pending-drawings-list">delete selected</button>
+                                </div>
+                            </aside>
+                        </div>
                     </section>
 
-                    <section class="admin-review-lane">
+                    <section class="admin-review-lane" data-admin-review-content="asks" hidden>
                         <div class="admin-section-heading">
                             <h2>waiting asks</h2>
                             <div class="admin-bulk-bar compact">
@@ -98,6 +161,17 @@
                         <div class="admin-list admin-text-list" id="pending-questions-list"></div>
                     </section>
                 </div>
+                <section class="admin-safety-overview" data-admin-review-content="safety" hidden>
+                    <div class="admin-tool-card">
+                        <div class="admin-card-title-row"><h2>submission controls</h2><span class="admin-preview-pill" id="admin-safety-submissions">loading</span></div>
+                        <p class="admin-tool-note">The real dood, ask, and first-visit switches remain in Site controls so there is only one authoritative copy of each setting.</p>
+                        <button class="soft" type="button" data-admin-jump="site-panel">open site controls</button>
+                    </div>
+                    <div class="admin-tool-card">
+                        <div class="admin-card-title-row"><h2>moderation safeguards</h2><span class="admin-preview-pill">active</span></div>
+                        <ul class="admin-safety-list"><li>user text is escaped</li><li>bulk selections use frozen snapshots</li><li>linked-reaction deletion errors are reported</li><li>partial mutations refresh and report exact results</li></ul>
+                    </div>
+                </section>
             </section>
 
             <section class="admin-panel" id="published-panel">
@@ -106,20 +180,28 @@
                         <p class="admin-kicker">public</p>
                         <h2>posted things</h2>
                     </div>
-                </div>
-                <div class="admin-section-heading">
-                    <h2>posted doods</h2>
-                    <div class="admin-bulk-bar compact">
-                        <button class="soft" data-bulk-action="select" data-list="published-drawings-list">select all</button>
-                        <button class="danger" data-bulk-action="delete" data-list="published-drawings-list">delete</button>
+                    <div class="admin-lane-tabs" role="tablist" aria-label="Published content">
+                        <button class="active" type="button" data-admin-published-lane="doods" role="tab" aria-selected="true">doods</button>
+                        <button type="button" data-admin-published-lane="asks" role="tab" aria-selected="false">answered</button>
                     </div>
                 </div>
-                <div class="admin-list admin-doods-list" id="published-drawings-list"></div>
+                <section data-admin-published-content="doods">
+                    <div class="admin-section-heading">
+                        <h2>posted doods</h2>
+                        <div class="admin-bulk-bar compact">
+                            <button class="soft" data-bulk-action="select" data-list="published-drawings-list">select all</button>
+                            <button class="danger" data-bulk-action="delete" data-list="published-drawings-list">delete</button>
+                        </div>
+                    </div>
+                    <div class="admin-list admin-doods-list" id="published-drawings-list"></div>
+                </section>
 
-                <div class="admin-section-heading">
-                    <h2>answered asks</h2>
-                </div>
-                <div class="admin-list admin-text-list" id="published-questions-list"></div>
+                <section data-admin-published-content="asks" hidden>
+                    <div class="admin-section-heading">
+                        <h2>answered asks</h2>
+                    </div>
+                    <div class="admin-list admin-text-list" id="published-questions-list"></div>
+                </section>
             </section>
 
             <section class="admin-panel" id="rooms-panel">
@@ -134,7 +216,7 @@
                     <details class="admin-link-card admin-control-card" data-link-card="rooms-master" open>
                         <summary>
                             <div class="admin-link-card-title">
-                                <span class="admin-link-icon">R</span>
+                                <span class="admin-link-icon"><svg aria-hidden="true"><use href="#admin-i-rooms"></use></svg></span>
                                 <div>
                                     <strong>rooms master switch</strong>
                                     <small id="rooms-master-state">enabled</small>
@@ -153,7 +235,7 @@
                     <details class="admin-link-card admin-control-card" data-link-card="rooms-lockdown" open>
                         <summary>
                             <div class="admin-link-card-title">
-                                <span class="admin-link-icon">R</span>
+                                <span class="admin-link-icon"><svg aria-hidden="true"><use href="#admin-i-lock"></use></svg></span>
                                 <div>
                                     <strong>rooms lockdown</strong>
                                     <small id="lockdown-state">off</small>
@@ -196,7 +278,7 @@
                 </div>
 
                 <div id="inspect-wrap" class="hidden">
-                    <span class="back-link" id="btn-back">← back to list</span>
+                    <button class="back-link soft" type="button" id="btn-back"><svg aria-hidden="true"><use href="#admin-i-arrow-left"></use></svg><span>back to list</span></button>
                     <div id="inspect-detail" style="margin-top:14px"></div>
                     <div style="margin-top:14px">
                         <button class="danger hidden" type="button" id="btn-force-close">force-close this room</button>
@@ -245,7 +327,7 @@
                         <details class="admin-link-card admin-control-card" data-link-card="maintenance" open>
                             <summary>
                                 <div class="admin-link-card-title">
-                                    <span class="admin-link-icon">W</span>
+                                    <span class="admin-link-icon"><svg aria-hidden="true"><use href="#admin-i-power"></use></svg></span>
                                     <div>
                                             <strong>update mode</strong>
                                         <small id="maintenance-state">off</small>
@@ -275,7 +357,7 @@
                         <details class="admin-link-card admin-control-card" data-link-card="entrance" open>
                             <summary>
                                 <div class="admin-link-card-title">
-                                    <span class="admin-link-icon">B</span>
+                                    <span class="admin-link-icon"><svg aria-hidden="true"><use href="#admin-i-spark"></use></svg></span>
                                     <div>
                                         <strong>site entrance</strong>
                                         <small id="entrance-mode-state">paw press</small>
@@ -290,13 +372,16 @@
                                         <option value="bubbles">pop 3–4 bubbles</option>
                                     </select>
                                 </label>
+                                <div class="admin-entrance-preview" id="admin-entrance-preview" data-mode="bubbles" aria-label="Entrance interaction preview">
+                                    <span></span><span></span><span></span><strong>pop the bubbles</strong>
+                                </div>
                             </div>
                         </details>
 
                         <details class="admin-link-card admin-control-card" data-link-card="first-visit-tour" open>
                             <summary>
                                 <div class="admin-link-card-title">
-                                    <span class="admin-link-icon">T</span>
+                                    <span class="admin-link-icon"><svg aria-hidden="true"><use href="#admin-i-eye"></use></svg></span>
                                     <div>
                                         <strong>first-visit tour</strong>
                                         <small id="first-visit-tour-state">on</small>
@@ -309,13 +394,18 @@
                             </summary>
                             <div class="admin-link-card-body admin-field-grid">
                                 <p class="admin-social-order-note">Show the three-button preview the first time someone enters the site.</p>
+                                <div class="admin-tour-preview" aria-label="First-visit tour preview">
+                                    <span><svg aria-hidden="true"><use href="#admin-i-edit"></use></svg>doodle</span>
+                                    <span><svg aria-hidden="true"><use href="#admin-i-question"></use></svg>ask</span>
+                                    <span><svg aria-hidden="true"><use href="#admin-i-links"></use></svg>links</span>
+                                </div>
                             </div>
                         </details>
 
                         <details class="admin-link-card admin-control-card" data-link-card="submissions" open>
                             <summary>
                                 <div class="admin-link-card-title">
-                                    <span class="admin-link-icon">P</span>
+                                    <span class="admin-link-icon"><svg aria-hidden="true"><use href="#admin-i-edit"></use></svg></span>
                                     <div>
                                         <strong>posting switches</strong>
                                         <small id="submissions-state">open</small>
@@ -349,7 +439,7 @@
                         <details class="admin-link-card admin-control-card" data-link-card="homepage-note" open>
                             <summary>
                                 <div class="admin-link-card-title">
-                                    <span class="admin-link-icon">N</span>
+                                    <span class="admin-link-icon"><svg aria-hidden="true"><use href="#admin-i-note"></use></svg></span>
                                     <div>
                                         <strong>paper note</strong>
                                         <small id="homepage-note-state">blank</small>
@@ -362,6 +452,7 @@
                                     <textarea id="homepage-note-text-input" maxlength="220" placeholder="write directly on the pink note"></textarea>
                                 </label>
                                 <p class="admin-tool-note">Autosaves. Line breaks are kept, and the homepage gently resizes the handwriting so it stays inside the paper.</p>
+                                <div class="admin-note-preview" id="admin-note-preview" aria-label="Homepage paper note preview">blank note stays hidden</div>
                             </div>
                         </details>
 
@@ -377,7 +468,7 @@
                         <button class="soft" type="button" id="link-settings-reset">restore defaults</button>
                     </div>
 
-                    <p class="admin-social-order-note">use the little ↑ and ↓ controls to choose which social appears first, last, or anywhere between. changes save automatically.</p>
+                    <p class="admin-social-order-note">drag the dotted handle to reorder, or use the arrow controls for touch and keyboard. changes save automatically; Throne stays fixed.</p>
 
                     <aside class="admin-social-hosting-pause" role="note">
                         <strong>local video mode</strong>
@@ -385,7 +476,7 @@
                     </aside>
 
                     <div class="admin-link-grid">
-                        <details class="admin-link-card" data-link-card="snapchat" open>
+                        <details class="admin-link-card" data-link-card="snapchat">
                             <summary>
                                 <div class="admin-link-card-title">
                                     <span class="admin-link-icon admin-link-icon--social" aria-hidden="true"><img src="../social-icons/snapchat.png" alt="" width="192" height="192"></span>
@@ -431,7 +522,7 @@
                             </div>
                         </details>
 
-                        <details class="admin-link-card" data-link-card="instagram" open>
+                        <details class="admin-link-card" data-link-card="instagram">
                             <summary>
                                 <div class="admin-link-card-title">
                                     <span class="admin-link-icon admin-link-icon--social" aria-hidden="true"><img src="../social-icons/instagram.png" alt="" width="192" height="192"></span>
@@ -477,7 +568,7 @@
                             </div>
                         </details>
 
-                        <details class="admin-link-card admin-widget-card" data-link-card="kofi" open>
+                        <details class="admin-link-card admin-widget-card" data-link-card="kofi">
                             <summary>
                                 <div class="admin-link-card-title">
                                     <span class="admin-link-icon admin-link-icon--social admin-link-icon--kofi" aria-hidden="true"><img src="../social-icons/kofi.png" alt="" width="192" height="192"></span>
@@ -524,7 +615,7 @@
                             </div>
                         </details>
 
-                        <details class="admin-link-card" data-link-card="telegram" open>
+                        <details class="admin-link-card" data-link-card="telegram">
                             <summary>
                                 <div class="admin-link-card-title">
                                     <span class="admin-link-icon admin-link-icon--social" aria-hidden="true"><img src="../social-icons/telegram.png" alt="" width="192" height="162"></span>
@@ -570,7 +661,7 @@
                             </div>
                         </details>
 
-                        <details class="admin-link-card" data-link-card="x" open>
+                        <details class="admin-link-card" data-link-card="x">
                             <summary>
                                 <div class="admin-link-card-title">
                                     <span class="admin-link-icon admin-link-icon--social" aria-hidden="true"><img src="../social-icons/x.png" alt="" width="192" height="192"></span>
@@ -616,7 +707,7 @@
                             </div>
                         </details>
 
-                        <details class="admin-link-card" data-link-card="tiktok" open>
+                        <details class="admin-link-card" data-link-card="tiktok">
                             <summary>
                                 <div class="admin-link-card-title">
                                     <span class="admin-link-icon admin-link-icon--social" aria-hidden="true"><img src="../social-icons/tiktok.png" alt="" width="170" height="192"></span>
@@ -662,7 +753,7 @@
                             </div>
                         </details>
 
-                        <details class="admin-link-card" data-link-card="twitch" open>
+                        <details class="admin-link-card" data-link-card="twitch">
                             <summary>
                                 <div class="admin-link-card-title">
                                     <span class="admin-link-icon admin-link-icon--social" aria-hidden="true"><img src="../social-icons/twitch.png" alt="" width="192" height="183"></span>
@@ -708,7 +799,7 @@
                             </div>
                         </details>
 
-                        <details class="admin-link-card" data-link-card="discord" open>
+                        <details class="admin-link-card" data-link-card="discord">
                             <summary>
                                 <div class="admin-link-card-title">
                                     <span class="admin-link-icon admin-link-icon--social" aria-hidden="true"><img src="../social-icons/discord.png" alt="" width="192" height="150"></span>
@@ -754,7 +845,7 @@
                             </div>
                         </details>
 
-                        <details class="admin-link-card" data-link-card="onlyfans" open>
+                        <details class="admin-link-card" data-link-card="onlyfans">
                             <summary>
                                 <div class="admin-link-card-title">
                                     <span class="admin-link-icon admin-link-icon--social admin-link-icon--onlyfans" aria-hidden="true"><img src="../social-icons/onlyfans.png" alt="" width="192" height="192"></span>
@@ -800,7 +891,7 @@
                             </div>
                         </details>
 
-                        <details class="admin-link-card" data-link-card="spotify" open>
+                        <details class="admin-link-card" data-link-card="spotify">
                             <summary>
                                 <div class="admin-link-card-title">
                                     <span class="admin-link-icon admin-link-icon--social" aria-hidden="true"><img src="../social-icons/spotify.png" alt="" width="192" height="192"></span>
@@ -846,10 +937,10 @@
                             </div>
                         </details>
 
-                        <details class="admin-link-card admin-widget-card" data-link-card="throne" open>
+                        <details class="admin-link-card admin-widget-card" data-link-card="throne">
                             <summary>
                                 <div class="admin-link-card-title">
-                                    <span class="admin-link-icon admin-link-icon--wishes" aria-hidden="true">꩜</span>
+                                    <span class="admin-link-icon admin-link-icon--wishes" aria-hidden="true"><img src="../site-images/wishlist.png" alt="" width="192" height="192"></span>
                                     <div>
                                         <strong>Throne</strong>
                                         <small id="throne-state">visible</small>
@@ -902,6 +993,17 @@
                         <button class="soft" type="button" id="wishlist-sync-now">sync now</button>
                         <button class="soft" type="button" id="wishlist-feature-all">feature all</button>
                         <button class="soft" type="button" id="wishlist-unfeature-all">unfeature all</button>
+                        <select id="wishlist-sort" aria-label="Sort wishlist items">
+                            <option value="featured">featured first</option>
+                            <option value="newest">newest first</option>
+                            <option value="name">name A–Z</option>
+                        </select>
+                        <select id="wishlist-filter" aria-label="Filter wishlist items">
+                            <option value="all">all items</option>
+                            <option value="available">available</option>
+                            <option value="sold-out">sold out</option>
+                            <option value="new">new today</option>
+                        </select>
                         <input type="search" id="wishlist-search" placeholder="search items...">
                     </div>
                     <p class="admin-tool-note" id="wishlist-featured-warning"></p>
@@ -920,7 +1022,7 @@
                     <div class="admin-search-layout">
                         <section class="admin-tool-card admin-search-editor" data-link-card="seo">
                             <div class="admin-link-card-title">
-                                <span class="admin-link-icon">G</span>
+                                <span class="admin-link-icon"><svg aria-hidden="true"><use href="#admin-i-search"></use></svg></span>
                                 <div>
                                     <strong>search preview</strong>
                                     <small id="seo-state">ready</small>
@@ -977,12 +1079,60 @@
                     </div>
                 </section>
             </form>
+            </div>
         </section>
+
+        <dialog class="admin-command-dialog" id="admin-command-dialog" aria-labelledby="admin-command-title">
+            <form method="dialog" class="admin-dialog-shell">
+                <div class="admin-dialog-head">
+                    <div>
+                        <p class="admin-kicker">quick jump</p>
+                        <h2 id="admin-command-title">find a panel</h2>
+                    </div>
+                    <button class="admin-icon-button soft" value="cancel" aria-label="close quick jump"><svg aria-hidden="true"><use href="#admin-i-close"></use></svg></button>
+                </div>
+                <label class="admin-command-search">
+                    <svg aria-hidden="true"><use href="#admin-i-search"></use></svg>
+                    <input id="admin-command-input" type="search" autocomplete="off" placeholder="review, media, wishlist, rooms…">
+                </label>
+                <div class="admin-command-results" id="admin-command-results"></div>
+            </form>
+        </dialog>
+
+        <dialog class="admin-more-dialog" id="admin-more-dialog" aria-labelledby="admin-more-title">
+            <form method="dialog" class="admin-dialog-shell">
+                <div class="admin-dialog-head">
+                    <div>
+                        <p class="admin-kicker">navigation</p>
+                        <h2 id="admin-more-title">more tools</h2>
+                    </div>
+                    <button class="admin-icon-button soft" value="cancel" aria-label="close more tools"><svg aria-hidden="true"><use href="#admin-i-close"></use></svg></button>
+                </div>
+                <div class="admin-more-grid">
+                    <button type="button" data-more-panel="wishlist-panel"><svg aria-hidden="true"><use href="#admin-i-wishlist"></use></svg><span>wishlist</span></button>
+                    <button type="button" data-more-panel="search-panel"><svg aria-hidden="true"><use href="#admin-i-search"></use></svg><span>search + SEO</span></button>
+                    <button type="button" data-more-panel="rooms-panel"><svg aria-hidden="true"><use href="#admin-i-rooms"></use></svg><span>rooms</span></button>
+                </div>
+            </form>
+        </dialog>
+
+        <dialog class="admin-inspector-dialog" id="admin-card-inspector" aria-labelledby="admin-card-inspector-title">
+            <div class="admin-inspector-shell">
+                <div class="admin-dialog-head">
+                    <div>
+                        <p class="admin-kicker">card editor</p>
+                        <h2 id="admin-card-inspector-title">social card</h2>
+                    </div>
+                    <button class="admin-icon-button soft" type="button" data-close-card-inspector aria-label="close card editor"><svg aria-hidden="true"><use href="#admin-i-close"></use></svg></button>
+                </div>
+                <div class="admin-inspector-body" id="admin-card-inspector-body"></div>
+            </div>
+        </dialog>
     </main>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="../admin-rooms.js?v=4.5"></script>
     <script src="../social-card-media-config.js?v=4&r=2026.07.20.3"></script>
-    <script src="../admin.js?v=5.27&r=2026.08.12.20"></script>
+    <script src="../admin.js?v=6.1&r=2026.08.16.2"></script>
 </body>
 </html>

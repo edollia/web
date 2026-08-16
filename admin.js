@@ -169,6 +169,10 @@ const state = {
     wishlistSyncedAt: null,
     wishlistSearch: '',
     wishlistLoadedSearch: '',
+    wishlistFilter: 'all',
+    wishlistLoadedFilter: 'all',
+    wishlistSort: 'featured',
+    wishlistLoadedSort: 'featured',
     linkSettings: { ...DEFAULT_LINK_SETTINGS },
     linkSettingsAvailable: true
 };
@@ -272,6 +276,8 @@ const els = {
     wishlistFeatureAll: document.getElementById('wishlist-feature-all'),
     wishlistUnfeatureAll: document.getElementById('wishlist-unfeature-all'),
     wishlistSearch: document.getElementById('wishlist-search'),
+    wishlistFilter: document.getElementById('wishlist-filter'),
+    wishlistSort: document.getElementById('wishlist-sort'),
     wishlistFeaturedWarning: document.getElementById('wishlist-featured-warning'),
     homepageNoteText: document.getElementById('homepage-note-text-input'),
     homepageNoteState: document.getElementById('homepage-note-state'),
@@ -315,6 +321,27 @@ function showPanel(panel) {
 
 function setStatus(element, message) {
     if (element) element.textContent = message || '';
+    if (element === els.adminStatus) updateAdminSaveState(message);
+}
+
+function updateAdminSaveState(message = '') {
+    const indicator = document.getElementById('admin-save-state');
+    if (!indicator) return;
+    const text = String(message || '').trim();
+    const normalized = text.toLowerCase();
+    let tone = 'ready';
+    let label = text || 'ready';
+    if (/saving|syncing|loading|checking|refreshing|working|uploading/.test(normalized)) {
+        tone = 'working';
+    } else if (/fail|error|could not|not allowed|attention|missing|unavailable/.test(normalized)) {
+        tone = 'error';
+    } else if (/saved|approved|deleted|featured|moved|synced|updated|complete|disabled|enabled/.test(normalized)) {
+        tone = 'saved';
+    }
+    indicator.dataset.tone = tone;
+    const strong = indicator.querySelector('strong');
+    if (strong) strong.textContent = label.length > 34 ? `${label.slice(0, 31)}…` : label;
+    indicator.title = text;
 }
 
 function hasGateAccess() {
@@ -385,6 +412,12 @@ function escapeHtml(value) {
         .replace(/'/g, '&#039;');
 }
 
+function adminIcon(name, className = 'admin-action-icon') {
+    const safeName = String(name || '').replace(/[^a-z0-9-]/gi, '');
+    const safeClass = String(className || '').replace(/[^a-z0-9 _-]/gi, '');
+    return `<svg class="${safeClass}" aria-hidden="true"><use href="#admin-i-${safeName}"></use></svg>`;
+}
+
 function getDrawingSrc(imageData) {
     const cleanData = String(imageData || '').replace(/\s/g, '');
     if (!cleanData || !/^[A-Za-z0-9+/=]+$/.test(cleanData)) return '';
@@ -451,9 +484,9 @@ function ensureAdminPagination(container) {
     controls.setAttribute('aria-label', `${config.label} pages`);
     controls.hidden = true;
     controls.innerHTML = `
-        <button type="button" class="soft" data-page-step="-1" aria-label="previous ${escapeHtml(config.label)} page">&larr;</button>
+        <button type="button" class="soft" data-page-step="-1" aria-label="previous ${escapeHtml(config.label)} page">${adminIcon('arrow-left')}</button>
         <span aria-live="polite"></span>
-        <button type="button" class="soft" data-page-step="1" aria-label="next ${escapeHtml(config.label)} page">&rarr;</button>
+        <button type="button" class="soft" data-page-step="1" aria-label="next ${escapeHtml(config.label)} page">${adminIcon('arrow-right')}</button>
     `;
     container.insertAdjacentElement('afterend', controls);
     controls.addEventListener('click', async event => {
@@ -528,6 +561,7 @@ function renderDrawings(list, container, published) {
     const pageItems = paginateAdminList(list, container);
     if (!(state.adminListTotals[container.id] || 0)) {
         container.innerHTML = emptyMessage(published ? 'no posted doods' : 'nothing waiting');
+        if (!published) renderAdminSelectionPreview();
         return;
     }
 
@@ -542,11 +576,38 @@ function renderDrawings(list, container, published) {
             <div class="admin-actions">
                 ${published
                     ? '<span class="admin-pill">approved</span>'
-                    : '<button data-action="approve-drawing">approve</button>'}
-                <button class="danger" data-action="delete-drawing">delete</button>
+                    : `<button data-action="approve-drawing">${adminIcon('check')}<span>approve</span></button>`}
+                <button class="danger" data-action="delete-drawing">${adminIcon('trash')}<span>delete</span></button>
             </div>
         </article>
     `).join('');
+    if (!published) renderAdminSelectionPreview();
+}
+
+function renderAdminSelectionPreview() {
+    const preview = document.getElementById('admin-selection-preview');
+    if (!preview) return;
+    const ids = new Set(getSelectedIds('pending-drawings-list'));
+    const count = ids.size;
+    const countLabel = preview.querySelector('[data-selection-count]');
+    const output = preview.querySelector('[data-selection-items]');
+    const actions = preview.querySelector('[data-selection-actions]');
+    if (countLabel) countLabel.textContent = `${count} selected`;
+    if (actions) actions.hidden = count === 0;
+    if (!output) return;
+    if (!count) {
+        output.innerHTML = '<p class="admin-tool-note">Choose doods to preview the exact bulk action set.</p>';
+        return;
+    }
+    const visibleItems = getAdminListItems('pending-drawings-list').filter(item => ids.has(String(item.id))).slice(0, 6);
+    const hiddenCount = Math.max(0, count - visibleItems.length);
+    output.innerHTML = visibleItems.map(item => `
+        <article class="admin-selection-item">
+            <img src="${escapeHtml(getDrawingSrc(item.imageData))}" alt="">
+            <span><strong>${escapeHtml(String(item.id))}</strong><small>ready for one bulk action</small></span>
+            ${adminIcon('check')}
+        </article>
+    `).join('') + (hiddenCount ? `<p class="admin-tool-note">+ ${hiddenCount} selected on other pages</p>` : '');
 }
 
 function renderQuestions(list, container, published) {
@@ -562,8 +623,8 @@ function renderQuestions(list, container, published) {
             ${renderShortMeta(item)}
             <textarea data-answer-for="${escapeHtml(item.id)}" placeholder="reply">${escapeHtml(adminQuestionDrafts.has(String(item.id)) ? adminQuestionDrafts.get(String(item.id)) : (item.answer || ''))}</textarea>
             <div class="admin-actions">
-                <button data-action="save-question">${published ? 'save edit' : 'save reply'}</button>
-                <button class="danger" data-action="delete-question">delete</button>
+                <button data-action="save-question">${adminIcon('edit')}<span>${published ? 'save edit' : 'save reply'}</span></button>
+                <button class="danger" data-action="delete-question">${adminIcon('trash')}<span>delete</span></button>
             </div>
         </article>
     `).join('');
@@ -766,9 +827,11 @@ function ensureSocialOrderControls() {
         const controls = document.createElement('span');
         controls.className = 'admin-social-order-controls';
         controls.innerHTML = `
-            <button class="admin-social-move" type="button" data-social-move="up" data-social-key="${key}" aria-label="Move ${key} card up">↑</button>
+            <button class="admin-social-drag" type="button" data-social-drag="${key}" aria-label="Drag ${key} card to reorder" title="Drag to reorder">${adminIcon('drag')}</button>
+            <button class="admin-social-edit" type="button" data-social-edit="${key}" aria-label="Edit ${key} card">${adminIcon('edit')}</button>
+            <button class="admin-social-move" type="button" data-social-move="up" data-social-key="${key}" aria-label="Move ${key} card up">${adminIcon('arrow-up')}</button>
             <span class="admin-social-position" aria-label="Card position"></span>
-            <button class="admin-social-move" type="button" data-social-move="down" data-social-key="${key}" aria-label="Move ${key} card down">↓</button>
+            <button class="admin-social-move" type="button" data-social-move="down" data-social-key="${key}" aria-label="Move ${key} card down">${adminIcon('arrow-down')}</button>
         `;
         actions.prepend(controls);
     });
@@ -812,6 +875,25 @@ function moveSocialCard(key, direction) {
     applyAdminSocialCardOrder(state.linkSettings);
     renderLinkPreview();
     scheduleAutoSave();
+}
+
+function reorderSocialCard(draggedKey, overKey, placeAfter = false) {
+    if (!linkSettingsHydrated) {
+        setStatus(els.adminStatus, 'Saved site settings are still loading.');
+        return false;
+    }
+    const current = normalizeSocialCardOrder(state.linkSettings.social_card_order);
+    if (draggedKey === overKey || !current.includes(draggedKey) || !current.includes(overKey)) return false;
+    const next = current.filter(key => key !== draggedKey);
+    const targetIndex = next.indexOf(overKey);
+    next.splice(targetIndex + (placeAfter ? 1 : 0), 0, draggedKey);
+    state.linkSettings.social_card_order = normalizeSocialCardOrder(next);
+    settingsDraftDirty = true;
+    applyAdminSocialCardOrder(state.linkSettings);
+    renderLinkPreview();
+    scheduleAutoSave();
+    setStatus(els.adminStatus, 'saving social card order...');
+    return true;
 }
 
 function setLinkSettingsHydrated(ready) {
@@ -887,8 +969,15 @@ function renderLinkSettings({ preserveDraft = false } = {}) {
     if (els.maintenanceState) els.maintenanceState.textContent = settings.maintenance_enabled === true ? 'on' : 'off';
     if (els.entranceMode) els.entranceMode.value = settings.entrance_mode === 'bubbles' ? 'bubbles' : 'paw';
     if (els.entranceModeState) els.entranceModeState.textContent = settings.entrance_mode === 'bubbles' ? 'pop bubbles' : 'paw press';
+    const entrancePreview = document.getElementById('admin-entrance-preview');
+    if (entrancePreview) {
+        entrancePreview.dataset.mode = settings.entrance_mode === 'bubbles' ? 'bubbles' : 'paw';
+        const label = entrancePreview.querySelector('strong');
+        if (label) label.textContent = settings.entrance_mode === 'bubbles' ? 'pop the bubbles' : 'press the paw';
+    }
     if (els.firstVisitTourEnabled) els.firstVisitTourEnabled.checked = settings.first_visit_tour_enabled !== false;
     if (els.firstVisitTourState) els.firstVisitTourState.textContent = settings.first_visit_tour_enabled !== false ? 'on' : 'off';
+    document.querySelector('.admin-tour-preview')?.classList.toggle('is-disabled', settings.first_visit_tour_enabled === false);
     if (els.drawingsEnabled) els.drawingsEnabled.checked = settings.drawings_enabled !== false;
     if (els.questionsEnabled) els.questionsEnabled.checked = settings.questions_enabled !== false;
     if (els.submissionsState) els.submissionsState.textContent = getSubmissionsStateLabel(settings);
@@ -1001,6 +1090,12 @@ function syncLinkDraftLabels(settings = getDraftLinkSettings()) {
     const homepageNoteText = String(settings.homepage_note_text || '');
     if (els.homepageNoteState) els.homepageNoteState.textContent = homepageNoteText ? 'visible' : 'blank';
     if (els.homepageNoteCount) els.homepageNoteCount.textContent = `${homepageNoteText.length}/220`;
+    const notePreview = document.getElementById('admin-note-preview');
+    if (notePreview) {
+        notePreview.textContent = homepageNoteText || 'blank note stays hidden';
+        notePreview.classList.toggle('is-blank', !homepageNoteText);
+        notePreview.style.fontSize = `${settings.homepage_note_font_size || DEFAULT_LINK_SETTINGS.homepage_note_font_size}px`;
+    }
     document.querySelector('[data-link-card="homepage-note"]')?.classList.toggle('is-disabled', !homepageNoteText);
     if (els.maintenanceState) els.maintenanceState.textContent = settings.maintenance_enabled === true ? 'on' : 'off';
     if (els.entranceModeState) els.entranceModeState.textContent = settings.entrance_mode === 'bubbles' ? 'pop bubbles' : 'paw press';
@@ -1023,6 +1118,7 @@ function syncLinkDraftLabels(settings = getDraftLinkSettings()) {
         document.querySelector(`[data-link-card="${key}"]`)?.classList.toggle('is-disabled', disabled);
     });
     document.querySelector('[data-link-card="rooms-master"]')?.classList.toggle('is-disabled', settings.rooms_enabled === false);
+    updateAdminSafetyOverview(settings);
     renderStaticSeoStatus(settings);
 }
 
@@ -1688,6 +1784,8 @@ function renderAll({ preserveDrafts = false, listIds = Object.keys(ADMIN_LIST_PA
 
 const WISHLIST_FEATURED_CAP = 30;
 const WISHLIST_NEW_WINDOW_MS = 24 * 60 * 60 * 1000;
+const WISHLIST_FILTERS = new Set(['all', 'available', 'sold-out', 'new']);
+const WISHLIST_SORTS = new Set(['featured', 'newest', 'name']);
 const WISHLIST_POSITION_ACTIONS = new Set([
     'feature-wishlist-item', 'unfeature-wishlist-item',
     'move-wishlist-item-up', 'move-wishlist-item-down',
@@ -1732,7 +1830,7 @@ function renderWishlistItems() {
         return;
     }
     const totalItems = state.adminListTotals['wishlist-items-list'] || 0;
-    if (!totalItems && !state.wishlistSearch.trim()) {
+    if (!totalItems && !state.wishlistSearch.trim() && state.wishlistFilter === 'all') {
         paginateAdminList([], container);
         container.innerHTML = emptyMessage('nothing synced yet — hit "sync now"');
         return;
@@ -1740,25 +1838,28 @@ function renderWishlistItems() {
 
     const featuredCount = state.wishlistFeaturedCount || 0;
     if (els.wishlistFeaturedWarning) {
-        els.wishlistFeaturedWarning.textContent = featuredCount > WISHLIST_FEATURED_CAP
-            ? `${featuredCount} items featured — only the first ${WISHLIST_FEATURED_CAP} by position show on the site.`
-            : '';
+        const notices = [];
+        if (featuredCount > WISHLIST_FEATURED_CAP) notices.push(`${featuredCount} items featured — only the first ${WISHLIST_FEATURED_CAP} by position show on the site.`);
+        if (state.wishlistSort !== 'featured') notices.push('Switch to “featured first” to drag or use ordering arrows.');
+        els.wishlistFeaturedWarning.textContent = notices.join(' ');
     }
 
     const visible = getAdminListItems('wishlist-items-list');
 
     if (!totalItems) {
         paginateAdminList([], container);
-        container.innerHTML = emptyMessage('no items match your search');
+        container.innerHTML = emptyMessage('no items match these wishlist filters');
         return;
     }
 
     const pageItems = paginateAdminList(visible, container);
+    const canReorder = state.wishlistSort === 'featured';
 
     container.innerHTML = pageItems.map(item => {
         const isNew = item.first_synced_at && (Date.now() - new Date(item.first_synced_at).getTime()) < WISHLIST_NEW_WINDOW_MS;
         return `
         <article class="admin-card${item.featured ? ' is-featured' : ''}${item.is_available ? '' : ' is-unavailable'}" data-id="${escapeHtml(item.throne_item_id)}">
+            ${item.featured && canReorder ? `<button class="admin-wishlist-drag" type="button" aria-label="Drag ${escapeHtml(item.name || 'wishlist item')} to reorder" title="Drag to reorder">${adminIcon('drag')}</button>` : ''}
             <img src="${escapeHtml(item.image_url || '')}" alt="" loading="lazy" decoding="async">
             <div class="admin-card-body">
                 <div class="admin-card-title-row">
@@ -1770,11 +1871,11 @@ function renderWishlistItems() {
                 </p>
             </div>
             <div class="admin-actions">
-                ${item.featured ? `
-                    <button data-action="move-wishlist-item-up" ${String(item.throne_item_id) === state.wishlistFirstFeaturedId ? 'disabled' : ''} aria-label="move up">&uarr;</button>
-                    <button data-action="move-wishlist-item-down" ${String(item.throne_item_id) === state.wishlistLastFeaturedId ? 'disabled' : ''} aria-label="move down">&darr;</button>
+                ${item.featured && canReorder ? `
+                    <button data-action="move-wishlist-item-up" ${String(item.throne_item_id) === state.wishlistFirstFeaturedId ? 'disabled' : ''} aria-label="move up">${adminIcon('arrow-up')}</button>
+                    <button data-action="move-wishlist-item-down" ${String(item.throne_item_id) === state.wishlistLastFeaturedId ? 'disabled' : ''} aria-label="move down">${adminIcon('arrow-down')}</button>
                 ` : ''}
-                <button data-action="${item.featured ? 'unfeature-wishlist-item' : 'feature-wishlist-item'}">${item.featured ? 'unfeature' : 'feature'}</button>
+                <button data-action="${item.featured ? 'unfeature-wishlist-item' : 'feature-wishlist-item'}">${adminIcon(item.featured ? 'trash' : 'plus')}<span>${item.featured ? 'unfeature' : 'feature'}</span></button>
             </div>
         </article>
     `; }).join('');
@@ -1813,10 +1914,12 @@ async function featureAllWishlistItems() {
     // while the count/confirmation is in flight must not change which rows
     // the already-confirmed action later mutates.
     const actionSearch = state.wishlistSearch;
+    const actionFilter = state.wishlistFilter;
+    const actionNewCutoff = new Date(Date.now() - WISHLIST_NEW_WINDOW_MS).toISOString();
     let countQuery = adminClient.from('wishlist_items')
         .select('throne_item_id', { count: 'exact', head: true })
         .eq('featured', false);
-    countQuery = applyWishlistSearchFilter(countQuery, actionSearch);
+    countQuery = applyWishlistScopeFilter(countQuery, { search: actionSearch, filter: actionFilter, newCutoff: actionNewCutoff });
     const countResult = await countQuery;
     if (countResult.error) {
         setStatus(els.adminStatus, countResult.error.message || 'could not count wishlist items');
@@ -1841,7 +1944,7 @@ async function featureAllWishlistItems() {
             let targetQuery = adminClient.from('wishlist_items')
                 .select('throne_item_id')
                 .eq('featured', false);
-            targetQuery = applyWishlistSearchFilter(targetQuery, actionSearch);
+            targetQuery = applyWishlistScopeFilter(targetQuery, { search: actionSearch, filter: actionFilter, newCutoff: actionNewCutoff });
             const targetResult = await targetQuery
                 .order('position', { ascending: true })
                 .order('name', { ascending: true })
@@ -1890,10 +1993,12 @@ async function featureAllWishlistItems() {
 async function unfeatureAllWishlistItems() {
     if (!els.wishlistUnfeatureAll) return;
     const actionSearch = state.wishlistSearch;
+    const actionFilter = state.wishlistFilter;
+    const actionNewCutoff = new Date(Date.now() - WISHLIST_NEW_WINDOW_MS).toISOString();
     let countQuery = adminClient.from('wishlist_items')
         .select('throne_item_id', { count: 'exact', head: true })
         .eq('featured', true);
-    countQuery = applyWishlistSearchFilter(countQuery, actionSearch);
+    countQuery = applyWishlistScopeFilter(countQuery, { search: actionSearch, filter: actionFilter, newCutoff: actionNewCutoff });
     const countResult = await countQuery;
     if (countResult.error) {
         setStatus(els.adminStatus, countResult.error.message || 'could not count wishlist items');
@@ -1913,7 +2018,7 @@ async function unfeatureAllWishlistItems() {
     let mutationCompleted = false;
     try {
         let updateQuery = adminClient.from('wishlist_items').update({ featured: false }).eq('featured', true);
-        updateQuery = applyWishlistSearchFilter(updateQuery, actionSearch);
+        updateQuery = applyWishlistScopeFilter(updateQuery, { search: actionSearch, filter: actionFilter, newCutoff: actionNewCutoff });
         const { error } = await updateQuery;
         if (error) throw error;
         mutationCompleted = true;
@@ -1991,7 +2096,25 @@ function applyWishlistSearchFilter(query, searchValue = state.wishlistSearch) {
     return query.ilike('name', pattern);
 }
 
-function buildAdminListQuery(listId, { wishlistSearch = state.wishlistSearch } = {}) {
+function applyWishlistScopeFilter(query, {
+    search = state.wishlistSearch,
+    filter = state.wishlistFilter,
+    newCutoff = new Date(Date.now() - WISHLIST_NEW_WINDOW_MS).toISOString()
+} = {}) {
+    let scoped = applyWishlistSearchFilter(query, search);
+    if (filter === 'available') scoped = scoped.eq('is_available', true);
+    if (filter === 'sold-out') scoped = scoped.eq('is_available', false);
+    if (filter === 'new') {
+        scoped = scoped.gte('first_synced_at', newCutoff);
+    }
+    return scoped;
+}
+
+function buildAdminListQuery(listId, {
+    wishlistSearch = state.wishlistSearch,
+    wishlistFilter = state.wishlistFilter,
+    wishlistSort = state.wishlistSort
+} = {}) {
     const columns = ADMIN_LIST_COLUMNS[listId];
     if (!columns) throw new Error(`Unknown admin list: ${listId}`);
 
@@ -1999,7 +2122,18 @@ function buildAdminListQuery(listId, { wishlistSearch = state.wishlistSearch } =
         let query = adminClient
             .from('wishlist_items')
             .select(columns, { count: 'exact' });
-        query = applyWishlistSearchFilter(query, wishlistSearch);
+        query = applyWishlistScopeFilter(query, { search: wishlistSearch, filter: wishlistFilter });
+        if (wishlistSort === 'newest') {
+            return query
+                .order('first_synced_at', { ascending: false, nullsFirst: false })
+                .order('name', { ascending: true })
+                .order('throne_item_id', { ascending: true });
+        }
+        if (wishlistSort === 'name') {
+            return query
+                .order('name', { ascending: true })
+                .order('throne_item_id', { ascending: true });
+        }
         return query
             .order('featured', { ascending: false })
             .order('position', { ascending: true })
@@ -2020,9 +2154,15 @@ async function fetchAdminListPage(listId) {
     if (!config) throw new Error(`Unknown admin list: ${listId}`);
 
     const queryWishlistSearch = listId === 'wishlist-items-list' ? state.wishlistSearch : '';
+    const queryWishlistFilter = listId === 'wishlist-items-list' ? state.wishlistFilter : 'all';
+    const queryWishlistSort = listId === 'wishlist-items-list' ? state.wishlistSort : 'featured';
     const runPage = page => {
         const start = (page - 1) * config.pageSize;
-        return buildAdminListQuery(listId, { wishlistSearch: queryWishlistSearch })
+        return buildAdminListQuery(listId, {
+            wishlistSearch: queryWishlistSearch,
+            wishlistFilter: queryWishlistFilter,
+            wishlistSort: queryWishlistSort
+        })
             .range(start, start + config.pageSize - 1);
     };
 
@@ -2030,7 +2170,7 @@ async function fetchAdminListPage(listId) {
     let result = await runPage(page);
     if (result.error) {
         if (listId === 'wishlist-items-list' && result.error.code === '42P01') {
-            return { items: [], total: 0, page: 1, wishlistSearch: queryWishlistSearch, available: false };
+            return { items: [], total: 0, page: 1, wishlistSearch: queryWishlistSearch, wishlistFilter: queryWishlistFilter, wishlistSort: queryWishlistSort, available: false };
         }
         throw result.error;
     }
@@ -2050,6 +2190,8 @@ async function fetchAdminListPage(listId) {
         total,
         page,
         wishlistSearch: queryWishlistSearch,
+        wishlistFilter: queryWishlistFilter,
+        wishlistSort: queryWishlistSort,
         available: true
     };
 }
@@ -2062,6 +2204,8 @@ function applyAdminListPage(listId, result) {
     if (listId === 'wishlist-items-list') {
         state.wishlistItemsAvailable = result.available !== false;
         state.wishlistLoadedSearch = result.wishlistSearch || '';
+        state.wishlistLoadedFilter = WISHLIST_FILTERS.has(result.wishlistFilter) ? result.wishlistFilter : 'all';
+        state.wishlistLoadedSort = WISHLIST_SORTS.has(result.wishlistSort) ? result.wishlistSort : 'featured';
     }
 }
 
@@ -2109,7 +2253,11 @@ function rollbackAdminListRequest(listId) {
     adminListPages.set(listId, adminListCommittedPages.get(listId) || 1);
     if (listId === 'wishlist-items-list') {
         state.wishlistSearch = state.wishlistLoadedSearch;
+        state.wishlistFilter = state.wishlistLoadedFilter;
+        state.wishlistSort = state.wishlistLoadedSort;
         if (els.wishlistSearch) els.wishlistSearch.value = state.wishlistLoadedSearch;
+        if (els.wishlistFilter) els.wishlistFilter.value = state.wishlistLoadedFilter;
+        if (els.wishlistSort) els.wishlistSort.value = state.wishlistLoadedSort;
     }
     renderAdminListById(listId);
 }
@@ -2428,6 +2576,83 @@ async function getOrderedFeaturedWishlistItems() {
     return items;
 }
 
+async function swapWishlistItemPositions(current, neighbor) {
+    const { data: firstWrite, error: firstError } = await adminClient.from('wishlist_items')
+        .update({ position: neighbor.position })
+        .eq('throne_item_id', current.throne_item_id)
+        .select('throne_item_id')
+        .maybeSingle();
+    if (firstError || !firstWrite) {
+        throw new Error(firstError?.message || 'move failed before any change');
+    }
+
+    const { data: secondWrite, error: secondError } = await adminClient.from('wishlist_items')
+        .update({ position: current.position })
+        .eq('throne_item_id', neighbor.throne_item_id)
+        .select('throne_item_id')
+        .maybeSingle();
+    if (!secondError && secondWrite) return;
+
+    const { data: rollbackWrite, error: rollbackError } = await adminClient.from('wishlist_items')
+        .update({ position: current.position })
+        .eq('throne_item_id', current.throne_item_id)
+        .select('throne_item_id')
+        .maybeSingle();
+    const recovery = rollbackError || !rollbackWrite
+        ? 'first half may still be saved'
+        : 'first half was rolled back';
+    throw new Error(`${secondError?.message || 'move failed halfway'}; ${recovery}`);
+}
+
+async function moveWishlistItemByDrag(sourceId, targetId, placeAfter = false) {
+    if (wishlistActionBusy || !sourceId || !targetId || sourceId === targetId) return;
+    wishlistActionBusy = true;
+    let completedMoves = 0;
+    document.querySelectorAll('.admin-wishlist-drag').forEach(handle => { handle.disabled = true; });
+    setStatus(els.adminStatus, 'saving wishlist order...');
+
+    try {
+        const items = await getOrderedFeaturedWishlistItems();
+        const sourceIndex = items.findIndex(item => String(item.throne_item_id) === String(sourceId));
+        const targetIndex = items.findIndex(item => String(item.throne_item_id) === String(targetId));
+        if (sourceIndex < 0 || targetIndex < 0) throw new Error('The dragged item is no longer featured.');
+
+        const desiredIds = items.map(item => String(item.throne_item_id)).filter(id => id !== String(sourceId));
+        const insertionIndex = desiredIds.indexOf(String(targetId)) + (placeAfter ? 1 : 0);
+        desiredIds.splice(insertionIndex, 0, String(sourceId));
+        const finalIndex = desiredIds.indexOf(String(sourceId));
+        let currentIndex = sourceIndex;
+
+        while (currentIndex !== finalIndex) {
+            const neighborIndex = currentIndex + (finalIndex > currentIndex ? 1 : -1);
+            const current = items[currentIndex];
+            const neighbor = items[neighborIndex];
+            await swapWishlistItemPositions(current, neighbor);
+            const currentPosition = current.position;
+            current.position = neighbor.position;
+            neighbor.position = currentPosition;
+            [items[currentIndex], items[neighborIndex]] = [items[neighborIndex], items[currentIndex]];
+            currentIndex = neighborIndex;
+            completedMoves += 1;
+        }
+
+        await refreshAdminListSet(['wishlist-items-list'], { refreshWishlistMeta: true });
+        setStatus(els.adminStatus, completedMoves ? 'wishlist order saved ✓' : 'wishlist order unchanged');
+    } catch (error) {
+        let reloadFailed = false;
+        try {
+            await refreshAdminListSet(['wishlist-items-list'], { refreshWishlistMeta: true });
+        } catch (reloadError) {
+            reloadFailed = true;
+        }
+        const partial = completedMoves ? `${completedMoves} position${completedMoves === 1 ? '' : 's'} moved before the error; ` : '';
+        setStatus(els.adminStatus, `${partial}${formatAdminMutationError(error, 'Could not reorder wishlist.', 'item')} ${reloadFailed ? 'Refresh failed.' : 'List refreshed.'}`);
+    } finally {
+        wishlistActionBusy = false;
+        document.querySelectorAll('.admin-wishlist-drag').forEach(handle => { handle.disabled = false; });
+    }
+}
+
 async function runAction(button) {
     const card = button.closest('.admin-card');
     const id = card?.dataset.id;
@@ -2512,42 +2737,7 @@ async function runAction(button) {
             const current = featuredItems[index];
             const neighbor = featuredItems[neighborIndex];
             if (current && neighbor) {
-                const { data: firstWrite, error: err1 } = await adminClient.from('wishlist_items')
-                    .update({ position: neighbor.position })
-                    .eq('throne_item_id', current.throne_item_id)
-                    .select('throne_item_id')
-                    .maybeSingle();
-                if (err1 || !firstWrite) {
-                    let reloadFailed = false;
-                    try {
-                        await refreshAdminListSet(['wishlist-items-list'], { refreshWishlistMeta: true });
-                    } catch (reloadError) {
-                        reloadFailed = true;
-                    }
-                    throw new Error(`${err1?.message || 'move failed before any change'}; ${reloadFailed ? 'refresh failed too' : 'list refreshed'}`);
-                }
-                const { data: secondWrite, error: err2 } = await adminClient.from('wishlist_items')
-                    .update({ position: current.position })
-                    .eq('throne_item_id', neighbor.throne_item_id)
-                    .select('throne_item_id')
-                    .maybeSingle();
-                if (err2 || !secondWrite) {
-                    const { data: rollbackWrite, error: rollbackError } = await adminClient.from('wishlist_items')
-                        .update({ position: current.position })
-                        .eq('throne_item_id', current.throne_item_id)
-                        .select('throne_item_id')
-                        .maybeSingle();
-                    let reloadFailed = false;
-                    try {
-                        await refreshAdminListSet(['wishlist-items-list'], { refreshWishlistMeta: true });
-                    } catch (reloadError) {
-                        reloadFailed = true;
-                    }
-                    const recovery = rollbackError || !rollbackWrite
-                        ? 'first half may still be saved'
-                        : 'first half was rolled back';
-                    throw new Error(`${err2?.message || 'move failed halfway'}; ${recovery}; ${reloadFailed ? 'refresh failed too' : 'list refreshed'}`);
-                }
+                await swapWishlistItemPositions(current, neighbor);
                 mutationCompleted = true;
                 mutationLabel = 'item moved';
             }
@@ -2576,7 +2766,16 @@ async function runAction(button) {
             const entity = action.includes('drawing')
                 ? 'dood'
                 : (action.includes('question') ? 'ask' : 'item');
-            setStatus(els.adminStatus, formatAdminMutationError(error, 'Could not save.', entity));
+            let recovery = '';
+            if (isWishlistPositionAction) {
+                try {
+                    await refreshAdminListSet(['wishlist-items-list'], { refreshWishlistMeta: true });
+                    recovery = ' List refreshed.';
+                } catch (reloadError) {
+                    recovery = ' Refresh failed.';
+                }
+            }
+            setStatus(els.adminStatus, `${formatAdminMutationError(error, 'Could not save.', entity)}${recovery}`);
         }
     } finally {
         button.disabled = false;
@@ -2964,6 +3163,7 @@ function clearAdminListSelection(listId) {
     if (!selection) return;
     selection.ids.clear();
     selection.snapshotCutoff = '';
+    if (listId === 'pending-drawings-list') renderAdminSelectionPreview();
 }
 
 function forgetAdminSelectionId(id) {
@@ -2971,6 +3171,7 @@ function forgetAdminSelectionId(id) {
     adminListSelections.forEach(selection => {
         selection.ids.delete(cleanId);
     });
+    renderAdminSelectionPreview();
 }
 
 function refreshVisibleListSelection(listId) {
@@ -2980,6 +3181,7 @@ function refreshVisibleListSelection(listId) {
     list.querySelectorAll('input[data-select-id]').forEach(input => {
         input.checked = Boolean(selection?.ids.has(String(input.dataset.selectId)));
     });
+    if (listId === 'pending-drawings-list') renderAdminSelectionPreview();
 }
 
 function getAdminListTable(listId) {
@@ -3269,18 +3471,586 @@ async function runBulkAction(button) {
     }
 }
 
-function initTabs() {
-    els.tabs.addEventListener('click', e => {
-        const button = e.target.closest('button[data-panel]');
-        if (!button) return;
+const ADMIN_PANEL_IDS = ['review-panel', 'published-panel', 'site-panel', 'links-panel', 'wishlist-panel', 'search-panel', 'rooms-panel'];
+const ADMIN_PANEL_COMMANDS = [
+    { panel: 'review-panel', target: '[data-admin-review-content="doods"]', lane: ['review', 'doods'], icon: 'review', title: 'waiting doods', description: 'select, preview, approve, delete, or clear', keywords: 'inbox bulk pending' },
+    { panel: 'review-panel', target: '[data-admin-review-content="asks"]', lane: ['review', 'asks'], icon: 'question', title: 'waiting asks', description: 'reply, paste a GIF link, delete, or clear', keywords: 'inbox questions drafts pending' },
+    { panel: 'review-panel', target: '[data-admin-review-content="safety"]', lane: ['review', 'safety'], icon: 'lock', title: 'moderation safety', description: 'submission controls and safeguards', keywords: 'bulk snapshots escaped text' },
+    { panel: 'published-panel', target: '[data-admin-published-content="doods"]', lane: ['published', 'doods'], icon: 'published', title: 'posted doods', description: 'select or remove public drawings', keywords: 'published bulk public' },
+    { panel: 'published-panel', target: '[data-admin-published-content="asks"]', lane: ['published', 'asks'], icon: 'question', title: 'answered asks', description: 'edit or remove public answers', keywords: 'published replies public' },
+    { panel: 'site-panel', target: '[data-link-card="maintenance"]', icon: 'power', title: 'update mode', description: 'headline, message, and return time', keywords: 'maintenance settings' },
+    { panel: 'site-panel', target: '[data-link-card="entrance"]', icon: 'spark', title: 'site entrance', description: 'paw press or bubbles with preview', keywords: 'interaction settings' },
+    { panel: 'site-panel', target: '[data-link-card="first-visit-tour"]', icon: 'eye', title: 'first-visit tour', description: 'preview the dood, ask, and links guide', keywords: 'onboarding settings' },
+    { panel: 'site-panel', target: '[data-link-card="submissions"]', icon: 'edit', title: 'posting switches', description: 'independent dood and ask controls', keywords: 'submissions safety settings' },
+    { panel: 'site-panel', target: '[data-link-card="homepage-note"]', icon: 'note', title: 'homepage paper note', description: 'edit and preview the fitted note', keywords: 'settings text' },
+    { panel: 'links-panel', target: '.admin-link-grid', icon: 'drag', title: 'social card order', description: 'drag ten cards; Throne stays fixed', keywords: 'snapchat instagram kofi telegram x tiktok twitch discord onlyfans spotify' },
+    { panel: 'links-panel', target: '[data-link-card="snapchat"]', icon: 'media', title: 'social card media', description: 'choose, preview, upload, or remove backgrounds', keywords: 'video gif mov mp4 storage' },
+    { panel: 'links-panel', target: '[data-link-card="throne"]', icon: 'wishlist', title: 'Throne card', description: 'destination, visibility, checkout, and layout', keywords: 'wishlist public links' },
+    { panel: 'wishlist-panel', target: '.admin-bulk-bar', icon: 'wishlist', title: 'featured wishlist', description: 'sync, filter, feature, and drag public order', keywords: 'throne sold out new items' },
+    { panel: 'search-panel', target: '.admin-search-editor', icon: 'search', title: 'search preview', description: 'rendered title, description, and tagline', keywords: 'seo google metadata' },
+    { panel: 'search-panel', target: '#static-seo-checks', icon: 'search', title: 'crawler copy', description: 'compare static, Open Graph, X, and schema copy', keywords: 'seo structured data github' },
+    { panel: 'search-panel', target: '#admin-health-check', icon: 'check', title: 'site health checks', description: 'pages, sitemap, robots, icons, and noindex', keywords: 'status favicon share image' },
+    { panel: 'rooms-panel', target: '#table-wrap', icon: 'rooms', title: 'Rooms operations', description: 'recent, stale, cleanup, inspect, and close', keywords: 'participants host livekit' },
+    { panel: 'rooms-panel', target: '#bans-table-wrap', icon: 'lock', title: 'Rooms bans', description: 'session and nickname bans', keywords: 'block global safety' }
+];
 
-        document.querySelectorAll('.admin-tabs button').forEach(tab => tab.classList.remove('active'));
-        document.querySelectorAll('.admin-panel').forEach(panel => panel.classList.remove('active'));
-        button.classList.add('active');
-        document.getElementById(button.dataset.panel)?.classList.add('active');
-        if (button.dataset.panel === 'rooms-panel') {
-            window.initRoomsPanel?.();
+const ADMIN_NAV_ORDER_KEY = 'doll_admin_panel_order_v1';
+let adminNavSuppressClickUntil = 0;
+const initializedHorizontalRails = new WeakSet();
+
+function activateAdminPanel(panelId, { focusHeading = false, scrollToTop = false } = {}) {
+    const panel = document.getElementById(panelId);
+    const button = els.tabs?.querySelector(`button[data-panel="${panelId}"]`);
+    if (!panel || !button) return false;
+
+    document.querySelectorAll('#admin-tabs button[data-panel]').forEach(tab => {
+        const active = tab === button;
+        tab.classList.toggle('active', active);
+        if (active) tab.setAttribute('aria-current', 'page');
+        else tab.removeAttribute('aria-current');
+    });
+    document.querySelectorAll('.admin-panel').forEach(candidate => {
+        candidate.classList.toggle('active', candidate === panel);
+    });
+
+    const moreButton = document.getElementById('admin-mobile-more');
+    moreButton?.classList.toggle('more-active', ['wishlist-panel', 'search-panel', 'rooms-panel'].includes(panelId));
+
+    if (panelId === 'rooms-panel') window.initRoomsPanel?.();
+    if (scrollToTop) window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (focusHeading) {
+        const heading = panel.querySelector('.admin-panel-intro h2, h2');
+        if (heading) {
+            heading.tabIndex = -1;
+            requestAnimationFrame(() => heading.focus({ preventScroll: true }));
         }
+    }
+    requestAnimationFrame(setupAdminHorizontalScroll);
+    return true;
+}
+
+function renderAdminCommands(filter = '') {
+    const output = document.getElementById('admin-command-results');
+    if (!output) return;
+    const needle = String(filter || '').trim().toLowerCase();
+    const matches = ADMIN_PANEL_COMMANDS.filter(command => (
+        `${command.title} ${command.description} ${command.keywords}`.toLowerCase().includes(needle)
+    ));
+    output.innerHTML = matches.length ? matches.map(command => `
+        <button class="admin-command-result" type="button" data-command-index="${ADMIN_PANEL_COMMANDS.indexOf(command)}" data-command-panel="${command.panel}">
+            ${adminIcon(command.icon, '')}
+            <span><strong>${command.title}</strong><small>${command.description}</small></span>
+            ${adminIcon('arrow-right', '')}
+        </button>
+    `).join('') : '<div class="admin-command-empty">no matching admin tool</div>';
+}
+
+function initAdminCommandPalette() {
+    const opener = document.getElementById('admin-command-open');
+    const dialog = document.getElementById('admin-command-dialog');
+    const input = document.getElementById('admin-command-input');
+    if (!opener || !dialog || !input) return;
+
+    const open = () => {
+        if (els.dashboardPanel?.classList.contains('hidden') || dialog.open) return;
+        renderAdminCommands('');
+        input.value = '';
+        dialog.showModal();
+        requestAnimationFrame(() => input.focus());
+    };
+
+    opener.addEventListener('click', open);
+    input.addEventListener('input', () => renderAdminCommands(input.value));
+    dialog.addEventListener('click', event => {
+        if (event.target === dialog) dialog.close();
+        const button = event.target.closest('[data-command-index]');
+        if (!button) return;
+        const command = ADMIN_PANEL_COMMANDS[Number(button.dataset.commandIndex)];
+        if (!command) return;
+        dialog.close();
+        if (command.lane) setAdminLane(command.lane[0], command.lane[1]);
+        activateAdminPanel(command.panel, { scrollToTop: true });
+        const target = command.target ? document.querySelector(command.target) : document.getElementById(command.panel);
+        if (target instanceof HTMLDetailsElement) target.open = true;
+        if (target) {
+            target.tabIndex = -1;
+            requestAnimationFrame(() => {
+                target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                target.focus({ preventScroll: true });
+            });
+        }
+    });
+    document.addEventListener('keydown', event => {
+        if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+            event.preventDefault();
+            open();
+        }
+    });
+}
+
+function initAdminMobileMore() {
+    const opener = document.getElementById('admin-mobile-more');
+    const dialog = document.getElementById('admin-more-dialog');
+    if (!opener || !dialog) return;
+    opener.addEventListener('click', () => {
+        if (!dialog.open) dialog.showModal();
+    });
+    dialog.addEventListener('click', event => {
+        if (event.target === dialog) dialog.close();
+        const button = event.target.closest('[data-more-panel]');
+        if (!button) return;
+        dialog.close();
+        activateAdminPanel(button.dataset.morePanel, { focusHeading: true, scrollToTop: true });
+    });
+}
+
+function normalizeAdminNavOrder(value) {
+    const allowed = ADMIN_PANEL_IDS;
+    const input = Array.isArray(value) ? value : [];
+    return [...new Set(input.filter(panel => allowed.includes(panel))), ...allowed.filter(panel => !input.includes(panel))];
+}
+
+function restoreAdminNavOrder() {
+    if (!els.tabs) return;
+    let saved = [];
+    try {
+        saved = JSON.parse(localStorage.getItem(ADMIN_NAV_ORDER_KEY) || '[]');
+    } catch (error) {
+        console.warn('admin nav order:', error);
+    }
+    const more = document.getElementById('admin-mobile-more');
+    normalizeAdminNavOrder(saved).forEach(panelId => {
+        const button = els.tabs.querySelector(`button[data-panel="${panelId}"]`);
+        if (button) els.tabs.insertBefore(button, more);
+    });
+}
+
+function persistAdminNavOrder() {
+    if (!els.tabs) return;
+    const order = Array.from(els.tabs.querySelectorAll('button[data-panel]')).map(button => button.dataset.panel);
+    try {
+        localStorage.setItem(ADMIN_NAV_ORDER_KEY, JSON.stringify(normalizeAdminNavOrder(order)));
+    } catch (error) {
+        console.warn('admin nav order save:', error);
+    }
+}
+
+function initAdminNavReorder() {
+    if (!els.tabs) return;
+    let dragged = null;
+
+    els.tabs.addEventListener('pointerdown', event => {
+        const handle = event.target.closest('.admin-nav-drag');
+        const button = handle?.closest('button[data-panel]');
+        if (button && window.matchMedia('(min-width: 861px)').matches) button.draggable = true;
+    });
+    els.tabs.addEventListener('dragstart', event => {
+        const button = event.target.closest('button[data-panel]');
+        if (!button?.draggable) {
+            event.preventDefault();
+            return;
+        }
+        dragged = button;
+        button.classList.add('dragging');
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData('text/plain', button.dataset.panel);
+    });
+    els.tabs.addEventListener('dragover', event => {
+        if (!dragged) return;
+        const over = event.target.closest('button[data-panel]');
+        if (!over || over === dragged) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'move';
+        els.tabs.querySelectorAll('.drag-over').forEach(button => button.classList.remove('drag-over'));
+        over.classList.add('drag-over');
+    });
+    els.tabs.addEventListener('drop', event => {
+        const over = event.target.closest('button[data-panel]');
+        if (!dragged || !over || dragged === over) return;
+        event.preventDefault();
+        const rect = over.getBoundingClientRect();
+        els.tabs.insertBefore(dragged, event.clientY > rect.top + rect.height / 2 ? over.nextSibling : over);
+        adminNavSuppressClickUntil = performance.now() + 250;
+        persistAdminNavOrder();
+    });
+    els.tabs.addEventListener('dragend', () => {
+        els.tabs.querySelectorAll('button[data-panel]').forEach(button => {
+            button.draggable = false;
+            button.classList.remove('dragging', 'drag-over');
+        });
+        dragged = null;
+    });
+    document.addEventListener('pointerup', () => {
+        els.tabs?.querySelectorAll('button[data-panel]').forEach(button => { button.draggable = false; });
+    });
+}
+
+function getAdminButtonIcon(button) {
+    const idMap = {
+        'link-settings-reset': 'refresh',
+        'btn-force-close-all': 'power',
+        'btn-list-recent': 'refresh',
+        'btn-list-stale': 'search',
+        'btn-cleanup': 'trash',
+        'btn-force-close': 'power',
+        'wishlist-sync-now': 'refresh',
+        'wishlist-feature-all': 'check',
+        'wishlist-unfeature-all': 'trash',
+        'static-seo-check': 'search',
+        'run-health-check': 'check'
+    };
+    if (idMap[button.id]) return idMap[button.id];
+    if (button.dataset.linkOpen) return 'external';
+    if (button.dataset.videoUpload) return 'upload';
+    if (button.dataset.videoRemove) return 'trash';
+    if (button.dataset.socialMove) return button.dataset.socialMove === 'up' ? 'arrow-up' : 'arrow-down';
+    if (button.dataset.pageStep) return Number(button.dataset.pageStep) < 0 ? 'arrow-left' : 'arrow-right';
+
+    const action = button.dataset.action || button.dataset.bulkAction || '';
+    if (/delete|remove|unfeature|cleanup|clear/.test(action)) return 'trash';
+    if (/approve|select/.test(action)) return 'check';
+    if (/save|edit|reply/.test(action)) return 'edit';
+    if (/move.*up/.test(action)) return 'arrow-up';
+    if (/move.*down/.test(action)) return 'arrow-down';
+    if (/feature|add/.test(action)) return 'plus';
+
+    const label = (button.textContent || '').trim().toLowerCase();
+    if (/^(delete|remove|clear|cleanup|unfeature)/.test(label)) return 'trash';
+    if (/^(approve|select|feature)/.test(label)) return 'check';
+    if (/^(save|reply)/.test(label)) return 'edit';
+    if (/^(refresh|sync|list)/.test(label)) return 'refresh';
+    if (/^(open|enter|back)/.test(label)) return 'arrow-right';
+    if (/^(add)/.test(label)) return 'plus';
+    if (/^(force-close)/.test(label)) return 'power';
+    return '';
+}
+
+function decorateAdminControls(root = document) {
+    root.querySelectorAll('button').forEach(button => {
+        if (button.querySelector(':scope > svg') || button.closest('#admin-tabs')) return;
+        const icon = getAdminButtonIcon(button);
+        if (!icon) return;
+        button.insertAdjacentHTML('afterbegin', adminIcon(icon));
+        button.classList.add('has-admin-icon');
+    });
+    root.querySelectorAll('.admin-video-picker').forEach(picker => {
+        if (picker.querySelector(':scope > svg')) return;
+        picker.insertAdjacentHTML('afterbegin', adminIcon('media'));
+    });
+    root.querySelectorAll('.admin-soft-link').forEach(link => {
+        if (link.querySelector(':scope > svg')) return;
+        link.insertAdjacentHTML('afterbegin', adminIcon('external'));
+    });
+}
+
+function setupAdminHorizontalScroll() {
+    const rails = document.querySelectorAll('.admin-stats, .admin-bulk-bar, .admin-inline-actions, .admin-card-video-actions');
+    rails.forEach(rail => {
+        const update = () => {
+            const overflowing = rail.scrollWidth > rail.clientWidth + 1;
+            rail.dataset.scrollReady = String(overflowing);
+            if (overflowing) {
+                if (!rail.hasAttribute('tabindex')) {
+                    rail.tabIndex = 0;
+                    rail.dataset.adminScrollTab = 'true';
+                }
+            } else if (rail.dataset.adminScrollTab === 'true') {
+                rail.removeAttribute('tabindex');
+                delete rail.dataset.adminScrollTab;
+            }
+            rail.classList.toggle('can-scroll-left', overflowing && rail.scrollLeft > 1);
+            rail.classList.toggle('can-scroll-right', overflowing && rail.scrollLeft < rail.scrollWidth - rail.clientWidth - 1);
+        };
+
+        if (!initializedHorizontalRails.has(rail)) {
+            initializedHorizontalRails.add(rail);
+            rail.addEventListener('scroll', update, { passive: true });
+            rail.addEventListener('wheel', event => {
+                if (Math.abs(event.deltaX) >= Math.abs(event.deltaY) || Math.abs(event.deltaY) < 1) return;
+                const canMove = event.deltaY > 0
+                    ? rail.scrollLeft < rail.scrollWidth - rail.clientWidth - 1
+                    : rail.scrollLeft > 1;
+                if (!canMove) return;
+                event.preventDefault();
+                rail.scrollLeft += event.deltaY;
+            }, { passive: false });
+            rail.addEventListener('keydown', event => {
+                if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+                event.preventDefault();
+                if (event.key === 'Home') rail.scrollTo({ left: 0, behavior: 'smooth' });
+                else if (event.key === 'End') rail.scrollTo({ left: rail.scrollWidth, behavior: 'smooth' });
+                else rail.scrollBy({ left: event.key === 'ArrowLeft' ? -120 : 120, behavior: 'smooth' });
+            });
+        }
+        update();
+        requestAnimationFrame(update);
+    });
+}
+
+const ADMIN_DENSITY_KEY = 'doll_admin_density_v1';
+const ADMIN_REVIEW_LANE_KEY = 'doll_admin_review_lane_v1';
+const ADMIN_PUBLISHED_LANE_KEY = 'doll_admin_published_lane_v1';
+let adminCardInspectorRestore = null;
+let adminCardInspectorReturnFocus = null;
+let adminSocialSuppressClickUntil = 0;
+
+function readAdminLocalPreference(key, fallback) {
+    try {
+        return localStorage.getItem(key) || fallback;
+    } catch (error) {
+        return fallback;
+    }
+}
+
+function writeAdminLocalPreference(key, value) {
+    try {
+        localStorage.setItem(key, value);
+    } catch (error) {
+        console.warn('admin preference save:', error);
+    }
+}
+
+function initAdminDensity() {
+    const button = document.getElementById('admin-density-toggle');
+    if (!button || !els.dashboardPanel) return;
+    const apply = compact => {
+        els.dashboardPanel.classList.toggle('is-compact', compact);
+        button.setAttribute('aria-pressed', String(compact));
+        button.title = compact ? 'Use comfortable density' : 'Use compact density';
+        const label = button.querySelector('span');
+        if (label) label.textContent = compact ? 'roomy' : 'compact';
+        writeAdminLocalPreference(ADMIN_DENSITY_KEY, compact ? 'compact' : 'comfortable');
+        requestAnimationFrame(setupAdminHorizontalScroll);
+    };
+    apply(readAdminLocalPreference(ADMIN_DENSITY_KEY, 'comfortable') === 'compact');
+    button.addEventListener('click', () => apply(!els.dashboardPanel.classList.contains('is-compact')));
+}
+
+function updateAdminSafetyOverview(settings = state.linkSettings || {}) {
+    const status = document.getElementById('admin-safety-submissions');
+    if (!status) return;
+    const doods = settings.drawings_enabled !== false;
+    const asks = settings.questions_enabled !== false;
+    status.textContent = doods && asks ? 'doods + asks open' : doods ? 'asks paused' : asks ? 'doodles paused' : 'both paused';
+}
+
+function setAdminLane(group, value) {
+    const isReview = group === 'review';
+    const allowed = isReview ? ['doods', 'asks', 'safety'] : ['doods', 'asks'];
+    const lane = allowed.includes(value) ? value : 'doods';
+    const panel = document.getElementById(isReview ? 'review-panel' : 'published-panel');
+    if (!panel) return;
+    panel.querySelectorAll(`[data-admin-${group}-lane]`).forEach(button => {
+        const active = button.dataset[`admin${group[0].toUpperCase()}${group.slice(1)}Lane`] === lane;
+        button.classList.toggle('active', active);
+        button.setAttribute('aria-selected', String(active));
+    });
+    panel.querySelectorAll(`[data-admin-${group}-content]`).forEach(content => {
+        content.hidden = content.dataset[`admin${group[0].toUpperCase()}${group.slice(1)}Content`] !== lane;
+    });
+    if (isReview && lane === 'safety') updateAdminSafetyOverview();
+    writeAdminLocalPreference(isReview ? ADMIN_REVIEW_LANE_KEY : ADMIN_PUBLISHED_LANE_KEY, lane);
+    requestAnimationFrame(setupAdminHorizontalScroll);
+}
+
+function initAdminLaneNavigation() {
+    [['review', ADMIN_REVIEW_LANE_KEY], ['published', ADMIN_PUBLISHED_LANE_KEY]].forEach(([group, key]) => {
+        const panel = document.getElementById(`${group}-panel`);
+        if (!panel) return;
+        panel.addEventListener('click', event => {
+            const laneButton = event.target.closest(`[data-admin-${group}-lane]`);
+            if (laneButton) setAdminLane(group, laneButton.dataset[`admin${group[0].toUpperCase()}${group.slice(1)}Lane`]);
+            const jump = event.target.closest('[data-admin-jump]');
+            if (jump) activateAdminPanel(jump.dataset.adminJump, { focusHeading: true, scrollToTop: true });
+        });
+        setAdminLane(group, readAdminLocalPreference(key, 'doods'));
+    });
+}
+
+function restoreAdminCardInspector() {
+    if (adminCardInspectorRestore?.body && adminCardInspectorRestore?.placeholder?.isConnected) {
+        adminCardInspectorRestore.placeholder.replaceWith(adminCardInspectorRestore.body);
+    }
+    adminCardInspectorRestore = null;
+    if (adminCardInspectorReturnFocus?.isConnected) adminCardInspectorReturnFocus.focus({ preventScroll: true });
+    adminCardInspectorReturnFocus = null;
+}
+
+function openAdminCardInspector(key, returnFocus) {
+    const dialog = document.getElementById('admin-card-inspector');
+    const output = document.getElementById('admin-card-inspector-body');
+    const card = document.querySelector(`[data-link-card="${key}"]`);
+    const body = card?.querySelector(':scope > .admin-link-card-body');
+    if (!dialog || !output || !card || !body || dialog.open) return;
+
+    const placeholder = document.createElement('span');
+    placeholder.hidden = true;
+    placeholder.dataset.adminInspectorPlaceholder = key;
+    body.replaceWith(placeholder);
+    output.replaceChildren(body);
+    adminCardInspectorRestore = { body, placeholder };
+    adminCardInspectorReturnFocus = returnFocus || document.activeElement;
+    const title = document.getElementById('admin-card-inspector-title');
+    if (title) title.textContent = `${card.querySelector('summary strong')?.textContent?.trim() || key} card`;
+    dialog.showModal();
+    requestAnimationFrame(() => body.querySelector('input, select, textarea, button')?.focus({ preventScroll: true }));
+}
+
+function initAdminCardInspector() {
+    const dialog = document.getElementById('admin-card-inspector');
+    if (!dialog) return;
+    dialog.querySelector('[data-close-card-inspector]')?.addEventListener('click', () => dialog.close());
+    dialog.addEventListener('click', event => {
+        if (event.target === dialog) dialog.close();
+    });
+    dialog.addEventListener('close', restoreAdminCardInspector);
+
+    const throneActions = document.querySelector('[data-link-card="throne"] .admin-link-card-actions');
+    if (throneActions && !throneActions.querySelector('[data-social-edit="throne"]')) {
+        const edit = document.createElement('button');
+        edit.className = 'soft admin-social-edit';
+        edit.type = 'button';
+        edit.dataset.socialEdit = 'throne';
+        edit.setAttribute('aria-label', 'Edit Throne card');
+        edit.innerHTML = adminIcon('edit');
+        throneActions.prepend(edit);
+    }
+}
+
+function initAdminSocialCardReorder() {
+    const grid = document.querySelector('#links-panel .admin-link-grid');
+    if (!grid) return;
+    let dragged = null;
+
+    grid.addEventListener('pointerdown', event => {
+        const handle = event.target.closest('[data-social-drag]');
+        const card = handle?.closest('[data-link-card]');
+        if (card) card.draggable = true;
+    });
+    grid.addEventListener('dragstart', event => {
+        const card = event.target.closest('[data-link-card]');
+        const key = card?.dataset.linkCard;
+        if (!card?.draggable || !SOCIAL_CARD_KEYS.includes(key)) {
+            event.preventDefault();
+            return;
+        }
+        dragged = card;
+        card.classList.add('dragging');
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData('text/plain', key);
+    });
+    grid.addEventListener('dragover', event => {
+        if (!dragged) return;
+        const over = event.target.closest('[data-link-card]');
+        if (!over || over === dragged || !SOCIAL_CARD_KEYS.includes(over.dataset.linkCard)) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'move';
+        grid.querySelectorAll('.drag-over').forEach(card => card.classList.remove('drag-over'));
+        over.classList.add('drag-over');
+    });
+    grid.addEventListener('drop', event => {
+        const over = event.target.closest('[data-link-card]');
+        if (!dragged || !over || over === dragged || !SOCIAL_CARD_KEYS.includes(over.dataset.linkCard)) return;
+        event.preventDefault();
+        const rect = over.getBoundingClientRect();
+        const placeAfter = event.clientY > rect.top + rect.height / 2
+            || (Math.abs(event.clientY - (rect.top + rect.height / 2)) < rect.height / 4 && event.clientX > rect.left + rect.width / 2);
+        if (reorderSocialCard(dragged.dataset.linkCard, over.dataset.linkCard, placeAfter)) {
+            adminSocialSuppressClickUntil = performance.now() + 250;
+        }
+    });
+    grid.addEventListener('dragend', () => {
+        grid.querySelectorAll('[data-link-card]').forEach(card => {
+            card.draggable = false;
+            card.classList.remove('dragging', 'drag-over');
+        });
+        dragged = null;
+    });
+    document.addEventListener('pointerup', () => {
+        grid.querySelectorAll('[data-link-card]').forEach(card => { card.draggable = false; });
+    });
+}
+
+function initAdminWishlistReorder() {
+    const list = els.wishlistItemsList;
+    if (!list) return;
+    let dragged = null;
+
+    list.addEventListener('pointerdown', event => {
+        const handle = event.target.closest('.admin-wishlist-drag');
+        const card = handle?.closest('.admin-card.is-featured');
+        if (card) card.draggable = true;
+    });
+    list.addEventListener('dragstart', event => {
+        const card = event.target.closest('.admin-card.is-featured');
+        if (!card?.draggable) {
+            event.preventDefault();
+            return;
+        }
+        dragged = card;
+        card.classList.add('dragging');
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData('text/plain', card.dataset.id || '');
+    });
+    list.addEventListener('dragover', event => {
+        if (!dragged) return;
+        const over = event.target.closest('.admin-card.is-featured');
+        if (!over || over === dragged) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'move';
+        list.querySelectorAll('.drag-over').forEach(card => card.classList.remove('drag-over'));
+        over.classList.add('drag-over');
+    });
+    list.addEventListener('drop', event => {
+        const over = event.target.closest('.admin-card.is-featured');
+        if (!dragged || !over || over === dragged) return;
+        event.preventDefault();
+        const rect = over.getBoundingClientRect();
+        const placeAfter = event.clientY > rect.top + rect.height / 2;
+        void moveWishlistItemByDrag(dragged.dataset.id, over.dataset.id, placeAfter);
+    });
+    list.addEventListener('dragend', () => {
+        list.querySelectorAll('.admin-card').forEach(card => {
+            card.draggable = false;
+            card.classList.remove('dragging', 'drag-over');
+        });
+        dragged = null;
+    });
+    document.addEventListener('pointerup', () => {
+        list.querySelectorAll('.admin-card').forEach(card => { card.draggable = false; });
+    });
+}
+
+function initAdminExperience() {
+    restoreAdminNavOrder();
+    initAdminNavReorder();
+    initAdminCommandPalette();
+    initAdminMobileMore();
+    initAdminDensity();
+    initAdminLaneNavigation();
+    initAdminCardInspector();
+    initAdminSocialCardReorder();
+    initAdminWishlistReorder();
+    decorateAdminControls();
+    setupAdminHorizontalScroll();
+
+    const observer = new MutationObserver(mutations => {
+        mutations.forEach(mutation => {
+            mutation.addedNodes.forEach(node => {
+                if (node instanceof Element) decorateAdminControls(node.matches('button, .admin-video-picker, .admin-soft-link') ? node.parentElement : node);
+            });
+        });
+        requestAnimationFrame(setupAdminHorizontalScroll);
+    });
+    observer.observe(els.dashboardPanel, { childList: true, subtree: true });
+    window.addEventListener('resize', setupAdminHorizontalScroll);
+}
+
+function initTabs() {
+    els.tabs.addEventListener('click', event => {
+        const button = event.target.closest('button[data-panel]');
+        if (!button || performance.now() < adminNavSuppressClickUntil) return;
+        activateAdminPanel(button.dataset.panel, { scrollToTop: true });
     });
 }
 
@@ -3331,6 +4101,7 @@ async function init() {
             } else {
                 selection.ids.delete(id);
             }
+            if (list.id === 'pending-drawings-list') renderAdminSelectionPreview();
         });
         list.addEventListener('input', event => {
             const textarea = event.target.closest('textarea[data-answer-for]');
@@ -3363,8 +4134,7 @@ async function init() {
     els.wishlistSyncNow?.addEventListener('click', syncWishlistNow);
     els.wishlistFeatureAll?.addEventListener('click', featureAllWishlistItems);
     els.wishlistUnfeatureAll?.addEventListener('click', unfeatureAllWishlistItems);
-    els.wishlistSearch?.addEventListener('input', () => {
-        state.wishlistSearch = els.wishlistSearch.value || '';
+    const queueWishlistReload = () => {
         adminListPages.set('wishlist-items-list', 1);
         adminListLoadTokens.set(
             'wishlist-items-list',
@@ -3373,6 +4143,18 @@ async function init() {
         setAdminListBusy('wishlist-items-list', true);
         clearTimeout(wishlistSearchTimer);
         wishlistSearchTimer = setTimeout(() => loadAdminList('wishlist-items-list'), 180);
+    };
+    els.wishlistSearch?.addEventListener('input', () => {
+        state.wishlistSearch = els.wishlistSearch.value || '';
+        queueWishlistReload();
+    });
+    els.wishlistFilter?.addEventListener('change', () => {
+        state.wishlistFilter = WISHLIST_FILTERS.has(els.wishlistFilter.value) ? els.wishlistFilter.value : 'all';
+        queueWishlistReload();
+    });
+    els.wishlistSort?.addEventListener('change', () => {
+        state.wishlistSort = WISHLIST_SORTS.has(els.wishlistSort.value) ? els.wishlistSort.value : 'featured';
+        queueWishlistReload();
     });
     els.linkSettingsForm?.addEventListener('submit', e => e.preventDefault());
     els.linkSettingsReset?.addEventListener('click', resetLinkSettings);
@@ -3418,6 +4200,19 @@ async function init() {
         });
     });
     document.querySelector('#links-panel .admin-link-grid')?.addEventListener('click', event => {
+        const edit = event.target.closest('[data-social-edit]');
+        if (edit) {
+            event.preventDefault();
+            event.stopPropagation();
+            openAdminCardInspector(edit.dataset.socialEdit, edit);
+            return;
+        }
+        const dragHandle = event.target.closest('[data-social-drag]');
+        if (dragHandle || performance.now() < adminSocialSuppressClickUntil) {
+            event.preventDefault();
+            event.stopPropagation();
+            return;
+        }
         const button = event.target.closest('[data-social-move]');
         if (!button) return;
         event.preventDefault();
@@ -3481,6 +4276,7 @@ async function init() {
     });
 
     initTabs();
+    initAdminExperience();
 
     if (!hasGateAccess()) {
         showPanel(els.gatePanel);
