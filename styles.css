@@ -1139,7 +1139,10 @@ button {
         1
     );
     position: relative;
-    min-height: 350px;
+    /* Closed-home geometry ends just below the note (including its soft
+       shadow) instead of reserving a panel-sized empty tail. Open Socials,
+       Wishlist and :3 states replace this with their measured heights. */
+    min-height: 294px;
     margin: 0 auto;
     width: min(94vw, 360px);
     timeline-scope: --dwl-social-scroll, --dwl-wishlist-scroll, --dwl-posts-scroll;
@@ -1176,11 +1179,10 @@ body.has-posts-panel-open .site-brand-footer {
 .site-brand-footer {
     display: flex;
     justify-content: center;
-    /* Resting gap under the note. When a panel is open it hugs that panel
-       instead (see body.has-*-panel-open overrides), and the open panel
-       itself grows to fill tall screens (--panel-fill-max), so no
-       viewport-based footer push is needed anywhere. */
-    margin: 56px auto 0;
+    /* Match the compact footer rhythm used beneath open surfaces. The closed
+       toggle now ends at the note's visual bottom, so this is a real gap
+       instead of being added after a large invisible reserved tail. */
+    margin: 18px auto 0;
     padding-bottom: max(14px, env(safe-area-inset-bottom));
     /* Reserve the complete pill + safe-area strip in every layout
        calculation. Open panels are shortened before this footer is allowed
@@ -1197,6 +1199,7 @@ body.has-posts-panel-open .site-brand-footer {
 }
 
 .site-brand-footer a {
+    position: relative;
     display: inline-flex;
     align-items: center;
     gap: 0;
@@ -1213,9 +1216,48 @@ body.has-posts-panel-open .site-brand-footer {
     font-weight: 700;
     line-height: 1;
     text-decoration: none;
+    cursor: pointer;
+    touch-action: manipulation;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
     box-shadow:
         0 5px 14px rgba(255, 145, 195, 0.11),
         inset 0 1px 0 rgba(255, 255, 255, 0.72);
+    transition:
+        transform 0.18s ease,
+        border-color 0.22s ease,
+        background 0.22s ease,
+        box-shadow 0.22s ease,
+        color 0.22s ease;
+}
+
+.site-brand-footer a:focus-visible {
+    outline: 2px solid rgba(229, 105, 161, 0.35);
+    outline-offset: 3px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+    .site-brand-footer a:hover {
+        border-color: rgba(239, 158, 195, 0.7);
+        background:
+            linear-gradient(rgba(255, 255, 255, 0.88), rgba(255, 229, 241, 0.7)),
+            repeating-linear-gradient(90deg, rgba(255, 231, 242, 0.28) 0 8px, rgba(255, 250, 253, 0.28) 8px 16px);
+        color: rgba(122, 76, 92, 0.82);
+        box-shadow:
+            0 9px 19px rgba(183, 98, 136, 0.15),
+            inset 0 1px 0 rgba(255, 255, 255, 0.88);
+        transform: translateY(-2px) scale(1.035);
+    }
+}
+
+.site-brand-footer a:active {
+    border-color: rgba(229, 135, 177, 0.58);
+    box-shadow:
+        0 2px 6px rgba(255, 145, 195, 0.16),
+        inset 0 2px 5px rgba(199, 111, 152, 0.12);
+    transform: translateY(1px) scale(0.965);
+    transition-duration: 0.08s;
 }
 
 .site-brand-name {
@@ -1236,6 +1278,18 @@ body.has-posts-panel-open .site-brand-footer {
     font-size: 11px;
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
     transform: rotate(-4deg);
+    transition: transform 0.18s cubic-bezier(0.2, 0.86, 0.28, 1), background 0.22s ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+    .site-brand-footer a:hover .site-brand-gg {
+        background: rgba(255, 205, 229, 0.82);
+        transform: rotate(-2deg) scale(1.045);
+    }
+}
+
+.site-brand-footer a:active .site-brand-gg {
+    transform: rotate(-6deg) scale(0.96);
 }
 
 .footer-bubble-field {
@@ -1278,10 +1332,6 @@ body.has-posts-panel-open .site-brand-footer {
 }
 
 @media (max-height: 720px) {
-    .site-brand-footer {
-        margin-top: 42px;
-    }
-
     body.has-social-panel-open .main-screen .site-brand-footer,
     body.has-wishlist-panel-open .main-screen .site-brand-footer,
     body.has-posts-panel-open .main-screen .site-brand-footer {
@@ -2483,14 +2533,10 @@ body.has-social-panel-open .toggle-container {
     transition: min-height 0.42s cubic-bezier(0.2, 0.9, 0.25, 1);
 }
 
-/* Wishlist and the :3 panel both restate this footer margin while open
-   (see body.has-wishlist-panel-open in throne-mockup-widget.js and
-   body.has-posts-panel-open above) so the doll.gg pill sits tight under
-   their panel instead of inheriting the resting 56px gap meant for the
-   closed page. The panel itself grows to fill tall screens now
-   (--panel-fill-max, setPanelFillMax in script.js), so the pill just hugs
-   its bottom -- no viewport push. !important so it beats the
-   @media (max-height:720px) .site-brand-footer margin-top bump. */
+/* Wishlist and :3 restate their own open-surface rhythm as well (see
+   throne-mockup-widget.js and the posts rules above). Socials uses 10px on
+   regular screens; the more-specific shared short-viewport rule intentionally
+   reduces every open footer gap to 6px so the safe-area strip stays visible. */
 body.has-social-panel-open .site-brand-footer {
     margin-top: 10px !important;
 }

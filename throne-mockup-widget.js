@@ -1018,14 +1018,10 @@
                 transition: min-height 0.42s cubic-bezier(0.2, 0.9, 0.25, 1);
             }
 
-            /* !important because a short-viewport rule in styles.css
-               (@media max-height:720px) also sets .site-brand-footer's
-               margin-top, and this needs to win unconditionally so the
-               throne.com pill always sits tight under the panel, never
-               inheriting that rule's much larger gap. The scroll body grows
-               to fill tall screens now (--panel-fill-max, setPanelFillMax in
-               script.js), so the pill just hugs the panel bottom -- no
-               viewport-based push. */
+            /* Establish the regular-screen Wishlist footer rhythm. The shared,
+               more-specific short-viewport rule in styles.css intentionally
+               reduces this to 6px alongside Socials and :3 so every footer
+               keeps the same safe bottom clearance on small phones. */
             body.has-wishlist-panel-open .site-brand-footer {
                 margin-top: 10px !important;
             }
@@ -1068,7 +1064,13 @@
                 padding-inline: 4px;
                 justify-content: center;
                 overflow: hidden;
-                transition: width 0.26s cubic-bezier(0.2, 0.84, 0.24, 1), color 0.2s ease;
+                transition:
+                    width 0.26s cubic-bezier(0.2, 0.84, 0.24, 1),
+                    transform 0.18s ease,
+                    border-color 0.22s ease,
+                    background 0.22s ease,
+                    box-shadow 0.22s ease,
+                    color 0.2s ease;
             }
             @media (max-height: 720px) {
                 body.has-wishlist-panel-open .site-brand-footer .doll-wishlist-throne-footer-link:not(.is-swipe-hint) {

@@ -5624,6 +5624,15 @@ document.addEventListener("DOMContentLoaded", async function() {
         addFooterBubble();
     });
 
+    // Match the custom menu pills: Space activates this anchor as a button,
+    // while Enter keeps its native link activation and modifier-clicks remain
+    // available for opening the homepage URL normally.
+    siteBrandButton?.addEventListener('keydown', event => {
+        if (event.key !== ' ' || event.repeat) return;
+        event.preventDefault();
+        siteBrandButton.click();
+    });
+
     socialsButton?.addEventListener('keydown', function(e) {
         if ((e.key === 'Enter' || e.key === ' ') && e.target === socialsButton) {
             e.preventDefault();
