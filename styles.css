@@ -1996,6 +1996,17 @@ body.has-posts-panel-open .button-group {
     filter: brightness(0.9);
 }
 
+.pill-mini .links-tail-raster {
+    width: 12px;
+    height: 12px;
+    object-fit: contain;
+}
+
+.pill-mini-swirl {
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 10px;
+}
+
 .pill-mini + .pill-mini {
     margin-left: -4px;
 }
@@ -2089,6 +2100,13 @@ body.has-posts-panel-open .button-group {
 
 .main-screen.ui-ready #support-menu-button:not(.open) > .menu-main-icon {
     animation-delay: 1.07s;
+}
+
+/* These two icons own their motion internally, so the shared floating idle
+   loop must not compete for the same transform. */
+.main-screen.ui-ready #socials-button:not(.open) > .links-tail-icon,
+.main-screen.ui-ready #support-menu-button:not(.open) > .wishes-swirl {
+    animation: none;
 }
 
 .main-screen.ui-ready #action-menu-button:not(.open) > .menu-main-icon {
@@ -3350,21 +3368,106 @@ body.first-visit-tour-active .tour-highlight-target {
     pointer-events: none;
 }
 
-.dwl-icons-row .socials-menu-label {
-    min-width: 0;
-    margin-top: -3px;
-    color: rgba(126, 102, 113, 0.58);
+.links-tail-icon,
+.wishes-swirl {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.links-tail-icon {
+    width: 32px;
+    height: 35px;
+}
+
+.wishes-swirl {
+    width: 31px;
+    height: 31px;
+}
+
+.links-tail-svg {
+    display: block;
+    width: 32px;
+    height: 35px;
+    overflow: hidden;
+}
+
+.links-tail-svg--inline-backup {
+    display: none !important;
+}
+
+.links-tail-raster {
+    display: block;
+    width: auto;
+    height: 35px;
+    object-fit: contain;
+    transform-origin: 52% 96%;
+    will-change: transform;
+}
+
+/* Override the legacy .email-button img treatment: it darkens all button
+   images and forces them to 29px wide, which distorts this tall cutout. */
+.dwl-icons-row #socials-button .links-tail-raster {
+    width: auto;
+    height: 35px;
+    filter: none;
+}
+
+.main-screen.ui-ready #socials-button:not(.open) .links-tail-raster {
+    animation: linksTailRasterWag 6.4s ease-in-out 0.7s infinite;
+}
+
+@keyframes linksTailRasterWag {
+    0%, 15%, 33%, 60%, 82%, 100% { transform: rotate(0deg) skewX(0deg) scaleX(1); }
+    18% { transform: rotate(-2.5deg) skewX(-1.5deg) scaleX(0.99); }
+    21.5% { transform: rotate(3.25deg) skewX(2deg) scaleX(1.012); }
+    25% { transform: rotate(-1.75deg) skewX(-1deg) scaleX(0.995); }
+    29% { transform: rotate(1deg) skewX(0.6deg) scaleX(1.004); }
+    64% { transform: rotate(2.25deg) skewX(1.3deg) scaleX(1.008); }
+    69% { transform: rotate(-3.5deg) skewX(-2deg) scaleX(0.988); }
+    74% { transform: rotate(2deg) skewX(1.1deg) scaleX(1.006); }
+    78% { transform: rotate(-0.75deg) skewX(-0.4deg) scaleX(0.998); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .main-screen.ui-ready #socials-button:not(.open) .links-tail-raster {
+        animation: none;
+    }
+}
+
+.wishes-swirl {
+    color: rgba(126, 80, 112, 0.7);
     font-family: Georgia, "Times New Roman", serif;
     font-size: 30px;
     font-weight: 400;
+    line-height: 1;
 }
 
-.dwl-icons-row #support-menu-button > img.menu-main-icon {
-    width: 29px;
-    height: auto;
-    object-fit: contain;
-    opacity: 0.68;
-    filter: none;
+.wishes-swirl-glyph {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    padding-bottom: 3px;
+    transform-origin: center;
+    will-change: transform;
+}
+
+#support-menu-button:is(:hover, :focus-visible, :active) .wishes-swirl-glyph {
+    animation: wishesHypnosis 0.95s linear infinite;
+}
+
+@keyframes wishesHypnosis {
+    0% { transform: rotate(0deg) scale(1); }
+    50% { transform: rotate(180deg) scale(1.07); }
+    100% { transform: rotate(360deg) scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #support-menu-button:is(:hover, :focus-visible, :active) .wishes-swirl-glyph {
+        animation: none;
+    }
 }
 
 .dwl-icons-row .action-menu-label {
