@@ -1007,8 +1007,10 @@
             }
 
             body.has-wishlist-panel-open {
-                overflow-x: hidden;
-                overflow-y: auto;
+                /* The wishlist body owns the only vertical scroll context.
+                   Lock the document so a bottom-edge swipe cannot chain into
+                   a second page scroller behind the cards. */
+                overflow: hidden;
             }
 
             body.has-wishlist-panel-open .toggle-container {

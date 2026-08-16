@@ -1409,11 +1409,12 @@ body.has-posts-panel-open .site-brand-footer {
 
 .note-under-sign {
     position: absolute;
-    top: calc(var(--open-surface-top) + 40px);
+    /* Preserve the original 126px sticker's center while displaying it at 1.5×. */
+    top: calc(var(--open-surface-top) + 8.5px);
     left: 50%;
     z-index: 0;
     display: block;
-    width: 126px;
+    width: 189px;
     height: auto;
     opacity: 0;
     filter: drop-shadow(0 3px 4px rgba(118, 80, 99, 0.1));
@@ -2615,6 +2616,171 @@ body.has-social-panel-open .site-brand-footer {
     margin-bottom: 0;
 }
 
+.social-links-tip {
+    width: 100%;
+    appearance: none;
+    -webkit-appearance: none;
+    position: relative;
+    isolation: isolate;
+    display: grid;
+    min-height: 74px;
+    place-items: center;
+    padding: 17px 31px 14px;
+    overflow: hidden;
+    border: 1px dashed rgba(220, 147, 183, 0.46);
+    border-radius: 14px 18px 15px 17px;
+    background: rgba(255, 248, 252, 0.78);
+    box-shadow:
+        0 5px 13px rgba(126, 82, 103, 0.08),
+        inset 0 1px 0 rgba(255, 255, 255, 0.92);
+    color: rgba(130, 87, 107, 0.56);
+    font: inherit;
+    text-align: inherit;
+    cursor: pointer;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    transform: rotate(-0.45deg) scale(0.985);
+    transform-origin: 50% 50%;
+    transition: transform 0.14s ease, box-shadow 0.18s ease;
+}
+
+.social-links-tip::before {
+    position: absolute;
+    z-index: 0;
+    inset: -10px;
+    background: repeating-linear-gradient(
+        90deg,
+        rgba(255, 255, 255, 0.78) 0 28px,
+        rgba(246, 199, 222, 0.52) 28px 56px
+    );
+    content: "";
+    filter: blur(7px);
+    opacity: 0.3;
+    pointer-events: none;
+    transform: scale(1.08);
+}
+
+.social-links-tip:active {
+    transform: rotate(-0.45deg) scale(0.965);
+}
+
+.social-links-tip:focus-visible {
+    outline: none;
+    box-shadow:
+        0 5px 13px rgba(126, 82, 103, 0.08),
+        0 0 0 4px rgba(255, 181, 215, 0.16),
+        inset 0 1px 0 rgba(255, 255, 255, 0.92);
+}
+
+.social-links-tip::after {
+    position: absolute;
+    z-index: 1;
+    top: -4px;
+    left: 50%;
+    width: 46px;
+    height: 13px;
+    border: 1px solid rgba(255, 255, 255, 0.54);
+    background: rgba(255, 221, 235, 0.47);
+    box-shadow: 0 1px 3px rgba(126, 82, 103, 0.05);
+    content: "";
+    transform: translateX(-50%) rotate(1.5deg);
+}
+
+.social-links-tip p {
+    position: relative;
+    z-index: 2;
+    margin: 0;
+    font-family: "Comic Sans MS", "Bradley Hand", "Segoe Print", cursive;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.42;
+    letter-spacing: 0.005em;
+    text-align: center;
+    text-shadow: 0.2px 0.3px 0.35px rgba(122, 76, 101, 0.16);
+}
+
+.social-links-tip p span {
+    display: inline-block;
+    margin-left: 2px;
+    color: rgba(174, 85, 130, 0.54);
+    font-size: 13px;
+    transform: rotate(2deg);
+}
+
+.social-links-tip-heart {
+    position: absolute;
+    z-index: 2;
+    color: rgba(220, 132, 174, 0.38);
+    line-height: 1;
+    pointer-events: none;
+}
+
+.social-links-tip-heart {
+    right: 18px;
+    bottom: 14px;
+    font-size: 11px;
+    transform: rotate(9deg);
+}
+
+.social-links-tip-burst {
+    position: absolute;
+    z-index: 4;
+    left: var(--tip-burst-x);
+    top: var(--tip-burst-y);
+    width: 0;
+    height: 0;
+    pointer-events: none;
+}
+
+.social-links-tip-particle {
+    position: absolute;
+    left: 0;
+    top: 0;
+    color: rgba(214, 113, 161, 0.7);
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: var(--tip-particle-size);
+    font-weight: 400;
+    line-height: 1;
+    opacity: 0;
+    text-shadow: 0 1px 2px rgba(255, 255, 255, 0.72);
+    transform: translate(-50%, -50%) rotate(0deg) scale(0.25);
+    animation: socialLinksTipBurst 0.62s cubic-bezier(0.16, 0.76, 0.25, 1) var(--tip-particle-delay) forwards;
+}
+
+.social-links-tip-particle.is-dot {
+    color: rgba(233, 143, 187, 0.62);
+    font-family: inherit;
+}
+
+@keyframes socialLinksTipBurst {
+    0% {
+        opacity: 0;
+        transform: translate(-50%, -50%) rotate(0deg) scale(0.25);
+    }
+
+    16% {
+        opacity: 0.9;
+        transform: translate(-50%, -50%) rotate(calc(var(--tip-particle-spin) * 0.18)) scale(1.08);
+    }
+
+    100% {
+        opacity: 0;
+        transform:
+            translate(
+                calc(-50% + var(--tip-particle-x)),
+                calc(-50% + var(--tip-particle-y))
+            )
+            rotate(var(--tip-particle-spin))
+            scale(0.62);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .social-links-tip-particle {
+        animation-duration: 0.24s;
+    }
+}
+
 .social-link-mascot {
     position: absolute;
     top: 2px;
@@ -3454,18 +3620,18 @@ body.first-visit-tour-active .tour-highlight-target {
     will-change: transform;
 }
 
-#support-menu-button:is(:hover, :focus-visible, :active) .wishes-swirl-glyph {
-    animation: wishesHypnosis 0.95s linear infinite;
+#support-menu-button .wishes-swirl-glyph {
+    animation: wishesHypnosis 7.6s linear infinite;
 }
 
 @keyframes wishesHypnosis {
     0% { transform: rotate(0deg) scale(1); }
-    50% { transform: rotate(180deg) scale(1.07); }
-    100% { transform: rotate(360deg) scale(1); }
+    50% { transform: rotate(-180deg) scale(1.07); }
+    100% { transform: rotate(-360deg) scale(1); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-    #support-menu-button:is(:hover, :focus-visible, :active) .wishes-swirl-glyph {
+    #support-menu-button .wishes-swirl-glyph {
         animation: none;
     }
 }
@@ -5257,10 +5423,10 @@ body.has-community-hub-open #action-menu-button.open > .menu-back-arrow {
         visibility 0s linear 0.22s;
 }
 
-.community-hub:not(.is-doodle-mode)[data-composer-mode="ask"] .community-composer-slot > .ask-form-container,
-.community-hub:not([data-composer-mode]) .community-composer-slot > .ask-form-container[style*="block"],
-.community-hub[data-composer-mode="doodle"] .community-composer-slot > .drawing-widget,
-.community-hub.is-doodle-mode .community-composer-slot > .drawing-widget.active {
+.community-hub.active:not(.is-doodle-mode)[data-composer-mode="ask"] .community-composer-slot > .ask-form-container,
+.community-hub.active:not([data-composer-mode]) .community-composer-slot > .ask-form-container[style*="block"],
+.community-hub.active[data-composer-mode="doodle"] .community-composer-slot > .drawing-widget,
+.community-hub.active.is-doodle-mode .community-composer-slot > .drawing-widget.active {
     opacity: 1;
     visibility: visible;
     transform: translate3d(0, 0, 0) scale(1);

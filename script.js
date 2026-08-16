@@ -3785,7 +3785,8 @@ document.addEventListener("DOMContentLoaded", async function() {
                     <path d="M4 12 12 4M7 4h5v5"></path>
                 </svg>
             </span>`;
-        socialLinksPanel.append(option);
+        const tip = document.getElementById('social-links-tip');
+        socialLinksPanel.insertBefore(option, tip || null);
         return option;
     }
     const onlyfansOption = document.getElementById('onlyfans-option') || createOnlyFansOption();
@@ -3795,6 +3796,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     const actionOptions = actionMenuButton?.querySelector('.action-options');
     const publicAskButton = document.getElementById('ask-button');
     const donateOption = document.getElementById('donate-option');
+    const socialLinksTip = document.getElementById('social-links-tip');
     const siteBrandButton = document.getElementById('site-brand-button');
     const footerBubbleField = document.getElementById('footer-bubble-field');
     const homepageNoteText = document.getElementById('homepage-note-text');
@@ -3826,6 +3828,54 @@ document.addEventListener("DOMContentLoaded", async function() {
     const FIRST_VISIT_TOUR_FORCE = new URLSearchParams(window.location.search).get('previewTour') === '1';
     let kofiWidgetInitialized = false;
     let activeKofiWidgetHandle = '';
+    const activeSocialLinksTipBursts = [];
+    const SOCIAL_LINKS_TIP_MAX_BURSTS = 7;
+
+    function removeSocialLinksTipBurst(burst) {
+        const index = activeSocialLinksTipBursts.indexOf(burst);
+        if (index >= 0) activeSocialLinksTipBursts.splice(index, 1);
+        burst.remove();
+    }
+
+    function spawnSocialLinksTipBurst(event) {
+        if (!socialLinksTip) return;
+        const rect = socialLinksTip.getBoundingClientRect();
+        const hasPointerPosition = Number.isFinite(event?.clientX)
+            && Number.isFinite(event?.clientY)
+            && (event.clientX !== 0 || event.clientY !== 0);
+        const localX = hasPointerPosition ? event.clientX - rect.left : rect.width / 2;
+        const localY = hasPointerPosition ? event.clientY - rect.top : rect.height / 2;
+        const burst = document.createElement('span');
+        burst.className = 'social-links-tip-burst';
+        burst.setAttribute('aria-hidden', 'true');
+        burst.style.setProperty('--tip-burst-x', `${Math.max(14, Math.min(rect.width - 14, localX))}px`);
+        burst.style.setProperty('--tip-burst-y', `${Math.max(12, Math.min(rect.height - 12, localY))}px`);
+
+        for (let index = 0; index < 10; index += 1) {
+            const angle = (Math.PI * 2 * index / 10) + (Math.random() - 0.5) * 0.34;
+            const distance = 19 + Math.random() * 22;
+            const particle = document.createElement('span');
+            const isHeart = index % 3 === 0;
+            particle.className = `social-links-tip-particle${isHeart ? '' : ' is-dot'}`;
+            particle.textContent = isHeart ? '♡' : '•';
+            particle.style.setProperty('--tip-particle-x', `${(Math.cos(angle) * distance).toFixed(2)}px`);
+            particle.style.setProperty('--tip-particle-y', `${(Math.sin(angle) * distance * 0.72 - 3).toFixed(2)}px`);
+            particle.style.setProperty('--tip-particle-spin', `${Math.round((Math.random() - 0.5) * 110)}deg`);
+            particle.style.setProperty('--tip-particle-size', `${isHeart ? 10 + Math.random() * 4 : 8 + Math.random() * 3}px`);
+            particle.style.setProperty('--tip-particle-delay', `${(index % 4) * 0.012}s`);
+            burst.appendChild(particle);
+        }
+
+        while (activeSocialLinksTipBursts.length >= SOCIAL_LINKS_TIP_MAX_BURSTS) {
+            removeSocialLinksTipBurst(activeSocialLinksTipBursts[0]);
+        }
+        activeSocialLinksTipBursts.push(burst);
+        socialLinksTip.appendChild(burst);
+        window.setTimeout(() => removeSocialLinksTipBurst(burst), 760);
+    }
+
+    socialLinksTip?.addEventListener('click', spawnSocialLinksTipBurst);
+
     const socialCardDefinitions = [
         { key: 'snapchat', option: snapchatOption, label: 'Snapchat' },
         { key: 'instagram', option: instagramOption, label: 'Instagram', withAt: true },
@@ -3870,6 +3920,8 @@ document.addEventListener("DOMContentLoaded", async function() {
             const cardNode = option?.closest('.social-link-card-frame') || option;
             if (cardNode) socialLinksPanel.append(cardNode);
         });
+        const tip = document.getElementById('social-links-tip');
+        if (tip) socialLinksPanel.append(tip);
     }
 
     function isGifSocialCardMedia(url) {
