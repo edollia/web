@@ -13,17 +13,67 @@
     const MAX_CHECKOUT_ITEMS = 10;
     const NAME_MAX = 60;
     const CARD_GAP = 10;
+    // The margin every pinned card carries below it (.doll-wishlist-item.dwl-pin),
+    // counted when packing the two masonry columns.
+    const PIN_MARGIN_PX = 16;
+    // Floor for the see-all card. Above this it grows to close whatever tail
+    // the shorter column has left (see packMasonryColumns).
+    const MORE_CARD_MIN_HEIGHT_PX = 148;
+    // Hand-pinned tilt, and the placeholder shape a card reserves before its
+    // photo has loaded. Written onto each card from its own position in the
+    // list (see cardMarkup) rather than matched with :nth-child.
+    //
+    // :nth-child counts among siblings, and materializeMasonryColumns moves
+    // every card out of the masonry and into one of two column divs -- which
+    // restarts the count and silently handed each card a DIFFERENT placeholder
+    // ratio, and so a different height, immediately after the packing had
+    // measured it. The columns were packed from heights that no longer existed.
+    const PIN_CYCLE = [
+        { tilt: '-1.35deg', ratio: '4 / 5' },
+        { tilt: '1.1deg', ratio: '7 / 8' },
+        { tilt: '1.35deg', ratio: '3 / 4' },
+        { tilt: '-1.1deg', ratio: '1 / 1' },
+    ];
     const PAGE_SIZE = 4;
     const IMAGE_HYDRATE_CONCURRENCY = 6;
     const IMAGE_INITIAL_EXTRA_COUNT = 2;
     const IMAGE_HYDRATE_MARGIN_PX = 320;
-    const IMAGE_DECODE_CACHE_LIMIT = 10;
+    // How much decoded photo the open panel may hold, in megapixels (a decoded
+    // pixel is 4 bytes, so 12MP is roughly 48MB).
+    //
+    // This was a flat count of 10 images. With more cards than that, scrolling
+    // evicted photos you had already seen, and scrolling back showed the paw
+    // placeholder before the photo faded in again -- the whole list flickering
+    // on every pass. Counting images also treated a 500x500 thumbnail and a
+    // 1500x1400 product shot as the same cost, when they differ sevenfold.
+    //
+    // Measured on the live list: 21 photos, 1.9MB each decoded, ~10MP in total.
+    // A 12MP budget therefore holds this whole wishlist with room to spare, so
+    // nothing is evicted mid-session, while still capping a list of unusually
+    // large photos. Everything is released when the panel closes regardless, so
+    // this is a ceiling for one open panel, not a permanent cost. One number to
+    // tune: lower it if iOS starts reloading the tab, raise it if a longer
+    // wishlist starts flickering again.
+    const IMAGE_DECODE_BUDGET_MP = 12;
     const IMAGE_SCROLL_PRIORITY_IDLE_MS = 120;
     const IMAGE_HYDRATE_TIMEOUT_MS = 8000;
     const IMAGE_DECODE_TIMEOUT_MS = 2500;
     const WISHLIST_INITIAL_MEDIA_PREPARE_TIMEOUT_MS = 8000;
     const WISHLIST_EXIT_TRANSITION_FALLBACK_MS = 520;
     const WISHLIST_RELEASE_DELAY_MS = 1000;
+    // The custom panel is the wishlist. It gets a patient window to read the
+    // live table, and only if that has still produced nothing after this long
+    // does the Throne iframe take over. It is a last resort, never a race.
+    const WISHLIST_IFRAME_FALLBACK_MS = 10000;
+    // Tail of the ceiling kept aside for decoding and revealing the opening
+    // images, so a slow-but-successful read still lands instead of being cut
+    // off and handed to the iframe.
+    const WISHLIST_REVEAL_RESERVE_MS = 2200;
+    // The loading paw is part of the surface, not an apology for it. On a warm
+    // cache the whole fetch-and-decode finishes in well under half a second,
+    // which made the paw flash past as a glitch. Hold the reveal until it has
+    // had a real beat on screen. One number to tune.
+    const WISHLIST_MIN_LOADER_MS = 2000;
     const SWIPE_HINT_INITIAL_DELAY_MS = 3000;
     const SWIPE_HINT_FIRST_VISIBLE_MS = 3000;
     const SWIPE_HINT_REPEAT_DELAY_MS = 5000;
@@ -95,6 +145,10 @@
     let wishlistReleaseTimer = 0;
     let wishlistExitTransitionHandler = null;
     let renderedBodySignature = '';
+    let iframeFallbackTimer = 0;
+    let loaderShownAt = 0;
+    let masonryResizeObserver = null;
+    let masonryRepackRaf = 0;
     const imageHydrationQueue = [];
     const imageHydrationQueued = new Set();
     const activeImageHydrations = new Map();
@@ -660,16 +714,22 @@
         const protectedImages = new Set(loadedImages.filter(img => (
             imagePriorityWindow.has(img) || img.dataset.dwlObservedNear === 'true'
         )));
-        const cacheLimit = Math.max(IMAGE_DECODE_CACHE_LIMIT, protectedImages.size);
-        if (loadedImages.length <= cacheLimit) return;
+        const megapixels = img => (img.naturalWidth * img.naturalHeight) / 1e6;
+        let held = loadedImages.reduce((sum, img) => sum + megapixels(img), 0);
+        if (held <= IMAGE_DECODE_BUDGET_MP) return;
+        // Over budget: drop the least recently decoded first, and only as many
+        // as it takes to get back under. Anything on screen or approaching it
+        // is never a candidate, even if that alone exceeds the budget --
+        // releasing a photo the visitor is looking at is worse than the memory.
         loadedImages
             .filter(img => !protectedImages.has(img))
             .sort((a, b) => (imageDecodedRecency.get(a) || 0) - (imageDecodedRecency.get(b) || 0))
-            .slice(0, loadedImages.length - cacheLimit)
-            .forEach(img => releaseOffscreenProductImage(img, {
-                deferDrain: true,
-                force: true,
-            }));
+            .every(img => {
+                if (held <= IMAGE_DECODE_BUDGET_MP) return false;
+                held -= megapixels(img);
+                releaseOffscreenProductImage(img, { deferDrain: true, force: true });
+                return true;
+            });
     }
 
     function refreshProductImagePriorityWindow(body) {
@@ -928,6 +988,52 @@
             });
             await workers;
         }
+    }
+
+    function hasRenderedWishlistItems() {
+        return loadState === 'ready' && items.length > 0;
+    }
+
+    function clearIframeFallbackWatchdog() {
+        if (!iframeFallbackTimer) return;
+        window.clearTimeout(iframeFallbackTimer);
+        iframeFallbackTimer = 0;
+    }
+
+    // Last resort when the custom panel could not produce a wishlist: hand the
+    // visitor Throne's own page in the existing overlay iframe rather than
+    // leaving the paw spinning.
+    function openIframeFallback(reason) {
+        clearIframeFallbackWatchdog();
+        recordWishlistReliability(
+            panel?.getAttribute('data-wishlist-source') || 'unknown',
+            reason
+        );
+        if (typeof window.openThroneOverlay === 'function') {
+            window.openThroneOverlay();
+            return;
+        }
+        // The overlay widget itself was blocked. Send them to the real site,
+        // but do NOT leave the panel spinning its paw behind that tab: a popup
+        // blocker would turn this into a dead end with no way back. Land on the
+        // failure card, which offers both a retry and a link out.
+        window.open(FULL_WISHLIST_URL, '_blank', 'noopener,noreferrer');
+        if (loadState !== 'ready') {
+            loadState = 'failed';
+            renderBody();
+            renderFoot();
+        }
+    }
+
+    // Armed the moment the panel opens, cleared the moment real cards land.
+    // Anything still loading when it fires is stuck, and the iframe takes over.
+    function startIframeFallbackWatchdog() {
+        clearIframeFallbackWatchdog();
+        iframeFallbackTimer = window.setTimeout(() => {
+            iframeFallbackTimer = 0;
+            if (!isWishlistPanelVisible() || hasRenderedWishlistItems()) return;
+            openIframeFallback('iframe-fallback-timeout');
+        }, WISHLIST_IFRAME_FALLBACK_MS);
     }
 
     function cancelAtomicImageWaits() {
@@ -1897,25 +2003,29 @@
                 pointer-events: none;
                 z-index: 5;
             }
-            .doll-wishlist-masonry .doll-wishlist-item.dwl-pin:nth-child(4n+1) { --dwl-tilt: -1.35deg; --dwl-fallback-image-ratio: 4 / 5; }
-            .doll-wishlist-masonry .doll-wishlist-item.dwl-pin:nth-child(4n+2) { --dwl-tilt: 1.1deg; --dwl-fallback-image-ratio: 7 / 8; }
-            .doll-wishlist-masonry .doll-wishlist-item.dwl-pin:nth-child(4n+3) { --dwl-tilt: 1.35deg; --dwl-fallback-image-ratio: 3 / 4; }
-            .doll-wishlist-masonry .doll-wishlist-item.dwl-pin:nth-child(4n+4) { --dwl-tilt: -1.1deg; --dwl-fallback-image-ratio: 1 / 1; }
             .doll-wishlist-more-card.dwl-pin {
                 break-inside: avoid;
                 margin-bottom: 16px;
-            }
-            .doll-wishlist-more-card.dwl-pin.dwl-more-banner {
-                column-span: all;
-                flex-direction: row;
-                min-height: 70px;
-                margin: 3px 2px 16px;
+                /* Two classes, not three, so the later :hover rule ties on
+                   specificity and still wins its lift -- the same pattern
+                   .doll-wishlist-item.dwl-pin uses. */
+                transform: rotate(var(--dwl-tilt, 0deg));
             }
             .doll-wishlist-more-card.dwl-pin.dwl-more-tile {
                 flex-direction: column;
                 justify-content: center;
                 gap: 8px;
                 min-height: 148px;
+                /* One column wide, like every pin -- it is dealt into a column
+                   rather than parked under both. min-height here is only a
+                   floor; packMasonryColumns overrides it inline so the card
+                   grows to close whatever tail the other column left, which is
+                   what keeps it the last thing on the page without it having to
+                   sit outside the layout. */
+                width: 100%;
+                /* Fixed rather than the pins' index cycle: this card has no
+                   place in the list, so there is no index to take a tilt from. */
+                --dwl-tilt: 1.1deg;
             }
             .doll-wishlist-more-card.dwl-pin.dwl-more-tile .dwl-more-copy {
                 flex: 0 0 auto;
@@ -2509,7 +2619,7 @@
                     box-shadow:
                         inset 0 0 0 2px rgba(255, 255, 255, 0.94),
                         0 9px 18px rgba(174, 75, 113, 0.13);
-                    transform: translateY(-3px);
+                    transform: translateY(-3px) rotate(var(--dwl-tilt, 0deg));
                 }
                 .doll-wishlist-more-card:hover .dwl-more-arrow {
                     color: #e9518b;
@@ -2902,6 +3012,14 @@
     function ensurePanel() {
         if (panel && document.body.contains(panel)) return panel;
         return buildPanel();
+    }
+
+    // Keeps the paw on screen for its full beat even when the data and photos
+    // arrive almost instantly. Resolves early only if this run is superseded.
+    function holdMinimumLoader(run) {
+        const remaining = WISHLIST_MIN_LOADER_MS - (performance.now() - loaderShownAt);
+        if (remaining <= 0 || run !== itemsLoadRun) return Promise.resolve();
+        return new Promise(resolve => window.setTimeout(resolve, remaining));
     }
 
     // Skips the panel's own multi-hundred-ms close transition so it can't
@@ -3311,7 +3429,104 @@
     }
 
     function masonryMarkup(list) {
-        return `<div class="doll-wishlist-masonry">${list.map((item, index) => cardMarkup(item, 'masonry', index)).join('')}${seeMoreMarkup('masonry', list.length)}</div>`;
+        return `<div class="doll-wishlist-masonry">${list.map((item, index) => cardMarkup(item, 'masonry', index)).join('')}${seeMoreMarkup('masonry')}</div>`;
+    }
+
+    function stopMasonryRepacking() {
+        masonryResizeObserver?.disconnect();
+        masonryResizeObserver = null;
+        if (masonryRepackRaf) {
+            window.cancelAnimationFrame(masonryRepackRaf);
+            masonryRepackRaf = 0;
+        }
+    }
+
+    // Deals the cards into the two columns, shortest-first, in wishlist order.
+    // Reads `order` (the list order captured before anything moved) rather than
+    // DOM order, because after one pass the DOM order is column-by-column.
+    function packMasonryColumns(masonry) {
+        const columns = masonry?.querySelector('.dwl-masonry-columns');
+        const order = masonry?.dwlCardOrder;
+        if (!columns || !order?.length) return;
+        const [leftColumn, rightColumn] = columns.children;
+        if (!leftColumn || !rightColumn) return;
+
+        const totals = [0, 0];
+        const dealt = [[], []];
+        order.forEach(card => {
+            const column = totals[0] <= totals[1] ? 0 : 1;
+            dealt[column].push(card);
+            // Plus the 16px every pin carries below it. That margin is also
+            // what keeps this alternating sensibly rather than piling every
+            // card into one column if a hidden ancestor ever makes all the
+            // heights measure zero.
+            totals[column] += card.getBoundingClientRect().height + PIN_MARGIN_PX;
+        });
+
+        // The see-all card closes the SHORTER column, and is grown to at least
+        // the height of the tail the other column left over. That is what makes
+        // it read as one more pin -- same width, ordinary height -- while still
+        // being the lowest thing on the page, which a fixed-height card in a
+        // column could never guarantee.
+        //
+        // A column's height is the sum of its cards plus each card's 16px
+        // margin, so the card's top sits at exactly that height and its bottom
+        // at top + height. The taller column's last card ends 16px above its
+        // own total (that trailing margin). Clearing it therefore needs
+        // (difference - 16), and a few px more so sub-pixel rounding can never
+        // leave the two dead level.
+        const moreCard = masonry.querySelector('.doll-wishlist-more-card');
+        const shorter = totals[0] <= totals[1] ? 0 : 1;
+        if (moreCard) {
+            const needed = Math.abs(totals[0] - totals[1]) - PIN_MARGIN_PX + 6;
+            const height = Math.max(MORE_CARD_MIN_HEIGHT_PX, Math.round(needed));
+            const next = `${height}px`;
+            if (moreCard.style.minHeight !== next) moreCard.style.minHeight = next;
+            dealt[shorter].push(moreCard);
+        }
+
+        // Nothing to do if the deal is unchanged -- worth checking, because
+        // this runs on every photo that finishes loading, and a no-op here is
+        // what stops the ResizeObserver feeding itself.
+        const sameAsRendered = [leftColumn, rightColumn].every((column, i) => (
+            column.children.length === dealt[i].length
+            && dealt[i].every((card, j) => column.children[j] === card)
+        ));
+        if (sameAsRendered) return;
+
+        // Keep whatever the visitor is looking at under their eyes: note the
+        // card nearest the top of the scroller, then restore its screen
+        // position after the re-deal. Without this, a photo loading far below
+        // could shift the page under a finger mid-scroll.
+        const scroller = masonry.closest('.doll-wishlist-body');
+        const scrollerTop = scroller?.getBoundingClientRect().top ?? 0;
+        let anchor = null;
+        let anchorOffset = 0;
+        if (scroller && scroller.scrollTop > 0) {
+            order.forEach(card => {
+                const offset = card.getBoundingClientRect().top - scrollerTop;
+                if (offset <= 0 && (!anchor || offset > anchorOffset)) {
+                    anchor = card;
+                    anchorOffset = offset;
+                }
+            });
+        }
+
+        dealt[0].forEach(card => leftColumn.appendChild(card));
+        dealt[1].forEach(card => rightColumn.appendChild(card));
+
+        if (anchor) {
+            const moved = (anchor.getBoundingClientRect().top - scrollerTop) - anchorOffset;
+            if (moved) scroller.scrollTop += moved;
+        }
+    }
+
+    function scheduleMasonryRepack(masonry) {
+        if (masonryRepackRaf) return;
+        masonryRepackRaf = window.requestAnimationFrame(() => {
+            masonryRepackRaf = 0;
+            if (masonry.isConnected) packMasonryColumns(masonry);
+        });
     }
 
     function materializeMasonryColumns(body) {
@@ -3327,25 +3542,9 @@
             return;
         }
 
-        // Read the browser's already-balanced hidden multicol layout before
-        // moving anything. Transforms can shift a card edge by a pixel, so
-        // group by each card's center relative to the container center rather
-        // than requiring identical left coordinates.
-        const masonryRect = masonry.getBoundingClientRect();
-        let leftCards = cards.filter(card => {
-            const rect = card.getBoundingClientRect();
-            return (rect.left + rect.right) / 2 < (masonryRect.left + masonryRect.right) / 2;
-        });
-        let rightCards = cards.filter(card => !leftCards.includes(card));
+        stopMasonryRepacking();
 
-        // A zero-sized hidden ancestor or an unusual one-item result can make
-        // the geometry indistinguishable. Keep the result usable and ordered
-        // with a deterministic split in that fallback case.
-        if (!leftCards.length || !rightCards.length) {
-            const splitAt = Math.max(1, Math.ceil(cards.length / 2));
-            leftCards = cards.slice(0, splitAt);
-            rightCards = cards.slice(splitAt);
-        }
+        const moreCard = masonry.querySelector(':scope > .doll-wishlist-more-card');
 
         const columns = document.createElement('div');
         columns.className = 'dwl-masonry-columns';
@@ -3353,20 +3552,37 @@
         const rightColumn = document.createElement('div');
         leftColumn.className = 'dwl-masonry-column';
         rightColumn.className = 'dwl-masonry-column';
-        leftCards.forEach(card => leftColumn.appendChild(card));
-        rightCards.forEach(card => rightColumn.appendChild(card));
         columns.append(leftColumn, rightColumn);
 
-        const moreCard = masonry.querySelector(':scope > .doll-wishlist-more-card');
+        // Inserted ahead of the see-all card, which packMasonryColumns then
+        // deals into the shorter column along with everything else.
         masonry.insertBefore(columns, moreCard || null);
         masonry.classList.add('dwl-masonry-materialized');
+
+        // Wishlist order, kept for every future re-deal (the DOM order becomes
+        // column-by-column the moment the first pack runs).
+        masonry.dwlCardOrder = cards;
+        packMasonryColumns(masonry);
+
+        // A card's height is a guess until its photo arrives: before that it
+        // reserves a placeholder shape, and only ~half the list is decoded at
+        // reveal. Packing once against those guesses is what left the columns
+        // hundreds of pixels apart once the real photos landed. Re-deal
+        // whenever a card actually changes height -- the pack is a no-op when
+        // the result is unchanged, and it anchors the visitor's scroll
+        // position when it isn't.
+        if (typeof window.ResizeObserver !== 'function') return;
+        masonryResizeObserver = new ResizeObserver(() => scheduleMasonryRepack(masonry));
+        cards.forEach(card => masonryResizeObserver.observe(card));
     }
 
-    function seeMoreMarkup(mode = wishlistViewMode, featuredCount = items.length) {
+    function seeMoreMarkup(mode = wishlistViewMode) {
         const modeClass = mode === 'list' ? ' dwl-row' : mode === 'masonry' ? ' dwl-pin' : '';
-        const countClass = mode === 'masonry'
-            ? (featuredCount % 2 === 0 ? ' dwl-more-banner' : ' dwl-more-tile')
-            : '';
+        // Masonry always gets the tile. The old even/odd branch also offered a
+        // full-width banner via column-span, but materializeMasonryColumns
+        // discards the multicol context that made column-span mean anything,
+        // so both branches rendered identically.
+        const countClass = mode === 'masonry' ? ' dwl-more-tile' : '';
         return `
         <a class="doll-wishlist-more-card${modeClass}${countClass}" href="${FULL_WISHLIST_URL}" target="_blank" rel="noopener noreferrer" aria-label="See the full wishlist on Throne">
             <span class="dwl-more-copy">
@@ -3481,8 +3697,14 @@
         const label = capName(fullLabel);
         const modeClass = mode === 'list' ? ' dwl-row' : mode === 'masonry' ? ' dwl-pin' : '';
         const imageUrl = String(item.image_url || '').trim();
+        // Fixed to this card's own place in the list, so moving it between
+        // columns cannot change its shape (see PIN_CYCLE).
+        const pin = PIN_CYCLE[itemIndex % PIN_CYCLE.length];
+        const pinStyle = mode === 'masonry'
+            ? ` style="--dwl-tilt:${pin.tilt};--dwl-fallback-image-ratio:${pin.ratio}"`
+            : '';
         return `
-        <article class="doll-wishlist-item${modeClass}${selected ? ' selected' : ''}" data-item-id="${escapeHtml(item.throne_item_id)}">
+        <article class="doll-wishlist-item${modeClass}${selected ? ' selected' : ''}" data-item-id="${escapeHtml(item.throne_item_id)}"${pinStyle}>
             <div class="dwl-glow" aria-hidden="true"></div>
             <div class="dwl-burst-clip" aria-hidden="true"><div class="dwl-burst"></div></div>
             <div class="doll-wishlist-media dwl-media-pending"${imageRatioStyle(imageUrl)}>
@@ -3562,6 +3784,9 @@
             </div>`;
             body.querySelector('[data-wishlist-retry]')?.addEventListener('click', () => {
                 playSound('tap');
+                // A retry is a fresh attempt at the same budget, so it gets its
+                // own watchdog rather than running unwatched.
+                startIframeFallbackWatchdog();
                 void loadItems();
             });
             renderDots();
@@ -3579,6 +3804,9 @@
             </div>`;
             body.querySelector('[data-wishlist-retry]')?.addEventListener('click', () => {
                 playSound('tap');
+                // A retry is a fresh attempt at the same budget, so it gets its
+                // own watchdog rather than running unwatched.
+                startIframeFallbackWatchdog();
                 void loadItems();
             });
             renderDots();
@@ -3927,7 +4155,11 @@
         }
     }
 
-    async function fetchWishlistItemsFresh(signal) {
+    // `deadlineAt` is when the read must be done by, derived from the same
+    // budget as the iframe watchdog. A fixed FETCH_TIMEOUT_MS here meant a read
+    // that would have succeeded at 7s was aborted at 6s and the visitor handed
+    // to the iframe, even though the budget allowed longer.
+    async function fetchWishlistItemsFresh(signal, deadlineAt = performance.now() + FETCH_TIMEOUT_MS) {
         // script.js lazy-loads the Supabase client after first paint, so the
         // first opener may need to wait briefly for it.
         const client = await waitForSupabaseClient(30, signal);
@@ -3945,7 +4177,7 @@
                     .eq('is_available', true)
                     .order('position')
                     .limit(MAX_FEATURED),
-                FETCH_TIMEOUT_MS,
+                Math.max(1500, deadlineAt - performance.now()),
                 signal
             ),
             readWishlistViewModeSetting(client, signal),
@@ -3972,7 +4204,13 @@
         });
         if (!isWishlistPanelVisible()) return false;
         if (!items.length) {
+            await holdMinimumLoader(run);
+            if (run !== itemsLoadRun || !isWishlistPanelVisible()) return false;
             loadState = source === 'unavailable' ? 'failed' : 'ready';
+            // A read that SUCCEEDS and comes back empty is a real state with
+            // its own card, not an outage -- let it stand instead of leaving
+            // the watchdog to throw the visitor into the iframe over it.
+            if (loadState === 'ready') clearIframeFallbackWatchdog();
             renderBody();
             renderFoot();
             return false;
@@ -3988,6 +4226,8 @@
         // paint path.
         await loadAndDecodeInitialWishlistImages(body, run);
         if (run !== itemsLoadRun || !isWishlistPanelVisible()) return false;
+        await holdMinimumLoader(run);
+        if (run !== itemsLoadRun || !isWishlistPanelVisible()) return false;
 
         // CSS columns are used only for the hidden balancing pass. Safari can
         // intermittently fail to paint a live card inside that fragmented
@@ -3996,6 +4236,7 @@
         materializeMasonryColumns(body);
 
         loadState = 'ready';
+        clearIframeFallbackWatchdog();
         if (!revealPreparedWishlistBody(body, run)) return false;
         setupProgressiveItemImages(body);
         renderDots();
@@ -4018,12 +4259,19 @@
             : null;
         itemsFetchController = controller;
         const run = ++itemsLoadRun;
+        const loaderStartedAt = performance.now();
         loadState = 'loading';
+        if (!bodyPrepared) loaderShownAt = loaderStartedAt;
         items = [];
         if (!bodyPrepared) renderBody();
 
         try {
-            const result = await fetchWishlistItemsFresh(controller?.signal);
+            // Reserve the tail of the watchdog's budget so a slow-but-successful
+            // read still has time to decode and reveal before the iframe would
+            // have taken over.
+            const readDeadline = loaderStartedAt
+                + WISHLIST_IFRAME_FALLBACK_MS - WISHLIST_REVEAL_RESERVE_MS;
+            const result = await fetchWishlistItemsFresh(controller?.signal, readDeadline);
             if (run !== itemsLoadRun) return;
             const liveItems = sanitizeWishlistItems(result.items);
             if (liveItems.length) {
@@ -4041,11 +4289,15 @@
             });
         } catch (err) {
             if (run !== itemsLoadRun) return;
-            const fallback = readWishlistItemsFallback();
-            await prepareAndRevealWishlistItems(fallback.items, run, {
-                source: fallback.source,
-                reason: err?.name === 'AbortError' ? 'aborted' : 'live-error'
-            });
+            if (err?.name === 'AbortError') return;
+            // A read that FAILS is exactly the case the iframe exists for, so
+            // it is handed straight over rather than papered over with a stale
+            // snapshot. The paw still gets its full beat first so the handoff
+            // never reads as a flicker.
+            recordWishlistReliability('unavailable', 'live-error');
+            await holdMinimumLoader(run);
+            if (run !== itemsLoadRun || !isWishlistPanelVisible()) return;
+            openIframeFallback('iframe-fallback-error');
         } finally {
             if (itemsFetchController === controller) itemsFetchController = null;
         }
@@ -4265,6 +4517,7 @@
         // Every visit is a two-state lifecycle: paw-only fetching, then one
         // atomic reveal of the freshly synchronized and decoded result set.
         loadState = 'loading';
+        loaderShownAt = performance.now();
         items = [];
         renderBody();
         renderFoot();
@@ -4283,6 +4536,7 @@
             el.classList.add('active');
             el.setAttribute('aria-hidden', 'false');
             resetSwipeHintSequence();
+            startIframeFallbackWatchdog();
 
             void loadItems({ bodyPrepared: true });
         });
@@ -4304,6 +4558,8 @@
             cancelCheckoutRequest();
         }
         closePreview();
+        clearIframeFallbackWatchdog();
+        stopMasonryRepacking();
         stopLaceInviteRotation();
         cancelSwipeHintSequence();
         document.body.classList.remove('has-wishlist-panel-open', 'has-wishlist-selection');

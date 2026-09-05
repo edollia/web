@@ -2335,15 +2335,35 @@ body.has-posts-panel-open .button-group {
 }
 
 .social-links-shell {
+    /* A mascot can only be drawn where the scroller allows it: the panel is the
+       scroll container, so overflow-x is clipped to its padding box, and the
+       cards fill that box edge to edge -- there is no room beside a card for
+       one to peek out of. So the shell is widened by a gutter and the panel is
+       padded by the same amount: the card column keeps its exact width, and the
+       gutter becomes drawable space to the left of every card, inside the clip.
+       The shell's own mask clips to the shell box, which is why the gutter has
+       to be part of the shell rather than an overhang bled out of the panel.
+       The extra width is all on one side, so the centring transform is shifted
+       by half the gutter -- every card ends up in exactly the position it had
+       before the gutter existed. */
+    /* Full width where there is room beside a centred 254px card column, and
+       it gives way rather than pushing the panel off a narrow screen: below
+       about 365px the gutter shrinks and the bunny simply peeks less. */
+    --social-gutter: min(52px, max(0px, calc((100vw - 254px) / 2 - 4px)));
+    --social-shell-shift: calc(-50% - (var(--social-gutter) / 2));
     position: absolute;
     top: var(--open-surface-top);
     left: 50%;
     z-index: 8;
-    width: min(82vw, 254px);
+    /* The viewport cap is raised from 82vw to account for the gutter being
+       part of this width now: the gutter is transparent, so the card column
+       keeps the side margins it always had, and stays 254px wide down to a
+       ~313px viewport instead of being squeezed by the gutter at 320px. */
+    width: min(96vw, calc(254px + var(--social-gutter)));
     opacity: 0;
     visibility: hidden;
     pointer-events: none;
-    transform: translateX(-50%) translateY(-8px) scale(0.985);
+    transform: translateX(var(--social-shell-shift)) translateY(-8px) scale(0.985);
     transform-origin: 50% 18%;
     transition:
         opacity 0.34s ease,
@@ -2354,7 +2374,8 @@ body.has-posts-panel-open .button-group {
 
 .social-links-loading {
     position: absolute;
-    inset: 0;
+    /* Centred over the card column, not over the shell's wider gutter box. */
+    inset: 0 0 0 var(--social-gutter);
     z-index: 4;
     display: none;
     min-height: 150px;
@@ -2404,6 +2425,15 @@ body.has-posts-panel-open .button-group {
     overscroll-behavior-y: contain;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
+    /* Head room for a mascot on whichever card lands first. Every other card
+       borrows the card above it instead (see .social-link-mascot), but the
+       first one has nothing above it, and anything drawn past the top of a
+       scroller's padding box is clipped with no way to scroll it back. The
+       tallest overhang among the top-edge mascots is 24px. */
+    padding-top: 26px;
+    /* Pushes the card column back to exactly where it sat before the shell
+       grew, leaving the gutter as free space a mascot can occupy. */
+    padding-left: var(--social-gutter);
 }
 
 .social-links-panel::-webkit-scrollbar {
@@ -2520,7 +2550,7 @@ body.has-social-panel-open .toggle-container {
    measuring mid-transition would reserve a moving, wrong target. Mirrors
    .dwl-measure-open in throne-mockup-widget.js exactly. */
 .social-links-shell.measure-open {
-    transform: translateX(-50%) translateY(0) scale(1);
+    transform: translateX(var(--social-shell-shift)) translateY(0) scale(1);
     transition: none;
 }
 
@@ -2545,7 +2575,7 @@ body.has-social-panel-open .site-brand-footer {
     opacity: 1;
     visibility: visible;
     pointer-events: auto;
-    transform: translateX(-50%) translateY(0) scale(1);
+    transform: translateX(var(--social-shell-shift)) translateY(0) scale(1);
     transition-delay: 0s;
 }
 
@@ -2644,10 +2674,6 @@ body.has-social-panel-open .site-brand-footer {
    free to spill above the card's top edge uncropped. */
 .social-link-card-frame {
     position: relative;
-    /* The admin can place Snapchat anywhere in the list. Keep the bunny's
-       breathing room attached to its own card instead of assuming this
-       wrapper is always the first child of the panel. */
-    padding-top: 26px;
 }
 
 /* Replaces the old grid `gap: 8px` between cards (see .social-links-panel)
@@ -2829,7 +2855,6 @@ body.has-social-panel-open .site-brand-footer {
 
 .social-link-mascot {
     position: absolute;
-    top: 2px;
     /* Was -3px (a deliberate small overshoot past the card's own right edge,
        matching the original hand-drawn mockup). That was harmless while the
        panel had no clipping, but the panel now scrolls (overflow-y: auto
@@ -2839,10 +2864,96 @@ body.has-social-panel-open .site-brand-footer {
        own width avoids relying on overflow allowances that scrolling can't
        give it. */
     right: 3px;
+    /* Negative, so the mascot hangs into whatever sits above rather than
+       reserving space and opening a gap between cards. The card it belongs to
+       never moves; only the ~5px bite of paws over its top edge shows. */
+    top: -24px;
     width: 56px;
     height: auto;
     pointer-events: none;
     z-index: 3;
+    /* Return fade after a card pop; see .social-mascot-popping below. */
+    transition: opacity 0.22s ease 0.06s;
+}
+
+/* Two more of the same hand-drawn family, peeking over their own cards the
+   way snap-bunny does: nuune (the tan lop) rests on the "if it's not here"
+   tip, kofitos (the pink lop) on Ko-fi. Both are exported at 168px wide to
+   match snap-bunny's source, which keeps every one of them at 3x or better
+   over the ~52-56px it actually renders at. */
+
+/* Mirrored to the left edge. Same 3px inset as the right-hand mascots -- the
+   panel scrolls, so overflow-x is clipped and any overshoot past the frame's
+   own width would be sliced straight through an ear. */
+.social-link-mascot--tip {
+    right: auto;
+    left: 3px;
+    /* The tip card itself sits at rotate(-0.45deg); the mascot is its sibling,
+       not its child, so it has to be tilted by hand to rest flush on that edge
+       instead of floating level above a slanted card. That same rotation also
+       drops the card's top-left corner by about a pixel, which the translate
+       follows so the paws keep the same bite as the other two. */
+    transform: translateY(1px) rotate(-0.45deg);
+    transform-origin: 50% 100%;
+}
+
+/* kofitos peeks over the upper-left instead of the right, and unlike the other
+   two it tucks its body BEHIND its own card rather than resting paws on top.
+   Its pose earns that: the nose sits 55% down the crop and the ears sweep past
+   it, so there is no flat underside to rest on -- below the mouth it is all
+   belly and a curled paw. The card edge crosses at 63% of its height, just
+   under the mouth, which leaves the whole face and bow reading clearly while
+   the body disappears. */
+.social-link-card-frame--kofi {
+    /* Contains the negative z-index below. Without its own stacking context
+       the mascot would drop behind the panel and page entirely instead of
+       just behind this one card. The frame still paints as a unit after the
+       card above it, so the head stays on top of that neighbour. */
+    isolation: isolate;
+}
+
+.social-link-mascot--kofi {
+    /* Leans in from the LEFT SIDE of its card rather than resting on the top
+       edge like the other two: the body stays behind the card's left edge and
+       the head and shoulder clear it, into the gutter carved on
+       .social-links-shell. That side entrance is what this pose is drawn for --
+       the nose sits 55% down the crop with the ears sweeping past it, so there
+       is no flat underside to rest paws on.
+
+       The tilt is what makes the hidden half work. Square-on, the card's
+       vertical edge sliced the body in a straight line across its widest point,
+       which read as a cut-off sticker. Rotated, the body runs away from that
+       edge at an angle, so the same edge crosses a narrowing shape and reads as
+       the bunny continuing on behind the card. */
+    right: auto;
+    /* Clear of the scroller's clip edge. The other two only need 3px, but a
+       rotated box is wider than the element: at 66x44 and 28deg the painted
+       bounds run ~6px past the element's own left edge, so the inset has to
+       cover that too or the corner gets shaved off. */
+    /* min() so this can never go positive. Below roughly a 294px viewport the
+       gutter collapses far enough that a bare calc() crossed zero and put the
+       mascot on top of its own card, showing through the 76%-opaque
+       background behind the Ko-fi icon. Clamped, it simply peeks less. */
+    left: min(0px, calc(16px - var(--social-gutter)));
+    top: -20px;
+    width: 56px;
+    transform: rotate(-40deg);
+    transform-origin: 78% 60%;
+    /* Behind its own card, so the card edge hides the body. */
+    z-index: -1;
+}
+
+/* Below roughly a 300px viewport the gutter has collapsed to nothing, so there
+   is no drawable space beside the card left for this pose to lean into. The
+   min() above stops it crossing onto the card, but at zero offset its body
+   still ghosts through the 76%-opaque background behind the Ko-fi icon. No
+   room means no mascot -- cleaner than a blur behind the logo. The two
+   top-edge mascots are unaffected: they sit above their cards, not beside
+   them, and need no gutter at all. */
+@media (max-width: 300px) {
+    .social-link-mascot--kofi {
+        display: none;
+    }
 }
 
 .social-link-icon {
@@ -2997,6 +3108,15 @@ body.has-social-panel-open .site-brand-footer {
 .social-link-card.social-card-source-popping {
     opacity: 0 !important;
     pointer-events: none;
+}
+
+/* The mascot is a sibling of the card, not a child of it, so it survived the
+   card being hidden for the pop and kept painting over the empty gap for the
+   whole reset delay. It leaves with its card and comes back with it. Faded
+   rather than cut so it reads as part of the same rupture. */
+.social-link-card-frame.social-mascot-popping > .social-link-mascot {
+    opacity: 0;
+    transition: opacity 0.12s ease;
 }
 
 .social-link-card.social-card-pop-clone {

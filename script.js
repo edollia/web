@@ -3786,7 +3786,8 @@ document.addEventListener("DOMContentLoaded", async function() {
                 </svg>
             </span>`;
         const tip = document.getElementById('social-links-tip');
-        socialLinksPanel.insertBefore(option, tip || null);
+        const tipNode = tip?.closest('.social-link-card-frame') || tip;
+        socialLinksPanel.insertBefore(option, tipNode || null);
         return option;
     }
     const onlyfansOption = document.getElementById('onlyfans-option') || createOnlyFansOption();
@@ -3921,7 +3922,8 @@ document.addEventListener("DOMContentLoaded", async function() {
             if (cardNode) socialLinksPanel.append(cardNode);
         });
         const tip = document.getElementById('social-links-tip');
-        if (tip) socialLinksPanel.append(tip);
+        const tipNode = tip?.closest('.social-link-card-frame') || tip;
+        if (tipNode) socialLinksPanel.append(tipNode);
     }
 
     function isGifSocialCardMedia(url) {
@@ -5650,6 +5652,10 @@ document.addEventListener("DOMContentLoaded", async function() {
             card.classList.remove('social-card-source-popping');
             card.removeAttribute('aria-busy');
         });
+        // Mascots come back with the card they belong to.
+        document.querySelectorAll('.social-mascot-popping').forEach(frame => {
+            frame.classList.remove('social-mascot-popping');
+        });
         document.querySelectorAll('.social-card-pop-clone').forEach(clone => clone.remove());
         document.querySelectorAll('.social-card-bubble-burst').forEach(burst => burst.remove());
     }
@@ -5685,6 +5691,12 @@ document.addEventListener("DOMContentLoaded", async function() {
         const clone = createSocialCardPopClone(option);
         option.classList.add('social-card-source-popping');
         option.setAttribute('aria-busy', 'true');
+        // The card is hidden for the length of the pop, but its mascot is a
+        // sibling in the frame, not a child of the card -- so without this it
+        // kept painting over the gap the card left behind for the whole
+        // SOCIAL_CARD_POP_RESET_DELAY. It leaves with the card and returns
+        // with it in resetSocialCardPopState.
+        option.closest('.social-link-card-frame')?.classList.add('social-mascot-popping');
         createEntryBubbleBurst(option, document.body, 'social-card-bubble-burst');
         // Start both parts together so the whole card swells and ruptures with
         // the exact loading-bubble ring, flash, droplets, and film fragments.
