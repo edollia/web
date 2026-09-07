@@ -1441,8 +1441,11 @@ h1 {
 }
 
 .admin-link-url-preview {
-    width: min(260px, 52vw) !important;
-    max-width: 100%;
+    /* No fixed width. `.admin-link-card-title small` already sets
+       `width: fit-content`; forcing a width here (which is what the
+       `!important` was fighting for) sized the title's grid track wider than
+       its column and slid the pill under the order controls. */
+    max-width: min(260px, 100%);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -3923,5 +3926,66 @@ button > svg + span,
         margin: auto 6px calc(72px + env(safe-area-inset-bottom));
         border: 1px solid var(--admin-v6-line);
         border-radius: 18px;
+    }
+}
+
+/* ---------------------------------------------------------------------------
+   Pointer-driven reordering (nav rail, social cards, featured wishlist).
+   `touch-action: none` is what lets a touch drag exist at all — without it the
+   browser claims the gesture for scrolling and cancels the pointer stream.
+   --------------------------------------------------------------------------- */
+.admin-nav-drag,
+.admin-social-drag,
+.admin-wishlist-drag {
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+}
+
+/* The nav handle is a bare <svg>; SVG hit-tests painted pixels by default, so
+   the whole 15x22 box has to be made grabbable explicitly. */
+.admin-nav-drag {
+    pointer-events: all;
+}
+
+body.admin-dragging {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+}
+
+body.admin-dragging * {
+    cursor: grabbing !important;
+}
+
+/* The dragged card moves for real, so nothing should animate on the way. */
+body.admin-dragging .admin-tabs button,
+body.admin-dragging .admin-link-card,
+body.admin-dragging .admin-wishlist-list .admin-card {
+    transition: none !important;
+}
+
+.admin-tabs button.dragging,
+.admin-link-card.dragging,
+.admin-wishlist-list .admin-card.dragging {
+    opacity: 0.55;
+    outline: 2px dashed rgba(216, 95, 152, 0.72);
+    outline-offset: 2px;
+}
+
+/* Finger-sized hit area for the handles, without moving anything in layout. */
+@media (pointer: coarse) {
+    .admin-social-drag,
+    .admin-wishlist-drag {
+        position: relative;
+    }
+
+    .admin-social-drag::after,
+    .admin-wishlist-drag::after {
+        content: "";
+        position: absolute;
+        inset: -11px;
+        border-radius: 13px;
     }
 }

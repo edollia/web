@@ -877,17 +877,16 @@ function moveSocialCard(key, direction) {
     scheduleAutoSave();
 }
 
-function reorderSocialCard(draggedKey, overKey, placeAfter = false) {
+function commitSocialCardOrder(keys) {
     if (!linkSettingsHydrated) {
         setStatus(els.adminStatus, 'Saved site settings are still loading.');
+        applyAdminSocialCardOrder(state.linkSettings);
         return false;
     }
+    const next = normalizeSocialCardOrder(keys);
     const current = normalizeSocialCardOrder(state.linkSettings.social_card_order);
-    if (draggedKey === overKey || !current.includes(draggedKey) || !current.includes(overKey)) return false;
-    const next = current.filter(key => key !== draggedKey);
-    const targetIndex = next.indexOf(overKey);
-    next.splice(targetIndex + (placeAfter ? 1 : 0), 0, draggedKey);
-    state.linkSettings.social_card_order = normalizeSocialCardOrder(next);
+    if (next.every((key, index) => key === current[index])) return false;
+    state.linkSettings.social_card_order = next;
     settingsDraftDirty = true;
     applyAdminSocialCardOrder(state.linkSettings);
     renderLinkPreview();
@@ -2607,7 +2606,7 @@ async function swapWishlistItemPositions(current, neighbor) {
 async function moveWishlistItemByDrag(sourceId, targetId, placeAfter = false) {
     if (wishlistActionBusy || !sourceId || !targetId || sourceId === targetId) return;
     wishlistActionBusy = true;
-    let completedMoves = 0;
+    let savedRows = 0;
     document.querySelectorAll('.admin-wishlist-drag').forEach(handle => { handle.disabled = true; });
     setStatus(els.adminStatus, 'saving wishlist order...');
 
@@ -2617,27 +2616,57 @@ async function moveWishlistItemByDrag(sourceId, targetId, placeAfter = false) {
         const targetIndex = items.findIndex(item => String(item.throne_item_id) === String(targetId));
         if (sourceIndex < 0 || targetIndex < 0) throw new Error('The dragged item is no longer featured.');
 
-        const desiredIds = items.map(item => String(item.throne_item_id)).filter(id => id !== String(sourceId));
-        const insertionIndex = desiredIds.indexOf(String(targetId)) + (placeAfter ? 1 : 0);
-        desiredIds.splice(insertionIndex, 0, String(sourceId));
-        const finalIndex = desiredIds.indexOf(String(sourceId));
-        let currentIndex = sourceIndex;
+        const ordered = items.filter(item => String(item.throne_item_id) !== String(sourceId));
+        const insertionIndex = ordered.findIndex(item => String(item.throne_item_id) === String(targetId))
+            + (placeAfter ? 1 : 0);
+        ordered.splice(insertionIndex, 0, items[sourceIndex]);
+        const finalIndex = ordered.findIndex(item => String(item.throne_item_id) === String(sourceId));
 
-        while (currentIndex !== finalIndex) {
-            const neighborIndex = currentIndex + (finalIndex > currentIndex ? 1 : -1);
-            const current = items[currentIndex];
-            const neighbor = items[neighborIndex];
-            await swapWishlistItemPositions(current, neighbor);
-            const currentPosition = current.position;
-            current.position = neighbor.position;
-            neighbor.position = currentPosition;
-            [items[currentIndex], items[neighborIndex]] = [items[neighborIndex], items[currentIndex]];
-            currentIndex = neighborIndex;
-            completedMoves += 1;
+        // `position` carries no unique constraint, so the run can be renumbered
+        // outright instead of walked one adjacent swap at a time. Dragging
+        // across twenty rows is one pass of twenty writes now, not forty writes
+        // over thirty-nine round trips.
+        const ranked = items.every((item, index) =>
+            index === 0 || Number(items[index - 1].position) < Number(item.position));
+        const writes = [];
+        if (ranked) {
+            // Reuse the existing numbers for the slots that shifted; everything
+            // outside the moved span keeps the position it already had.
+            const spanStart = Math.min(sourceIndex, finalIndex);
+            const spanEnd = Math.max(sourceIndex, finalIndex);
+            for (let index = spanStart; index <= spanEnd; index += 1) {
+                const slot = Number(items[index].position);
+                const item = ordered[index];
+                if (Number(item.position) !== slot) {
+                    writes.push({ throne_item_id: item.throne_item_id, position: slot });
+                }
+            }
+        } else {
+            // Duplicate or gapped numbers (older syncs, "feature all" runs) can
+            // not express an order on their own — renumber the whole run once.
+            ordered.forEach((item, index) => {
+                if (Number(item.position) !== index) {
+                    writes.push({ throne_item_id: item.throne_item_id, position: index });
+                }
+            });
+        }
+
+        const batchSize = 12;
+        for (let start = 0; start < writes.length; start += batchSize) {
+            const batch = writes.slice(start, start + batchSize);
+            const results = await Promise.all(batch.map(entry =>
+                adminClient.from('wishlist_items')
+                    .update({ position: entry.position })
+                    .eq('throne_item_id', entry.throne_item_id)
+                    .select('throne_item_id')
+            ));
+            savedRows += results.reduce((count, result) => count + (result.error ? 0 : (result.data || []).length), 0);
+            const failed = results.find(result => result.error);
+            if (failed) throw failed.error;
         }
 
         await refreshAdminListSet(['wishlist-items-list'], { refreshWishlistMeta: true });
-        setStatus(els.adminStatus, completedMoves ? 'wishlist order saved ✓' : 'wishlist order unchanged');
+        setStatus(els.adminStatus, writes.length ? 'wishlist order saved ✓' : 'wishlist order unchanged');
     } catch (error) {
         let reloadFailed = false;
         try {
@@ -2645,7 +2674,7 @@ async function moveWishlistItemByDrag(sourceId, targetId, placeAfter = false) {
         } catch (reloadError) {
             reloadFailed = true;
         }
-        const partial = completedMoves ? `${completedMoves} position${completedMoves === 1 ? '' : 's'} moved before the error; ` : '';
+        const partial = savedRows ? `${savedRows} row${savedRows === 1 ? '' : 's'} moved before the error; ` : '';
         setStatus(els.adminStatus, `${partial}${formatAdminMutationError(error, 'Could not reorder wishlist.', 'item')} ${reloadFailed ? 'Refresh failed.' : 'List refreshed.'}`);
     } finally {
         wishlistActionBusy = false;
@@ -3635,53 +3664,315 @@ function persistAdminNavOrder() {
     }
 }
 
-function initAdminNavReorder() {
-    if (!els.tabs) return;
-    let dragged = null;
+// ---------------------------------------------------------------------------
+// Shared pointer-driven sort engine.
+//
+// The three reorderable lists (nav rail, social cards, featured wishlist) used
+// to run on the HTML5 drag-and-drop API. That API never fires from touch, so
+// reordering was silently desktop-only — on a phone the press just scrolled the
+// page. Pointer events cover mouse, touch and pen through one code path, so all
+// three lists share this engine instead.
+// ---------------------------------------------------------------------------
+const ADMIN_DRAG_SLOP = 4;
+const ADMIN_DRAG_EDGE_ZONE = 72;
+const ADMIN_DRAG_EDGE_SPEED = 18;
+// Live reordering moves the real element, so the card under the pointer keeps
+// changing. Uneven card heights can make that oscillate, so the list is left
+// alone for a beat after each move.
+const ADMIN_DRAG_SETTLE_MS = 70;
+// A finished drag fires no click of its own here (preventDefault on pointermove
+// sees to that), so this only has to outlast a browser that disagrees — not a
+// deliberate tap. Keep it short: a longer guard just makes the order arrows and
+// the pencil ignore real clicks for a beat after every drop.
+const ADMIN_DRAG_CLICK_GUARD_MS = 120;
 
-    els.tabs.addEventListener('pointerdown', event => {
-        const handle = event.target.closest('.admin-nav-drag');
-        const button = handle?.closest('button[data-panel]');
-        if (button && window.matchMedia('(min-width: 861px)').matches) button.draggable = true;
-    });
-    els.tabs.addEventListener('dragstart', event => {
-        const button = event.target.closest('button[data-panel]');
-        if (!button?.draggable) {
-            event.preventDefault();
+function adminDragEdgeDelta(top, bottom, point) {
+    if (point < top + ADMIN_DRAG_EDGE_ZONE) {
+        return -Math.ceil(((top + ADMIN_DRAG_EDGE_ZONE - point) / ADMIN_DRAG_EDGE_ZONE) * ADMIN_DRAG_EDGE_SPEED);
+    }
+    if (point > bottom - ADMIN_DRAG_EDGE_ZONE) {
+        return Math.ceil(((point - (bottom - ADMIN_DRAG_EDGE_ZONE)) / ADMIN_DRAG_EDGE_ZONE) * ADMIN_DRAG_EDGE_SPEED);
+    }
+    return 0;
+}
+
+// Measured, not read off the stylesheet: `.admin-wishlist-list` is a flex
+// column that still inherits `grid-template-columns` from `.admin-list`, so the
+// computed value lies about the layout. Two cards sitting side by side is the
+// only reliable tell that the list wraps into columns.
+function adminDragIsMultiColumn(items) {
+    for (let index = 1; index < items.length; index += 1) {
+        const previous = items[index - 1].getBoundingClientRect();
+        const current = items[index].getBoundingClientRect();
+        if (!previous.height || !current.height) continue;
+        if (current.left >= previous.right - 1 && current.top < previous.bottom - 1) return true;
+    }
+    return false;
+}
+
+function createAdminDragSort(config) {
+    const {
+        container: containerRef,
+        handleSelector,
+        itemSelector,
+        canDrag = () => true,
+        canStart = () => true,
+        onDragFinish = () => {},
+        onCommit = () => {}
+    } = config;
+
+    const getContainer = () => (typeof containerRef === 'function' ? containerRef() : containerRef);
+
+    let pending = null;
+    let dragged = null;
+    let pointerId = null;
+    let pointerX = 0;
+    let pointerY = 0;
+    let originX = 0;
+    let originY = 0;
+    let multiColumn = false;
+    let settleUntil = 0;
+    let scrollFrame = 0;
+    let originalOrder = [];
+    let originalAnchor = null;
+
+    function sortableItems(container) {
+        return Array.from(container.children).filter(el =>
+            typeof el.matches === 'function' && el.matches(itemSelector) && canDrag(el));
+    }
+
+    function placeAfterTarget(target) {
+        const rect = target.getBoundingClientRect();
+        // Inside a wrapped grid row the meaningful axis is horizontal; anywhere
+        // else (and between rows) it is the vertical midpoint.
+        if (multiColumn && pointerY >= rect.top && pointerY <= rect.bottom) {
+            return pointerX > rect.left + (rect.width / 2);
+        }
+        return pointerY > rect.top + (rect.height / 2);
+    }
+
+    function findTarget(container) {
+        const under = document.elementFromPoint(pointerX, pointerY);
+        const direct = under && typeof under.closest === 'function' ? under.closest(itemSelector) : null;
+        if (direct) {
+            // Over the dragged card itself, a pinned card (throne), an
+            // unfeatured row, or a card in some other list: no move.
+            if (direct === dragged || direct.parentElement !== container || !canDrag(direct)) return null;
+            return direct;
+        }
+        // In a gutter or just past the last card. Snap to the closest card, but
+        // only while the pointer is still near the list.
+        const bounds = container.getBoundingClientRect();
+        const slack = 48;
+        if (pointerX < bounds.left - slack || pointerX > bounds.right + slack
+            || pointerY < bounds.top - slack || pointerY > bounds.bottom + slack) return null;
+
+        let best = null;
+        let bestDistance = Infinity;
+        sortableItems(container).forEach(item => {
+            if (item === dragged) return;
+            const rect = item.getBoundingClientRect();
+            const dx = pointerX - Math.max(rect.left, Math.min(pointerX, rect.right));
+            const dy = pointerY - Math.max(rect.top, Math.min(pointerY, rect.bottom));
+            const distance = (dx * dx) + (dy * dy);
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                best = item;
+            }
+        });
+        return best;
+    }
+
+    function updatePlacement() {
+        const container = getContainer();
+        if (!container || !dragged || performance.now() < settleUntil) return;
+        const target = findTarget(container);
+        if (!target) return;
+        if (placeAfterTarget(target)) {
+            if (target.nextElementSibling === dragged) return;
+            container.insertBefore(dragged, target.nextElementSibling);
+        } else {
+            if (dragged.nextElementSibling === target) return;
+            container.insertBefore(dragged, target);
+        }
+        settleUntil = performance.now() + ADMIN_DRAG_SETTLE_MS;
+    }
+
+    function tick() {
+        if (!dragged) {
+            scrollFrame = 0;
             return;
         }
-        dragged = button;
-        button.classList.add('dragging');
-        event.dataTransfer.effectAllowed = 'move';
-        event.dataTransfer.setData('text/plain', button.dataset.panel);
-    });
-    els.tabs.addEventListener('dragover', event => {
-        if (!dragged) return;
-        const over = event.target.closest('button[data-panel]');
-        if (!over || over === dragged) return;
-        event.preventDefault();
-        event.dataTransfer.dropEffect = 'move';
-        els.tabs.querySelectorAll('.drag-over').forEach(button => button.classList.remove('drag-over'));
-        over.classList.add('drag-over');
-    });
-    els.tabs.addEventListener('drop', event => {
-        const over = event.target.closest('button[data-panel]');
-        if (!dragged || !over || dragged === over) return;
-        event.preventDefault();
-        const rect = over.getBoundingClientRect();
-        els.tabs.insertBefore(dragged, event.clientY > rect.top + rect.height / 2 ? over.nextSibling : over);
-        adminNavSuppressClickUntil = performance.now() + 250;
-        persistAdminNavOrder();
-    });
-    els.tabs.addEventListener('dragend', () => {
-        els.tabs.querySelectorAll('button[data-panel]').forEach(button => {
-            button.draggable = false;
-            button.classList.remove('dragging', 'drag-over');
+        // A background refresh can replace the list mid-drag.
+        if (!dragged.isConnected) {
+            endDrag(false);
+            return;
+        }
+        scrollFrame = requestAnimationFrame(tick);
+        const delta = adminDragEdgeDelta(0, window.innerHeight, pointerY);
+        if (delta) window.scrollBy(0, delta);
+        updatePlacement();
+    }
+
+    function restoreOrder(container) {
+        originalOrder.forEach(item => {
+            if (item.isConnected) container.insertBefore(item, originalAnchor);
         });
+    }
+
+    function detach() {
+        window.removeEventListener('pointermove', handlePointerMove);
+        window.removeEventListener('pointerup', handlePointerUp);
+        window.removeEventListener('pointercancel', handlePointerCancel);
+        window.removeEventListener('keydown', handleKeyDown, true);
+        window.removeEventListener('blur', handlePointerCancel);
+    }
+
+    function endDrag(commit) {
+        const container = getContainer();
+        const item = dragged;
+        if (scrollFrame) {
+            cancelAnimationFrame(scrollFrame);
+            scrollFrame = 0;
+        }
+        detach();
+        // A settle window may still be open, holding back the placement the
+        // pointer is sitting on. Flush it so releasing right after a move drops
+        // where the cursor is rather than one slot short.
+        if (commit && container && item && item.isConnected) {
+            settleUntil = 0;
+            updatePlacement();
+        }
+        document.body.classList.remove('admin-dragging');
+        if (item) item.classList.remove('dragging');
+        if (container) container.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
         dragged = null;
-    });
-    document.addEventListener('pointerup', () => {
-        els.tabs?.querySelectorAll('button[data-panel]').forEach(button => { button.draggable = false; });
+        pending = null;
+        pointerId = null;
+        if (!item || !container) return;
+
+        if (!item.isConnected) {
+            originalOrder = [];
+            originalAnchor = null;
+            return;
+        }
+        const order = sortableItems(container);
+        const changed = order.length !== originalOrder.length
+            || order.some((el, index) => el !== originalOrder[index]);
+        if (!commit) {
+            if (changed) restoreOrder(container);
+        } else if (changed) {
+            onCommit({ container, item, order, previousOrder: originalOrder.slice() });
+        }
+        originalOrder = [];
+        originalAnchor = null;
+    }
+
+    function handlePointerDown(event) {
+        if (dragged || pending) return;
+        if (event.pointerType === 'mouse' && event.button !== 0) return;
+        const container = getContainer();
+        if (!container || typeof event.target.closest !== 'function') return;
+        const handle = event.target.closest(handleSelector);
+        if (!handle || !container.contains(handle)) return;
+        const item = handle.closest(itemSelector);
+        if (!item || item.parentElement !== container || !canDrag(item) || !canStart(item)) return;
+
+        pending = item;
+        pointerId = event.pointerId;
+        originX = pointerX = event.clientX;
+        originY = pointerY = event.clientY;
+        window.addEventListener('pointermove', handlePointerMove, { passive: false });
+        window.addEventListener('pointerup', handlePointerUp);
+        window.addEventListener('pointercancel', handlePointerCancel);
+        window.addEventListener('keydown', handleKeyDown, true);
+        window.addEventListener('blur', handlePointerCancel);
+    }
+
+    function beginDrag(container, item) {
+        dragged = item;
+        originalOrder = sortableItems(container);
+        multiColumn = adminDragIsMultiColumn(originalOrder);
+        originalAnchor = originalOrder.length
+            ? originalOrder[originalOrder.length - 1].nextElementSibling
+            : null;
+        settleUntil = 0;
+        item.classList.add('dragging');
+        document.body.classList.add('admin-dragging');
+        if (!scrollFrame) scrollFrame = requestAnimationFrame(tick);
+    }
+
+    function handlePointerMove(event) {
+        if (event.pointerId !== pointerId) return;
+        pointerX = event.clientX;
+        pointerY = event.clientY;
+        if (pending) {
+            if (Math.abs(pointerX - originX) < ADMIN_DRAG_SLOP && Math.abs(pointerY - originY) < ADMIN_DRAG_SLOP) return;
+            const container = getContainer();
+            const item = pending;
+            pending = null;
+            if (!container || !item.isConnected) {
+                endDrag(false);
+                return;
+            }
+            beginDrag(container, item);
+        }
+        if (!dragged) return;
+        // Stops the press turning into a text selection or a native image drag.
+        if (event.cancelable) event.preventDefault();
+        updatePlacement();
+    }
+
+    function handlePointerUp(event) {
+        if (event.pointerId !== pointerId) return;
+        const wasDragging = Boolean(dragged);
+        if (!wasDragging) {
+            // A plain tap on the handle: let the click through untouched.
+            detach();
+            pending = null;
+            pointerId = null;
+            return;
+        }
+        endDrag(true);
+        // pointerup lands before click, so this is early enough to stop the
+        // drop from also activating whatever the handle sits inside.
+        onDragFinish();
+    }
+
+    function handlePointerCancel(event) {
+        if (event && event.pointerId !== undefined && event.pointerId !== pointerId) return;
+        if (!dragged) {
+            detach();
+            pending = null;
+            pointerId = null;
+            return;
+        }
+        endDrag(false);
+        onDragFinish();
+    }
+
+    function handleKeyDown(event) {
+        if (event.key !== 'Escape') return;
+        event.preventDefault();
+        event.stopPropagation();
+        handlePointerCancel(null);
+    }
+
+    const container = getContainer();
+    if (container) container.addEventListener('pointerdown', handlePointerDown);
+}
+
+function initAdminNavReorder() {
+    if (!els.tabs) return;
+    createAdminDragSort({
+        container: els.tabs,
+        handleSelector: '.admin-nav-drag',
+        itemSelector: 'button[data-panel]',
+        // Below 861px the rail becomes the fixed bottom bar and the handles are
+        // hidden, so ordering is a desktop affordance only.
+        canStart: () => window.matchMedia('(min-width: 861px)').matches,
+        onDragFinish: () => { adminNavSuppressClickUntil = performance.now() + ADMIN_DRAG_CLICK_GUARD_MS; },
+        onCommit: () => persistAdminNavOrder()
     });
 }
 
@@ -3920,104 +4211,44 @@ function initAdminCardInspector() {
 function initAdminSocialCardReorder() {
     const grid = document.querySelector('#links-panel .admin-link-grid');
     if (!grid) return;
-    let dragged = null;
-
-    grid.addEventListener('pointerdown', event => {
-        const handle = event.target.closest('[data-social-drag]');
-        const card = handle?.closest('[data-link-card]');
-        if (card) card.draggable = true;
-    });
-    grid.addEventListener('dragstart', event => {
-        const card = event.target.closest('[data-link-card]');
-        const key = card?.dataset.linkCard;
-        if (!card?.draggable || !SOCIAL_CARD_KEYS.includes(key)) {
-            event.preventDefault();
-            return;
+    createAdminDragSort({
+        container: grid,
+        handleSelector: '[data-social-drag]',
+        itemSelector: '[data-link-card]',
+        // The throne card is pinned to the end and is not part of the order.
+        canDrag: card => SOCIAL_CARD_KEYS.includes(card.dataset.linkCard),
+        canStart: () => {
+            // The old drop handler surfaced this on release; say it on the
+            // press instead rather than letting a doomed drag start.
+            if (linkSettingsHydrated) return true;
+            setStatus(els.adminStatus, 'Saved site settings are still loading.');
+            return false;
+        },
+        onDragFinish: () => { adminSocialSuppressClickUntil = performance.now() + ADMIN_DRAG_CLICK_GUARD_MS; },
+        onCommit: ({ order }) => {
+            commitSocialCardOrder(order.map(card => card.dataset.linkCard));
         }
-        dragged = card;
-        card.classList.add('dragging');
-        event.dataTransfer.effectAllowed = 'move';
-        event.dataTransfer.setData('text/plain', key);
-    });
-    grid.addEventListener('dragover', event => {
-        if (!dragged) return;
-        const over = event.target.closest('[data-link-card]');
-        if (!over || over === dragged || !SOCIAL_CARD_KEYS.includes(over.dataset.linkCard)) return;
-        event.preventDefault();
-        event.dataTransfer.dropEffect = 'move';
-        grid.querySelectorAll('.drag-over').forEach(card => card.classList.remove('drag-over'));
-        over.classList.add('drag-over');
-    });
-    grid.addEventListener('drop', event => {
-        const over = event.target.closest('[data-link-card]');
-        if (!dragged || !over || over === dragged || !SOCIAL_CARD_KEYS.includes(over.dataset.linkCard)) return;
-        event.preventDefault();
-        const rect = over.getBoundingClientRect();
-        const placeAfter = event.clientY > rect.top + rect.height / 2
-            || (Math.abs(event.clientY - (rect.top + rect.height / 2)) < rect.height / 4 && event.clientX > rect.left + rect.width / 2);
-        if (reorderSocialCard(dragged.dataset.linkCard, over.dataset.linkCard, placeAfter)) {
-            adminSocialSuppressClickUntil = performance.now() + 250;
-        }
-    });
-    grid.addEventListener('dragend', () => {
-        grid.querySelectorAll('[data-link-card]').forEach(card => {
-            card.draggable = false;
-            card.classList.remove('dragging', 'drag-over');
-        });
-        dragged = null;
-    });
-    document.addEventListener('pointerup', () => {
-        grid.querySelectorAll('[data-link-card]').forEach(card => { card.draggable = false; });
     });
 }
 
 function initAdminWishlistReorder() {
     const list = els.wishlistItemsList;
     if (!list) return;
-    let dragged = null;
-
-    list.addEventListener('pointerdown', event => {
-        const handle = event.target.closest('.admin-wishlist-drag');
-        const card = handle?.closest('.admin-card.is-featured');
-        if (card) card.draggable = true;
-    });
-    list.addEventListener('dragstart', event => {
-        const card = event.target.closest('.admin-card.is-featured');
-        if (!card?.draggable) {
-            event.preventDefault();
-            return;
+    createAdminDragSort({
+        container: list,
+        handleSelector: '.admin-wishlist-drag',
+        itemSelector: '.admin-card',
+        canDrag: card => card.classList.contains('is-featured'),
+        canStart: () => !wishlistActionBusy,
+        onCommit: ({ item, order }) => {
+            // Positions live server-side across every page of the list, so the
+            // move is expressed against a neighbour rather than a page index.
+            const index = order.indexOf(item);
+            const previous = index > 0 ? order[index - 1] : null;
+            const next = index >= 0 && index < order.length - 1 ? order[index + 1] : null;
+            if (previous) void moveWishlistItemByDrag(item.dataset.id, previous.dataset.id, true);
+            else if (next) void moveWishlistItemByDrag(item.dataset.id, next.dataset.id, false);
         }
-        dragged = card;
-        card.classList.add('dragging');
-        event.dataTransfer.effectAllowed = 'move';
-        event.dataTransfer.setData('text/plain', card.dataset.id || '');
-    });
-    list.addEventListener('dragover', event => {
-        if (!dragged) return;
-        const over = event.target.closest('.admin-card.is-featured');
-        if (!over || over === dragged) return;
-        event.preventDefault();
-        event.dataTransfer.dropEffect = 'move';
-        list.querySelectorAll('.drag-over').forEach(card => card.classList.remove('drag-over'));
-        over.classList.add('drag-over');
-    });
-    list.addEventListener('drop', event => {
-        const over = event.target.closest('.admin-card.is-featured');
-        if (!dragged || !over || over === dragged) return;
-        event.preventDefault();
-        const rect = over.getBoundingClientRect();
-        const placeAfter = event.clientY > rect.top + rect.height / 2;
-        void moveWishlistItemByDrag(dragged.dataset.id, over.dataset.id, placeAfter);
-    });
-    list.addEventListener('dragend', () => {
-        list.querySelectorAll('.admin-card').forEach(card => {
-            card.draggable = false;
-            card.classList.remove('dragging', 'drag-over');
-        });
-        dragged = null;
-    });
-    document.addEventListener('pointerup', () => {
-        list.querySelectorAll('.admin-card').forEach(card => { card.draggable = false; });
     });
 }
 
