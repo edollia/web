@@ -1739,11 +1739,12 @@ body.has-posts-panel-open .site-brand-footer {
 .note-editor {
     position: absolute;
     z-index: 2;
-    /* A column on the empty left of the short note: clear of the heart on
-       its left and of the bunnies on its right. */
-    top: 8.5%;
-    right: 45%;
-    bottom: 6%;
+    /* Fills the note from the star + heart on the left to the star on the
+       right; the ::before below makes the lower lines wrap around the
+       bunnies. */
+    top: 8%;
+    right: 13.5%;
+    bottom: 5%;
     left: 18.5%;
     margin: 0;
     box-sizing: border-box;
@@ -1771,6 +1772,18 @@ body.has-posts-panel-open .site-brand-footer {
     -webkit-font-smoothing: antialiased;
 }
 
+/* An invisible float over the bunnies (traced from the 599x252 art): the
+   upper lines run the full width, the lower ones stop before the ears. */
+.note-copy::before,
+.note-editor::before {
+    float: right;
+    width: 44.7%;
+    height: 100%;
+    content: "";
+    /* Head top, then the pink bunny's ear, then its narrower body. */
+    shape-outside: polygon(100% 0, 100% 48.5%, 34% 48.5%, 19.8% 52.3%, 7.7% 59.9%, 0 68%, 0 79.5%, 19.8% 81.9%, 19.8% 100%, 100% 100%);
+}
+
 .note-editor {
     z-index: 3;
     padding: 0 0 4px;
@@ -1787,6 +1800,10 @@ body.has-posts-panel-open .site-brand-footer {
 }
 
 .note-editor:empty::before {
+    float: none;
+    width: auto;
+    height: auto;
+    shape-outside: none;
     color: rgba(153, 105, 130, 0.32);
     content: attr(data-placeholder);
     pointer-events: none;

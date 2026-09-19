@@ -95,6 +95,14 @@
     const HEART_MASK_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="${HEART_PATH}" fill="#000"/></svg>`;
     const HEART_MASK_URL = `url("data:image/svg+xml,${encodeURIComponent(HEART_MASK_SVG)}")`;
 
+    // The paw that boops a heart to show it's tappable (see runPawBoop).
+    const PAW_BOOP_SVG = '<svg viewBox="0 0 40 52" aria-hidden="true"><path d="M8.5 52V24.5C8.5 12.8 13.6 5.5 20 5.5s11.5 7.3 11.5 19V52" fill="#fff" stroke="rgba(236,150,188,.85)" stroke-width="1.6" stroke-linejoin="round"/><g fill="#f8b2cd"><ellipse cx="20" cy="28" rx="6.4" ry="5.3"/><ellipse cx="13.4" cy="18.6" rx="2.3" ry="2.7"/><ellipse cx="17.8" cy="13.6" rx="2.3" ry="2.7"/><ellipse cx="22.2" cy="13.6" rx="2.3" ry="2.7"/><ellipse cx="26.6" cy="18.6" rx="2.3" ry="2.7"/></g></svg>';
+    const PAW_BOOP_MARKUP = `<span class="dwl-paw-wave" aria-hidden="true"></span><span class="dwl-paw-float" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="${HEART_PATH}"/></svg></span><span class="dwl-paw" aria-hidden="true">${PAW_BOOP_SVG}</span>`;
+    const PAW_BOOP_FIRST_MS = 1600; // after the cards appear
+    const PAW_BOOP_MS = 1500; // one boop, matches the CSS animations
+    const PAW_BOOP_GAP_MS = 7000; // between boops
+    const PAW_BOOP_RETRY_MS = 700; // when the moment is wrong (tour, preview, no heart in view)
+
     let panel = null;
     let items = [];
     let selectedIds = new Set();
@@ -105,9 +113,9 @@
     // list stay in the code as the other two options that setting can pick.
     let wishlistViewMode = 'masonry'; // 'grid' | 'list' | 'masonry'
     const WISHLIST_VIEW_MODES = ['grid', 'list', 'masonry'];
-    let laceInviteTimer = 0;
-    let laceInviteRun = 0;
-    let recentLaceInviteIds = new Set();
+    let pawBoopTimer = 0;
+    let pawBoopRun = 0;
+    let lastPawBoopId = '';
     let checkoutInFlight = false;
     let checkoutStatusMessage = '';
     let checkoutRequestRun = 0;
@@ -1774,105 +1782,89 @@
                 -webkit-tap-highlight-color: transparent;
                 transition: transform 0.16s cubic-bezier(0.2, 0.8, 0.25, 1.25), background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, color 0.18s ease;
             }
-            /* Lace Carousel travels in one-shot waves. JS assigns the class to
-               several random visible/unselected cards, each heart pulses once,
-               then the class moves to a different randomized group. Selection
-               removes the effect through :not(.selected); deselected cards are
-               eligible for a later wave without a rebuild or scroll reset. */
-            .doll-wishlist-cart-btn::before,
-            .doll-wishlist-cart-btn::after {
-                content: "";
-                position: absolute;
-                z-index: 0;
-                pointer-events: none;
-                border-radius: inherit;
-                opacity: 0;
-            }
-            .doll-wishlist-cart-btn::before {
-                inset: -8px;
-                background: repeating-conic-gradient(
-                    from 0deg,
-                    rgba(226, 91, 146, 0.72) 0 7deg,
-                    rgba(255, 208, 228, 0.24) 7deg 10deg,
-                    transparent 10deg 24deg
-                );
-                -webkit-mask: radial-gradient(
-                    circle,
-                    transparent 57%,
-                    #000 59% 67%,
-                    transparent 69%
-                );
-                mask: radial-gradient(
-                    circle,
-                    transparent 57%,
-                    #000 59% 67%,
-                    transparent 69%
-                );
-                filter: drop-shadow(0 0 3px rgba(226, 91, 146, 0.24));
-                rotate: var(--dwl-lace-angle, 0deg);
-            }
-            .doll-wishlist-cart-btn::after {
-                inset: -3px;
-                border: 1px solid rgba(238, 142, 181, 0.42);
-                box-shadow:
-                    0 0 7px rgba(232, 102, 154, 0.16),
-                    inset 0 0 4px rgba(255, 210, 229, 0.26);
-            }
+            /* Paw boop: a little paw reaches up and boops one heart, so
+               visitors see the hearts are tappable. JS (runPawBoop) picks
+               the heart and only plays it while nothing is hearted yet.
+               Everything here animates transform/opacity/scale only. */
             .doll-wishlist-cart-btn svg {
                 position: relative;
                 z-index: 1;
             }
-            .doll-wishlist-item.dwl-card-visible.dwl-lace-invite:not(.selected) .doll-wishlist-cart-btn::before {
-                animation:
-                    dollWishlistLaceTurn var(--dwl-lace-pulse, 2.9s) ease-in-out var(--dwl-lace-delay, 0s) 1 both,
-                    dollWishlistLaceBreathe var(--dwl-lace-pulse, 2.9s) ease-in-out var(--dwl-lace-delay, 0s) 1 both;
-                animation-direction: var(--dwl-lace-direction, normal), normal;
+            .doll-wishlist-cart-btn .dwl-paw,
+            .doll-wishlist-cart-btn .dwl-paw-float,
+            .doll-wishlist-cart-btn .dwl-paw-wave {
+                position: absolute;
+                pointer-events: none;
             }
-            .doll-wishlist-item.dwl-card-visible.dwl-lace-invite:not(.selected) .doll-wishlist-cart-btn::after {
-                animation: dollWishlistLaceInner var(--dwl-lace-pulse, 2.9s) ease-in-out var(--dwl-lace-delay, 0s) 1 both;
+            .doll-wishlist-cart-btn .dwl-paw {
+                left: 50%;
+                top: 50%;
+                z-index: 3;
+                width: 26px;
+                height: 34px;
+                margin: -4px 0 0 -13px;
+                filter: drop-shadow(0 3px 5px rgba(116, 74, 95, 0.24));
+                animation: dollWishlistPawTap 1.5s cubic-bezier(0.2, 0.78, 0.22, 1) both;
+                will-change: transform, opacity;
             }
-            .doll-wishlist-item.dwl-card-visible.dwl-lace-invite:not(.selected) .doll-wishlist-cart-btn .dwl-heart {
-                transform-origin: center;
-                animation: dollWishlistLaceHeart var(--dwl-lace-pulse, 2.9s) ease-in-out var(--dwl-lace-delay, 0s) 1 both;
+            .doll-wishlist-cart-btn .dwl-paw svg {
+                width: 100%;
+                height: 100%;
+                overflow: visible;
+                -webkit-mask-image: linear-gradient(#000 55%, transparent 96%);
+                mask-image: linear-gradient(#000 55%, transparent 96%);
             }
-            @keyframes dollWishlistLaceTurn {
-                to { rotate: calc(var(--dwl-lace-angle, 0deg) + 0.42turn); }
+            .doll-wishlist-cart-btn .dwl-paw-float {
+                left: 50%;
+                top: 50%;
+                z-index: 2;
+                width: 11px;
+                height: 11px;
+                margin: -5.5px 0 0 -5.5px;
+                color: #f06a9f;
+                opacity: 0;
+                animation: dollWishlistPawFloat 1.5s ease-out both;
             }
-            @keyframes dollWishlistLaceBreathe {
-                0% {
-                    opacity: 0;
-                    transform: scale(0.84);
-                }
-                42% {
-                    opacity: 0.78;
-                    transform: scale(1.08);
-                }
-                100% {
-                    opacity: 0;
-                    transform: scale(1.18);
-                }
+            .doll-wishlist-cart-btn .dwl-paw-float svg {
+                width: 100%;
+                height: 100%;
             }
-            @keyframes dollWishlistLaceInner {
-                0% {
-                    opacity: 0;
-                    transform: scale(0.88);
-                }
-                44% {
-                    opacity: 0.66;
-                    transform: scale(1.13);
-                }
-                100% {
-                    opacity: 0;
-                    transform: scale(1.2);
-                }
+            .doll-wishlist-cart-btn .dwl-paw-wave {
+                inset: -2px;
+                z-index: 0;
+                border: 2px solid rgba(242, 127, 174, 0.55);
+                border-radius: 50%;
+                opacity: 0;
+                animation: dollWishlistPawWave 1.5s ease-out both;
             }
-            @keyframes dollWishlistLaceHeart {
-                0%, 100% {
-                    transform: scale(1);
-                }
-                44% {
-                    transform: scale(1.075);
-                }
+            .doll-wishlist-item.dwl-paw-boop:not(.selected) .doll-wishlist-cart-btn {
+                animation: dollWishlistPawPress 1.5s cubic-bezier(0.2, 0.82, 0.24, 1) both;
+            }
+            @keyframes dollWishlistPawTap {
+                0% { opacity: 0; transform: translate(18px, 30px) rotate(-12deg); }
+                24% { opacity: 0.95; }
+                50% { opacity: 1; transform: translate(0, 0) rotate(-7deg) scale(1); }
+                60% { transform: translate(0, 2px) rotate(-6deg) scale(0.88); }
+                74% { opacity: 0.95; transform: translate(1px, 4px) rotate(-7deg) scale(0.98); }
+                100% { opacity: 0; transform: translate(12px, 28px) rotate(-10deg); }
+            }
+            /* The individual scale property, so it stacks on top of the
+               transforms hover/active/list mode already put on the button. */
+            @keyframes dollWishlistPawPress {
+                0%, 52% { scale: 1; }
+                61% { scale: 0.84; }
+                74% { scale: 1.08; }
+                86%, 100% { scale: 1; }
+            }
+            @keyframes dollWishlistPawFloat {
+                0%, 58% { opacity: 0; transform: translate(0, 0) scale(0.4); }
+                70% { opacity: 1; transform: translate(-2px, -16px) scale(1); }
+                100% { opacity: 0; transform: translate(-5px, -30px) scale(0.9) rotate(-12deg); }
+            }
+            @keyframes dollWishlistPawWave {
+                0%, 56% { opacity: 0; transform: scale(0.7); }
+                66% { opacity: 0.8; }
+                100% { opacity: 0; transform: scale(1.6); }
             }
             .doll-wishlist-cart-btn:active { transform: scale(0.88); }
             .doll-wishlist-cart-btn:focus-visible {
@@ -1888,11 +1880,6 @@
                 box-shadow:
                     0 5px 11px rgba(202, 70, 123, 0.26),
                     inset 0 1px 0 rgba(255, 255, 255, 0.55);
-            }
-            .doll-wishlist-item.selected .doll-wishlist-cart-btn::before,
-            .doll-wishlist-item.selected .doll-wishlist-cart-btn::after {
-                animation: none;
-                opacity: 0;
             }
             .doll-wishlist-item.selected .dwl-heart { display: none; }
             .doll-wishlist-item.selected .dwl-heart-filled {
@@ -3572,102 +3559,83 @@
         </a>`;
     }
 
-    function randomLaceHeartStyle() {
-        const pulse = 2.4 + Math.random() * 0.7;
-        const delay = Math.random() * 0.36;
-        const angle = Math.random() * 360;
-        const direction = Math.random() < 0.5 ? 'normal' : 'reverse';
-        return {
-            cssText: [
-            `--dwl-lace-pulse:${pulse.toFixed(2)}s`,
-            `--dwl-lace-delay:${delay.toFixed(2)}s`,
-            `--dwl-lace-angle:${angle.toFixed(1)}deg`,
-            `--dwl-lace-direction:${direction}`,
-            ].join(';'),
-            totalMs: Math.ceil((pulse + delay) * 1000),
+    function removePawBoop(card) {
+        card?.classList.remove('dwl-paw-boop');
+        card?.querySelectorAll('.dwl-paw, .dwl-paw-float, .dwl-paw-wave')
+            .forEach(node => node.remove());
+    }
+
+    function stopPawBoops() {
+        pawBoopRun += 1;
+        if (pawBoopTimer) {
+            window.clearTimeout(pawBoopTimer);
+            pawBoopTimer = 0;
+        }
+        panel?.querySelectorAll('.doll-wishlist-item.dwl-paw-boop')
+            .forEach(removePawBoop);
+    }
+
+    // The top-most unhearted heart that is fully on screen, with room under
+    // it for the paw's arm (and clear of the sticky checkout dock).
+    function choosePawBoopCard(body) {
+        const scrollBox = body.classList.contains('dwl-scroll-body')
+            ? body.getBoundingClientRect()
+            : null;
+        const top = Math.max(0, scrollBox ? scrollBox.top : 0) + 6;
+        let bottom = Math.min(window.innerHeight, scrollBox ? scrollBox.bottom : window.innerHeight);
+        const dockRect = body.querySelector('.doll-wishlist-foot-dock')?.getBoundingClientRect();
+        if (dockRect && dockRect.height > 1) bottom = Math.min(bottom, dockRect.top);
+        bottom -= 26;
+
+        const candidates = [];
+        body.querySelectorAll('.doll-wishlist-item:not(.selected)').forEach(card => {
+            const rect = card.querySelector('.doll-wishlist-cart-btn')?.getBoundingClientRect();
+            if (!rect || !rect.width || rect.top < top || rect.bottom > bottom) return;
+            candidates.push({ card, top: rect.top, left: rect.left });
+        });
+        candidates.sort((a, b) => (Math.abs(a.top - b.top) > 12 ? a.top - b.top : a.left - b.left));
+        const fresh = candidates.find(entry => entry.card.dataset.itemId !== lastPawBoopId);
+        return (fresh || candidates[0])?.card || null;
+    }
+
+    // A paw boops one unhearted heart shortly after the cards appear and
+    // then every few seconds, a different heart when it can, for as long as
+    // Wishes is open. It waits out the tour, the photo preview and a hidden
+    // tab.
+    function runPawBoop(body, run) {
+        pawBoopTimer = 0;
+        if (run !== pawBoopRun || !body?.isConnected || !isWishlistPanelVisible()) return;
+        const later = delay => {
+            pawBoopTimer = window.setTimeout(() => runPawBoop(body, run), delay);
         };
-    }
-
-    function shuffleLaceCards(cards) {
-        const shuffled = [...cards];
-        for (let index = shuffled.length - 1; index > 0; index -= 1) {
-            const swapIndex = Math.floor(Math.random() * (index + 1));
-            [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
+        if (document.hidden
+            || panelOpening
+            || previewItemId !== null
+            || document.body.classList.contains('first-visit-tour-active')
+            || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+            later(PAW_BOOP_RETRY_MS);
+            return;
         }
-        return shuffled;
-    }
-
-    function removeLaceInviteStyles(card) {
+        const card = choosePawBoopCard(body);
         const button = card?.querySelector('.doll-wishlist-cart-btn');
-        card?.classList.remove('dwl-lace-invite');
-        if (!button) return;
-        [
-            '--dwl-lace-pulse',
-            '--dwl-lace-delay',
-            '--dwl-lace-angle',
-            '--dwl-lace-direction',
-        ].forEach(property => button.style.removeProperty(property));
-        if (!button.getAttribute('style')) button.removeAttribute('style');
-    }
-
-    function stopLaceInviteRotation() {
-        laceInviteRun += 1;
-        if (laceInviteTimer) {
-            window.clearTimeout(laceInviteTimer);
-            laceInviteTimer = 0;
-        }
-        recentLaceInviteIds.clear();
-        panel?.querySelectorAll('.doll-wishlist-item.dwl-lace-invite')
-            .forEach(removeLaceInviteStyles);
-    }
-
-    function chooseLaceWaveCards(body) {
-        const eligible = Array.from(body?.querySelectorAll(
-            '.doll-wishlist-item.dwl-card-visible:not(.selected)'
-        ) || []);
-        if (!eligible.length) return [];
-
-        const minimum = eligible.length >= 3 ? 2 : 1;
-        const maximum = Math.min(3, Math.max(minimum, Math.ceil(eligible.length / 3)));
-        const count = minimum + Math.floor(Math.random() * (maximum - minimum + 1));
-        let pool = eligible.filter(card => !recentLaceInviteIds.has(card.dataset.itemId));
-        if (pool.length < count) pool = eligible;
-        return shuffleLaceCards(pool).slice(0, Math.min(count, pool.length));
-    }
-
-    function runLaceInviteWave(body, run) {
-        if (run !== laceInviteRun || !body?.isConnected || !isWishlistPanelVisible()) return;
-        body.querySelectorAll('.doll-wishlist-item.dwl-lace-invite')
-            .forEach(removeLaceInviteStyles);
-
-        const waveCards = chooseLaceWaveCards(body);
-        if (!waveCards.length) {
-            laceInviteTimer = window.setTimeout(() => runLaceInviteWave(body, run), 420);
+        if (!button) {
+            later(PAW_BOOP_RETRY_MS);
             return;
         }
 
-        recentLaceInviteIds = new Set(waveCards.map(card => card.dataset.itemId));
-        let longestPulseMs = 0;
-        waveCards.forEach(card => {
-            const button = card.querySelector('.doll-wishlist-cart-btn');
-            if (!button) return;
-            const pulse = randomLaceHeartStyle();
-            button.setAttribute('style', pulse.cssText);
-            card.classList.add('dwl-lace-invite');
-            longestPulseMs = Math.max(longestPulseMs, pulse.totalMs);
-        });
-
-        const quietGapMs = 360 + Math.floor(Math.random() * 620);
-        laceInviteTimer = window.setTimeout(
-            () => runLaceInviteWave(body, run),
-            longestPulseMs + quietGapMs
-        );
+        lastPawBoopId = card.dataset.itemId || '';
+        button.insertAdjacentHTML('beforeend', PAW_BOOP_MARKUP);
+        card.classList.add('dwl-paw-boop');
+        pawBoopTimer = window.setTimeout(() => {
+            removePawBoop(card);
+            if (run === pawBoopRun) later(PAW_BOOP_GAP_MS);
+        }, PAW_BOOP_MS);
     }
 
-    function startLaceInviteRotation(body) {
-        stopLaceInviteRotation();
-        const run = laceInviteRun;
-        laceInviteTimer = window.setTimeout(() => runLaceInviteWave(body, run), 220);
+    function startPawBoops(body) {
+        stopPawBoops();
+        const run = pawBoopRun;
+        pawBoopTimer = window.setTimeout(() => runPawBoop(body, run), PAW_BOOP_FIRST_MS);
     }
 
     function cardMarkup(item, mode = wishlistViewMode, itemIndex = 0) {
@@ -3715,7 +3683,7 @@
     function renderBody() {
         if (!panel) return;
         const body = panel.querySelector('.doll-wishlist-body');
-        stopLaceInviteRotation();
+        stopPawBoops();
         titleMarqueeObserver?.disconnect();
         titleMarqueeObserver = null;
         stopProgressiveItemImages();
@@ -3852,7 +3820,7 @@
         if (loadState === 'ready') {
             window.requestAnimationFrame(() => {
                 syncTitleMarquees(body);
-                startLaceInviteRotation(body);
+                startPawBoops(body);
                 scheduleSwipeHint();
                 updateWishlistEdgeFade(body);
             });
@@ -4055,12 +4023,10 @@
                 btn.setAttribute('aria-pressed', String(selected));
                 btn.setAttribute('aria-label', `${selected ? 'Remove ' : 'Add '}${label}`);
             }
-            // Selecting cancels this card's current one-shot wave completely.
-            // If it is deselected later, it simply rejoins the eligible pool
-            // for a future full wave instead of restarting under the old
-            // timer and getting cut off partway through.
-            if (selected && card.classList.contains('dwl-lace-invite')) {
-                removeLaceInviteStyles(card);
+            // Hearting the card the paw is booping clears the paw at once,
+            // so the filled heart pops in on its own.
+            if (selected && card.classList.contains('dwl-paw-boop')) {
+                removePawBoop(card);
             }
         }
 
@@ -4236,7 +4202,7 @@
         window.requestAnimationFrame(() => {
             if (run !== itemsLoadRun || !isWishlistPanelVisible()) return;
             syncTitleMarquees(body);
-            startLaceInviteRotation(body);
+            startPawBoops(body);
             scheduleSwipeHint();
             updateWishlistEdgeFade(body);
         });
@@ -4410,7 +4376,7 @@
         items = [];
         loadState = 'idle';
         renderedBodySignature = '';
-        stopLaceInviteRotation();
+        stopPawBoops();
         imageDims.clear();
 
         const body = panel?.querySelector('.doll-wishlist-body');
@@ -4560,7 +4526,7 @@
         closePreview();
         clearIframeFallbackWatchdog();
         stopMasonryRepacking();
-        stopLaceInviteRotation();
+        stopPawBoops();
         cancelSwipeHintSequence();
         document.body.classList.remove('has-wishlist-panel-open', 'has-wishlist-selection');
         window.dollResetIconsCollapse?.();
