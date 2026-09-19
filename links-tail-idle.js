@@ -543,6 +543,6 @@
     }
 
     sourceImage.addEventListener('load', drawFallbackSafeInitialFrame, { once: true });
-    sourceImage.src = 'site-images/links-tail-remake-alpha.png?v=2';
+    sourceImage.src = 'site-images/links-tail-remake-alpha.png?v=3';
     if (sourceImage.complete && sourceImage.naturalWidth) drawFallbackSafeInitialFrame();
 })();

@@ -146,6 +146,9 @@
     let wishlistExitTransitionHandler = null;
     let renderedBodySignature = '';
     let iframeFallbackTimer = 0;
+    // True while the Throne embed is open as this panel's own fallback, so
+    // the conflict guard doesn't treat it as a rival and close everything.
+    let iframeHandoffActive = false;
     let loaderShownAt = 0;
     let masonryResizeObserver = null;
     let masonryRepackRaf = 0;
@@ -1010,6 +1013,7 @@
             reason
         );
         if (typeof window.openThroneOverlay === 'function') {
+            iframeHandoffActive = true;
             window.openThroneOverlay();
             return;
         }
@@ -3069,10 +3073,15 @@
             return true;
         }
 
+        // The embed's body class is set at once, its .show a frame later.
+        if (iframeHandoffActive && !document.body.classList.contains('has-throne-overlay-open')) {
+            iframeHandoffActive = false;
+        }
+        if (!iframeHandoffActive && document.querySelector('.doll-throne-overlay.show')) return true;
+
         return entryPopupIsVisible() || Boolean(document.querySelector([
             '.submit-popup.show',
             '.admin-gate.show',
-            '.doll-throne-overlay.show',
             '[data-kofi-open="true"]',
         ].join(',')));
     }
@@ -4099,7 +4108,16 @@
         }
     }
 
+    // The sync function throttles itself server-side too; this just stops
+    // one visitor who flips between menus from calling it on every open.
+    const BACKGROUND_SYNC_MIN_GAP_MS = 3 * 60 * 1000;
+    let lastBackgroundSyncAt = 0;
+    let backgroundSyncInFlight = false;
+
     async function triggerBackgroundSync(signal) {
+        if (backgroundSyncInFlight) return;
+        if (lastBackgroundSyncAt && Date.now() - lastBackgroundSyncAt < BACKGROUND_SYNC_MIN_GAP_MS) return;
+        backgroundSyncInFlight = true;
         const controller = typeof window.AbortController === 'function'
             ? new AbortController()
             : null;
@@ -4116,11 +4134,14 @@
                 FETCH_TIMEOUT_MS,
                 () => controller?.abort()
             );
+            // Only a sync that actually reached the server starts the gap.
+            lastBackgroundSyncAt = Date.now();
         } catch (error) {
             if (signal?.aborted) throw error;
             // The mirrored table is still a valid fallback when live sync is
             // throttled or temporarily unavailable.
         } finally {
+            backgroundSyncInFlight = false;
             signal?.removeEventListener('abort', relayAbort);
         }
     }
@@ -4268,6 +4289,13 @@
             await holdMinimumLoader(run);
             if (run !== itemsLoadRun || !isWishlistPanelVisible()) return;
             openIframeFallback('iframe-fallback-error');
+            // Under the embed, settle on the retry card for when it's closed
+            // instead of leaving the paw spinning.
+            if (run === itemsLoadRun && loadState !== 'ready') {
+                loadState = 'failed';
+                renderBody();
+                renderFoot();
+            }
         } finally {
             if (itemsFetchController === controller) itemsFetchController = null;
         }
@@ -4472,7 +4500,7 @@
         wishlistButton?.classList.remove('show-glitter');
         wishlistButton?.classList.add('dwl-open');
         wishlistButton?.setAttribute('aria-expanded', 'true');
-        wishlistButton?.setAttribute('aria-label', 'Wishlist, current page');
+        wishlistButton?.setAttribute('aria-label', 'Wishes, current page');
         document.querySelector('.site-brand-footer')?.setAttribute('aria-label', 'Full wishlist on Throne');
 
         selectedIds = new Set();
@@ -4515,7 +4543,9 @@
     function closeThroneMockup(silent = false) {
         const wasOpening = panelOpening;
         const wasOpen = Boolean(panel?.classList.contains('active'));
-        const focusWasInside = Boolean(panel?.contains(document.activeElement));
+        // The "full wishlist on Throne" footer link counts as inside too.
+        const focusWasInside = Boolean(panel?.contains(document.activeElement)
+            || document.activeElement?.closest?.('.site-brand-footer'));
         if (panelOpenRaf) {
             window.cancelAnimationFrame(panelOpenRaf);
             panelOpenRaf = 0;
@@ -4539,7 +4569,7 @@
         const wishlistButton = getWishlistButton();
         wishlistButton?.classList.remove('dwl-open', 'show-glitter');
         wishlistButton?.setAttribute('aria-expanded', 'false');
-        wishlistButton?.setAttribute('aria-label', 'Open wishlist');
+        wishlistButton?.setAttribute('aria-label', 'Open wishes');
         document.querySelector('.site-brand-footer')?.setAttribute('aria-label', 'Site home');
         panel?.closest('.toggle-container')?.style.removeProperty('--dwl-wishlist-height');
         if (!panel || (!wasOpen && !wasOpening)) return;

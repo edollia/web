@@ -883,6 +883,14 @@ document.addEventListener("DOMContentLoaded", async function() {
 
     let submitPopupTimer = null;
 
+    // A stalled connection used to leave "Send" spinning forever; past the
+    // deadline the send fails like any other error and can be retried.
+    function withSubmitDeadline(query, ms) {
+        if (typeof query?.abortSignal !== 'function'
+            || typeof window.AbortSignal?.timeout !== 'function') return query;
+        return query.abortSignal(AbortSignal.timeout(ms));
+    }
+
     function showSubmitPopup(message) {
         let popup = document.getElementById('submit-popup');
         let popupMessage = document.getElementById('submit-popup-message');
@@ -898,6 +906,18 @@ document.addEventListener("DOMContentLoaded", async function() {
         }
 
         popupMessage.textContent = message;
+        // The popup itself is decorative (aria-hidden); screen readers get
+        // the same words through a hidden polite status line.
+        let srStatus = document.getElementById('submit-sr-status');
+        if (!srStatus) {
+            srStatus = document.createElement('p');
+            srStatus.id = 'submit-sr-status';
+            srStatus.className = 'visually-hidden';
+            srStatus.setAttribute('role', 'status');
+            document.body.appendChild(srStatus);
+        }
+        srStatus.textContent = '';
+        window.setTimeout(() => { srStatus.textContent = message; }, 60);
         popup.classList.add('show');
         popup.setAttribute('aria-hidden', 'false');
         clearTimeout(submitPopupTimer);
@@ -999,6 +1019,8 @@ document.addEventListener("DOMContentLoaded", async function() {
             gateReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
             gate.classList.add('show');
             gate.setAttribute('aria-hidden', 'false');
+            // Inert while closed, so Tab can't wander into the invisible gate.
+            gate.inert = false;
             input.value = '';
             if (error) error.textContent = '';
             window.setTimeout(() => input.focus(), 80);
@@ -1007,6 +1029,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         function hideGate() {
             gate.classList.remove('show');
             gate.setAttribute('aria-hidden', 'true');
+            gate.inert = true;
             gateReturnFocus?.focus?.({ preventScroll: true });
             gateReturnFocus = null;
         }
@@ -1035,7 +1058,8 @@ document.addEventListener("DOMContentLoaded", async function() {
                 return;
             }
 
-            sessionStorage.setItem('doll_admin_gate', 'open');
+            // Private browsing can refuse storage; the admin login still works.
+            try { sessionStorage.setItem('doll_admin_gate', 'open'); } catch (storageError) {}
             playUiSound('link');
             window.location.href = resolveSiteRoute('admin/');
         });
@@ -1054,6 +1078,28 @@ document.addEventListener("DOMContentLoaded", async function() {
     }
 
     initAdminGate();
+
+    // The page itself never scrolls (body overflow is hidden), but focus or
+    // scrollIntoView could still nudge it, and iOS can leave it pushed up
+    // after its keyboard closes; either left a blank band under the footer
+    // until reload. Snap back, except while someone is typing, when iOS
+    // moves the page to keep the text field in view.
+    (function keepPageUnscrolled() {
+        const isTyping = () => {
+            const active = document.activeElement;
+            return Boolean(active?.matches?.('input, textarea, [contenteditable]:not([contenteditable="false"])'));
+        };
+        // A finger moving the page is a person, not a stray nudge: leave it.
+        let lastTouchMoveAt = 0;
+        document.addEventListener('touchmove', () => { lastTouchMoveAt = Date.now(); }, { passive: true });
+        const snapBack = () => {
+            if (!window.scrollX && !window.scrollY) return;
+            if (isTyping() || Date.now() - lastTouchMoveAt < 1500) return;
+            window.scrollTo(0, 0);
+        };
+        window.addEventListener('scroll', snapBack, { passive: true });
+        document.addEventListener('focusout', () => window.setTimeout(snapBack, 350));
+    }());
 
     function initNotePeel() {
         const noteTarget = document.getElementById('note-peel-target');
@@ -1301,6 +1347,35 @@ document.addEventListener("DOMContentLoaded", async function() {
             motionFrame = window.requestAnimationFrame(tick);
         }
 
+        // The note is the first item of the scrolling Links panel, which
+        // clips anything past its edges. While it's peeled at the top of the
+        // list it rides in a fixed layer over the same spot, so the flap and
+        // the fall-away aren't cut off; afterwards it goes back in place.
+        const noteStage = noteTarget.closest('.links-note-stage');
+        const noteScroller = noteTarget.closest('.social-links-panel');
+        let noteLiftLayer = null;
+
+        function liftNote() {
+            if (!noteStage || !noteScroller || noteLiftLayer || noteScroller.scrollTop > 1) return;
+            const rect = noteStage.getBoundingClientRect();
+            noteLiftLayer = document.createElement('div');
+            noteLiftLayer.className = 'links-note-stage note-lift-layer';
+            noteLiftLayer.style.left = `${rect.left}px`;
+            noteLiftLayer.style.top = `${rect.top}px`;
+            noteLiftLayer.style.width = `${rect.width}px`;
+            noteLiftLayer.style.height = `${rect.height}px`;
+            (noteStage.closest('.main-screen') || document.body).appendChild(noteLiftLayer);
+            noteLiftLayer.appendChild(noteTarget);
+        }
+
+        function lowerNote() {
+            if (!noteLiftLayer) return;
+            // Back in front of the sticker, which its sibling rules expect.
+            noteStage.insertBefore(noteTarget, noteStage.firstChild);
+            noteLiftLayer.remove();
+            noteLiftLayer = null;
+        }
+
         function resetPeel() {
             if (detaching) return;
             dragging = false;
@@ -1314,6 +1389,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                 noteTarget.classList.remove('resetting');
                 noteTarget.style.removeProperty('transform');
                 hideUnderSign();
+                lowerNote();
             });
         }
 
@@ -1343,6 +1419,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                     window.setTimeout(() => {
                         noteTarget.classList.add('peeled-away');
                         noteTarget.setAttribute('aria-hidden', 'true');
+                        lowerNote();
                     }, 860);
                 });
             });
@@ -1368,6 +1445,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             motionFrame = 0;
             clearFoldGeometry();
             noteTarget.classList.remove('resetting');
+            liftNote();
             noteTarget.classList.add('peeling');
             showUnderSign();
             peelHandle.setPointerCapture?.(e.pointerId);
@@ -2076,6 +2154,12 @@ document.addEventListener("DOMContentLoaded", async function() {
         if (timeoutId) window.clearTimeout(timeoutId);
     }
 
+    // The Supabase module starts downloading now, alongside the critical
+    // images, instead of after them and the 2s minimum. It is still only
+    // used (and still bounded by the same timeout) once loading finishes.
+    const earlySupabaseModulePromise = import('https://esm.sh/@supabase/supabase-js@2');
+    earlySupabaseModulePromise.catch(() => {});
+
     // Enhanced loading logic: wait for min time, window load, AND ALL critical resources
     Promise.all([
         new Promise(resolve => setTimeout(resolve, minLoadingTime)),
@@ -2177,10 +2261,10 @@ document.addEventListener("DOMContentLoaded", async function() {
             }, 8000);
         }),
     ]).then(async () => {
-        // Load Supabase only after the initial loading is complete
+        // Set up Supabase once the initial loading is complete
         setLoadingProgress(CLIENT_SETUP_PROGRESS_START);
 
-        const supabaseModulePromise = import('https://esm.sh/@supabase/supabase-js@2');
+        const supabaseModulePromise = earlySupabaseModulePromise;
         try {
             // Bounded — unlike fetch(), a dynamic import() has no built-in
             // timeout. A stalled connection to esm.sh (no error, just no
@@ -3132,8 +3216,8 @@ document.addEventListener("DOMContentLoaded", async function() {
         drawingWidget?.classList.toggle('active', doodleActive);
         askTab?.classList.toggle('active', askActive);
         doodleTab?.classList.toggle('active', doodleActive);
-        askTab?.setAttribute('aria-selected', String(askActive));
-        doodleTab?.setAttribute('aria-selected', String(doodleActive));
+        askTab?.setAttribute('aria-expanded', String(askActive));
+        doodleTab?.setAttribute('aria-expanded', String(doodleActive));
         askForm?.setAttribute('aria-hidden', String(!askActive));
         drawingWidget?.setAttribute('aria-hidden', String(!doodleActive));
         if (askForm) askForm.inert = !askActive;
@@ -3803,7 +3887,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         option.setAttribute('aria-hidden', 'true');
         option.innerHTML = `
             <span class="social-link-icon" aria-hidden="true">
-                <img src="social-icons/onlyfans.png" alt="" width="192" height="192" decoding="async">
+                <img src="social-icons/onlyfans.png" alt="" width="192" height="192" loading="lazy" decoding="async">
             </span>
             <span class="social-link-copy">
                 <strong>onlyfans</strong>
@@ -4572,7 +4656,6 @@ document.addEventListener("DOMContentLoaded", async function() {
             personNodes.forEach(node => {
                 node.sameAs = sameAs;
                 node.description = pageDescription;
-                node.slogan = siteTagline;
             });
             graph
                 .filter(node => node['@type'] === 'WebPage' || node['@type'] === 'ProfilePage')
@@ -4652,6 +4735,14 @@ document.addEventListener("DOMContentLoaded", async function() {
                 fitHomepageNoteElement(homepageNoteText);
             })
             : null;
+    }
+
+    // The note text usually renders while the entry screen still hides it,
+    // when it can't be measured, so it's sized again once it has a box.
+    if (homepageNoteText && typeof window.ResizeObserver === 'function') {
+        new ResizeObserver(() => {
+            if (homepageNoteText.textContent) fitHomepageNoteElement(homepageNoteText);
+        }).observe(homepageNoteText);
     }
 
     function getEditorPlainText() {
@@ -5279,6 +5370,8 @@ document.addEventListener("DOMContentLoaded", async function() {
         socialLinksShell?.classList.remove('is-loading');
         if (socialLinksLoading) socialLinksLoading.setAttribute('aria-hidden', 'true');
         socialLinksPanel?.setAttribute('aria-hidden', 'true');
+        // Closed, the panel is invisible; keep Tab from landing on its links.
+        if (socialLinksPanel) socialLinksPanel.inert = true;
         clearScrollMotion(socialLinksShell);
         document.body.classList.remove('has-social-panel-open');
         resetIconsCollapse();
@@ -5403,6 +5496,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         // The existing note is now the first Links item and stays visible
         // while the media cards prepare underneath it.
         socialLinksShell?.classList.add('active');
+        if (socialLinksPanel) socialLinksPanel.inert = false;
         playSocialCardVideos();
         revealSocialPanelAfterPreviews(openGeneration);
         // Establishes the correct top/bottom fade immediately (e.g. a bottom
@@ -5493,7 +5587,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         if (siteLinkSettings.maintenance_enabled === true) return;
         const steps = [
             { element: socialsButton, label: 'links', placement: 'up' },
-            { element: supportMenuButton, label: 'wishlist', placement: 'down' },
+            { element: supportMenuButton, label: 'wishes', placement: 'down' },
             { element: actionMenuButton, label: ':3', placement: 'up' }
         ].filter(step => step.element && !step.element.classList.contains('site-link-hidden'));
         if (!steps.length) return;
@@ -5573,14 +5667,22 @@ document.addEventListener("DOMContentLoaded", async function() {
                 const rect = step.element.getBoundingClientRect();
                 const targetX = rect.left + rect.width / 2;
                 const labelAbove = step.placement !== 'down';
+                // Pointing up from below, the arrow starts under the button's
+                // own name ("wishes"), not on top of it.
+                const nameRect = labelAbove
+                    ? null
+                    : step.element.closest('.icon-container')?.querySelector('.dwl-icon-name')?.getBoundingClientRect();
+                const belowBottom = nameRect?.height ? Math.max(rect.bottom, nameRect.bottom) : rect.bottom;
                 const labelX = Math.max(58, Math.min(window.innerWidth - 58, targetX + (index - 1) * 14));
                 const labelY = labelAbove
                     ? Math.max(54, rect.top - 72)
-                    : Math.min(window.innerHeight - 54, rect.bottom + 68);
+                    : Math.min(window.innerHeight - 54, belowBottom + (nameRect?.height ? 60 : 68));
                 // Start just beyond each highlighted button's circular ring so
                 // all three arrowheads stay crisp when the scene draws together.
                 const arrowTargetGap = 14;
-                const startY = labelAbove ? rect.top - arrowTargetGap : rect.bottom + arrowTargetGap;
+                const startY = labelAbove
+                    ? rect.top - arrowTargetGap
+                    : belowBottom + (nameRect?.height ? 7 : arrowTargetGap);
                 const endY = labelAbove ? labelY + 24 : labelY - 24;
                 const curveY = labelAbove ? (startY + endY) / 2 - 26 : (startY + endY) / 2 + 26;
 
@@ -5913,6 +6015,13 @@ document.addEventListener("DOMContentLoaded", async function() {
 
         if (actionMenuButton?.classList.contains('open')) {
             event.preventDefault();
+            // One layer at a time: an open ask/doodle composer closes first.
+            const composerMode = communityHub?.dataset.composerMode;
+            if (composerMode === 'ask' || composerMode === 'doodle') {
+                setCommunityComposerMode('closed');
+                document.getElementById(composerMode === 'ask' ? 'ask-button' : 'toggle-button')?.focus({ preventScroll: true });
+                return;
+            }
             showNoteImage();
             actionMenuButton.focus({ preventScroll: true });
         }
@@ -5930,7 +6039,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     // ===== ICON GLITTER ANIMATION =====
     // Pink glitter animation cycle: show 2s after icon appears, stay 2s, then repeat every 10 seconds (2s show + 8s hide)
     function showGlitter(button) {
-        if (!button) return;
+        if (!button || prefersReducedLoadingMotion) return;
         
         button.classList.add('show-glitter');
         
@@ -6213,12 +6322,12 @@ document.addEventListener("DOMContentLoaded", async function() {
             try {
                 const ipAddress = await getVisitorIdentity();
 
-                const { error } = await window.supabase
+                const { error } = await withSubmitDeadline(window.supabase
                     .from('drawings')
                     .insert([{ 
                         imageData: base64Data,
                         ip_address: ipAddress
-                    }]);
+                    }]), 45000);
 
                 if (error) throw error;
                 markSubmissionsDirty();
@@ -6354,13 +6463,13 @@ document.addEventListener("DOMContentLoaded", async function() {
                 try {
                     const ipAddress = await getVisitorIdentity();
 
-                    const { error } = await window.supabase
+                    const { error } = await withSubmitDeadline(window.supabase
                         .from('questions')
                         .insert([{ 
                             question, 
                             answer: null, 
                             ip_address: ipAddress
-                        }]);
+                        }]), 20000);
                     
                     if (error) throw error;
                     markSubmissionsDirty();
@@ -6435,16 +6544,30 @@ document.addEventListener("DOMContentLoaded", async function() {
             postsContentEl?.classList.add('posts-is-fetching');
         }
 
+        let retryPostsLoad = null;
+
         function showSubmissionsLoadError() {
             const overlay = ensurePostsLoadingOverlay();
             if (!overlay) return;
-            overlay.innerHTML = submissionsStatusMarkup(
-                'couldn\'t fetch yet — close and tap :3 to retry',
-                true
-            );
+            overlay.innerHTML = submissionsStatusMarkup('couldn\'t fetch yet', true);
+            // A retry right here, in the same pill as "more pins...".
+            const retry = document.createElement('button');
+            retry.type = 'button';
+            retry.className = 'community-load-more posts-fetch-retry';
+            retry.textContent = 'try again';
+            retry.addEventListener('click', () => {
+                playUiSound('tap');
+                retryPostsLoad?.();
+            });
+            overlay.querySelector('.posts-fetch-state')?.appendChild(retry);
             overlay.hidden = false;
             postsContentEl?.classList.add('posts-is-fetching');
         }
+
+        // Back online while the error shows: try again on our own.
+        window.addEventListener('online', () => {
+            if (postsLoadingOverlay?.querySelector('.posts-fetch-state.is-error')) retryPostsLoad?.();
+        });
 
         function hideSubmissionsLoadingState() {
             postsContentEl?.classList.remove('posts-is-fetching');
@@ -6507,6 +6630,12 @@ document.addEventListener("DOMContentLoaded", async function() {
             }
 
             openCommunityPosts = () => openPostsSurface();
+            retryPostsLoad = () => {
+                if (!postsPopup?.classList.contains('active')) return;
+                // Re-run the same open in this task, so nothing visibly closes.
+                postsPopup.classList.remove('active');
+                void openPostsSurface();
+            };
             postsButton?.addEventListener('click', async (e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -6790,7 +6919,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                 }
                 el.insertAdjacentHTML('beforeend', `
                     <div class="like-sticker" data-drawing-id="${drawing.id}">
-                        <div class="like-button">
+                        <div class="like-button" role="button" tabindex="0" aria-label="React to this doodle" aria-haspopup="true">
                             <img src="site-images/reactions.png" data-posts-src="site-images/reactions.png" alt="Like" class="like-icon" width="96" height="88" decoding="async">
                         </div>
                     </div>
@@ -6866,6 +6995,12 @@ document.addEventListener("DOMContentLoaded", async function() {
 
         async function loadMoreCommunitySubmissions(openGeneration, signal, control) {
             if (postsLoadMorePromise || !hasMoreSubmissionPages()) return;
+            // A keyboard user who pressed this keeps their place: focus moves
+            // to the first newly pinned note once the wall re-renders.
+            const hadFocus = document.activeElement === control;
+            const pinnedBefore = communityWallList
+                ? communityWallList.querySelectorAll(':scope > :not(.community-load-more)').length
+                : 0;
             control.disabled = true;
             control.classList.add('is-loading');
             control.textContent = 'pinning more...';
@@ -6880,6 +7015,13 @@ document.addEventListener("DOMContentLoaded", async function() {
                 }
                 postsLoadMorePromise = null;
                 await renderCurrentSubmissions(openGeneration, signal);
+                if (hadFocus && communityWallList) {
+                    const firstNew = communityWallList.querySelectorAll(':scope > :not(.community-load-more)')[pinnedBefore];
+                    if (firstNew) {
+                        if (!firstNew.hasAttribute('tabindex')) firstNew.setAttribute('tabindex', '-1');
+                        firstNew.focus({ preventScroll: true });
+                    }
+                }
             } catch (error) {
                 if (error?.name === 'AbortError') return;
                 console.error('Error fetching more public submissions:', error);
@@ -7180,6 +7322,13 @@ document.addEventListener("DOMContentLoaded", async function() {
             // Add both click and touch event listeners
             likeButton.addEventListener('click', handleReactionClick);
             likeButton.addEventListener('touchstart', handleReactionClick, { passive: false });
+            // Keyboard: open the faces and move focus onto the first one.
+            likeButton.addEventListener('keydown', async (e) => {
+                if (e.key !== 'Enter' && e.key !== ' ') return;
+                await handleReactionClick(e);
+                const firstOption = document.querySelector(`.reaction-picker[data-drawing-id="${drawingId}"] .reaction-option`);
+                firstOption?.focus({ preventScroll: true });
+            });
 
             // The pin must be tappable as soon as the atomically prepared
             // card appears. Its count/icon can update independently when the
@@ -7187,13 +7336,49 @@ document.addEventListener("DOMContentLoaded", async function() {
             void loadDrawingLikes(drawingId, likeIcon);
         }
 
+        // Pins that scroll into view together share one likes query instead
+        // of one request (and one CORS preflight) each.
+        const pendingDrawingLikes = new Map();
+        let drawingLikesBatchTimer = 0;
+
+        function fetchDrawingLikesBatched(drawingId) {
+            return new Promise(resolve => {
+                const key = String(drawingId);
+                if (!pendingDrawingLikes.has(key)) pendingDrawingLikes.set(key, []);
+                pendingDrawingLikes.get(key).push(resolve);
+                if (!drawingLikesBatchTimer) {
+                    drawingLikesBatchTimer = window.setTimeout(flushDrawingLikesBatch, 30);
+                }
+            });
+        }
+
+        async function flushDrawingLikesBatch() {
+            drawingLikesBatchTimer = 0;
+            const batch = new Map(pendingDrawingLikes);
+            pendingDrawingLikes.clear();
+            const ids = Array.from(batch.keys());
+            const settle = (id, result) => batch.get(id).forEach(resolve => resolve(result));
+            try {
+                const query = window.supabase.from('drawing_likes').select('drawing_id,reaction_type');
+                if (typeof query.in !== 'function') {
+                    // The offline stand-in client: nothing to count.
+                    ids.forEach(id => settle(id, { data: [], error: null }));
+                    return;
+                }
+                const { data, error } = await query.in('drawing_id', ids);
+                if (error) throw error;
+                const byDrawing = new Map(ids.map(id => [id, []]));
+                (data || []).forEach(row => byDrawing.get(String(row.drawing_id))?.push(row));
+                ids.forEach(id => settle(id, { data: byDrawing.get(id), error: null }));
+            } catch (error) {
+                ids.forEach(id => settle(id, { data: null, error }));
+            }
+        }
+
         async function loadDrawingLikes(drawingId, likeIconElement) {
             const expectedVersion = getReactionIconVersion(likeIconElement);
             try {
-                const { data: likes, error } = await window.supabase
-                    .from('drawing_likes')
-                    .select('reaction_type')
-                    .eq('drawing_id', drawingId);
+                const { data: likes, error } = await fetchDrawingLikesBatched(drawingId);
                 
                 if (error) throw error;
                 
@@ -7232,19 +7417,19 @@ document.addEventListener("DOMContentLoaded", async function() {
             picker.dataset.drawingId = drawingId;
             picker.innerHTML = `
                 <div class="reaction-options">
-                    <div class="reaction-option" data-reaction="happy">
+                    <div class="reaction-option" data-reaction="happy" role="button" tabindex="0">
                         <img src="site-images/happy.png" alt="Happy" width="96" height="94" decoding="async">
                         <span class="reaction-count">0</span>
                     </div>
-                    <div class="reaction-option" data-reaction="cool">
+                    <div class="reaction-option" data-reaction="cool" role="button" tabindex="0">
                         <img src="site-images/cool.png" alt="Cool" width="96" height="94" decoding="async">
                         <span class="reaction-count">0</span>
                     </div>
-                    <div class="reaction-option" data-reaction="meh">
+                    <div class="reaction-option" data-reaction="meh" role="button" tabindex="0">
                         <img src="site-images/meh.png" alt="Meh" width="96" height="94" decoding="async">
                         <span class="reaction-count">0</span>
                     </div>
-                    <div class="reaction-option" data-reaction="sad">
+                    <div class="reaction-option" data-reaction="sad" role="button" tabindex="0">
                         <img src="site-images/sad.png" alt="Sad" width="96" height="94" decoding="async">
                         <span class="reaction-count">0</span>
                     </div>
@@ -7359,6 +7544,18 @@ document.addEventListener("DOMContentLoaded", async function() {
                 // Add both click and touch event listeners
                 option.addEventListener('click', handleReactionOptionClick);
                 option.addEventListener('touchstart', handleReactionOptionClick, { passive: false });
+                option.addEventListener('keydown', async (e) => {
+                    if (e.key === 'Escape') {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        closeReactionPicker();
+                        likeButton.focus({ preventScroll: true });
+                        return;
+                    }
+                    if (e.key !== 'Enter' && e.key !== ' ') return;
+                    await handleReactionOptionClick(e);
+                    likeButton.focus({ preventScroll: true });
+                });
             });
             
             // Close picker when clicking outside

@@ -118,6 +118,17 @@ canvas {
         min-height: 100vh;
         overflow: hidden;
     }
+
+    /* A phone on its side: the width-sized header alone filled the screen
+       and left the menus no room. The same art, scaled to the height. */
+    header .header-image {
+        width: auto;
+        height: 46vh;
+    }
+
+    header {
+        margin-top: 22px;
+    }
 }
 
 .loading-screen {
@@ -334,6 +345,14 @@ header {
     0% { transform: translateY(-100%) rotate(0deg); opacity: 0; }
     50% { opacity: 0.5; transform: translateY(0px) rotate(0deg); }
     100% { transform: translateY(-48px) rotate(0deg); opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    /* Same resting place, without the drop-in. */
+    header {
+        animation: none;
+        transform: translateY(-48px);
+    }
 }
 
 .header-image {
@@ -1319,7 +1338,7 @@ body.has-posts-panel-open .site-brand-footer {
 }
 
 .site-brand-footer a:focus-visible {
-    outline: 2px solid rgba(229, 105, 161, 0.35);
+    outline: 2px solid rgba(216, 69, 125, 0.7);
     outline-offset: 3px;
 }
 
@@ -2483,6 +2502,9 @@ body.has-posts-panel-open .button-group {
        scroller's padding box is clipped with no way to scroll it back. The
        tallest overhang among the top-edge mascots is 24px. */
     padding-top: 26px;
+    /* Room under the last card for its drop shadow, which the scroller
+       would otherwise cut off along a straight line. */
+    padding-bottom: 16px;
     /* Pushes the card column back to exactly where it sat before the shell
        grew, leaving the gutter as free space a mascot can occupy. */
     padding-left: var(--social-gutter);
@@ -2505,6 +2527,14 @@ body.has-posts-panel-open .button-group {
 .links-note-stage .note-under-sign {
     top: -24px;
     width: 156px;
+}
+
+/* Holds the note over its own spot while it's peeled (see liftNote), out of
+   the Links panel's clipping; script.js sets its box to the stage's. */
+.links-note-stage.note-lift-layer {
+    position: fixed;
+    z-index: 9;
+    margin: 0;
 }
 
 .social-links-panel::-webkit-scrollbar {
@@ -3970,12 +4000,16 @@ body.first-visit-tour-active .tour-highlight-target {
     background: url("site-images/fairy-spiral.svg?v=6") center / 100% 100% no-repeat;
     opacity: 0;
     pointer-events: none;
-    transition: opacity 0.28s ease;
+    /* Once faded out it is also hidden: an invisible spiral kept all of its
+       sparkle animations painting, about half the page's idle work. */
+    visibility: hidden;
+    transition: opacity 0.28s ease, visibility 0s linear 0.3s;
 }
 
 #support-menu-button.dwl-open .wishes-swirl-glyph::after {
     opacity: 1;
-    transition: opacity 0.45s ease 0.05s;
+    visibility: visible;
+    transition: opacity 0.45s ease 0.05s, visibility 0s;
 }
 
 .pill-mini-swirl > .wishes-swirl-svg {
@@ -4025,7 +4059,7 @@ body.first-visit-tour-active .tour-highlight-target {
 }
 
 .dwl-icons-row .support-menu-button:focus-visible {
-    outline: 2px solid rgba(229, 105, 161, 0.35);
+    outline: 2px solid rgba(216, 69, 125, 0.7);
     outline-offset: 3px;
 }
 
@@ -4701,6 +4735,18 @@ body.first-visit-tour-active .tour-highlight-target {
 
 .posts-fetch-state.is-error {
     color: rgba(139, 91, 115, 0.72);
+}
+
+/* An error isn't loading: the paw rests, and the retry pill takes taps
+   even though the overlay around it doesn't. */
+.posts-fetch-state.is-error .posts-fetch-paw {
+    animation: none;
+    opacity: 0.4;
+}
+
+.posts-fetch-retry {
+    margin-top: 3px;
+    pointer-events: auto;
 }
 
 .posts-fetch-paw.loading-paw-print {
@@ -5770,8 +5816,32 @@ body.has-community-hub-open #action-menu-button.open .action-options {
 }
 
 .community-hub .canvas-container {
+    position: relative;
     width: 100%;
-    padding: 10px;
+    /* The ask card's paper: pink rim, soft stripes and a dashed inner line,
+       so the two composers read as a pair. */
+    padding: 15px 16px 14px;
+    border: 2px solid rgba(255, 171, 205, 0.54);
+    border-radius: 18px;
+    background:
+        linear-gradient(rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.72)),
+        repeating-linear-gradient(90deg, rgba(255, 231, 242, 0.42) 0 12px, rgba(255, 250, 253, 0.42) 12px 24px);
+    box-shadow: 0 6px 18px rgba(255, 174, 211, 0.2), inset 0 0 0 1px rgba(255, 255, 255, 0.82);
+}
+
+.community-hub .canvas-container::before {
+    position: absolute;
+    inset: 7px;
+    border: 1.5px dashed rgba(255, 180, 212, 0.58);
+    border-radius: 14px;
+    content: '';
+    pointer-events: none;
+}
+
+/* Sized to the canvas (240px) plus the card's rim, like the ask card. */
+.community-hub .drawing-widget,
+.community-hub .drawing-widget.active {
+    width: min(100%, 280px);
 }
 
 .community-hub .drawing-controls {
@@ -5949,5 +6019,28 @@ body.has-community-hub-open #action-menu-button.open .action-options {
     .community-hub,
     .community-composer-slot {
         transition: none;
+    }
+}
+
+/* Keyboard focus only (never shown for taps or clicks): one soft pink ring
+   for the controls whose own focus style was faint or the browser's blue. */
+:is(.social-links-tip, #send-question, .community-create-tab, #undo-button,
+    #clear-canvas, #send-drawing, .answer-gif-link, .like-button,
+    .reaction-option):focus-visible {
+    outline: 2px solid rgba(216, 69, 125, 0.7);
+    outline-offset: 3px;
+}
+
+/* Only for visitors who ask their device for more contrast: the soft
+   labels get a deeper version of the same pink/plum ink. */
+@media (prefers-contrast: more) {
+    .dwl-icon-name,
+    .social-link-copy small,
+    #char-count {
+        color: #7d3a5c;
+    }
+
+    .answer-text {
+        color: #a8316c;
     }
 }
