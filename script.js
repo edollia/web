@@ -1078,35 +1078,37 @@ document.addEventListener("DOMContentLoaded", async function() {
         let motionFrame = 0;
         let queuedPoint = null;
         let noteWidth = 254;
-        let noteHeight = 214;
+        let noteHeight = 107;
         let pointerScaleX = 1;
         let pointerScaleY = 1;
         let detachDistance = 280;
-        let corner = { x: 246, y: 200 };
+        let corner = { x: 246, y: 93 };
         let paperOutline = [];
         let renderedPoint = { ...corner };
 
         // Normalized from the note PNG's real alpha contour. The visible
         // lower-right tip is inset from its transparent rectangular bounds,
         // so the fold must originate from this contour rather than 100%/100%.
-        const NOTE_TIP = { x: 579 / 599, y: 471 / 504 };
+        // Measured on note-paper-v4-half-height.png (599x252); its contour is
+        // the tall note-paper-v4.png's with the lower edge moved up 252px.
+        const NOTE_TIP = { x: 579 / 599, y: 219 / 252 };
         const NOTE_OUTLINE = [
-            { x: 6 / 599, y: 1 / 504 },
-            { x: 596 / 599, y: 1 / 504 },
-            { x: 598 / 599, y: 420 / 504 },
-            { x: 594 / 599, y: 440 / 504 },
-            { x: 587 / 599, y: 460 / 504 },
+            { x: 6 / 599, y: 1 / 252 },
+            { x: 596 / 599, y: 1 / 252 },
+            { x: 598 / 599, y: 168 / 252 },
+            { x: 594 / 599, y: 188 / 252 },
+            { x: 587 / 599, y: 208 / 252 },
             { ...NOTE_TIP },
-            { x: 574 / 599, y: 475 / 504 },
-            { x: 555 / 599, y: 485 / 504 },
-            { x: 520 / 599, y: 492 / 504 },
-            { x: 480 / 599, y: 496 / 504 },
-            { x: 400 / 599, y: 499 / 504 },
-            { x: 300 / 599, y: 500 / 504 },
-            { x: 200 / 599, y: 501 / 504 },
-            { x: 100 / 599, y: 501 / 504 },
-            { x: 25 / 599, y: 502 / 504 },
-            { x: 3 / 599, y: 500 / 504 }
+            { x: 574 / 599, y: 223 / 252 },
+            { x: 555 / 599, y: 233 / 252 },
+            { x: 520 / 599, y: 240 / 252 },
+            { x: 480 / 599, y: 244 / 252 },
+            { x: 400 / 599, y: 247 / 252 },
+            { x: 300 / 599, y: 248 / 252 },
+            { x: 200 / 599, y: 249 / 252 },
+            { x: 100 / 599, y: 249 / 252 },
+            { x: 25 / 599, y: 250 / 252 },
+            { x: 3 / 599, y: 248 / 252 }
         ];
 
         const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
@@ -2111,7 +2113,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             const criticalResources = [
                 `site-images/background.png?v=${CORE_ASSET_VERSION}`,
                 `site-images/header.png?v=${CORE_ASSET_VERSION}`,
-                `note-paper-v4.png?v=${CORE_ASSET_VERSION}`,
+                `note-paper-v4-half-height.png?v=14`,
                 `loading.gif?v=${CORE_ASSET_VERSION}`,
                 `site-images/wishlist.png?v=${CORE_ASSET_VERSION}`
             ];
@@ -2280,6 +2282,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                     setTimeout(() => mainScreen.classList.add('ui-ready'), 780);
                     setTimeout(() => {
                         mainScreen.classList.add('note-ready');
+                        window.dollOpenLinksHome?.({ playSound: false });
                         scheduleFirstVisitTour();
                     }, 1080);
                 }
@@ -3059,15 +3062,19 @@ document.addEventListener("DOMContentLoaded", async function() {
     let communityComposerTransitionRaf = 0;
     let communityComposerTransitionTimer = 0;
     let communityViewportSettleTimer = 0;
-    let communityComposerTargetMode = communityHub?.dataset.composerMode || 'ask';
+    let communityComposerTargetMode = communityHub?.dataset.composerMode || 'closed';
     let communityComposerFocusAfterTransition = false;
     let communityComposerPreservedScrollTop = 0;
     let communityOpenRaf = 0;
     let communityOpenSettleTimer = 0;
 
+    // 'closed' is the switch-off state the :3 menu opens in: both tabs stay
+    // visible and unselected and the wall shows straight away. 'wall' is the
+    // fallback when questions and doodles are both disabled (tabs hidden).
     const COMMUNITY_COMPOSER_MIN_HEIGHTS = Object.freeze({
         ask: 148,
         doodle: 282,
+        closed: 0,
         wall: 0,
     });
 
@@ -3085,6 +3092,9 @@ document.addEventListener("DOMContentLoaded", async function() {
     function resolveCommunityComposerMode(requestedMode) {
         const questionsEnabled = siteLinkSettings.questions_enabled !== false;
         const drawingsEnabled = siteLinkSettings.drawings_enabled !== false;
+        if (requestedMode === 'closed') {
+            return questionsEnabled || drawingsEnabled ? 'closed' : 'wall';
+        }
         return requestedMode === 'doodle' && drawingsEnabled
             ? 'doodle'
             : questionsEnabled ? 'ask' : drawingsEnabled ? 'doodle' : 'wall';
@@ -3173,7 +3183,7 @@ document.addEventListener("DOMContentLoaded", async function() {
 
     function syncCommunityComposerHeight({ immediate = true } = {}) {
         if (!communityComposerSlot || !communityHub) return;
-        const mode = resolveCommunityComposerMode(communityHub.dataset.composerMode || 'ask');
+        const mode = resolveCommunityComposerMode(communityHub.dataset.composerMode || 'closed');
         const targetHeight = measureCommunityComposerHeight(mode);
         if (immediate) {
             communityComposerSlot.style.transition = 'none';
@@ -3206,7 +3216,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         immediate ||= prefersReducedLoadingMotion;
         const askForm = document.getElementById('ask-form-container');
         const mode = resolveCommunityComposerMode(requestedMode);
-        const previousMode = communityHub.dataset.composerMode || 'ask';
+        const previousMode = communityHub.dataset.composerMode || 'closed';
         const askOwnsFocus = Boolean(askForm?.contains(document.activeElement));
 
         if (mode !== 'ask' && askOwnsFocus) document.activeElement?.blur();
@@ -3693,6 +3703,21 @@ document.addEventListener("DOMContentLoaded", async function() {
     // GIF/video/iframe media instead of merely hiding the panel visually.
     window.dollClosePostsPanel = closePostsPanel;
 
+    function scheduleLinksHomeRestore() {
+        window.requestAnimationFrame(() => {
+            const entryGate = document.getElementById('popup');
+            const entryGateVisible = entryGate
+                && window.getComputedStyle(entryGate).display !== 'none';
+            if (entryGateVisible
+                || siteLinkSettings.maintenance_enabled === true
+                || document.body.classList.contains('has-social-panel-open')
+                || document.body.classList.contains('has-wishlist-panel-open')
+                || document.body.classList.contains('has-posts-panel-open')
+                || isCommunityHubOpen()) return;
+            window.dollOpenLinksHome?.({ playSound: false });
+        });
+    }
+
     function showNoteImage() {
         closeDrawingWidget();
         closeQuestionForm();
@@ -3702,6 +3727,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         notePeelTarget?.classList.remove('dwl-note-locking');
         notePeelTarget?.classList.remove('hidden');
         noteImage?.classList.remove('hidden');
+        scheduleLinksHomeRestore();
     }
 
     function hideNoteImage() {
@@ -3717,6 +3743,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         notePeelTarget?.classList.remove('dwl-note-locking');
         notePeelTarget?.classList.remove('hidden');
         noteImage?.classList.remove('hidden');
+        scheduleLinksHomeRestore();
     }
 
     if (toggleButton && noteImage && drawingWidget) {
@@ -3729,7 +3756,9 @@ document.addEventListener("DOMContentLoaded", async function() {
             }
             playUiSound('tap');
             if (isCommunityHubOpen()) {
-                setCommunityComposerMode('doodle');
+                // The tabs work as a switch: tapping the open one turns it off.
+                const doodleOpen = communityHub?.dataset.composerMode === 'doodle';
+                setCommunityComposerMode(doodleOpen ? 'closed' : 'doodle');
                 return;
             }
             const open = drawingWidget.classList.contains('active');
@@ -4583,8 +4612,11 @@ document.addEventListener("DOMContentLoaded", async function() {
     }
 
     function getHomepageNoteDisplayText() {
+        // Blank lines at the very start only pushed text down the tall paper;
+        // on the short note they would squeeze the text, so they're skipped.
         return String(siteLinkSettings.homepage_note_text || '')
             .replace(/\r\n?/g, '\n')
+            .replace(/^(?:[ \t]*\n)+/, '')
             .slice(0, 220);
     }
 
@@ -5101,11 +5133,11 @@ document.addEventListener("DOMContentLoaded", async function() {
             if (!throneEnabled) closeSupportMenu();
         }
         if (socialsButton) {
-            const hasVisibleLinks = getVisibleSocialOptions().length > 0;
-            socialsButton.classList.toggle('site-link-hidden', !hasVisibleLinks);
-            socialsButton.setAttribute('aria-hidden', hasVisibleLinks ? 'false' : 'true');
-            socialsButton.setAttribute('tabindex', hasVisibleLinks ? '0' : '-1');
-            if (!hasVisibleLinks) closeSocialsMenu();
+            /* Links always contains the homepage note, even if every optional
+               social destination is temporarily disabled. */
+            socialsButton.classList.remove('site-link-hidden');
+            socialsButton.setAttribute('aria-hidden', 'false');
+            socialsButton.setAttribute('tabindex', '0');
             getVisibleSocialOptions().forEach(option => {
                 option.setAttribute('tabindex', socialsButton.classList.contains('open') ? '0' : '-1');
             });
@@ -5234,7 +5266,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     }
     socialLinksPanel?.addEventListener('scroll', onSocialPanelScroll, { passive: true });
 
-    function closeSocialsMenu({ restoreNote = true } = {}) {
+    function closeSocialsMenu() {
         if (!socialsButton) return;
         socialOpenGeneration += 1;
         clearSocialAtomicRevealWatchers();
@@ -5242,7 +5274,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         pauseSocialCardVideos();
         socialsButton.classList.remove('open');
         socialsButton.setAttribute('aria-expanded', 'false');
-        socialsButton.setAttribute('aria-label', 'Open socials');
+        socialsButton.setAttribute('aria-label', 'Open links');
         socialLinksShell?.classList.remove('active');
         socialLinksShell?.classList.remove('is-loading');
         if (socialLinksLoading) socialLinksLoading.setAttribute('aria-hidden', 'true');
@@ -5262,11 +5294,6 @@ document.addEventListener("DOMContentLoaded", async function() {
         getVisibleSocialOptions().forEach(option => {
             option.setAttribute('tabindex', '-1');
         });
-        if (wasOpen && restoreNote) {
-            notePeelTarget?.classList.remove('dwl-note-locking');
-            notePeelTarget?.classList.remove('hidden');
-            noteImage?.classList.remove('hidden');
-        }
     }
 
     function closeSupportMenu() {
@@ -5317,24 +5344,28 @@ document.addEventListener("DOMContentLoaded", async function() {
         return true;
     }
 
-    function handleSocialsButtonActivate(e) {
-        e.preventDefault();
-        e.stopPropagation();
-        if (!acceptTopControlActivation(socialsButton)) return;
-        playUiSound('tap');
-
+    function openSocialsMenu({ playSound = false, force = false } = {}) {
+        if (!socialsButton || siteLinkSettings.maintenance_enabled === true) return;
+        if (!force && (
+            document.body.classList.contains('has-wishlist-panel-open')
+            || document.body.classList.contains('has-posts-panel-open')
+            || isCommunityHubOpen()
+        )) return;
         if (socialsButton.classList.contains('open')) {
-            closeSocialsMenu();
+            if (socialLinksPanel) {
+                socialLinksPanel.scrollTo({ top: 0, behavior: prefersReducedLoadingMotion ? 'auto' : 'smooth' });
+            }
             return;
         }
 
+        if (playSound) playUiSound('tap');
         closeSupportMenu();
         closeActionMenu();
         closeDrawingWidget();
         closeQuestionForm();
         closePostsPanel();
-        // Lock immediately while the Socials loader replaces the note.
-        notePeelTarget?.classList.add('dwl-note-locking');
+        notePeelTarget?.classList.remove('dwl-note-locking', 'hidden');
+        noteImage?.classList.remove('hidden');
         resetIconsCollapse();
         const openGeneration = ++socialOpenGeneration;
         clearSocialAtomicRevealWatchers();
@@ -5351,7 +5382,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         socialsButton.classList.remove('show-glitter');
         socialsButton.classList.add('open');
         socialsButton.setAttribute('aria-expanded', 'true');
-        socialsButton.setAttribute('aria-label', 'Close socials');
+        socialsButton.setAttribute('aria-label', 'Links, current page');
         // Apply the panel-specific stable icon-row gap before measuring so
         // the reserved height is based on the exact geometry that will stay
         // in force for the whole open session.
@@ -5369,9 +5400,8 @@ document.addEventListener("DOMContentLoaded", async function() {
             syncSocialReservedHeight(true);
             socialLinksShell?.classList.remove('measure-open');
         }
-        // Reveal the paw state immediately, then replace it atomically with
-        // the complete card set once every configured preview has settled.
-        hideNoteImage();
+        // The existing note is now the first Links item and stays visible
+        // while the media cards prepare underneath it.
         socialLinksShell?.classList.add('active');
         playSocialCardVideos();
         revealSocialPanelAfterPreviews(openGeneration);
@@ -5382,6 +5412,15 @@ document.addEventListener("DOMContentLoaded", async function() {
             window.requestAnimationFrame(() => updateSocialEdgeFade(socialLinksPanel));
         }
         getVisibleSocialOptions().forEach(option => option.setAttribute('tabindex', '-1'));
+    }
+
+    window.dollOpenLinksHome = openSocialsMenu;
+
+    function handleSocialsButtonActivate(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!acceptTopControlActivation(socialsButton)) return;
+        openSocialsMenu({ playSound: true, force: true });
     }
 
     applySiteLinkSettingsToDom = applyPublicLinkSettings;
@@ -5453,7 +5492,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         if (!FIRST_VISIT_TOUR_FORCE && siteLinkSettings.first_visit_tour_enabled === false) return;
         if (siteLinkSettings.maintenance_enabled === true) return;
         const steps = [
-            { element: socialsButton, label: 'contact', placement: 'up' },
+            { element: socialsButton, label: 'links', placement: 'up' },
             { element: supportMenuButton, label: 'wishlist', placement: 'down' },
             { element: actionMenuButton, label: ':3', placement: 'up' }
         ].filter(step => step.element && !step.element.classList.contains('site-link-hidden'));
@@ -5672,10 +5711,39 @@ document.addEventListener("DOMContentLoaded", async function() {
         clone.setAttribute('data-nosnippet', '');
         clone.querySelectorAll('[id]').forEach(element => element.removeAttribute('id'));
         // A cloned <video> does not retain the source element's decoded frame
-        // reliably on iPhone. The card's own glass background is a cleaner pop
-        // than a clone that flashes black for one frame.
+        // reliably on iPhone (it flashes black), so the clone gets a still of
+        // the frame on screen right now instead. Dropping the preview class
+        // without replacing the video used to unhide the card's poster -- the
+        // icon blown up behind the copy -- for the whole pop.
+        const hadPreview = option.classList.contains('has-social-preview');
+        const sourceVideo = option.querySelector('video.social-link-preview');
         clone.querySelector('.social-link-preview')?.remove();
-        clone.classList.remove('has-social-preview', 'site-link-hidden');
+        let stillShown = false;
+        if (hadPreview && sourceVideo && sourceVideo.readyState >= 2 && sourceVideo.videoWidth) {
+            const scale = Math.min(1, 640 / Math.max(sourceVideo.videoWidth, sourceVideo.videoHeight));
+            const still = document.createElement('canvas');
+            still.className = 'social-link-preview';
+            still.setAttribute('aria-hidden', 'true');
+            still.width = Math.max(1, Math.round(sourceVideo.videoWidth * scale));
+            still.height = Math.max(1, Math.round(sourceVideo.videoHeight * scale));
+            // Crop the still exactly like the card crops its video.
+            still.style.objectPosition = window.getComputedStyle(sourceVideo).objectPosition;
+            try {
+                // Cross-origin frames taint the canvas, which only blocks
+                // reading pixels back -- displaying it is fine.
+                still.getContext('2d')?.drawImage(sourceVideo, 0, 0, still.width, still.height);
+                clone.prepend(still);
+                stillShown = true;
+            } catch (error) {
+                stillShown = false;
+            }
+        }
+        // With a preview the poster is never meant to show, still or no still.
+        if (hadPreview) clone.querySelector('.social-link-poster')?.remove();
+        clone.classList.remove('site-link-hidden');
+        clone.classList.toggle('has-social-preview', stillShown);
+        // Keep the card's slight pinboard tilt so the pop starts in place.
+        clone.style.rotate = window.getComputedStyle(option).rotate;
         clone.classList.add('social-card-pop-clone');
         clone.style.setProperty('--social-pop-left', `${rect.left}px`);
         clone.style.setProperty('--social-pop-top', `${rect.top}px`);
@@ -5757,7 +5825,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         if (!acceptTopControlActivation(supportMenuButton)) return;
         if (siteLinkSettings.maintenance_enabled === true) return;
         if (!isPublicLinkEnabled('throne')) return;
-        closeSocialsMenu({ restoreNote: false });
+        closeSocialsMenu();
         closeActionMenu();
         // Second press while the mockup panel is open toggles it closed.
         const wishlistPanel = document.getElementById('doll-wishlist-panel');
@@ -5803,12 +5871,11 @@ document.addEventListener("DOMContentLoaded", async function() {
         notePeelTarget?.classList.add('dwl-note-locking');
         actionMenuButton.classList.add('open');
         actionMenuButton.setAttribute('aria-expanded', 'true');
-        actionMenuButton.setAttribute('aria-label', 'Close :3');
+        actionMenuButton.setAttribute('aria-label', ':3, current page');
         setCommunityHubOpen(true, { deferReveal: true });
-        setCommunityComposerMode(
-            siteLinkSettings.questions_enabled !== false ? 'ask' : 'doodle',
-            { immediate: true }
-        );
+        // Open with the ask/doodle switch off so visitors land on the wall;
+        // tapping ? or the pencil opens that composer.
+        setCommunityComposerMode('closed', { immediate: true });
         renderSubmissionControls();
         void openCommunityPosts?.();
         revealPreparedCommunityHub();
@@ -5836,9 +5903,11 @@ document.addEventListener("DOMContentLoaded", async function() {
         }
 
         if (socialsButton?.classList.contains('open')) {
-            event.preventDefault();
-            closeSocialsMenu();
-            socialsButton.focus({ preventScroll: true });
+            if ((socialLinksPanel?.scrollTop || 0) > 0) {
+                event.preventDefault();
+                socialLinksPanel.scrollTo({ top: 0, behavior: prefersReducedLoadingMotion ? 'auto' : 'smooth' });
+                socialsButton.focus({ preventScroll: true });
+            }
             return;
         }
 
@@ -6226,7 +6295,9 @@ document.addEventListener("DOMContentLoaded", async function() {
                 }
                 playUiSound('tap');
                 if (isCommunityHubOpen()) {
-                    setCommunityComposerMode('ask', { focus: true });
+                    // The tabs work as a switch: tapping the open one turns it off.
+                    const askOpen = communityHub?.dataset.composerMode === 'ask';
+                    setCommunityComposerMode(askOpen ? 'closed' : 'ask', { focus: !askOpen });
                     return;
                 }
                 const open = askFormContainer.style.display === 'block';

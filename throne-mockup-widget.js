@@ -1083,20 +1083,18 @@
             .doll-wishlist-panel {
                 --dwl-ink: #663b4b;
                 --dwl-pink: #f47fad;
-                --dwl-line: rgba(239, 183, 204, 0.72);
+                --dwl-line: var(--paper-line, rgba(239, 183, 204, 0.72));
                 position: absolute;
                 top: var(--open-surface-top, -14px);
                 left: 50%;
-                width: min(88vw, 324px);
-                transform: translateX(-50%) translateY(-7px) scale(0.988);
+                width: var(--menu-col, min(88vw, 324px));
+                transform: translateX(-50%) var(--menu-enter-from, translateY(-8px) scale(0.985));
                 transform-origin: 50% 0;
                 opacity: 0;
                 pointer-events: none;
-                /* Matches .note-peel-target's own hide/show timing (0.46s
-                   opacity / 0.42s transform) so the note and this panel
-                   cross-fade in lockstep instead of at mismatched speeds
-                   (which reads as a glitch/double-image when swapping). */
-                transition: opacity 0.46s ease, transform 0.42s cubic-bezier(0.2, 0.9, 0.25, 1);
+                /* The shared menu entrance (styles.css --menu-enter-*), so
+                   Links, Wishes and :3 all arrive with the same motion. */
+                transition: opacity 0.34s ease, transform 0.42s var(--menu-enter-ease, cubic-bezier(0.22, 1, 0.36, 1));
                 will-change: opacity, transform;
                 z-index: 9;
             }
@@ -1310,7 +1308,8 @@
             .doll-wishlist-masonry {
                 columns: 2;
                 column-gap: ${CARD_GAP}px;
-                padding: 9px 8px 15px;
+                /* 12px top keeps the first row's overhanging pins clear. */
+                padding: 12px 8px 15px;
             }
 
             /* Safari can drop the painted layer for an otherwise live,
@@ -1339,13 +1338,12 @@
                 width: 100%;
                 min-width: 0;
                 padding: 3px;
-                background: linear-gradient(180deg, #fffefe 0%, #fff9fb 70%, #fff6fa 100%);
+                background: var(--paper-bg, linear-gradient(180deg, #fffefe 0%, #fff9fb 70%, #fff6fa 100%));
                 border: 1px solid var(--dwl-line);
-                border-radius: 18px;
+                border-radius: var(--paper-radius, 16px);
                 box-shadow:
-                    inset 0 0 0 2px rgba(255, 255, 255, 0.92),
-                    0 5px 12px rgba(177, 92, 124, 0.08),
-                    0 1px 2px rgba(142, 76, 99, 0.06);
+                    var(--paper-ring, inset 0 0 0 2px rgba(255, 255, 255, 0.92)),
+                    var(--paper-shadow, 0 5px 12px rgba(177, 92, 124, 0.08), 0 1px 2px rgba(142, 76, 99, 0.06));
                 transform: translateZ(0);
                 transition: border-color 0.2s ease, transform 0.2s ease;
                 -webkit-tap-highlight-color: transparent;
@@ -1453,7 +1451,7 @@
                 position: absolute;
                 inset: 0;
                 z-index: 2;
-                border-radius: 18px;
+                border-radius: var(--paper-radius, 16px);
                 opacity: 0;
                 pointer-events: none;
                 background: radial-gradient(ellipse at center, transparent 52%, rgba(255, 141, 193, 0.4) 100%);
@@ -1491,7 +1489,7 @@
             .dwl-burst-clip {
                 position: absolute;
                 inset: 0;
-                border-radius: 18px;
+                border-radius: var(--paper-radius, 16px);
                 overflow: hidden;
                 pointer-events: none;
                 z-index: 3;
@@ -1541,7 +1539,7 @@
                 width: 100%;
                 aspect-ratio: 11 / 8;
                 overflow: hidden;
-                border-radius: 14px 14px 8px 8px;
+                border-radius: var(--paper-radius-inner, 12px) var(--paper-radius-inner, 12px) 6px 6px;
                 background:
                     radial-gradient(circle at 48% 38%, rgba(255, 255, 255, 0.9), transparent 48%),
                     #fce8f0;
@@ -1989,17 +1987,20 @@
                 max-height: 220px;
                 object-fit: cover;
             }
-            .doll-wishlist-item.dwl-pin::after {
+            /* The shared pin (styles.css --pin-*): it overhangs the card's
+               top edge exactly like the :3 wall and Links cards. */
+            .doll-wishlist-item.dwl-pin::after,
+            .doll-wishlist-more-card.dwl-pin::after {
                 content: '';
                 position: absolute;
-                top: 3px;
+                top: var(--pin-top, -6px);
                 left: 50%;
                 transform: translateX(-50%);
-                width: 11px;
-                height: 11px;
+                width: var(--pin-size, 11px);
+                height: var(--pin-size, 11px);
                 border-radius: 50%;
-                background: radial-gradient(circle at 35% 30%, #fff, #ffb6d5);
-                box-shadow: 0 2px 3px rgba(0, 0, 0, 0.3), inset 0 -1px 1px rgba(0, 0, 0, 0.2), inset 0 1px 1px rgba(255, 255, 255, 0.5);
+                background: var(--pin-fill, radial-gradient(circle at 35% 30%, #fff, #ffb6d5));
+                box-shadow: var(--pin-shadow, 0 2px 3px rgba(0, 0, 0, 0.3), inset 0 -1px 1px rgba(0, 0, 0, 0.2), inset 0 1px 1px rgba(255, 255, 255, 0.5));
                 pointer-events: none;
                 z-index: 5;
             }
@@ -2031,25 +2032,13 @@
                 flex: 0 0 auto;
                 text-align: center;
             }
-            .doll-wishlist-more-card.dwl-pin::after {
-                content: '';
-                position: absolute;
-                top: 3px;
-                left: 50%;
-                width: 11px;
-                height: 11px;
-                border-radius: 50%;
-                transform: translateX(-50%);
-                background: radial-gradient(circle at 35% 30%, #fff, #ffb6d5);
-                box-shadow: 0 2px 3px rgba(0, 0, 0, 0.25), inset 0 -1px 1px rgba(0, 0, 0, 0.18), inset 0 1px 1px rgba(255, 255, 255, 0.55);
-            }
 
             @media (hover: hover) and (pointer: fine) {
                 .doll-wishlist-item:not(.selected):hover {
                     border-color: rgba(232, 151, 182, 0.82);
                     box-shadow:
-                        inset 0 0 0 2px rgba(255, 255, 255, 0.94),
-                        0 9px 18px rgba(174, 75, 113, 0.13);
+                        var(--paper-ring, inset 0 0 0 2px rgba(255, 255, 255, 0.94)),
+                        var(--paper-shadow-lift, 0 9px 18px rgba(174, 75, 113, 0.13));
                     transform: translateY(-3px) rotate(var(--dwl-tilt, 0deg));
                 }
                 .doll-wishlist-item:hover .doll-wishlist-media img {
@@ -2129,13 +2118,12 @@
                 padding: 10px 11px;
                 color: var(--dwl-ink);
                 text-decoration: none;
-                background: linear-gradient(180deg, #fffefe 0%, #fff9fb 70%, #fff6fa 100%);
+                background: var(--paper-bg, linear-gradient(180deg, #fffefe 0%, #fff9fb 70%, #fff6fa 100%));
                 border: 1px solid var(--dwl-line);
-                border-radius: 18px;
+                border-radius: var(--paper-radius, 16px);
                 box-shadow:
-                    inset 0 0 0 2px rgba(255, 255, 255, 0.92),
-                    0 5px 12px rgba(177, 92, 124, 0.08),
-                    0 1px 2px rgba(142, 76, 99, 0.06);
+                    var(--paper-ring, inset 0 0 0 2px rgba(255, 255, 255, 0.92)),
+                    var(--paper-shadow, 0 5px 12px rgba(177, 92, 124, 0.08), 0 1px 2px rgba(142, 76, 99, 0.06));
                 -webkit-tap-highlight-color: transparent;
                 transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
             }
@@ -2565,36 +2553,15 @@
                 }
             }
 
-            /* Close icon: same swap mechanism the socials/action buttons
-               already use for their own open state (plain menu-main-icon
-               <-> alternate glyph show/hide), instead of a bespoke overlay.
-               The ID selector already outweighs .email-button/.show-glitter,
-               so no !important is needed anywhere here. */
-            .menu-close-icon {
-                display: none;
-                align-items: center;
-                justify-content: center;
-                width: 20px;
-                height: 20px;
-                flex: 0 0 auto;
-                color: #d7c0c5;
-                font-family: ui-rounded, "Arial Rounded MT Bold", system-ui, sans-serif;
-                font-size: 20px;
-                font-weight: 400;
-                line-height: 1;
-                transform: none;
-            }
+            /* Wishlist remains recognizable while selected; the shared blush
+               ring in styles.css communicates the active section. */
             #support-menu-button.dwl-open > .menu-main-icon {
-                display: none;
-            }
-            #support-menu-button.dwl-open > .menu-close-icon {
                 display: inline-flex;
             }
+            /* Its open background/shadow come from styles.css
+               (.dwl-icons-row #support-menu-button.dwl-open), shared with
+               the other two icons. */
             #support-menu-button.dwl-open {
-                background: linear-gradient(145deg, rgba(255, 252, 254, 0.98), rgba(255, 226, 239, 0.9));
-                box-shadow:
-                    0 5px 13px rgba(211, 92, 140, 0.15),
-                    inset 0 1px 0 rgba(255, 255, 255, 0.94);
                 outline: none;
             }
             #support-menu-button.dwl-open:hover {
@@ -3082,6 +3049,9 @@
         noteTarget?.classList.remove('hidden');
         noteTarget?.classList.remove('dwl-note-locking');
         document.querySelector('.note-image')?.classList.remove('hidden');
+        window.requestAnimationFrame(() => {
+            window.dollOpenLinksHome?.({ playSound: false });
+        });
     }
 
     function entryPopupIsVisible() {
@@ -4502,7 +4472,7 @@
         wishlistButton?.classList.remove('show-glitter');
         wishlistButton?.classList.add('dwl-open');
         wishlistButton?.setAttribute('aria-expanded', 'true');
-        wishlistButton?.setAttribute('aria-label', 'Close wishlist');
+        wishlistButton?.setAttribute('aria-label', 'Wishlist, current page');
         document.querySelector('.site-brand-footer')?.setAttribute('aria-label', 'Full wishlist on Throne');
 
         selectedIds = new Set();

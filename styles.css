@@ -27,6 +27,24 @@
     --glass-pink-shadow-small: 0 2px 7px rgba(255, 145, 195, 0.14);
     --glass-pink-text: rgba(106, 92, 99, 0.76);
     --glass-pink-text-strong: rgba(255, 255, 255, 0.96);
+
+    /* Shared by the Links, Wishes and :3 menus: one column, and the pinned
+       paper card and pin used by the Links and Wishes cards. */
+    --menu-col: min(88vw, 324px);
+    --paper-bg: linear-gradient(180deg, #fffefe 0%, #fff9fb 70%, #fff6fa 100%);
+    --paper-line: rgba(239, 183, 204, 0.72);
+    --paper-ring: inset 0 0 0 2px rgba(255, 255, 255, 0.92);
+    --paper-shadow: 0 5px 12px rgba(177, 92, 124, 0.08), 0 1px 2px rgba(142, 76, 99, 0.06);
+    --paper-shadow-lift: 0 9px 18px rgba(174, 75, 113, 0.13);
+    --paper-radius: 16px;
+    --paper-radius-inner: 12px;
+    --pin-size: 11px;
+    --pin-top: -6px;
+    --pin-fill: radial-gradient(circle at 35% 30%, #fff, #ffb6d5);
+    --pin-shadow: 0 2px 3px rgba(0, 0, 0, 0.3), inset 0 -1px 1px rgba(0, 0, 0, 0.2), inset 0 1px 1px rgba(255, 255, 255, 0.5);
+    --doll-hand: "Comic Sans MS", "Trebuchet MS", cursive;
+    --menu-enter-from: translateY(-8px) scale(0.985);
+    --menu-enter-ease: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 /* Registered numeric edge strengths can cross-fade without introducing a
@@ -133,7 +151,7 @@ canvas {
     width: min(280px, 78vw);
     margin: 0;
     color: rgba(116, 82, 100, 0.58);
-    font-family: "Comic Sans MS", "Trebuchet MS", cursive;
+    font-family: var(--doll-hand);
     font-size: 11px;
     line-height: 1.35;
     letter-spacing: 0.01em;
@@ -774,6 +792,7 @@ button {
 
 .icon-container {
     position: relative;
+    isolation: isolate;
     display: flex;
     width: 46px;
     height: 61px;
@@ -785,6 +804,73 @@ button {
     opacity: 1;
     visibility: visible;
     transition: transform 0.18s ease;
+}
+
+/* The selected section keeps a fairy-dust trail looping around its icon: a
+   smoky tail that thins out behind a twinkling sparkle head. It lives on the
+   wrapper so the button's clipped glass circle and heart-glitter stay
+   independent. The loop never stops; only opacity and scale follow the open
+   state, so switching sections dissolves the trail where it is instead of
+   snapping it back to its starting angle. It is sized so its loop sits on
+   the button's 1px border (r = 22.5px), and it copies the button's hover
+   lift and press so it never slides off the rim. */
+.dwl-icons-row .icon-container::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 23px;
+    z-index: 2;
+    width: 60px;
+    height: 60px;
+    background: url("site-images/fairy-trail.svg?v=2") center / 100% 100% no-repeat;
+    opacity: 0;
+    pointer-events: none;
+    translate: -50% -50%;
+    scale: 0.82;
+    transition: opacity 0.28s ease, scale 0.34s ease, translate 0.18s ease;
+    animation: fairyTrailLoop 5.6s linear infinite;
+    will-change: opacity, scale, rotate;
+}
+
+.dwl-icons-row .icon-container:has(> .support-menu-button.open)::after {
+    opacity: 1;
+    scale: 1;
+    transition: opacity 0.45s ease 0.05s, scale 0.6s cubic-bezier(0.22, 1, 0.36, 1), translate 0.18s ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+    .dwl-icons-row .icon-container:hover::after {
+        translate: -50% calc(-50% - 2px);
+    }
+}
+
+/* Touch press: the button dips 1px and shrinks to 0.965 (see
+   .support-menu-button:active); on desktop the hover lift wins instead. */
+@media not all and (hover: hover) and (pointer: fine) {
+    .dwl-icons-row .icon-container:has(> .support-menu-button.open:active)::after {
+        translate: -50% calc(-50% + 1px);
+        scale: 0.965;
+        transition: opacity 0.45s ease, scale 0.18s ease, translate 0.18s ease;
+    }
+}
+
+/* Sparkles drift behind the section names rather than across them. */
+.dwl-icons-row .icon-container > .dwl-icon-name {
+    z-index: 3;
+}
+
+@keyframes fairyTrailLoop {
+    to {
+        rotate: 360deg;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .dwl-icons-row .icon-container::after {
+        background-image: url("site-images/fairy-trail-still.svg?v=2");
+        animation: none;
+        rotate: -40deg;
+    }
 }
 
 .socials-button {
@@ -1211,7 +1297,7 @@ body.has-posts-panel-open .site-brand-footer {
         linear-gradient(rgba(255, 255, 255, 0.66), rgba(255, 246, 251, 0.5)),
         repeating-linear-gradient(90deg, rgba(255, 231, 242, 0.24) 0 8px, rgba(255, 250, 253, 0.24) 8px 16px);
     color: rgba(122, 76, 92, 0.7);
-    font-family: "Comic Sans MS", "Trebuchet MS", cursive;
+    font-family: var(--doll-hand);
     font-size: 13px;
     font-weight: 700;
     line-height: 1;
@@ -1576,7 +1662,7 @@ body.has-posts-panel-open .site-brand-footer {
     z-index: 2;
     background:
         radial-gradient(
-            ellipse 45% 39% at 91% 87%,
+            ellipse 45% 78% at 91% 74%,
             rgba(158, 94, 127, 0.052) 0%,
             rgba(158, 94, 127, 0.025) 36%,
             rgba(158, 94, 127, 0) 70%
@@ -1593,23 +1679,24 @@ body.has-posts-panel-open .site-brand-footer {
             rgba(255, 255, 255, 0) 58%,
             rgba(138, 80, 111, 0.022) 100%
         );
+    /* Traces the half-height note art's contour (599x252). */
     clip-path: polygon(
-        1% 0.2%,
-        99.5% 0.2%,
-        99.83% 83.33%,
-        99.17% 87.3%,
-        98% 91.27%,
-        96.66% 93.45%,
-        95.83% 94.25%,
-        92.65% 96.23%,
-        86.81% 97.62%,
-        80.13% 98.41%,
-        66.78% 99.01%,
-        50.08% 99.21%,
-        33.39% 99.4%,
-        16.69% 99.4%,
-        4.17% 99.6%,
-        0.5% 99.21%
+        1% 0.4%,
+        99.5% 0.4%,
+        99.83% 66.67%,
+        99.17% 74.6%,
+        98% 82.54%,
+        96.66% 86.9%,
+        95.83% 88.49%,
+        92.65% 92.46%,
+        86.81% 95.24%,
+        80.13% 96.83%,
+        66.78% 98.02%,
+        50.08% 98.41%,
+        33.39% 98.81%,
+        16.69% 98.81%,
+        4.17% 99.21%,
+        0.5% 98.41%
     );
     content: "";
     pointer-events: none;
@@ -1633,10 +1720,12 @@ body.has-posts-panel-open .site-brand-footer {
 .note-editor {
     position: absolute;
     z-index: 2;
+    /* A column on the empty left of the short note: clear of the heart on
+       its left and of the bunnies on its right. */
     top: 8.5%;
-    right: 17%;
-    bottom: 24%;
-    left: 17%;
+    right: 45%;
+    bottom: 6%;
+    left: 18.5%;
     margin: 0;
     box-sizing: border-box;
     padding: 0 0 4px;
@@ -2114,30 +2203,6 @@ body.has-posts-panel-open .button-group {
     transform-origin: center;
 }
 
-.menu-back-arrow {
-    display: none;
-    align-items: center;
-    justify-content: center;
-    width: 20px;
-    height: 20px;
-    flex: 0 0 auto;
-    color: #d7c0c5;
-    font-family: ui-rounded, "Arial Rounded MT Bold", system-ui, sans-serif;
-    font-size: 20px;
-    font-weight: 400;
-    line-height: 1;
-    transform: none;
-    text-shadow: none;
-}
-
-.support-menu-button.open > .menu-main-icon {
-    display: none;
-}
-
-.support-menu-button.open > .menu-back-arrow {
-    display: inline-flex;
-}
-
 .support-menu-button:not(.open) > .menu-main-icon {
     transform: translateY(0) scale(1);
 }
@@ -2299,20 +2364,6 @@ body.has-posts-panel-open .button-group {
     outline: none;
 }
 
-.socials-close-icon {
-    display: none;
-    align-items: center;
-    justify-content: center;
-    width: 20px;
-    height: 20px;
-    flex: 0 0 auto;
-    color: #d7c0c5;
-    font-family: ui-rounded, "Arial Rounded MT Bold", system-ui, sans-serif;
-    font-size: 20px;
-    font-weight: 400;
-    line-height: 1;
-}
-
 .socials-button.open {
     width: 46px;
     flex-basis: 46px;
@@ -2322,10 +2373,6 @@ body.has-posts-panel-open .button-group {
     box-shadow:
         0 5px 13px rgba(211, 92, 140, 0.15),
         inset 0 1px 0 rgba(255, 255, 255, 0.94);
-}
-
-.socials-button.open > .socials-close-icon {
-    display: inline-flex;
 }
 
 .socials-button.open::before,
@@ -2346,11 +2393,14 @@ body.has-posts-panel-open .button-group {
        The extra width is all on one side, so the centring transform is shifted
        by half the gutter -- every card ends up in exactly the position it had
        before the gutter existed. */
-    /* Full width where there is room beside a centred 254px card column, and
-       it gives way rather than pushing the panel off a narrow screen: below
-       about 365px the gutter shrinks and the bunny simply peeks less. */
-    --social-gutter: min(52px, max(0px, calc((100vw - 254px) / 2 - 4px)));
+    /* Full width where there is room beside the centred card column (the
+       shared --menu-col, so Links lines up with Wishes and :3), and it gives
+       way rather than pushing the panel off a narrow screen: on phones the
+       gutter shrinks and the bunny simply peeks less. */
+    --social-gutter: min(52px, max(0px, calc((100vw - var(--menu-col)) / 2 - 4px)));
     --social-shell-shift: calc(-50% - (var(--social-gutter) / 2));
+    --links-card-w: min(254px, calc(var(--menu-col) - 16px));
+    --links-card-inset: calc((var(--menu-col) - var(--links-card-w)) / 2);
     position: absolute;
     top: var(--open-surface-top);
     left: 50%;
@@ -2359,23 +2409,23 @@ body.has-posts-panel-open .button-group {
        part of this width now: the gutter is transparent, so the card column
        keeps the side margins it always had, and stays 254px wide down to a
        ~313px viewport instead of being squeezed by the gutter at 320px. */
-    width: min(96vw, calc(254px + var(--social-gutter)));
+    width: min(96vw, calc(var(--menu-col) + var(--social-gutter)));
     opacity: 0;
     visibility: hidden;
     pointer-events: none;
-    transform: translateX(var(--social-shell-shift)) translateY(-8px) scale(0.985);
+    transform: translateX(var(--social-shell-shift)) var(--menu-enter-from);
     transform-origin: 50% 18%;
     transition:
         opacity 0.34s ease,
-        transform 0.42s cubic-bezier(0.22, 1, 0.36, 1),
+        transform 0.42s var(--menu-enter-ease),
         visibility 0s linear 0.42s;
     will-change: opacity, transform;
 }
 
 .social-links-loading {
     position: absolute;
-    /* Centred over the card column, not over the shell's wider gutter box. */
-    inset: 0 0 0 var(--social-gutter);
+    /* Keep loading feedback beneath the note instead of replacing it. */
+    inset: 238px 0 auto var(--social-gutter);
     z-index: 4;
     display: none;
     min-height: 150px;
@@ -2384,7 +2434,7 @@ body.has-posts-panel-open .button-group {
     justify-content: center;
     gap: 7px;
     color: rgba(139, 91, 115, 0.62);
-    font-family: "Comic Sans MS", "Trebuchet MS", cursive;
+    font-family: var(--doll-hand);
     font-size: 10px;
     letter-spacing: 0.01em;
     text-align: center;
@@ -2395,16 +2445,18 @@ body.has-posts-panel-open .button-group {
 }
 
 .social-links-shell.is-loading > .dwl-motion-viewport {
-    /* Safari can defer video decoding in a visibility:hidden or fully
-       transparent subtree. Keep the final cards paintable at an imperceptible
-       opacity behind the paw so loadeddata/first-frame readiness can settle. */
-    opacity: 0.001;
-    pointer-events: none;
-    transition: none;
+    /* The note is the Links landing content and remains visible while media
+       cards prepare below it. */
+    opacity: 1;
 }
 
 .social-links-shell.is-loading .social-link-preview {
     opacity: 1 !important;
+}
+
+.social-links-shell.is-loading .social-links-panel > :not(.links-note-stage) {
+    opacity: 0.001;
+    pointer-events: none;
 }
 
 .social-links-shell > .dwl-motion-viewport {
@@ -2434,6 +2486,25 @@ body.has-posts-panel-open .button-group {
     /* Pushes the card column back to exactly where it sat before the shell
        grew, leaving the gutter as free space a mascot can occupy. */
     padding-left: var(--social-gutter);
+}
+
+/* Preserve the exact peelable note and under-sticker as the first Links item. */
+.links-note-stage {
+    position: relative;
+    width: 100%;
+    height: 119px;
+    overflow: visible;
+}
+
+.links-note-stage .note-peel-target {
+    top: 0;
+}
+
+/* Sized so the whole sticker (and its shadow) hides under the short note,
+   and centred on it. */
+.links-note-stage .note-under-sign {
+    top: -24px;
+    width: 156px;
 }
 
 .social-links-panel::-webkit-scrollbar {
@@ -2585,19 +2656,16 @@ body.has-social-panel-open .site-brand-footer {
     display: grid;
     grid-template-columns: 44px minmax(0, 1fr) 16px;
     align-items: center;
-    aspect-ratio: 32 / 11.385;
-    min-height: 81px;
+    min-height: 84px;
     gap: 10px;
-    padding: 7px 12px 7px 10px;
-    overflow: hidden;
-    border: 1px solid rgba(255, 174, 207, 0.52);
-    border-radius: 18px;
-    background:
-        linear-gradient(rgba(255, 255, 255, 0.76), rgba(255, 247, 252, 0.68)),
-        repeating-linear-gradient(90deg, rgba(255, 229, 241, 0.14) 0 8px, rgba(255, 250, 253, 0.12) 8px 16px);
-    box-shadow:
-        var(--glass-pink-shadow),
-        inset 0 1px 0 rgba(255, 255, 255, 0.78);
+    padding: 8px 14px 8px 12px;
+    /* Pinned paper like the wish cards and :3 notes. No overflow clip: the
+       pin overhangs the top edge, and the preview layers round their own
+       corners (border-radius: inherit) instead. */
+    border: 1px solid var(--paper-line);
+    border-radius: var(--paper-radius);
+    background: var(--paper-bg);
+    box-shadow: var(--paper-ring), var(--paper-shadow);
     color: rgba(106, 92, 99, 0.78);
     text-decoration: none;
     -webkit-tap-highlight-color: transparent;
@@ -2615,6 +2683,7 @@ body.has-social-panel-open .site-brand-footer {
     width: 100%;
     height: 100%;
     object-fit: cover;
+    border-radius: inherit;
     opacity: 0;
     filter: saturate(0.78) brightness(1.06);
     pointer-events: none;
@@ -2643,6 +2712,11 @@ body.has-social-panel-open .site-brand-footer {
     opacity: 0.34;
 }
 
+/* The Twitch clip's subject sits low in the frame, so crop from the top. */
+#twitch-option .social-link-preview {
+    object-position: 50% 100%;
+}
+
 .social-link-card.has-social-preview .social-link-poster {
     opacity: 0;
 }
@@ -2652,6 +2726,7 @@ body.has-social-panel-open .site-brand-footer {
     position: absolute;
     inset: 0;
     z-index: 1;
+    border-radius: inherit;
     background: linear-gradient(90deg, rgba(255, 250, 253, 0.72), rgba(255, 240, 248, 0.38));
     opacity: 0;
     pointer-events: none;
@@ -2665,6 +2740,34 @@ body.has-social-panel-open .site-brand-footer {
 .social-link-card > :not(.social-link-preview):not(.social-link-poster) {
     position: relative;
     z-index: 2;
+}
+
+/* The shared pin, overhanging the top edge like the Wishes/:3 pins. */
+.social-link-card::before {
+    content: '';
+    position: absolute;
+    top: var(--pin-top);
+    left: 50%;
+    z-index: 5;
+    width: var(--pin-size);
+    height: var(--pin-size);
+    border-radius: 50%;
+    background: var(--pin-fill);
+    box-shadow: var(--pin-shadow);
+    transform: translateX(-50%);
+    pointer-events: none;
+}
+
+/* A whisper of the pinboard tilt, alternating down the list. The individual
+   rotate property composes with the hover/press/pop transforms. */
+.social-links-panel > .social-link-card:nth-child(odd),
+.social-links-panel > .social-link-card-frame:nth-child(odd) > .social-link-card {
+    rotate: -0.4deg;
+}
+
+.social-links-panel > .social-link-card:nth-child(even),
+.social-links-panel > .social-link-card-frame:nth-child(even) > .social-link-card {
+    rotate: 0.4deg;
 }
 
 /* Hand-drawn bunny peeking over the snapchat card (drawn by hand on iPad,
@@ -2682,6 +2785,15 @@ body.has-social-panel-open .site-brand-footer {
    anchors. */
 .social-links-panel > * {
     margin-bottom: 8px;
+}
+
+/* Links is one strip the width of the note above it, centred on the same
+   axis as the Wishes and :3 boards. A single row as wide as a two-card board
+   reads heavy, so the shared column sets the centre and margins, not this
+   width. */
+.social-links-panel > :not(.links-note-stage) {
+    width: var(--links-card-w);
+    margin-inline: auto;
 }
 
 .social-links-panel > *:last-child {
@@ -2934,7 +3046,10 @@ body.has-social-panel-open .site-brand-footer {
        gutter collapses far enough that a bare calc() crossed zero and put the
        mascot on top of its own card, showing through the 76%-opaque
        background behind the Ko-fi icon. Clamped, it simply peeks less. */
-    left: min(0px, calc(16px - var(--social-gutter)));
+    /* The drawable room left of the card is the gutter plus the card's inset
+       from the column; 6px of it covers the rotated corner. -36px is the full
+       lean, which most screens reach; narrow ones lean as far as they can. */
+    left: clamp(-36px, calc(6px - var(--social-gutter) - var(--links-card-inset)), 0px);
     top: -20px;
     width: 56px;
     transform: rotate(-40deg);
@@ -3032,7 +3147,7 @@ body.has-social-panel-open .site-brand-footer {
     overflow: hidden;
     max-width: 100%;
     color: rgba(106, 92, 99, 0.78);
-    font-family: "Comic Sans MS", "Trebuchet MS", cursive;
+    font-family: var(--doll-hand);
     font-size: 13px;
     font-weight: 700;
     letter-spacing: 0.01em;
@@ -3081,15 +3196,10 @@ body.has-social-panel-open .site-brand-footer {
 @media (hover: hover) and (pointer: fine) {
     .social-link-card:hover,
     .social-link-card:focus-visible {
-        border-color: rgba(255, 157, 201, 0.68);
-        background:
-            linear-gradient(rgba(255, 255, 255, 0.84), rgba(255, 242, 249, 0.76)),
-            repeating-linear-gradient(90deg, rgba(255, 229, 241, 0.16) 0 8px, rgba(255, 250, 253, 0.14) 8px 16px);
-        box-shadow:
-            0 9px 22px rgba(255, 145, 195, 0.18),
-            inset 0 1px 0 rgba(255, 255, 255, 0.84);
+        border-color: rgba(232, 151, 182, 0.82);
+        box-shadow: var(--paper-ring), var(--paper-shadow-lift);
         outline: none;
-        transform: translateY(-1px);
+        transform: translateY(-3px);
     }
 }
 
@@ -3140,6 +3250,38 @@ body.has-social-panel-open .site-brand-footer {
 
 .entry-bubble-burst.social-card-bubble-burst {
     z-index: 12002;
+}
+
+/* Same droplets, same flight: the transform keyframes below are identical to
+   entryBubbleBurstParticle. Only their visibility differs -- for the first
+   ~130ms every droplet sits stacked on the card's centre, which on a card
+   (unlike the small entry bubble) reads as one pink dot. They stay invisible
+   until they start flying, then fade in exactly as before. */
+.entry-bubble-burst.social-card-bubble-burst i {
+    animation-name: socialCardBurstParticle;
+}
+
+@keyframes socialCardBurstParticle {
+    0% {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(0.25);
+    }
+
+    16% {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(1.12);
+    }
+
+    20% { opacity: 0; }
+
+    30% { opacity: 0.9; }
+
+    70% { opacity: 0.72; }
+
+    to {
+        opacity: 0;
+        transform: translate(calc(-50% + var(--burst-x)), calc(-50% + var(--burst-y))) rotate(var(--particle-spin)) scale(0.42);
+    }
 }
 
 @keyframes socialCardBubblePop {
@@ -3251,7 +3393,7 @@ body.site-maintenance-active .site-maintenance-card {
 .site-maintenance-kicker {
     margin: 0 0 8px;
     color: rgba(174, 85, 130, 0.72);
-    font-family: "Comic Sans MS", "Trebuchet MS", cursive;
+    font-family: var(--doll-hand);
     font-size: 13px;
     font-weight: 700;
 }
@@ -3260,7 +3402,7 @@ body.site-maintenance-active .site-maintenance-card {
     position: relative;
     margin: 0 0 10px;
     color: rgba(122, 76, 92, 0.88);
-    font-family: "Comic Sans MS", "Trebuchet MS", cursive;
+    font-family: var(--doll-hand);
     font-size: 24px;
     line-height: 1.1;
 }
@@ -3690,7 +3832,7 @@ body.first-visit-tour-active .tour-highlight-target {
     left: 50%;
     bottom: 0;
     color: rgba(130, 87, 107, 0.6);
-    font-family: "Comic Sans MS", "Trebuchet MS", cursive;
+    font-family: var(--doll-hand);
     font-size: 9.5px;
     font-weight: 400;
     line-height: 1;
@@ -3705,6 +3847,13 @@ body.first-visit-tour-active .tour-highlight-target {
     display: inline-flex;
     align-items: center;
     justify-content: center;
+}
+
+/* An open control is the selected section, not a dismiss button. Keep each
+   section's artwork visible and use the shared blush ring as the state cue. */
+.dwl-icons-row .support-menu-button.open > .menu-main-icon,
+.dwl-icons-row #support-menu-button.dwl-open > .menu-main-icon {
+    display: inline-flex;
 }
 
 .links-tail-icon {
@@ -3777,7 +3926,7 @@ body.first-visit-tour-active .tour-highlight-target {
 }
 
 .wishes-swirl {
-    color: rgba(126, 80, 112, 0.7);
+    color: rgba(186, 128, 164, 0.62);
     font-family: Georgia, "Times New Roman", serif;
     font-size: 30px;
     font-weight: 400;
@@ -3785,14 +3934,54 @@ body.first-visit-tour-active .tour-highlight-target {
 }
 
 .wishes-swirl-glyph {
+    position: relative;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     width: 100%;
     height: 100%;
-    padding-bottom: 3px;
     transform-origin: center;
     will-change: transform;
+}
+
+/* The spiral is the Noto Sans Cham U+AA5C outline drawn at the exact spot the
+   text glyph used to render, so it looks the same on every device and the
+   fairy trail below can follow its arms precisely. */
+.wishes-swirl-glyph > .wishes-swirl-svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+}
+
+/* While wishes is selected, the fairy trail rides the spiral itself instead
+   of the rim: a spiral-long trail led by its big sparkle runs along the
+   glyph's centreline into the centre and loops, so the spiral is always
+   covered. It sits inside the spinning element, so it turns and breathes
+   with wishesHypnosis automatically. */
+#support-menu-button .wishes-swirl-glyph::after {
+    content: '';
+    position: absolute;
+    left: -6px;
+    top: -6px;
+    width: 43px;
+    height: 43px;
+    background: url("site-images/fairy-spiral.svg?v=6") center / 100% 100% no-repeat;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.28s ease;
+}
+
+#support-menu-button.dwl-open .wishes-swirl-glyph::after {
+    opacity: 1;
+    transition: opacity 0.45s ease 0.05s;
+}
+
+.pill-mini-swirl > .wishes-swirl-svg {
+    display: block;
+    width: calc(31em / 30);
+    height: calc(31em / 30);
 }
 
 #support-menu-button .wishes-swirl-glyph {
@@ -3809,6 +3998,10 @@ body.first-visit-tour-active .tour-highlight-target {
     #support-menu-button .wishes-swirl-glyph {
         animation: none;
     }
+
+    #support-menu-button .wishes-swirl-glyph::after {
+        background-image: url("site-images/fairy-spiral-still.svg?v=6");
+    }
 }
 
 .dwl-icons-row .action-menu-label {
@@ -3820,25 +4013,15 @@ body.first-visit-tour-active .tour-highlight-target {
     font-weight: 400;
 }
 
-.dwl-icons-row #socials-button > .socials-close-icon,
-.dwl-icons-row #support-menu-button > .menu-close-icon,
-.dwl-icons-row #action-menu-button > .menu-back-arrow {
-    width: 100%;
-    height: 100%;
-    color: #c7578a;
-    font-family: "Comic Sans MS", "Bradley Hand", "Segoe Print", cursive;
-    font-size: 26px;
-    font-weight: 400;
-    line-height: 1;
-    transform: rotate(-4deg) scale(1);
-    transition: opacity 0.16s ease, transform 0.2s ease;
-}
-
 .dwl-icons-row .support-menu-button.open,
 .dwl-icons-row #support-menu-button.dwl-open {
-    border-color: rgba(229, 135, 177, 0.62);
+    border-color: rgba(255, 255, 255, 0.86);
     border-radius: 50%;
+    background: linear-gradient(155deg, rgba(255, 255, 255, 0.9), rgba(255, 228, 241, 0.7));
     color: #c9578b;
+    box-shadow:
+        0 6px 15px rgba(190, 100, 140, 0.12),
+        inset 0 1px 0 rgba(255, 255, 255, 0.96);
 }
 
 .dwl-icons-row .support-menu-button:focus-visible {
@@ -3861,6 +4044,15 @@ body.first-visit-tour-active .tour-highlight-target {
 
     .dwl-icons-row .icon-container:hover > #support-menu-button.dwl-open {
         transform: translateY(-2px);
+    }
+
+    .dwl-icons-row .icon-container:hover > .support-menu-button.open,
+    .dwl-icons-row .icon-container:hover > #support-menu-button.dwl-open {
+        border-color: rgba(255, 255, 255, 0.9);
+        background: linear-gradient(155deg, rgba(255, 255, 255, 0.94), rgba(255, 228, 241, 0.74));
+        box-shadow:
+            0 8px 18px rgba(190, 100, 140, 0.14),
+            inset 0 1px 0 rgba(255, 255, 255, 0.98);
     }
 
     .dwl-icons-row .icon-container:hover > .dwl-icon-name {
@@ -3996,7 +4188,7 @@ body.first-visit-tour-active .tour-highlight-target {
     border-radius: 14px 14px 5px 14px;
     background: rgba(255, 255, 255, 0.96);
     color: rgba(126, 82, 103, 0.79);
-    font-family: "Comic Sans MS", "Trebuchet MS", cursive;
+    font-family: var(--doll-hand);
     font-size: 10.5px;
     font-weight: 600;
     line-height: 1.25;
@@ -4052,7 +4244,7 @@ body.first-visit-tour-active .tour-highlight-target {
     padding: 5px 18px 0;
     box-sizing: border-box;
     resize: none;
-    font-family: "Comic Sans MS", "Trebuchet MS", cursive;
+    font-family: var(--doll-hand);
     margin-bottom: 2px;
     color: rgba(86, 78, 82, 0.84);
     background: transparent;
@@ -4098,7 +4290,7 @@ body.first-visit-tour-active .tour-highlight-target {
 }
 
 #char-count {
-    font-family: "Comic Sans MS", "Trebuchet MS", cursive;
+    font-family: var(--doll-hand);
     font-size: 11px;
     color: rgba(255, 132, 187, 0.82);
     font-weight: 700;
@@ -4115,7 +4307,7 @@ body.first-visit-tour-active .tour-highlight-target {
     border-radius: 999px;
     background: linear-gradient(180deg, rgba(255, 186, 221, 0.94), rgba(255, 141, 196, 0.88)) !important;
     color: rgba(255, 255, 255, 0.96);
-    font-family: "Comic Sans MS", "Trebuchet MS", cursive;
+    font-family: var(--doll-hand);
     font-size: 11px;
     font-weight: 700;
     line-height: 1;
@@ -4137,7 +4329,7 @@ body.first-visit-tour-active .tour-highlight-target {
     position: absolute;
     z-index: 2;
     color: rgba(255, 132, 187, 0.76);
-    font-family: "Comic Sans MS", "Trebuchet MS", cursive;
+    font-family: "Comic Sans MS", "Trebuchet MS", sans-serif;
     line-height: 1;
     pointer-events: none;
 }
@@ -4158,7 +4350,7 @@ body.first-visit-tour-active .tour-highlight-target {
     right: 14px;
     bottom: 42px;
     color: rgba(255, 132, 187, 0.76);
-    font-family: "Comic Sans MS", "Trebuchet MS", sans-serif;
+    font-family: var(--doll-hand);
     font-size: 17px;
     transform: rotate(11deg);
 }
@@ -4213,7 +4405,7 @@ body.first-visit-tour-active .tour-highlight-target {
     position: absolute;
     z-index: 2;
     color: rgba(255, 132, 187, 0.72);
-    font-family: "Comic Sans MS", "Trebuchet MS", cursive;
+    font-family: "Comic Sans MS", "Trebuchet MS", sans-serif;
     line-height: 1;
     pointer-events: none;
 }
@@ -4234,7 +4426,7 @@ body.first-visit-tour-active .tour-highlight-target {
     right: 16px;
     bottom: 23px;
     color: rgba(255, 132, 187, 0.72);
-    font-family: "Comic Sans MS", "Trebuchet MS", sans-serif;
+    font-family: var(--doll-hand);
     font-size: 18px;
     transform: rotate(11deg);
 }
@@ -4379,7 +4571,7 @@ body.first-visit-tour-active .tour-highlight-target {
 }
 
 @keyframes dwlCommunityBottomEdgeReveal {
-    from { --community-edge-shift: 31px; }
+    from { --community-edge-shift: 41px; }
     to { --community-edge-shift: 0px; }
 }
 
@@ -4501,7 +4693,7 @@ body.first-visit-tour-active .tour-highlight-target {
     justify-content: center;
     gap: 7px;
     color: rgba(139, 91, 115, 0.62);
-    font-family: "Comic Sans MS", "Trebuchet MS", cursive;
+    font-family: var(--doll-hand);
     font-size: 10px;
     letter-spacing: 0.01em;
     text-align: center;
@@ -4546,7 +4738,7 @@ body.first-visit-tour-active .tour-highlight-target {
     border-radius: 4px;
     background: rgba(255, 247, 251, 0.82);
     color: rgba(139, 91, 115, 0.58);
-    font-family: "Comic Sans MS", "Trebuchet MS", cursive;
+    font-family: var(--doll-hand);
     font-size: 9px;
     text-align: center;
 }
@@ -4697,7 +4889,7 @@ body.first-visit-tour-active .tour-highlight-target {
 
 .question-text {
     margin: 0;
-    font-family: "Comic Sans MS", "Trebuchet MS", cursive;
+    font-family: var(--doll-hand);
     font-style: normal;
     color: rgba(82, 75, 80, 0.84);
     font-size: 12px;
@@ -5056,7 +5248,7 @@ body.first-visit-tour-active .tour-highlight-target {
     z-index: 2;
     margin: 0;
     color: rgba(122, 76, 92, 0.82);
-    font-family: "Comic Sans MS", "Trebuchet MS", cursive;
+    font-family: var(--doll-hand);
     font-size: 14px;
     font-weight: 700;
     line-height: 1.35;
@@ -5172,7 +5364,7 @@ body.first-visit-tour-active .tour-highlight-target {
 
 .admin-gate-card label {
     color: rgba(122, 76, 92, 0.78);
-    font-family: "Comic Sans MS", "Trebuchet MS", cursive;
+    font-family: var(--doll-hand);
     font-size: 13px;
     font-weight: 700;
 }
@@ -5336,13 +5528,6 @@ body.has-community-hub-open #action-menu-button.open .action-options {
     display: none;
 }
 
-body.has-community-hub-open #action-menu-button.open > .menu-back-arrow {
-    font-family: "Comic Sans MS", "Bradley Hand", "Segoe Print", cursive;
-    font-size: 26px;
-    font-weight: 400;
-    transform: rotate(-4deg) scale(1);
-}
-
 .community-hub {
     /* Keep the same 12px breathing room beneath the fully collapsed icon pill
        that the previous visual treatment had, without coupling it to height. */
@@ -5354,15 +5539,15 @@ body.has-community-hub-open #action-menu-button.open > .menu-back-arrow {
        motion shell preallocates a transparent strip above the visible card;
        keeping it below the controls prevents that strip stealing icon taps. */
     z-index: 9;
-    width: min(90vw, 320px);
+    width: var(--menu-col);
     padding: 0;
     opacity: 0;
     visibility: hidden;
     color: var(--glass-pink-text);
-    transform: translateX(-50%) translateY(-8px) scale(0.985);
+    transform: translateX(-50%) var(--menu-enter-from);
     transform-origin: 50% 0;
     pointer-events: none;
-    transition: opacity 0.34s ease, transform 0.42s cubic-bezier(0.22, 1, 0.36, 1), visibility 0s linear 0.42s;
+    transition: opacity 0.34s ease, transform 0.42s var(--menu-enter-ease), visibility 0s linear 0.42s;
 }
 
 /* Used only for a synchronous final-geometry measurement before opening.
@@ -5373,44 +5558,15 @@ body.has-community-hub-open #action-menu-button.open > .menu-back-arrow {
 }
 
 .community-surface {
+    /* No frame: the wall sits straight on the page like the Wishes and Links
+       menus, with the ?/pencil switch floating above it as the header. */
     width: 100%;
-    padding: 7px 8px 9px;
+    padding: 7px 0 0;
     overflow: hidden;
-    border: 1px solid rgba(255, 174, 207, 0.5);
-    border-radius: 20px;
-    background:
-        linear-gradient(rgba(255, 255, 255, 0.79), rgba(255, 246, 251, 0.74)),
-        repeating-linear-gradient(90deg, rgba(255, 231, 242, 0.24) 0 12px, rgba(255, 250, 253, 0.24) 12px 24px);
-    box-shadow: 0 8px 21px rgba(255, 145, 195, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.84);
     /* The shared motion shell preallocates the fully collapsed height once,
        clips it at the stable footer edge, and moves this layer compositor-side.
        Never change the native scroller's geometry under the visitor's finger. */
     will-change: transform;
-}
-
-/* Unlike the other two submenu surfaces, the unified community card carries
-   its visible border on the moving viewport itself. At scrollTop 0 that
-   viewport extends 41px beneath the stationary motion shell, which used to
-   clip off the rounded bottom and the end of its fade. Keep the shell rounded
-   and redraw only that stationary bottom rim; the moving card still owns its
-   top edge and every other part of the existing scroll transition. */
-.community-hub.dwl-motion-ready {
-    border-radius: 20px;
-}
-
-.community-hub.dwl-motion-ready::after {
-    content: "";
-    position: absolute;
-    z-index: 30;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    height: 21px;
-    box-sizing: border-box;
-    border: 1px solid rgba(255, 174, 207, 0.5);
-    border-top: 0;
-    border-radius: 0 0 20px 20px;
-    pointer-events: none;
 }
 
 .community-scroll-body {
@@ -5449,11 +5605,10 @@ body.has-community-hub-open #action-menu-button.open > .menu-back-arrow {
     );
 }
 
-/* Fallback browsers use the existing rAF-written collapse value. The 10px
-   subtraction is the surface's 9px bottom padding plus its 1px border, so the
-   fade ends exactly at the visible inner edge rather than under the clip. */
+/* Fallback browsers use the existing rAF-written collapse value, so the
+   fade ends exactly at the visible bottom edge rather than under the clip. */
 .community-hub.dwl-motion-ready .community-scroll-body {
-    --community-edge-shift: max(0px, calc(var(--dwl-motion-hidden) - 10px));
+    --community-edge-shift: max(0px, var(--dwl-motion-hidden));
 }
 
 /* The unified card owns the posts timeline. Its nested legacy content is
@@ -5516,7 +5671,7 @@ body.has-community-hub-open #action-menu-button.open > .menu-back-arrow {
     color: var(--glass-pink-text);
     background: transparent;
     box-shadow: none;
-    font-family: "Comic Sans MS", "Trebuchet MS", cursive;
+    font-family: var(--doll-hand);
     font-size: 16px;
     font-weight: 700;
     line-height: 1;
@@ -5557,6 +5712,11 @@ body.has-community-hub-open #action-menu-button.open > .menu-back-arrow {
 .community-hub.is-doodle-mode .community-composer-slot {
     /* JS replaces this fallback with the measured canvas/control height. */
     height: 282px;
+}
+
+.community-hub[data-composer-mode="closed"] .community-composer-slot {
+    /* Switch off: the wall sits right under the tabs. */
+    height: 0;
 }
 
 .community-hub.has-no-composer .community-create-tabs,
@@ -5683,8 +5843,8 @@ body.has-community-hub-open #action-menu-button.open > .menu-back-arrow {
 
 .community-hub .posts-content {
     max-height: none;
-    padding: 8px 6px 14px;
-    border-radius: 12px;
+    padding: 0 0 14px;
+    border-radius: 0;
     overflow: visible;
     scrollbar-width: none;
     -webkit-mask-image: none;
@@ -5708,7 +5868,9 @@ body.has-community-hub-open #action-menu-button.open > .menu-back-arrow {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     align-items: start;
     gap: 10px;
-    padding: 11px 8px 18px;
+    /* Same insets as the Wishes masonry, so notes and wish cards share one
+       width (149px at 390px) and one pin clearance. */
+    padding: 12px 8px 18px;
 }
 
 .community-hub .community-wall-list.is-single {
@@ -5726,7 +5888,7 @@ body.has-community-hub-open #action-menu-button.open > .menu-back-arrow {
     border-radius: 999px;
     background: rgba(255, 246, 251, 0.9);
     color: rgba(145, 86, 117, 0.82);
-    font-family: "Comic Sans MS", "Trebuchet MS", cursive;
+    font-family: var(--doll-hand);
     font-size: 11px;
     font-weight: 700;
     cursor: pointer;
@@ -5782,16 +5944,6 @@ body.has-community-hub-open #action-menu-button.open > .menu-back-arrow {
     object-fit: contain;
 }
 
-@media (max-width: 390px) {
-    .community-hub {
-        width: min(92vw, 314px);
-        padding-inline: 8px;
-    }
-
-    .community-hub .posts-content {
-        max-height: none;
-    }
-}
 
 @media (prefers-reduced-motion: reduce) {
     .community-hub,
