@@ -81,6 +81,31 @@ html {
     touch-action: manipulation;
 }
 
+/* iOS ignores `background-attachment: fixed` outright (WebKit bug 275247, still
+   open, called "by design"), and an in-app browser such as Snapchat can leave a
+   strip of its own white under a page that never scrolls. This layer is pinned
+   to the tallest the screen can ever be, so the art always reaches the bottom
+   edge no matter where the browser puts its toolbar. */
+html::before {
+    content: '';
+    position: fixed;
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    /* Whichever is taller: the area we can see right now, or the tallest the
+       screen gets once the browser's toolbars are out of the way. */
+    min-height: 100vh;
+    min-height: 100lvh;
+    /* Same layers as `html` above, so on a wide screen this is a no-op: it sits
+       over the canvas, and anything left out here would simply disappear. */
+    background:
+        radial-gradient(circle at 50% 34%, rgba(255, 226, 240, 0.44), transparent 38%),
+        #fff7fb url('site-images/background.png?v=13') center / cover no-repeat;
+    z-index: -1;
+    pointer-events: none;
+}
+
 body {
     background-color: transparent;
     background-image: url('site-images/background.png?v=13');

@@ -2808,6 +2808,9 @@ document.addEventListener("DOMContentLoaded", async function() {
     // that chrome — and the pill under it — on screen.
     let stableSmallViewportHeight = 0;
     let stableSmallViewportWidth = 0;
+    // The taller area an in-app browser hands back once its toolbar retracts,
+    // adopted only after a scroll settles. Reset whenever the width changes.
+    let settledViewportHeight = 0;
 
     function getStableSmallViewportHeight() {
         const viewportWidth = window.visualViewport?.width || window.innerWidth;
@@ -2816,6 +2819,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             return stableSmallViewportHeight;
         }
         stableSmallViewportWidth = viewportWidth;
+        settledViewportHeight = 0;
         if (!window.CSS?.supports?.('height: 100svh')) {
             stableSmallViewportHeight = 0;
             return 0;
@@ -2833,10 +2837,41 @@ document.addEventListener("DOMContentLoaded", async function() {
         const visualViewport = window.visualViewport;
         if (!visualViewport) return window.innerHeight;
         const currentBottom = visualViewport.offsetTop + visualViewport.height;
-        const smallHeight = getStableSmallViewportHeight();
-        return smallHeight > 0
-            ? Math.min(currentBottom, visualViewport.offsetTop + smallHeight)
+        const cap = Math.max(getStableSmallViewportHeight(), settledViewportHeight);
+        return cap > 0
+            ? Math.min(currentBottom, visualViewport.offsetTop + cap)
             : currentBottom;
+    }
+
+    // In-app browsers (Snapchat, Instagram) retract their bottom toolbar while
+    // you scroll, so the visible area grows by roughly a toolbar's height. The
+    // `svh` cap above deliberately ignores that growth so nothing resizes under
+    // a finger. Once the scroll has settled we do let the taller area count,
+    // otherwise the open panel and the footer stay sized for the
+    // toolbar-visible screen and leave a dead band across the bottom.
+    //
+    // Well above sub-pixel noise, and below the smallest real toolbar: Chrome
+    // on iOS only frees about 20px, Safari 44, Snapchat closer to 100.
+    const GROWN_VIEWPORT_EPSILON = 12;
+
+    function adoptGrownViewportHeight() {
+        const visualViewport = window.visualViewport;
+        if (!visualViewport) return false;
+        // A pinch-zoomed or panned visual viewport reports a shifted bottom
+        // edge that is not extra room. Only a settled, unzoomed view counts.
+        if (visualViewport.offsetTop > 1 || (visualViewport.scale || 1) > 1.01) return false;
+        const rawHeight = visualViewport.height;
+        if (rawHeight > Math.max(getStableSmallViewportHeight(), settledViewportHeight)) {
+            settledViewportHeight = rawHeight;
+        }
+        const nextBottom = getStableVisibleViewportBottom();
+        // Measure against what the panel is actually sized for, not against the
+        // last thing we observed: a toolbar animates open in many small steps,
+        // and comparing step to step would never add up to a growth worth
+        // acting on.
+        if (nextBottom <= appliedViewportBottom + GROWN_VIEWPORT_EPSILON) return false;
+        lastPanelViewportBottom = nextBottom;
+        return true;
     }
 
     function setPanelFillMax(panel, {
@@ -2883,6 +2918,10 @@ document.addEventListener("DOMContentLoaded", async function() {
     let panelFillForcePending = false;
     let lastPanelViewportWidth = window.visualViewport?.width || window.innerWidth;
     let lastPanelViewportBottom = getStableVisibleViewportBottom();
+    // The visible bottom the panels are currently sized against. Only a sync
+    // that actually runs moves this, which is what lets an animated toolbar's
+    // many small steps accumulate into one growth worth reacting to.
+    let appliedViewportBottom = lastPanelViewportBottom;
 
     function hasOpenScrollPanel() {
         return document.body.classList.contains('has-social-panel-open')
@@ -2896,8 +2935,13 @@ document.addEventListener("DOMContentLoaded", async function() {
         panelScrollIdleTimer = window.setTimeout(() => {
             panelScrolling = false;
             reconcilePanelScrollState();
+            // The browser toolbar usually retracts during this scroll. Now that
+            // the finger is off, claim the space it left instead of keeping the
+            // panel and the footer frozen above an empty band.
+            const grew = adoptGrownViewportHeight();
+            if (grew) panelFillPending = true;
             if (panelFillPending) {
-                schedulePanelFillSync({ force: panelFillForcePending });
+                schedulePanelFillSync({ force: panelFillForcePending || grew });
             }
         }, 180);
     }
@@ -2917,6 +2961,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             const forceSync = panelFillForcePending;
             panelFillPending = false;
             panelFillForcePending = false;
+            appliedViewportBottom = getStableVisibleViewportBottom();
             window.requestAnimationFrame(() => {
                 if (document.body.classList.contains('has-social-panel-open')) {
                     window.dollSyncSocialReservedHeight?.(forceSync);
@@ -2932,6 +2977,9 @@ document.addEventListener("DOMContentLoaded", async function() {
     function handlePanelViewportResize() {
         const visualViewport = window.visualViewport;
         const nextWidth = visualViewport?.width || window.innerWidth;
+        // A toolbar can also finish retracting after the scroll already stopped
+        // (momentum ends first). Claim that space straight away in that case.
+        const grew = !panelScrolling && adoptGrownViewportHeight();
         const nextBottom = getStableVisibleViewportBottom();
         const widthChanged = Math.abs(nextWidth - lastPanelViewportWidth) > 2;
         // Growing browser space can remain frozen for scroll stability. If
@@ -2940,7 +2988,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         const visibleBottomShrank = nextBottom < lastPanelViewportBottom - 2;
         lastPanelViewportWidth = nextWidth;
         lastPanelViewportBottom = nextBottom;
-        schedulePanelFillSync({ force: widthChanged || visibleBottomShrank });
+        schedulePanelFillSync({ force: widthChanged || visibleBottomShrank || grew });
     }
     window.addEventListener('resize', handlePanelViewportResize);
     window.visualViewport?.addEventListener('resize', handlePanelViewportResize);
