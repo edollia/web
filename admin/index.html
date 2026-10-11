@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="robots" content="noindex, nofollow">
     <meta name="referrer" content="strict-origin-when-cross-origin">
-    <meta name="doll-build" content="2026.08.16.2">
+    <meta name="doll-build" content="2026.10.10.3">
     <title>Lia Admin</title>
     <link rel="icon" type="image/png" href="/favicon.png">
     <link rel="stylesheet" href="../admin.css?v=6.2&r=2026.09.06.1">
@@ -1132,8 +1132,37 @@
     </main>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>
+    // Keep the login and reload controls usable when the CDN is blocked.
+    if (!window.supabase || typeof window.supabase.createClient !== 'function') {
+        window.dollAdminConnectionUnavailable = true;
+        const error = { message: "Couldn't connect. Check your connection or blocker, then reload." };
+        window.supabase = { createClient: () => {
+            const query = () => {
+                const result = Promise.resolve({ data: null, error });
+                const chain = new Proxy({}, { get: (_, key) => key === 'then'
+                    ? result.then.bind(result) : () => chain });
+                return chain;
+            };
+            return { from: query, auth: {
+                getUser: async () => ({ data: { user: null }, error }),
+                getSession: async () => ({ data: { session: null }, error }),
+                signInWithPassword: async () => ({ error }),
+                signOut: async () => ({ error })
+            } };
+        } };
+        document.querySelectorAll('.admin-auth-card').forEach(card => {
+            const reload = document.createElement('button');
+            reload.type = 'button';
+            reload.className = 'soft';
+            reload.textContent = 'reload';
+            reload.addEventListener('click', () => window.location.reload());
+            card.appendChild(reload);
+        });
+    }
+    </script>
     <script src="../admin-rooms.js?v=4.5"></script>
     <script src="../social-card-media-config.js?v=6&r=2026.09.18.17"></script>
-    <script src="../admin.js?v=6.2&r=2026.09.06.1"></script>
+    <script src="../admin.js?v=6.3&r=2026.10.10.3"></script>
 </body>
 </html>

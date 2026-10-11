@@ -130,7 +130,50 @@ const DEFAULT_LINK_SETTINGS = {
     site_tagline: "Lia's little space."
 };
 
+// Bound reads and writes, including their response bodies. Supabase passes
+// its fetch calls through global.fetch; caller cancellation is preserved.
+async function adminFetchWithDeadline(input, options = {}) {
+    const controller = new AbortController();
+    const signal = options.signal || (input instanceof Request ? input.signal : null);
+    const relayAbort = () => controller.abort();
+    if (signal?.aborted) relayAbort();
+    else signal?.addEventListener('abort', relayAbort, { once: true });
+    const timeoutMs = String(input?.url || input).includes('/storage/v1/') ? 120000 : 20000;
+    let timer;
+    const deadline = new Promise((_, reject) => {
+        timer = setTimeout(() => {
+            // Mark our deadline as cancellation so the SDK does not restart it.
+            reject(new DOMException('The connection timed out. Refresh the affected list before retrying.', 'AbortError'));
+            controller.abort();
+        }, timeoutMs);
+    });
+    try {
+        return await Promise.race([
+            (async () => {
+                const response = await fetch(input, { ...options, signal: controller.signal });
+                await response.clone().arrayBuffer();
+                return response;
+            })(),
+            deadline
+        ]);
+    } finally {
+        clearTimeout(timer);
+        signal?.removeEventListener('abort', relayAbort);
+    }
+}
+
+function withAdminDeadline(request, ms = 10000) {
+    let timer;
+    return Promise.race([
+        Promise.resolve(request),
+        new Promise((_, reject) => {
+            timer = setTimeout(() => reject(new Error('The connection timed out. Please try again.')), ms);
+        })
+    ]).finally(() => clearTimeout(timer));
+}
+
 const adminClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    global: { fetch: adminFetchWithDeadline },
     auth: {
         persistSession: true,
         autoRefreshToken: true
@@ -1886,8 +1929,8 @@ async function syncWishlistNow() {
     setStatus(els.adminStatus, 'syncing wishlist...');
 
     try {
-        const { data: { session } } = await adminClient.auth.getSession();
-        const res = await fetch(`${SUPABASE_URL}/functions/v1/throne-wishlist-sync`, {
+        const { data: { session } } = await withAdminDeadline(adminClient.auth.getSession());
+        const res = await adminFetchWithDeadline(`${SUPABASE_URL}/functions/v1/throne-wishlist-sync`, {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${session?.access_token || SUPABASE_ANON_KEY}` },
         });
@@ -2513,35 +2556,39 @@ async function openDashboard() {
     window.roomsLockdownStatus?.().catch(err => console.error('rooms lockdown status:', err));
 }
 
+let loginInFlight = false;
 async function handleLogin(e) {
     e.preventDefault();
+    if (loginInFlight) return;
+    loginInFlight = true;
+    const button = els.loginForm.querySelector('button[type="submit"]');
+    if (button) button.disabled = true;
     setStatus(els.loginStatus, 'checking...');
-
     const email = els.email.value.trim();
     const password = els.password.value;
-
-    const { error } = await adminClient.auth.signInWithPassword({ email, password });
-
-    if (error) {
-        setStatus(els.loginStatus, error.message || 'Login failed.');
-        return;
-    }
-
-    if (!(await ensureAdminSession())) {
-        setStatus(els.loginStatus, 'This login is not allowed here.');
-        return;
-    }
-
-    // Same credentials sign into the rooms project too, so one login covers both.
-    // Don't let a rooms-project hiccup block the main dashboard from opening.
     try {
-        await window.roomsSignIn(email, password);
-    } catch (err) {
-        console.error('rooms login failed:', err);
+        const { error } = await withAdminDeadline(adminClient.auth.signInWithPassword({ email, password }), 20000);
+        if (error) throw error;
+        if (!(await withAdminDeadline(ensureAdminSession()))) {
+            setStatus(els.loginStatus, 'This login is not allowed here.');
+            return;
+        }
+        // The secondary project must not strand the main dashboard.
+        try {
+            if (typeof window.roomsSignIn === 'function') {
+                await withAdminDeadline(window.roomsSignIn(email, password), 5000);
+            }
+        } catch (error) {
+            console.error('rooms login failed:', error);
+        }
+        els.password.value = '';
+        await openDashboard();
+    } catch (error) {
+        setStatus(els.loginStatus, error.message || 'Login failed.');
+    } finally {
+        loginInFlight = false;
+        if (button) button.disabled = false;
     }
-
-    els.password.value = '';
-    await openDashboard();
 }
 
 async function getNextWishlistPosition() {
@@ -4286,6 +4333,11 @@ function initTabs() {
 }
 
 async function init() {
+    if (window.dollAdminConnectionUnavailable) {
+        const message = "Couldn't connect. Check your connection or blocker, then reload.";
+        setStatus(els.gateStatus, message);
+        setStatus(els.loginStatus, message);
+    }
     els.passcodeForm.addEventListener('submit', async e => {
         e.preventDefault();
         const entered = await hashPin(els.passcode.value.trim());
@@ -4307,13 +4359,24 @@ async function init() {
         });
     });
     els.logout.addEventListener('click', async () => {
-        clearTimeout(wishlistSearchTimer);
-        SOCIAL_CARD_VIDEO_KEYS.forEach(revokeSocialVideoObjectUrl);
-        socialVideoSelectedFiles.clear();
-        await adminClient.auth.signOut();
-        await window.roomsSignOut?.().catch(err => console.error('rooms signOut:', err));
-        sessionStorage.removeItem('doll_admin_gate');
-        showPanel(els.gatePanel);
+        if (els.logout.disabled) return;
+        els.logout.disabled = true;
+        try {
+            const { error } = await withAdminDeadline(adminClient.auth.signOut());
+            if (error) throw error;
+            clearTimeout(wishlistSearchTimer);
+            SOCIAL_CARD_VIDEO_KEYS.forEach(revokeSocialVideoObjectUrl);
+            socialVideoSelectedFiles.clear();
+            if (window.roomsSignOut) {
+                await withAdminDeadline(window.roomsSignOut(), 5000).catch(err => console.error('rooms signOut:', err));
+            }
+            sessionStorage.removeItem('doll_admin_gate');
+            showPanel(els.gatePanel);
+        } catch (error) {
+            setStatus(els.adminStatus, error.message || 'Could not sign out. Please try again.');
+        } finally {
+            els.logout.disabled = false;
+        }
     });
 
     document.querySelectorAll('.admin-list').forEach(list => {
@@ -4514,12 +4577,22 @@ async function init() {
         return;
     }
 
-    if (await ensureAdminSession()) {
-        await window.roomsRestoreSession?.().catch(err => console.error('rooms session restore:', err));
-        await openDashboard();
-    } else {
+    try {
+        if (await withAdminDeadline(ensureAdminSession())) {
+            if (window.roomsRestoreSession) {
+                await withAdminDeadline(window.roomsRestoreSession(), 5000).catch(err => console.error('rooms session restore:', err));
+            }
+            await openDashboard();
+        } else {
+            showPanel(els.loginPanel);
+        }
+    } catch (error) {
         showPanel(els.loginPanel);
+        setStatus(els.loginStatus, error.message || 'Could not restore your session.');
     }
 }
 
-init();
+init().catch(error => {
+    showPanel(els.loginPanel);
+    setStatus(els.loginStatus, error.message || 'Could not open the dashboard.');
+});

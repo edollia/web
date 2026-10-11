@@ -725,33 +725,59 @@ var kofiWidgetOverlayUtilities = kofiWidgetOverlayUtilities || function () {
     };
 
     const loadKofiIframe = function (pageId, parentElementId, iframeStyle) {
-
-        var _iframeLoading = false;
-        var _iframeDebounce = null;
-        var _showFeed = false;
-
-        const tryLoad = function () {
-
-            if (!_iframeLoading) {
-
-                _iframeLoading = true;
-                let url = kofiWidgetOverlayConstants.kofiRoot + pageId + '/?hidefeed=true&widget=true&embed=true';
-                if (_showFeed) {
-                    url = kofiWidgetOverlayConstants.kofiRoot + pageId + '/?widget=true&embed=true';
-                }
-                const iframe = document.createElement('iframe');
-                const parentElement = document.getElementById(parentElementId);
-
-                iframe.src = url;
-                iframe.style = iframeStyle;
-                parentElement.appendChild(iframe);
-
-            } else {
-                debounce(_iframeDebounce, tryLoad)
-            }
+        const parent = document.getElementById(parentElementId);
+        if (!parent) return;
+        let loadRun = 0;
+        let timer = 0;
+        const status = document.createElement('div');
+        status.className = 'doll-kofi-load-state';
+        status.setAttribute('role', 'status');
+        status.style.cssText = 'position:absolute;inset:0 0 44px;display:grid;place-content:center;gap:16px;text-align:center;padding:24px;background:#fff7fb;color:#b94d84;font:18px "Comic Sans MS",cursive;z-index:3;border-radius:16px;';
+        const footer = document.createElement('div');
+        footer.style.cssText = 'position:absolute;bottom:0;left:0;right:0;min-height:44px;display:flex;align-items:center;justify-content:center;gap:18px;background:#fff7fb;color:#b94d84;font:16px "Comic Sans MS",cursive;z-index:3;';
+        const retry = document.createElement('button');
+        retry.type = 'button';
+        retry.textContent = 'retry';
+        retry.style.cssText = 'font:inherit;color:inherit;background:transparent;border:1px solid #ffd0e5;border-radius:20px;padding:4px 14px;cursor:pointer;';
+        const link = document.createElement('a');
+        link.href = kofiWidgetOverlayConstants.kofiRoot + pageId;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        link.textContent = 'open full website';
+        link.style.cssText = 'color:inherit;text-decoration:underline;text-underline-offset:3px;';
+        footer.append(retry, link);
+        parent.append(status, footer);
+        const load = () => {
+            const run = ++loadRun;
+            window.clearTimeout(timer);
+            parent.querySelector('iframe')?.remove();
+            status.hidden = false;
+            status.style.display = 'grid';
+            status.textContent = 'opening ko-fi…';
+            const iframe = document.createElement('iframe');
+            iframe.title = 'Ko-fi support page';
+            iframe.referrerPolicy = 'strict-origin-when-cross-origin';
+            iframe.allow = 'payment *';
+            iframe.style.cssText = iframeStyle + ';height:calc(100% - 44px);border:0;';
+            const fail = () => {
+                if (run !== loadRun || !iframe.isConnected) return;
+                window.clearTimeout(timer);
+                status.style.display = 'grid';
+                status.textContent = 'ko-fi is taking a while — retry or open the full website below';
+            };
+            iframe.addEventListener('load', () => {
+                if (run !== loadRun || !iframe.isConnected) return;
+                window.clearTimeout(timer);
+                status.style.display = 'none';
+                status.hidden = true;
+            });
+            iframe.addEventListener('error', fail);
+            iframe.src = kofiWidgetOverlayConstants.kofiRoot + pageId + '/?hidefeed=true&widget=true&embed=true';
+            parent.appendChild(iframe);
+            timer = window.setTimeout(fail, 8000);
         };
-
-        tryLoad();
+        retry.addEventListener('click', load);
+        load();
     };
 
     const getWindowHeightRatio = function () {

@@ -64,8 +64,15 @@
       }
       revealRooms();
     } catch (error) {
-      // Fail open if the settings service is temporarily unreachable so a
-      // network hiccup never takes down an otherwise healthy Rooms page.
+      // Honor a known disabled state during an outage; a failed settings
+      // read must not reopen the page the owner deliberately switched off.
+      try {
+        var cached = JSON.parse(localStorage.getItem('doll_public_site_settings_v2') || 'null');
+        if (cached?.schema === 2 && cached.value?.rooms_enabled === false) {
+          showNotFound();
+          return;
+        }
+      } catch (storageError) {}
       revealRooms();
     } finally {
       window.clearTimeout(timeout);

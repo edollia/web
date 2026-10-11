@@ -1691,6 +1691,9 @@ body.has-posts-panel-open .site-brand-footer {
 
 .note-peel-target.peeled-away {
     visibility: hidden;
+    /* Its stage keeps the space reserved. The discarded paper must not
+       contribute transformed overflow or receive invisible pointer hits. */
+    display: none;
 }
 
 .note-front-face {
@@ -2485,11 +2488,11 @@ body.has-posts-panel-open .button-group {
 
 .social-links-loading {
     position: absolute;
-    /* Keep loading feedback beneath the note instead of replacing it. */
-    inset: 238px 0 auto var(--social-gutter);
+    /* Centre loading feedback in the Links viewport now that cards come first. */
+    inset: 26px 0 0 var(--social-gutter);
     z-index: 4;
     display: none;
-    min-height: 150px;
+    min-height: 0;
     flex-direction: column;
     align-items: center;
     justify-content: center;
@@ -2506,8 +2509,7 @@ body.has-posts-panel-open .button-group {
 }
 
 .social-links-shell.is-loading > .dwl-motion-viewport {
-    /* The note is the Links landing content and remains visible while media
-       cards prepare below it. */
+    /* Keep the viewport stable while its reordered contents prepare. */
     opacity: 1;
 }
 
@@ -2515,7 +2517,7 @@ body.has-posts-panel-open .button-group {
     opacity: 1 !important;
 }
 
-.social-links-shell.is-loading .social-links-panel > :not(.links-note-stage) {
+.social-links-shell.is-loading .social-links-panel > * {
     opacity: 0.001;
     pointer-events: none;
 }
@@ -2552,12 +2554,22 @@ body.has-posts-panel-open .button-group {
     padding-left: var(--social-gutter);
 }
 
-/* Preserve the exact peelable note and under-sticker as the first Links item. */
+/* Preserve the peelable note and under-sticker as the Links sign-off. */
 .links-note-stage {
+    margin-top: 16px;
+    /* The note moves into a fixed layer during a peel. It must never be the
+       browser's anchor for the surrounding social cards. */
+    overflow-anchor: none;
     position: relative;
     width: 100%;
     height: 119px;
     overflow: visible;
+}
+
+.links-note-stage.has-admin-controls {
+    /* Reserve the 7px gap and 28px owner toolbar in the original stage.
+       The toolbar travels with the lifted note; this space must stay put. */
+    height: 154px;
 }
 
 .links-note-stage .note-peel-target {
@@ -2859,7 +2871,7 @@ body.has-social-panel-open .site-brand-footer {
     margin-bottom: 8px;
 }
 
-/* Links is one strip the width of the note above it, centred on the same
+/* Links is one strip the width of the note, centred on the same
    axis as the Wishes and :3 boards. A single row as wide as a two-card board
    reads heavy, so the shared column sets the centre and margins, not this
    width. */
@@ -5766,6 +5778,12 @@ body.has-community-hub-open #action-menu-button.open .action-options {
     text-shadow: none;
     cursor: pointer;
     transition: color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.community-pencil {
+    width: 15px;
+    height: 15px;
+    flex: none;
 }
 
 .community-create-tab.active,

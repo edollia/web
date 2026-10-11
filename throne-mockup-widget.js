@@ -105,7 +105,28 @@
 
     let panel = null;
     let items = [];
-    let selectedIds = new Set();
+    const WISHLIST_PICKS_KEY = 'doll_wishlist_picks_v1';
+    function restoreWishlistPicks() {
+        try {
+            const saved = JSON.parse(localStorage.getItem(WISHLIST_PICKS_KEY) || 'null');
+            if (saved?.schema === 1 && saved.savedAt > 0
+                && Date.now() - saved.savedAt < 24 * 60 * 60 * 1000
+                && Array.isArray(saved.ids)) {
+                return new Set(saved.ids.filter(id => typeof id === 'string' && id.length <= 128).slice(0, 10));
+            }
+            localStorage.removeItem(WISHLIST_PICKS_KEY);
+        } catch (error) {}
+        return new Set();
+    }
+    function persistWishlistPicks() {
+        try {
+            if (!selectedIds.size) localStorage.removeItem(WISHLIST_PICKS_KEY);
+            else localStorage.setItem(WISHLIST_PICKS_KEY, JSON.stringify({
+                schema: 1, savedAt: Date.now(), ids: Array.from(selectedIds)
+            }));
+        } catch (error) {}
+    }
+    let selectedIds = restoreWishlistPicks();
     let loadState = 'idle'; // idle | loading | preparing | ready | failed
     // Which of the 3 wishlist layouts to render. Defaults to 'masonry' and
     // is overridden by the admin-configurable wishlist_view_mode setting
@@ -208,7 +229,6 @@
 
     function cacheWishlistItems(value) {
         const safeItems = sanitizeWishlistItems(value);
-        if (!safeItems.length) return;
         try {
             localStorage.setItem(WISHLIST_ITEMS_CACHE_KEY, JSON.stringify({
                 schema: WISHLIST_ITEMS_CACHE_SCHEMA,
@@ -226,7 +246,7 @@
                 && savedAt > 0
                 && Date.now() - savedAt <= WISHLIST_ITEMS_CACHE_MAX_AGE_MS) {
                 const cachedItems = sanitizeWishlistItems(cached.items);
-                if (cachedItems.length) return { items: cachedItems, source: 'browser-cache' };
+                if (Array.isArray(cached.items)) return { items: cachedItems, source: 'browser-cache' };
             }
             if (cached) localStorage.removeItem(WISHLIST_ITEMS_CACHE_KEY);
         } catch (error) {}
@@ -2852,6 +2872,7 @@
         releasePreviewImage();
         const imageGeneration = previewImageGeneration;
         previewItemId = item.throne_item_id;
+        overlay.querySelector('.doll-wishlist-preview-price-tag').disabled = checkoutInFlight || loadState !== 'ready';
         const fullLabel = String(item.name || '').trim() || 'wishlist item';
         // Reveal the photo only once its OWN pixels have decoded, so a newly
         // opened item never flashes the previously-previewed photo first.
@@ -3066,8 +3087,9 @@
         }
         if (!iframeHandoffActive && document.querySelector('.doll-throne-overlay.show')) return true;
 
+        // A delayed submission confirmation is a temporary notification.
+        // Keep the current menu beneath it instead of navigating back to Links.
         return entryPopupIsVisible() || Boolean(document.querySelector([
-            '.submit-popup.show',
             '.admin-gate.show',
             '[data-kofi-open="true"]',
         ].join(',')));
@@ -3973,6 +3995,7 @@
     }
 
     function renderFoot() {
+        persistWishlistPicks();
         if (!panel) return;
         const count = selectedIds.size;
         panel.classList.toggle('has-selection', count > 0);
@@ -3982,7 +4005,12 @@
         );
         panel.querySelector('.doll-wishlist-count b').textContent = count === 1 ? '1 item' : `${count} items`;
         const checkoutBtn = panel.querySelector('.doll-wishlist-checkout');
-        checkoutBtn.disabled = count === 0 || checkoutInFlight;
+        checkoutBtn.disabled = count === 0 || checkoutInFlight || loadState !== 'ready';
+        panel.querySelectorAll('.doll-wishlist-cart-btn').forEach(button => {
+            button.disabled = checkoutInFlight || loadState !== 'ready';
+        });
+        const previewTag = previewOverlay?.querySelector('.doll-wishlist-preview-price-tag');
+        if (previewTag) previewTag.disabled = checkoutInFlight || loadState !== 'ready';
         checkoutBtn.textContent = checkoutInFlight ? 'loading…' : 'checkout';
         const statusEl = panel.querySelector('.doll-wishlist-status');
         if (statusEl) statusEl.textContent = checkoutStatusMessage;
@@ -3995,7 +4023,8 @@
     }
 
     function toggleItem(id) {
-        if (!id) return;
+        if (!id || checkoutInFlight || loadState !== 'ready'
+            || !items.some(item => item.throne_item_id === id)) return;
         playSound('tap');
         if (selectedIds.has(id)) {
             selectedIds.delete(id);
@@ -4141,7 +4170,7 @@
         ]);
         const { data, error } = itemsResult;
         if (error) throw error;
-        return { items: Array.isArray(data) ? data : [], viewMode };
+        return { items: Array.isArray(data) ? data : [], viewMode, authoritative: Array.isArray(data) };
     }
 
     async function prepareAndRevealWishlistItems(nextItems, run, {
@@ -4151,8 +4180,16 @@
     } = {}) {
         if (run !== itemsLoadRun) return false;
         items = sanitizeWishlistItems(nextItems);
+        if (source !== 'unavailable') {
+            const availableIds = new Set(items.map(item => item.throne_item_id));
+            const retained = new Set(Array.from(selectedIds).filter(id => availableIds.has(id)));
+            if (retained.size !== selectedIds.size) {
+                checkoutStatusMessage = 'sorry, something you picked just sold out — pick again?';
+            }
+            selectedIds = retained;
+        }
         if (viewMode) wishlistViewMode = viewMode;
-        if (source === 'live' && items.length) cacheWishlistItems(items);
+        if (source === 'live') cacheWishlistItems(items);
         recordWishlistReliability(source, reason);
 
         const currentImageUrls = new Set(items.map(item => String(item.image_url || '').trim()));
@@ -4210,6 +4247,7 @@
     }
 
     async function loadItems({ bodyPrepared = false } = {}) {
+        closePreview();
         itemsFetchController?.abort();
         const controller = typeof window.AbortController === 'function'
             ? new AbortController()
@@ -4231,7 +4269,7 @@
             const result = await fetchWishlistItemsFresh(controller?.signal, readDeadline);
             if (run !== itemsLoadRun) return;
             const liveItems = sanitizeWishlistItems(result.items);
-            if (liveItems.length) {
+            if (result.authoritative) {
                 await prepareAndRevealWishlistItems(liveItems, run, {
                     viewMode: result.viewMode,
                     source: 'live'
@@ -4281,26 +4319,31 @@
         renderFoot();
 
         try {
-            const res = await withTimeout(
-                fetch(`${SUPABASE_URL}/functions/v1/throne-cart`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-                    },
-                    body: JSON.stringify({ itemIds: Array.from(selectedIds) }),
-                    signal: checkoutController?.signal,
-                }),
+            // Bound the complete response, including a stalled JSON body.
+            const { res, body } = await withTimeout(
+                (async () => {
+                    const res = await fetch(`${SUPABASE_URL}/functions/v1/throne-cart`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+                        },
+                        body: JSON.stringify({ itemIds: Array.from(selectedIds) }),
+                        signal: checkoutController?.signal,
+                    });
+                    const body = await res.json().catch(() => ({}));
+                    return { res, body };
+                })(),
                 FETCH_TIMEOUT_MS,
                 () => checkoutController?.abort()
             );
-            const body = await res.json().catch(() => ({}));
             const requestStillOwnsPanel = requestRun === checkoutRequestRun
                 && panelSessionRun === itemsLoadRun
                 && isWishlistPanelVisible();
             if (!requestStillOwnsPanel) return;
 
-            if (res.status === 409) {
+            if (res.status === 409
+                || (res.status === 400 && body.error === 'none of the selected items are available')) {
                 // Something the visitor picked sold out / got unfeatured
                 // between selecting and checking out. Never silently ship a
                 // smaller cart — refresh what's actually still available and
@@ -4318,6 +4361,8 @@
                 throw new Error(body.error || `throne-cart ${res.status}`);
             }
             openCheckoutDestination(body.checkoutUrl);
+            selectedIds.clear();
+            persistWishlistPicks();
             // Checkout already played the link sound (CUT2). Close silently so
             // the normal manual-close tap sound (CUT1) does not play as the
             // selected-item checkout opens on Throne.
@@ -4469,7 +4514,7 @@
         wishlistButton?.setAttribute('aria-label', 'Wishes, current page');
         document.querySelector('.site-brand-footer')?.setAttribute('aria-label', 'Full wishlist on Throne');
 
-        selectedIds = new Set();
+        // Keep picks across menu changes; the fresh catalogue reconciles them.
         checkoutStatusMessage = '';
         previewOpenCount = 0;
         el.classList.remove('has-selection');

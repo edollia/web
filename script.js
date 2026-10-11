@@ -886,9 +886,21 @@ document.addEventListener("DOMContentLoaded", async function() {
     // A stalled connection used to leave "Send" spinning forever; past the
     // deadline the send fails like any other error and can be retried.
     function withSubmitDeadline(query, ms) {
-        if (typeof query?.abortSignal !== 'function'
-            || typeof window.AbortSignal?.timeout !== 'function') return query;
-        return query.abortSignal(AbortSignal.timeout(ms));
+        const controller = typeof window.AbortController === 'function'
+            ? new AbortController()
+            : null;
+        const request = controller && typeof query?.abortSignal === 'function'
+            ? query.abortSignal(controller.signal)
+            : query;
+        let timer;
+        const deadline = new Promise((_, reject) => {
+            timer = window.setTimeout(() => {
+                reject(new Error('The connection timed out. Please try again.'));
+                controller?.abort();
+            }, ms);
+        });
+        return Promise.race([Promise.resolve(request), deadline])
+            .finally(() => window.clearTimeout(timer));
     }
 
     function showSubmitPopup(message) {
@@ -1347,16 +1359,16 @@ document.addEventListener("DOMContentLoaded", async function() {
             motionFrame = window.requestAnimationFrame(tick);
         }
 
-        // The note is the first item of the scrolling Links panel, which
-        // clips anything past its edges. While it's peeled at the top of the
-        // list it rides in a fixed layer over the same spot, so the flap and
-        // the fall-away aren't cut off; afterwards it goes back in place.
+        // The note ends the scrolling Links panel. While peeled, it rides
+        // in a fixed layer over its current visible spot so the flap and
+        // fall-away aren't clipped; afterwards it goes back in place.
         const noteStage = noteTarget.closest('.links-note-stage');
         const noteScroller = noteTarget.closest('.social-links-panel');
         let noteLiftLayer = null;
 
         function liftNote() {
-            if (!noteStage || !noteScroller || noteLiftLayer || noteScroller.scrollTop > 1) return;
+            if (!noteStage || !noteScroller || noteLiftLayer) return;
+            const scrollTop = noteScroller.scrollTop;
             const rect = noteStage.getBoundingClientRect();
             noteLiftLayer = document.createElement('div');
             noteLiftLayer.className = 'links-note-stage note-lift-layer';
@@ -1366,14 +1378,18 @@ document.addEventListener("DOMContentLoaded", async function() {
             noteLiftLayer.style.height = `${rect.height}px`;
             (noteStage.closest('.main-screen') || document.body).appendChild(noteLiftLayer);
             noteLiftLayer.appendChild(noteTarget);
+            // Reparenting must not move the list through browser scroll anchoring.
+            noteScroller.scrollTop = scrollTop;
         }
 
         function lowerNote() {
             if (!noteLiftLayer) return;
+            const scrollTop = noteScroller.scrollTop;
             // Back in front of the sticker, which its sibling rules expect.
             noteStage.insertBefore(noteTarget, noteStage.firstChild);
             noteLiftLayer.remove();
             noteLiftLayer = null;
+            noteScroller.scrollTop = scrollTop;
         }
 
         function resetPeel() {
@@ -1419,6 +1435,10 @@ document.addEventListener("DOMContentLoaded", async function() {
                     window.setTimeout(() => {
                         noteTarget.classList.add('peeled-away');
                         noteTarget.setAttribute('aria-hidden', 'true');
+                        // A hidden transformed element still enlarges scrollable
+                        // overflow. Retire the fall-away before returning it.
+                        noteTarget.style.removeProperty('transform');
+                        clearFoldGeometry();
                         lowerNote();
                     }, 860);
                 });
@@ -1858,7 +1878,10 @@ document.addEventListener("DOMContentLoaded", async function() {
             error.code = payload?.code || '';
             throw error;
         }
-        return Array.isArray(payload) ? payload : [];
+        if (!Array.isArray(payload)) {
+            throw new Error('Public submissions returned an unreadable response.');
+        }
+        return payload;
     }
 
     async function fetchPublicSubmissionPage(state, signal) {
@@ -3746,7 +3769,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         if (!toggleButton || !noteImage || !drawingWidget) return;
         drawingWidget.classList.remove('active');
         toggleButton.classList.remove('drawing-open');
-        toggleButton.textContent = '✎';
+        toggleButton.innerHTML = '<svg class="community-pencil" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m5 15 10-10 4 4L9 19l-5 1 1-5Zm8-8 4 4M5 15l4 4" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/></svg>';
     }
 
     function closeQuestionForm() {
@@ -3965,6 +3988,8 @@ document.addEventListener("DOMContentLoaded", async function() {
     const homepageNoteEditor = document.getElementById('homepage-note-editor');
     const homepageNoteTarget = document.getElementById('note-peel-target');
     const homepageNoteAdminControls = document.getElementById('homepage-note-admin-controls');
+    // Keep the original placeholder even while the note is in its lift layer.
+    const homepageNoteStage = homepageNoteTarget?.closest('.links-note-stage');
     const homepageNoteSize = document.getElementById('homepage-note-size');
     const homepageNoteSave = document.getElementById('homepage-note-save');
     const HOMEPAGE_NOTE_ADMIN_UID = '1b12f04e-c1a9-42c5-bd3a-04b6186245c3';
@@ -4085,6 +4110,8 @@ document.addEventListener("DOMContentLoaded", async function() {
         const tip = document.getElementById('social-links-tip');
         const tipNode = tip?.closest('.social-link-card-frame') || tip;
         if (tipNode) socialLinksPanel.append(tipNode);
+        const noteStage = socialLinksPanel.querySelector('.links-note-stage');
+        if (noteStage) socialLinksPanel.append(noteStage);
     }
 
     function isGifSocialCardMedia(url) {
@@ -4822,16 +4849,16 @@ document.addEventListener("DOMContentLoaded", async function() {
     async function saveHomepageNoteSettings(noteSettings, revision) {
         const initialClient = await siteClientReady;
         const client = window.supabase?.from ? window.supabase : initialClient;
-        const { data: userData, error: userError } = await client.auth.getUser();
+        const { data: userData, error: userError } = await withSubmitDeadline(client.auth.getUser(), 10000);
         if (userError || userData?.user?.id !== HOMEPAGE_NOTE_ADMIN_UID) {
             throw new Error('Your admin session has ended.');
         }
 
-        const { data: currentRow, error: readError } = await client
+        const { data: currentRow, error: readError } = await withSubmitDeadline(client
             .from('site_settings')
             .select('value')
             .eq('id', 'links')
-            .maybeSingle();
+            .maybeSingle(), 10000);
         if (readError && readError.code !== 'PGRST116') throw readError;
 
         const storedSettings = currentRow?.value && typeof currentRow.value === 'object'
@@ -4843,13 +4870,13 @@ document.addEventListener("DOMContentLoaded", async function() {
         };
         latestSettings.homepage_note_text = noteSettings.homepage_note_text;
         latestSettings.homepage_note_font_size = noteSettings.homepage_note_font_size;
-        const { error: saveError } = await client
+        const { error: saveError } = await withSubmitDeadline(client
             .from('site_settings')
             .upsert({
                 id: 'links',
                 value: latestSettings,
                 updated_at: new Date().toISOString()
-            });
+            }), 20000);
         if (saveError) throw saveError;
 
         if (revision === homepageNoteSaveRevision) {
@@ -4869,8 +4896,10 @@ document.addEventListener("DOMContentLoaded", async function() {
             .catch(error => {
                 if (revision !== homepageNoteSaveRevision) return;
                 homepageNoteLastSaveError = error;
-                siteLinkSettings = { ...siteLinkSettings, ...previousSettings };
+                // Keep the unsaved note visible so retry sends the owner's
+                // actual draft, rather than reverting and saving older text.
                 renderHomepageNoteText();
+                if (homepageNoteSave) homepageNoteSave.textContent = 'retry';
                 showSubmitPopup(error?.message || 'The note could not be saved.');
                 void refreshHomepageNoteAdminAccess();
             });
@@ -5043,6 +5072,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     function setHomepageNoteAdminAccess(canEdit) {
         homepageNoteCanEdit = canEdit;
         homepageNoteTarget?.classList.toggle('admin-editable', canEdit);
+        homepageNoteStage?.classList.toggle('has-admin-controls', canEdit);
         if (homepageNoteAdminControls) homepageNoteAdminControls.hidden = !canEdit;
         if (homepageNoteSize) homepageNoteSize.disabled = !canEdit || homepageNoteExplicitSavePending;
         if (homepageNoteSave) {
@@ -5541,8 +5571,8 @@ document.addEventListener("DOMContentLoaded", async function() {
             syncSocialReservedHeight(true);
             socialLinksShell?.classList.remove('measure-open');
         }
-        // The existing note is now the first Links item and stays visible
-        // while the media cards prepare underneath it.
+        // Reveal the reordered Links panel through the existing media-ready
+        // transition; the note now follows the cards and tip.
         socialLinksShell?.classList.add('active');
         if (socialLinksPanel) socialLinksPanel.inert = false;
         playSocialCardVideos();
@@ -6141,9 +6171,28 @@ document.addEventListener("DOMContentLoaded", async function() {
     startGlitterCycle();
 
     // ===== DRAWING WIDGET =====
+    const COMMUNITY_DRAFT_TTL_MS = 24 * 60 * 60 * 1000;
+    function readCommunityDraft(key) {
+        try {
+            const draft = JSON.parse(localStorage.getItem(key) || 'null');
+            if (draft?.schema === 1 && draft.savedAt > 0
+                && Date.now() - draft.savedAt <= COMMUNITY_DRAFT_TTL_MS) return draft;
+            localStorage.removeItem(key);
+        } catch (error) {}
+        return null;
+    }
+    function writeCommunityDraft(key, value) {
+        try {
+            if (value === null) localStorage.removeItem(key);
+            else localStorage.setItem(key, JSON.stringify({ ...value, schema: 1, savedAt: Date.now() }));
+        } catch (error) {}
+    }
+    const ASK_DRAFT_KEY = 'doll_ask_draft_v1';
+    const DRAWING_DRAFT_KEY = 'doll_drawing_draft_v1';
     const MAX_DRAWING_HISTORY_STATES = 40;
     let canvas, ctx, drawingHistory = [], historyIndex = -1, currentColor = "#000000", brushSize = 5;
     let isDrawing = false;
+    let drawingRevision = 0;
     let lastX = 0;
     let lastY = 0;
 
@@ -6165,7 +6214,15 @@ document.addEventListener("DOMContentLoaded", async function() {
             saveState();
         }
 
+        function persistDrawingDraft() {
+            const image = canvas.toDataURL('image/png');
+            if (image.length <= 512 * 1024) {
+                writeCommunityDraft(DRAWING_DRAFT_KEY, { image, color: currentColor, size: brushSize });
+            }
+        }
+
         function saveState() {
+            drawingRevision += 1;
             if (historyIndex < drawingHistory.length - 1) {
                 drawingHistory.splice(historyIndex + 1);
             }
@@ -6174,6 +6231,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                 drawingHistory.splice(0, drawingHistory.length - MAX_DRAWING_HISTORY_STATES);
             }
             historyIndex = drawingHistory.length - 1;
+            persistDrawingDraft();
         }
 
         function getCursorPos(e) {
@@ -6190,6 +6248,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         function startDrawing(e) {
             e.preventDefault();
             isDrawing = true;
+            drawingRevision += 1;
             const pos = getCursorPos(e);
             lastX = pos.x;
             lastY = pos.y;
@@ -6249,10 +6308,13 @@ document.addEventListener("DOMContentLoaded", async function() {
         document.getElementById("undo-button")?.addEventListener("click", () => {
             if (historyIndex > 0) {
                 historyIndex--;
+                const revision = ++drawingRevision;
                 const img = new Image();
                 img.onload = () => {
+                    if (revision !== drawingRevision || isDrawing) return;
                     ctx.clearRect(0, 0, canvas.width, canvas.height);
                     ctx.drawImage(img, 0, 0);
+                    persistDrawingDraft();
                 };
                 img.src = drawingHistory[historyIndex];
             }
@@ -6260,6 +6322,7 @@ document.addEventListener("DOMContentLoaded", async function() {
 
         document.getElementById("brush-size")?.addEventListener("input", e => {
             brushSize = Number(e.target.value);
+            persistDrawingDraft();
         });
 
         // Fixed color picker - works on both desktop and mobile
@@ -6267,10 +6330,12 @@ document.addEventListener("DOMContentLoaded", async function() {
         if (colorPicker) {
             colorPicker.addEventListener("change", function(e) {
                 currentColor = e.target.value;
+                persistDrawingDraft();
             });
 
             colorPicker.addEventListener("input", function(e) {
                 currentColor = e.target.value;
+                persistDrawingDraft();
             });
 
             // For mobile devices, ensure the color picker opens properly
@@ -6359,6 +6424,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             }
 
             const dataUrl = canvas.toDataURL("image/png");
+            const submittedRevision = drawingRevision;
             const base64Data = dataUrl.split(',')[1];
             
             if (base64Data.length > 20 * 1024 * 1024) {
@@ -6382,10 +6448,13 @@ document.addEventListener("DOMContentLoaded", async function() {
                 playAnonymousSubmitSound();
                 const submitSoundMinimum = wait(1000);
                 
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-                ctx.fillStyle = "#ffffff";
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-                resetCanvasHistory();
+                // A slow send must not erase strokes made after it started.
+                if (drawingRevision === submittedRevision && !isDrawing) {
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    ctx.fillStyle = "#ffffff";
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    resetCanvasHistory();
+                }
                 await submitSoundMinimum;
                 await showSubmitPopupAndWait("Got it! ^-^");
                 if (!isCommunityHubOpen()) showNoteImage();
@@ -6397,8 +6466,26 @@ document.addEventListener("DOMContentLoaded", async function() {
             }
         });
 
+        const storedDrawing = readCommunityDraft(DRAWING_DRAFT_KEY);
         initCanvas();
         setupEventListeners();
+        if (storedDrawing && /^data:image\/png;base64,/.test(storedDrawing.image || '')
+            && storedDrawing.image.length <= 512 * 1024) {
+            const revision = drawingRevision;
+            const restored = new Image();
+            restored.onload = () => {
+                if (revision !== drawingRevision || isDrawing) return;
+                ctx.drawImage(restored, 0, 0, canvas.width, canvas.height);
+                if (/^#[0-9a-f]{6}$/i.test(storedDrawing.color || '')) currentColor = storedDrawing.color;
+                brushSize = Math.min(20, Math.max(1, Number(storedDrawing.size) || 5));
+                if (colorPicker) colorPicker.value = currentColor;
+                const brushControl = document.getElementById('brush-size');
+                if (brushControl) brushControl.value = String(brushSize);
+                resetCanvasHistory();
+            };
+            restored.src = storedDrawing.image;
+        }
+        window.addEventListener('pagehide', persistDrawingDraft);
     }
 
     function initApp() {
@@ -6491,7 +6578,15 @@ document.addEventListener("DOMContentLoaded", async function() {
                 askFormContainer.classList.toggle('has-text', len > 0);
                 if (this.value.trim()) scheduleAskHandleReminder();
                 else hideAskHandleReminder({ resetDraft: true });
+                writeCommunityDraft(ASK_DRAFT_KEY, this.value ? { text: this.value } : null);
             });
+            const storedQuestion = readCommunityDraft(ASK_DRAFT_KEY);
+            if (typeof storedQuestion?.text === 'string') {
+                askTextarea.value = storedQuestion.text.slice(0, 200);
+                charCount.textContent = `${askTextarea.value.length}/200`;
+                charCount.style.color = askTextarea.value.length > 180 ? '#ff6b6b' : 'rgba(255, 132, 187, 0.82)';
+                askFormContainer.classList.toggle('has-text', Boolean(askTextarea.value));
+            }
 
             sendQuestionBtn?.addEventListener('click', async function() {
                 const sendButton = this;
@@ -6501,7 +6596,8 @@ document.addEventListener("DOMContentLoaded", async function() {
                     if (!isCommunityHubOpen()) showNoteImage();
                     return;
                 }
-                const question = askTextarea.value.trim();
+                const submittedDraft = askTextarea.value;
+                const question = submittedDraft.trim();
                 if (!question) {
                     showSubmitPopup("Please enter a question first!");
                     return;
@@ -6524,11 +6620,15 @@ document.addEventListener("DOMContentLoaded", async function() {
                     playAnonymousSubmitSound();
                     const submitSoundMinimum = wait(1000);
                     
-                    askTextarea.value = '';
-                    charCount.textContent = '0/200';
-                    charCount.style.color = 'rgba(255, 132, 187, 0.82)';
-                    askFormContainer.classList.remove('has-text');
-                    hideAskHandleReminder({ resetDraft: true });
+                    // Clear only the submitted draft, preserving newer edits.
+                    if (askTextarea.value === submittedDraft) {
+                        askTextarea.value = '';
+                        writeCommunityDraft(ASK_DRAFT_KEY, null);
+                        charCount.textContent = '0/200';
+                        charCount.style.color = 'rgba(255, 132, 187, 0.82)';
+                        askFormContainer.classList.remove('has-text');
+                        hideAskHandleReminder({ resetDraft: true });
+                    }
                     await submitSoundMinimum;
                     await showSubmitPopupAndWait("Got it! ^-^");
                     if (!isCommunityHubOpen()) showNoteImage();
@@ -7216,6 +7316,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         const reactionIconPreloads = new Map();
         let currentOpenPicker = null; // Track currently open picker
         let currentOpenPickerCleanup = null;
+        let reactionPickerRequestRun = 0;
         const pendingReactionMutations = new Set();
         let lastClickTime = 0; // Prevent rapid-fire clicks
         let lastTouchReactionTime = 0;
@@ -7341,32 +7442,30 @@ document.addEventListener("DOMContentLoaded", async function() {
                     closeReactionPicker();
                 }
                 
-                // Get user's IP
-                const ipAddress = await getVisitorIdentity();
-                
-                // Check if user already liked this drawing
-                const { data: existingLike, error: checkError } = await window.supabase
-                    .from('drawing_likes')
-                    .select('*')
-                    .eq('drawing_id', drawingId)
-                    .eq('ip_address', ipAddress)
-                    .single();
-                
-                if (checkError && checkError.code !== 'PGRST116') {
-                    console.error("Error checking existing like:", checkError);
-                    return;
-                }
-                
-                // Show the new picker immediately
-                if (existingLike) {
-                    // User already liked - show picker with current reaction highlighted
-                    showReactionPickerInternal(likeButton, drawingId, ipAddress, likeIcon, existingLike.reaction_type);
-                } else {
-                    // Show reaction picker
-                    showReactionPickerInternal(likeButton, drawingId, ipAddress, likeIcon);
+                const requestRun = ++reactionPickerRequestRun;
+                const openGeneration = postsOpenGeneration;
+                try {
+                    const ipAddress = await getVisitorIdentity();
+                    const { data: existingLike, error: checkError } = await withSubmitDeadline(
+                        window.supabase.from('drawing_likes')
+                            .select('*')
+                            .eq('drawing_id', drawingId)
+                            .eq('ip_address', ipAddress)
+                            .single(), 10000
+                    );
+                    if (requestRun !== reactionPickerRequestRun
+                        || openGeneration !== postsOpenGeneration
+                        || !likeButton.isConnected || !postsPopup?.classList.contains('active')) return;
+                    if (checkError && checkError.code !== 'PGRST116') throw checkError;
+                    showReactionPickerInternal(likeButton, drawingId, ipAddress, likeIcon, existingLike?.reaction_type);
+                } catch (error) {
+                    if (requestRun !== reactionPickerRequestRun
+                        || openGeneration !== postsOpenGeneration || !likeButton.isConnected) return;
+                    console.error("Error checking existing like:", error);
+                    showSubmitPopup("Couldn't load reactions. Please try again.");
                 }
             };
-            
+
             // Add both click and touch event listeners
             likeButton.addEventListener('click', handleReactionClick);
             likeButton.addEventListener('touchstart', handleReactionClick, { passive: false });
@@ -7563,12 +7662,17 @@ document.addEventListener("DOMContentLoaded", async function() {
                         // Check if user already has this reaction
                         const ipAddress = await getVisitorIdentity();
 
-                        const { data: existingLike } = await window.supabase
-                            .from('drawing_likes')
-                            .select('*')
-                            .eq('drawing_id', drawingId)
-                            .eq('ip_address', ipAddress)
-                            .single();
+                        const { data: existingLike, error: checkError } = await withSubmitDeadline(
+                            window.supabase.from('drawing_likes')
+                                .select('*')
+                                .eq('drawing_id', drawingId)
+                                .eq('ip_address', ipAddress)
+                                .single(), 10000
+                        );
+                        if (checkError && checkError.code !== 'PGRST116') throw checkError;
+                        // Leaving the picker before its read completes cancels
+                        // the intent; never write from a detached/closed card.
+                        if (currentOpenPicker !== picker || !likeButton.isConnected) return;
 
                         if (existingLike && existingLike.reaction_type === reaction) {
                             // User clicked same reaction - remove it (undo)
@@ -7583,6 +7687,9 @@ document.addEventListener("DOMContentLoaded", async function() {
                                 await addLike(drawingId, ipAddress, reaction, likeIconElement);
                             }
                         }
+                    } catch (error) {
+                        console.error("Error checking reaction:", error);
+                        if (picker.isConnected) showSubmitPopup("Couldn't save reaction. Please try again.");
                     } finally {
                         pendingReactionMutations.delete(drawingId);
                         if (currentOpenPicker === picker) closeReactionPicker();
@@ -7634,6 +7741,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         }
 
         function closeReactionPicker() {
+            reactionPickerRequestRun += 1;
             if (currentOpenPickerCleanup) {
                 currentOpenPickerCleanup();
                 currentOpenPickerCleanup = null;
@@ -7665,10 +7773,10 @@ document.addEventListener("DOMContentLoaded", async function() {
 
         async function loadReactionCounts(drawingId, picker, currentReaction) {
             try {
-                const { data: likes, error } = await window.supabase
+                const { data: likes, error } = await withSubmitDeadline(window.supabase
                     .from('drawing_likes')
                     .select('reaction_type')
-                    .eq('drawing_id', drawingId);
+                    .eq('drawing_id', drawingId), 10000);
                 
                 if (error) throw error;
                 
@@ -7704,13 +7812,13 @@ document.addEventListener("DOMContentLoaded", async function() {
 
         async function addLike(drawingId, ipAddress, reactionType, likeIconElement) {
             try {
-                const { error } = await window.supabase
+                const { error } = await withSubmitDeadline(window.supabase
                     .from('drawing_likes')
                     .insert([{
                         drawing_id: drawingId,
                         reaction_type: reactionType,
                         ip_address: ipAddress
-                    }]);
+                    }]), 20000);
                 
                 if (error) throw error;
                 
@@ -7733,11 +7841,11 @@ document.addEventListener("DOMContentLoaded", async function() {
 
         async function updateLike(drawingId, ipAddress, newReactionType, likeIconElement) {
             try {
-                const { error } = await window.supabase
+                const { error } = await withSubmitDeadline(window.supabase
                     .from('drawing_likes')
                     .update({ reaction_type: newReactionType })
                     .eq('drawing_id', drawingId)
-                    .eq('ip_address', ipAddress);
+                    .eq('ip_address', ipAddress), 20000);
                 
                 if (error) throw error;
                 
@@ -7760,19 +7868,19 @@ document.addEventListener("DOMContentLoaded", async function() {
 
         async function removeLike(drawingId, ipAddress, likeIconElement) {
             try {
-                const { error } = await window.supabase
+                const { error } = await withSubmitDeadline(window.supabase
                     .from('drawing_likes')
                     .delete()
                     .eq('drawing_id', drawingId)
-                    .eq('ip_address', ipAddress);
+                    .eq('ip_address', ipAddress), 20000);
                 
                 if (error) throw error;
                 
                 // Reset icon if no likes left
-                const { data: remainingLikes } = await window.supabase
+                const { data: remainingLikes } = await withSubmitDeadline(window.supabase
                     .from('drawing_likes')
                     .select('reaction_type')
-                    .eq('drawing_id', drawingId);
+                    .eq('drawing_id', drawingId), 20000);
                 
                 if (!remainingLikes?.length) {
                     const iconVersion = bumpReactionIconVersion(likeIconElement);
