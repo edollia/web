@@ -264,19 +264,9 @@
     }
 
     function openCheckoutDestination(url) {
-        // This is the same delayed-link navigation used by the social cards.
-        // Opening about:blank synchronously keeps Safari's popup permission,
-        // but visibly strands the visitor on an empty tab while the cart API
-        // responds. A real anchor opens only once the final Throne URL exists,
-        // so there is no intermediate blank page.
-        const link = document.createElement('a');
-        link.href = url;
-        link.target = '_blank';
-        link.rel = 'noopener noreferrer';
-        link.hidden = true;
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
+        // The cart response arrives after the original click's popup permission
+        // may have expired. Navigate this tab so checkout doesn't depend on it.
+        window.location.assign(url);
     }
 
     function escapeHtml(value) {
@@ -4361,12 +4351,9 @@
                 throw new Error(body.error || `throne-cart ${res.status}`);
             }
             openCheckoutDestination(body.checkoutUrl);
-            selectedIds.clear();
-            persistWishlistPicks();
-            // Checkout already played the link sound (CUT2). Close silently so
-            // the normal manual-close tap sound (CUT1) does not play as the
-            // selected-item checkout opens on Throne.
-            closeThroneMockup(true);
+            // Keep Wishes and its picks intact until the browser leaves. An
+            // embedded browser may prevent external navigation; that must not
+            // silently discard the cart or send the visitor back to Links.
         } catch (err) {
             const staleRequest = requestRun !== checkoutRequestRun
                 || panelSessionRun !== itemsLoadRun
