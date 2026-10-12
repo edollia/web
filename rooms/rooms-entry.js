@@ -64,8 +64,7 @@
       }
       revealRooms();
     } catch (error) {
-      // Honor a known disabled state during an outage; a failed settings
-      // read must not reopen the page the owner deliberately switched off.
+      // Keep Rooms closed during an outage when the last known setting was OFF.
       try {
         var cached = JSON.parse(localStorage.getItem('doll_public_site_settings_v2') || 'null');
         if (cached?.schema === 2 && cached.value?.rooms_enabled === false) {

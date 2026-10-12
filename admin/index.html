@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="robots" content="noindex, nofollow">
     <meta name="referrer" content="strict-origin-when-cross-origin">
-    <meta name="doll-build" content="2026.10.10.3">
+    <meta name="doll-build" content="2026.10.11.6">
     <title>Lia Admin</title>
     <link rel="icon" type="image/png" href="/favicon.png">
     <link rel="stylesheet" href="../admin.css?v=6.2&r=2026.09.06.1">
@@ -77,7 +77,7 @@
                 <button data-panel="published-panel"><svg aria-hidden="true"><use href="#admin-i-published"></use></svg><span>published <b id="published-tab-count">0</b></span><svg class="admin-nav-drag" aria-hidden="true"><use href="#admin-i-drag"></use></svg></button>
                 <button data-panel="site-panel"><svg aria-hidden="true"><use href="#admin-i-site"></use></svg><span>site</span><svg class="admin-nav-drag" aria-hidden="true"><use href="#admin-i-drag"></use></svg></button>
                 <button data-panel="links-panel"><svg aria-hidden="true"><use href="#admin-i-links"></use></svg><span>links <b id="links-tab-count">0/4</b></span><svg class="admin-nav-drag" aria-hidden="true"><use href="#admin-i-drag"></use></svg></button>
-                <button data-panel="wishlist-panel"><svg aria-hidden="true"><use href="#admin-i-wishlist"></use></svg><span>wishlist</span><svg class="admin-nav-drag" aria-hidden="true"><use href="#admin-i-drag"></use></svg></button>
+                <button data-panel="wishlist-panel"><svg aria-hidden="true"><use href="#admin-i-wishlist"></use></svg><span>wishes</span><svg class="admin-nav-drag" aria-hidden="true"><use href="#admin-i-drag"></use></svg></button>
                 <button data-panel="search-panel"><svg aria-hidden="true"><use href="#admin-i-search"></use></svg><span>search + SEO</span><svg class="admin-nav-drag" aria-hidden="true"><use href="#admin-i-drag"></use></svg></button>
                 <button data-panel="rooms-panel"><svg aria-hidden="true"><use href="#admin-i-rooms"></use></svg><span>rooms</span><svg class="admin-nav-drag" aria-hidden="true"><use href="#admin-i-drag"></use></svg></button>
                 <button class="admin-mobile-more" type="button" id="admin-mobile-more"><svg aria-hidden="true"><use href="#admin-i-more"></use></svg><span>more</span></button>
@@ -464,12 +464,14 @@
                     <div class="admin-panel-intro">
                         <div>
                             <p class="admin-kicker">links</p>
-                            <h2>social buttons</h2>
+                            <h2>link cards</h2>
                         </div>
                         <button class="soft" type="button" id="link-settings-reset">restore defaults</button>
                     </div>
 
-                    <p class="admin-social-order-note">drag the dotted handle to reorder — mouse or finger — or use the arrow controls for keyboard. changes save automatically; Throne stays fixed.</p>
+                    <p class="admin-social-order-note">drag the dotted handle to reorder — mouse or finger — or use the arrow controls for keyboard. changes save automatically.</p>
+
+                    <p class="admin-tool-note">These controls manage cards in Links. Manage the Wishes menu and featured items in Wishes.</p>
 
                     <aside class="admin-social-hosting-pause" role="note">
                         <strong>local video mode</strong>
@@ -938,17 +940,76 @@
                             </div>
                         </details>
 
-                        <details class="admin-link-card admin-widget-card" data-link-card="throne">
+                        <details class="admin-link-card" data-link-card="throne_link">
+                            <summary>
+                                <div class="admin-link-card-title">
+                                    <span class="admin-link-icon admin-link-icon--social" aria-hidden="true"><img src="../social-icons/throne.png?v=2026.10.11.6" alt="" width="192" height="192"></span>
+                                    <div>
+                                        <strong>Throne</strong>
+                                        <small id="throne-link-state">visible</small>
+                                    </div>
+                                </div>
+                                <div class="admin-link-card-actions">
+                                    <button class="soft admin-link-open" type="button" data-link-open="throne_link">open</button>
+                                    <label class="admin-switch">
+                                        <input id="throne-link-enabled" type="checkbox">
+                                        <span></span>
+                                    </label>
+                                </div>
+                            </summary>
+                            <div class="admin-link-card-body">
+                                <label class="admin-url-field">
+                                    <span>destination URL</span>
+                                    <input id="throne-link-url" type="url" inputmode="url" placeholder="https://throne.com/edoll">
+                                </label>
+                                <label class="admin-url-field admin-username-field">
+                                    <span>display username <small>updates URL · blank hides it</small></span>
+                                    <input id="throne-link-username" type="text" maxlength="80" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="leave blank to hide">
+                                </label>
+                                <div class="admin-card-video-control" data-social-video="throne_link">
+                                    <div class="admin-card-video-heading">
+                                        <span>animated card background</span>
+                                        <small data-video-status aria-live="polite">no background</small>
+                                    </div>
+                                    <video data-video-preview muted loop playsinline controls preload="metadata" hidden></video>
+                                    <img data-image-preview alt="" hidden>
+                                    <div class="admin-card-video-actions">
+                                        <label class="admin-video-picker">
+                                            <input data-video-file type="file" accept="video/*,image/gif,.mp4,.m4v,.mov,.webm,.gif">
+                                            <span>choose media</span>
+                                        </label>
+                                        <button class="soft" type="button" data-video-upload="throne_link" disabled>upload</button>
+                                        <button class="soft" type="button" data-video-remove="throne_link" disabled>remove</button>
+                                    </div>
+                                    <small class="admin-card-video-note">MP4, M4V, MOV, WebM, or GIF · max 20 MB</small>
+                                </div>
+                            </div>
+                        </details>
+                    </div>
+
+                </section>
+
+                <section class="admin-panel" id="wishlist-panel">
+                    <div class="admin-panel-intro">
+                        <div>
+                            <p class="admin-kicker">wishes</p>
+                            <h2>featured items</h2>
+                            <p>Auto-synced from your live Throne wishlist. Toggle "feature" to choose what shows on doll.gg — sold-out items drop off the site automatically.</p>
+                        </div>
+                    </div>
+
+                    <div class="admin-link-grid">
+                        <details class="admin-link-card admin-widget-card" data-link-card="wishes">
                             <summary>
                                 <div class="admin-link-card-title">
                                     <span class="admin-link-icon admin-link-icon--wishes" aria-hidden="true"><img src="../site-images/wishlist.png" alt="" width="192" height="192"></span>
                                     <div>
-                                        <strong>Throne</strong>
+                                        <strong>Wishes menu</strong>
                                         <small id="throne-state">visible</small>
                                     </div>
                                 </div>
                                 <div class="admin-link-card-actions">
-                                    <button class="soft admin-link-open" type="button" data-link-open="throne">open</button>
+                                    <button class="soft admin-link-open" type="button" data-link-open="throne">open Throne</button>
                                     <label class="admin-switch">
                                         <input id="throne-enabled" type="checkbox">
                                         <span></span>
@@ -956,15 +1017,10 @@
                                 </div>
                             </summary>
                             <div class="admin-link-card-body">
+                                <p class="admin-tool-note">Controls the Wishes menu and its layout on doll.gg. The separate Throne link card is managed in Links.</p>
                                 <label class="admin-url-field">
                                     <span>wishlist URL</span>
                                     <input id="throne-url" type="url" inputmode="url" placeholder="https://throne.com/name">
-                                </label>
-                                <label class="admin-url-field">
-                                    <span>checkout style</span>
-                                    <select id="throne-checkout-mode">
-                                        <option value="mockup">custom doll.gg panel</option>
-                                    </select>
                                 </label>
                                 <label class="admin-url-field">
                                     <span>wishlist layout</span>
@@ -976,17 +1032,6 @@
                                 </label>
                             </div>
                         </details>
-                    </div>
-
-                </section>
-
-                <section class="admin-panel" id="wishlist-panel">
-                    <div class="admin-panel-intro">
-                        <div>
-                            <p class="admin-kicker">wishlist</p>
-                            <h2>featured items</h2>
-                            <p>Auto-synced from your live Throne wishlist. Toggle "feature" to choose what shows on doll.gg — sold-out items drop off the site automatically.</p>
-                        </div>
                     </div>
 
                     <div class="admin-bulk-bar">
@@ -1094,7 +1139,7 @@
                 </div>
                 <label class="admin-command-search">
                     <svg aria-hidden="true"><use href="#admin-i-search"></use></svg>
-                    <input id="admin-command-input" type="search" autocomplete="off" placeholder="review, media, wishlist, rooms…">
+                    <input id="admin-command-input" type="search" autocomplete="off" placeholder="review, media, wishes, rooms…">
                 </label>
                 <div class="admin-command-results" id="admin-command-results"></div>
             </form>
@@ -1110,7 +1155,7 @@
                     <button class="admin-icon-button soft" value="cancel" aria-label="close more tools"><svg aria-hidden="true"><use href="#admin-i-close"></use></svg></button>
                 </div>
                 <div class="admin-more-grid">
-                    <button type="button" data-more-panel="wishlist-panel"><svg aria-hidden="true"><use href="#admin-i-wishlist"></use></svg><span>wishlist</span></button>
+                    <button type="button" data-more-panel="wishlist-panel"><svg aria-hidden="true"><use href="#admin-i-wishlist"></use></svg><span>wishes</span></button>
                     <button type="button" data-more-panel="search-panel"><svg aria-hidden="true"><use href="#admin-i-search"></use></svg><span>search + SEO</span></button>
                     <button type="button" data-more-panel="rooms-panel"><svg aria-hidden="true"><use href="#admin-i-rooms"></use></svg><span>rooms</span></button>
                 </div>
@@ -1162,7 +1207,7 @@
     }
     </script>
     <script src="../admin-rooms.js?v=4.5"></script>
-    <script src="../social-card-media-config.js?v=6&r=2026.09.18.17"></script>
-    <script src="../admin.js?v=6.3&r=2026.10.10.3"></script>
+    <script src="../social-card-media-config.js?v=11&r=2026.10.11.6"></script>
+    <script src="../admin.js?v=6.4&r=2026.10.11.1"></script>
 </body>
 </html>

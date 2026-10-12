@@ -141,6 +141,7 @@
     let checkoutStatusMessage = '';
     let checkoutRequestRun = 0;
     let checkoutRequestController = null;
+    let checkoutPendingTab = null;
     let scrollRaf = 0;
     let resizeRaf = 0;
     let panelOpenRaf = 0;
@@ -263,10 +264,50 @@
         }
     }
 
-    function openCheckoutDestination(url) {
-        // The cart response arrives after the original click's popup permission
-        // may have expired. Navigate this tab so checkout doesn't depend on it.
-        window.location.assign(url);
+    function reserveCheckoutTab() {
+        let tab = null;
+        try {
+            // Reserve the new tab during the click, before awaiting the cart.
+            // Keep its handle for the handoff, and detach its opener immediately.
+            tab = window.open('about:blank', '_blank');
+            if (!tab || tab.closed) return null;
+            tab.opener = null;
+            const loadingDocument = tab.document;
+            loadingDocument.title = 'starting checkout · doll.gg';
+            loadingDocument.documentElement.lang = 'en';
+            loadingDocument.body.style.cssText = 'margin:0;min-height:100vh;display:grid;place-content:center;justify-items:center;gap:12px;background:#fff7fb;color:#b94d84;font:18px "Comic Sans MS","Trebuchet MS",cursive;text-align:center;';
+            const animation = loadingDocument.createElement('img');
+            animation.src = new URL('loading.gif?v=13', document.baseURI).href;
+            animation.alt = '';
+            animation.width = 190;
+            animation.height = 138;
+            const message = loadingDocument.createElement('p');
+            message.textContent = 'starting checkout…';
+            message.style.margin = '0';
+            loadingDocument.body.replaceChildren(animation, message);
+            return tab;
+        } catch (error) {
+            try { tab?.close(); } catch (closeError) {}
+            return null;
+        }
+    }
+
+    function closePendingCheckoutTab(expectedTab = checkoutPendingTab) {
+        if (!expectedTab || checkoutPendingTab !== expectedTab) return;
+        checkoutPendingTab = null;
+        try { expectedTab.close(); } catch (error) {}
+    }
+
+    function openCheckoutDestination(url, tab) {
+        if (!tab || tab.closed) throw new Error('checkout-tab-closed');
+        const destination = new URL(url);
+        if (destination.origin !== 'https://throne.com'
+            || !destination.pathname.startsWith('/edoll/checkout/')) {
+            throw new Error('invalid checkout destination');
+        }
+        tab.location.replace(destination.href);
+        // Once handed to Throne, this tab no longer belongs to our cleanup.
+        if (checkoutPendingTab === tab) checkoutPendingTab = null;
     }
 
     function escapeHtml(value) {
@@ -3988,10 +4029,13 @@
         persistWishlistPicks();
         if (!panel) return;
         const count = selectedIds.size;
-        panel.classList.toggle('has-selection', count > 0);
+        // Retain saved picks while the catalogue loads, but reveal their
+        // checkout dock only with the ready cards, never beside the loader.
+        const showSelection = count > 0 && loadState === 'ready';
+        panel.classList.toggle('has-selection', showSelection);
         document.body.classList.toggle(
             'has-wishlist-selection',
-            count > 0 && panel.classList.contains('active')
+            showSelection && panel.classList.contains('active')
         );
         panel.querySelector('.doll-wishlist-count b').textContent = count === 1 ? '1 item' : `${count} items`;
         const checkoutBtn = panel.querySelector('.doll-wishlist-checkout');
@@ -4249,6 +4293,7 @@
         if (!bodyPrepared) loaderShownAt = loaderStartedAt;
         items = [];
         if (!bodyPrepared) renderBody();
+        renderFoot();
 
         try {
             // Reserve the tail of the watchdog's budget so a slow-but-successful
@@ -4296,7 +4341,14 @@
     }
 
     async function startCheckout() {
-        if (checkoutInFlight || !selectedIds.size) return;
+        if (checkoutInFlight || loadState !== 'ready' || !selectedIds.size) return;
+        const checkoutTab = reserveCheckoutTab();
+        if (!checkoutTab) {
+            checkoutStatusMessage = 'your browser blocked the checkout tab — allow pop-ups and try again';
+            renderFoot();
+            return;
+        }
+        checkoutPendingTab = checkoutTab;
         const requestRun = ++checkoutRequestRun;
         const panelSessionRun = itemsLoadRun;
         const checkoutController = typeof window.AbortController === 'function'
@@ -4334,6 +4386,7 @@
 
             if (res.status === 409
                 || (res.status === 400 && body.error === 'none of the selected items are available')) {
+                closePendingCheckoutTab(checkoutTab);
                 // Something the visitor picked sold out / got unfeatured
                 // between selecting and checking out. Never silently ship a
                 // smaller cart — refresh what's actually still available and
@@ -4350,21 +4403,22 @@
             if (!res.ok || !body.checkoutUrl) {
                 throw new Error(body.error || `throne-cart ${res.status}`);
             }
-            openCheckoutDestination(body.checkoutUrl);
-            // Keep Wishes and its picks intact until the browser leaves. An
-            // embedded browser may prevent external navigation; that must not
-            // silently discard the cart or send the visitor back to Links.
+            openCheckoutDestination(body.checkoutUrl, checkoutTab);
+            // doll.gg stays on Wishes, with its picks available when returning.
         } catch (err) {
             const staleRequest = requestRun !== checkoutRequestRun
                 || panelSessionRun !== itemsLoadRun
                 || !isWishlistPanelVisible();
             if (staleRequest) return;
-            checkoutStatusMessage = 'checkout couldn\'t connect — please try again or use the full wishlist below';
+            checkoutStatusMessage = err?.message === 'checkout-tab-closed' || checkoutTab.closed
+                ? 'the checkout tab was closed — please try again'
+                : 'checkout couldn\'t connect — please try again or use the full wishlist below';
             recordWishlistReliability(
                 panel?.getAttribute('data-wishlist-source') || 'unknown',
                 'checkout-error'
             );
         } finally {
+            closePendingCheckoutTab(checkoutTab);
             if (requestRun === checkoutRequestRun) {
                 if (checkoutRequestController === checkoutController) checkoutRequestController = null;
                 checkoutInFlight = false;
@@ -4378,7 +4432,12 @@
         checkoutRequestController?.abort();
         checkoutRequestController = null;
         checkoutInFlight = false;
+        closePendingCheckoutTab();
     }
+
+    window.addEventListener('pagehide', () => {
+        if (checkoutPendingTab) cancelCheckoutRequest();
+    });
 
     function cancelScheduledWishlistRelease() {
         if (wishlistExitTransitionTimer) {

@@ -1,5 +1,5 @@
 document.addEventListener("DOMContentLoaded", async function() {
-    const DEFAULT_SOCIAL_CARD_ORDER = ['snapchat', 'instagram', 'kofi', 'telegram', 'x', 'tiktok', 'twitch', 'discord', 'onlyfans', 'spotify'];
+    const DEFAULT_SOCIAL_CARD_ORDER = ['snapchat', 'instagram', 'kofi', 'telegram', 'x', 'tiktok', 'twitch', 'discord', 'onlyfans', 'spotify', 'throne_link'];
     const SOCIAL_CARD_KEYS = [...DEFAULT_SOCIAL_CARD_ORDER];
     // One shared switch is loaded by both the public site and Admin. Fail
     // closed to GitHub mode if that tiny config script is ever unavailable;
@@ -219,7 +219,8 @@ document.addEventListener("DOMContentLoaded", async function() {
     // occasionally discard its painted frame, so each loaded element remains
     // mounted for the rest of its card lifecycle.
     function getMountedSocialCardForKey(key) {
-        const id = key === 'kofi' ? 'donate-option' : `${key}-option`;
+        const id = key === 'kofi' ? 'donate-option'
+            : key === 'throne_link' ? 'throne-option' : `${key}-option`;
         return document.getElementById(id);
     }
 
@@ -333,6 +334,11 @@ document.addEventListener("DOMContentLoaded", async function() {
         spotify_enabled: false,
         spotify_card_video_url: '',
         spotify_card_video_path: '',
+        throne_link_url: 'https://throne.com/edoll',
+        throne_link_username: 'edoll',
+        throne_link_enabled: true,
+        throne_link_card_video_url: '',
+        throne_link_card_video_path: '',
         social_card_order: [...DEFAULT_SOCIAL_CARD_ORDER],
         throne_url: 'https://throne.com/edoll',
         throne_enabled: true,
@@ -2119,6 +2125,11 @@ document.addEventListener("DOMContentLoaded", async function() {
             spotify_enabled: readBooleanSetting(settings, 'spotify_enabled'),
             spotify_card_video_url: String(settings.spotify_card_video_url || ''),
             spotify_card_video_path: String(settings.spotify_card_video_path || ''),
+            throne_link_url: String(settings.throne_link_url || DEFAULT_LINK_SETTINGS.throne_link_url),
+            throne_link_username: readSocialUsernameSetting(settings, 'throne_link'),
+            throne_link_enabled: readBooleanSetting(settings, 'throne_link_enabled'),
+            throne_link_card_video_url: String(settings.throne_link_card_video_url || ''),
+            throne_link_card_video_path: String(settings.throne_link_card_video_path || ''),
             social_card_order: normalizeSocialCardOrder(settings.social_card_order),
             throne_url: String(settings.throne_url || DEFAULT_LINK_SETTINGS.throne_url),
             throne_enabled: readBooleanSetting(settings, 'throne_enabled'),
@@ -3976,6 +3987,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     }
     const onlyfansOption = document.getElementById('onlyfans-option') || createOnlyFansOption();
     const spotifyOption = document.getElementById('spotify-option');
+    const throneLinkOption = document.getElementById('throne-option');
     const supportMenuButton = document.getElementById('support-menu-button');
     const actionMenuButton = document.getElementById('action-menu-button');
     const actionOptions = actionMenuButton?.querySelector('.action-options');
@@ -4073,12 +4085,14 @@ document.addEventListener("DOMContentLoaded", async function() {
         { key: 'twitch', option: twitchOption, label: 'Twitch', withAt: true },
         { key: 'discord', option: discordOption, label: 'Discord', withAt: true },
         { key: 'onlyfans', option: onlyfansOption, label: 'OnlyFans', withAt: true },
-        { key: 'spotify', option: spotifyOption, label: 'Spotify' }
+        { key: 'spotify', option: spotifyOption, label: 'Spotify' },
+        { key: 'throne_link', option: throneLinkOption, label: 'Throne', withAt: true }
     ];
     let socialPreviewObserver = null;
     let socialPreviewReleaseTimer = 0;
     let socialOpenGeneration = 0;
     let socialAtomicRevealCleanups = [];
+    let socialRevealTimer = 0;
     const SOCIAL_PREVIEW_ROOT_MARGIN = 120;
     const SOCIAL_PREVIEW_RELEASE_DELAY_MS = 30000;
     const SOCIAL_PREVIEW_CACHE_LIMIT = 6;
@@ -4567,7 +4581,18 @@ document.addEventListener("DOMContentLoaded", async function() {
             window.requestAnimationFrame(() => {
                 if (openGeneration !== socialOpenGeneration
                     || !socialsButton?.classList.contains('open')) return;
+                // Freeze the finished video/poster/tint layers while the
+                // viewport fades in once. Independent layer transitions here
+                // would expose an untinted frame or partial preview set.
+                socialLinksShell?.classList.add('is-revealing');
                 socialLinksShell?.classList.remove('is-loading');
+                window.clearTimeout(socialRevealTimer);
+                socialRevealTimer = window.setTimeout(() => {
+                    socialRevealTimer = 0;
+                    if (openGeneration === socialOpenGeneration) {
+                        socialLinksShell?.classList.remove('is-revealing');
+                    }
+                }, 250);
                 if (socialLinksLoading) socialLinksLoading.setAttribute('aria-hidden', 'true');
                 socialLinksPanel?.setAttribute('aria-hidden', 'false');
                 getVisibleSocialOptions().forEach(option => {
@@ -4719,10 +4744,10 @@ document.addEventListener("DOMContentLoaded", async function() {
             const pageTitle = siteLinkSettings.seo_title || DEFAULT_LINK_SETTINGS.seo_title;
             const pageDescription = siteLinkSettings.seo_description || DEFAULT_LINK_SETTINGS.seo_description;
             const siteTagline = siteLinkSettings.site_tagline || DEFAULT_LINK_SETTINGS.site_tagline;
-            const sameAs = [...SOCIAL_CARD_KEYS, 'throne']
+            const sameAs = [...new Set([...SOCIAL_CARD_KEYS, 'throne']
                 .filter(isPublicLinkEnabled)
                 .map(getPublicLink)
-                .filter(Boolean);
+                .filter(Boolean))];
 
             if (websiteNode) {
                 websiteNode.sameAs = sameAs;
@@ -5275,10 +5300,11 @@ document.addEventListener("DOMContentLoaded", async function() {
                 getVisibleSocialOptions().forEach(card => {
                     const preview = card.querySelector('.social-link-preview[src]');
                     if (SOCIAL_CARD_VIDEO_SOURCE_MODE === 'github') {
-                        // Local media does not change with Supabase settings.
-                        // Never strand a slower first-load video behind the
-                        // Supabase-only deferred flag; its ready event should
-                        // reveal it during this same opening.
+                        // A late settings read must not unlock only the ready
+                        // members of an opening set still waiting on a clip.
+                        // Its shared watcher will reveal the complete set.
+                        if (card.dataset.socialPreviewDeferred === 'true'
+                            && socialAtomicRevealCleanups.length) return;
                         delete card.dataset.socialPreviewDeferred;
                         if (preview && isSocialPreviewReady(preview)) {
                             card.classList.add('has-social-preview');
@@ -5445,7 +5471,11 @@ document.addEventListener("DOMContentLoaded", async function() {
         socialsButton.setAttribute('aria-expanded', 'false');
         socialsButton.setAttribute('aria-label', 'Open links');
         socialLinksShell?.classList.remove('active');
-        socialLinksShell?.classList.remove('is-loading');
+        window.clearTimeout(socialRevealTimer);
+        socialRevealTimer = 0;
+        socialLinksShell?.classList.remove('is-revealing');
+        // If closed while preparing, keep its content behind the loader for
+        // the exit too; clearing is-loading would flash partial cards.
         if (socialLinksLoading) socialLinksLoading.setAttribute('aria-hidden', 'true');
         socialLinksPanel?.setAttribute('aria-hidden', 'true');
         // Closed, the panel is invisible; keep Tab from landing on its links.
@@ -5539,6 +5569,9 @@ document.addEventListener("DOMContentLoaded", async function() {
         noteImage?.classList.remove('hidden');
         resetIconsCollapse();
         const openGeneration = ++socialOpenGeneration;
+        window.clearTimeout(socialRevealTimer);
+        socialRevealTimer = 0;
+        socialLinksShell?.classList.remove('is-revealing');
         clearSocialAtomicRevealWatchers();
         getVisibleSocialOptions().forEach(card => {
             const key = getSocialCardVideoKey(card);

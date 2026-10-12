@@ -18,7 +18,6 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 const ALLOWED_ORIGINS = new Set([
   'https://doll.gg', 'https://www.doll.gg',
   'http://localhost:8421', 'http://127.0.0.1:8421',
-  'http://localhost:8765', 'http://127.0.0.1:8765',
 ])
 
 const THRONE_SOURCE_CREATOR_ID = 'SVtrvPX5wbRctiRcdHeSCeuJT6u2' // @edoll

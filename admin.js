@@ -3,7 +3,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 const ADMIN_UID = '1b12f04e-c1a9-42c5-bd3a-04b6186245c3';
 const ADMIN_PASSCODE_HASH = 'ce157a63c5af6bc69d076f5cc7acd1c18a8b44933f907e682f24914a63e9939e';
 const SOCIAL_CARD_VIDEO_BUCKET = 'social-card-videos';
-const DEFAULT_SOCIAL_CARD_ORDER = ['snapchat', 'instagram', 'kofi', 'telegram', 'x', 'tiktok', 'twitch', 'discord', 'onlyfans', 'spotify'];
+const DEFAULT_SOCIAL_CARD_ORDER = ['snapchat', 'instagram', 'kofi', 'telegram', 'x', 'tiktok', 'twitch', 'discord', 'onlyfans', 'spotify', 'throne_link'];
 const SOCIAL_CARD_KEYS = [...DEFAULT_SOCIAL_CARD_ORDER];
 const SOCIAL_CARD_VIDEO_KEYS = [...SOCIAL_CARD_KEYS];
 const SOCIAL_CARD_MEDIA_CONFIG = window.DOLL_SOCIAL_CARD_MEDIA || Object.freeze({
@@ -24,7 +24,8 @@ const SOCIAL_USERNAME_URL_BUILDERS = Object.freeze({
     tiktok: username => `https://www.tiktok.com/@${encodeURIComponent(username)}`,
     twitch: username => `https://www.twitch.tv/${encodeURIComponent(username)}`,
     onlyfans: username => `https://onlyfans.com/${encodeURIComponent(username)}`,
-    spotify: username => `https://open.spotify.com/user/${encodeURIComponent(username)}`
+    spotify: username => `https://open.spotify.com/user/${encodeURIComponent(username)}`,
+    throne_link: username => `https://throne.com/${encodeURIComponent(username)}`
 });
 const MAX_SOCIAL_CARD_VIDEO_BYTES = 20 * 1024 * 1024;
 const SOCIAL_CARD_VIDEO_TYPES = new Set(['video/mp4', 'video/webm', 'video/x-m4v', 'video/quicktime', 'image/gif']);
@@ -109,6 +110,11 @@ const DEFAULT_LINK_SETTINGS = {
     spotify_enabled: false,
     spotify_card_video_url: '',
     spotify_card_video_path: '',
+    throne_link_url: 'https://throne.com/edoll',
+    throne_link_username: 'edoll',
+    throne_link_enabled: true,
+    throne_link_card_video_url: '',
+    throne_link_card_video_path: '',
     social_card_order: [...DEFAULT_SOCIAL_CARD_ORDER],
     throne_url: 'https://throne.com/edoll',
     throne_enabled: true,
@@ -308,6 +314,10 @@ const els = {
     spotifyUrl: document.getElementById('spotify-url'),
     spotifyUsername: document.getElementById('spotify-username'),
     spotifyState: document.getElementById('spotify-state'),
+    throneLinkEnabled: document.getElementById('throne-link-enabled'),
+    throneLinkUrl: document.getElementById('throne-link-url'),
+    throneLinkUsername: document.getElementById('throne-link-username'),
+    throneLinkState: document.getElementById('throne-link-state'),
     throneEnabled: document.getElementById('throne-enabled'),
     throneUrl: document.getElementById('throne-url'),
     throneState: document.getElementById('throne-state'),
@@ -486,14 +496,14 @@ function renderShortMeta(item) {
     `;
 }
 
-function renderStats() {
+function renderStats(linkSettings = state.linkSettings) {
     const pendingDrawings = state.adminListTotals['pending-drawings-list'] || 0;
     const publishedDrawings = state.adminListTotals['published-drawings-list'] || 0;
     const pendingQuestions = state.adminListTotals['pending-questions-list'] || 0;
     const publishedQuestions = state.adminListTotals['published-questions-list'] || 0;
-    const publicLinkKeys = [...SOCIAL_CARD_KEYS, 'throne'];
+    const publicLinkKeys = SOCIAL_CARD_KEYS;
     const activeLinks = publicLinkKeys
-        .filter(key => state.linkSettings[`${key}_enabled`] !== false).length;
+        .filter(key => linkSettings[`${key}_enabled`] !== false).length;
     if (els.reviewTabCount) els.reviewTabCount.textContent = String(pendingDrawings + pendingQuestions);
     if (els.publishedTabCount) els.publishedTabCount.textContent = String(publishedDrawings + publishedQuestions);
     if (els.linksTabCount) els.linksTabCount.textContent = `${activeLinks}/${publicLinkKeys.length}`;
@@ -770,7 +780,8 @@ function getSocialUsernameControls() {
         { key: 'twitch', username: els.twitchUsername, url: els.twitchUrl },
         { key: 'discord', username: els.discordUsername, url: els.discordUrl },
         { key: 'onlyfans', username: els.onlyfansUsername, url: els.onlyfansUrl },
-        { key: 'spotify', username: els.spotifyUsername, url: els.spotifyUrl }
+        { key: 'spotify', username: els.spotifyUsername, url: els.spotifyUrl },
+        { key: 'throne_link', username: els.throneLinkUsername, url: els.throneLinkUrl }
     ];
 }
 
@@ -837,6 +848,11 @@ function normalizeLinkSettings(value) {
         spotify_enabled: readBooleanSetting(settings, 'spotify_enabled'),
         spotify_card_video_url: String(settings.spotify_card_video_url || ''),
         spotify_card_video_path: String(settings.spotify_card_video_path || ''),
+        throne_link_url: String(settings.throne_link_url || DEFAULT_LINK_SETTINGS.throne_link_url),
+        throne_link_username: readSocialUsernameSetting(settings, 'throne_link'),
+        throne_link_enabled: readBooleanSetting(settings, 'throne_link_enabled'),
+        throne_link_card_video_url: String(settings.throne_link_card_video_url || ''),
+        throne_link_card_video_path: String(settings.throne_link_card_video_path || ''),
         social_card_order: normalizeSocialCardOrder(settings.social_card_order),
         throne_url: String(settings.throne_url || DEFAULT_LINK_SETTINGS.throne_url),
         throne_enabled: readBooleanSetting(settings, 'throne_enabled'),
@@ -866,15 +882,16 @@ function ensureSocialOrderControls() {
         const card = document.querySelector(`[data-link-card="${key}"]`);
         const actions = card?.querySelector('.admin-link-card-actions');
         if (!actions || actions.querySelector('.admin-social-order-controls')) return;
+        const label = card.querySelector('summary strong')?.textContent?.trim() || key;
         card.classList.add('has-social-order');
         const controls = document.createElement('span');
         controls.className = 'admin-social-order-controls';
         controls.innerHTML = `
-            <button class="admin-social-drag" type="button" data-social-drag="${key}" aria-label="Drag ${key} card to reorder" title="Drag to reorder">${adminIcon('drag')}</button>
-            <button class="admin-social-edit" type="button" data-social-edit="${key}" aria-label="Edit ${key} card">${adminIcon('edit')}</button>
-            <button class="admin-social-move" type="button" data-social-move="up" data-social-key="${key}" aria-label="Move ${key} card up">${adminIcon('arrow-up')}</button>
+            <button class="admin-social-drag" type="button" data-social-drag="${key}" aria-label="Drag ${label} card to reorder" title="Drag to reorder">${adminIcon('drag')}</button>
+            <button class="admin-social-edit" type="button" data-social-edit="${key}" aria-label="Edit ${label} card">${adminIcon('edit')}</button>
+            <button class="admin-social-move" type="button" data-social-move="up" data-social-key="${key}" aria-label="Move ${label} card up">${adminIcon('arrow-up')}</button>
             <span class="admin-social-position" aria-label="Card position"></span>
-            <button class="admin-social-move" type="button" data-social-move="down" data-social-key="${key}" aria-label="Move ${key} card down">${adminIcon('arrow-down')}</button>
+            <button class="admin-social-move" type="button" data-social-move="down" data-social-key="${key}" aria-label="Move ${label} card down">${adminIcon('arrow-down')}</button>
         `;
         actions.prepend(controls);
     });
@@ -884,12 +901,11 @@ function applyAdminSocialCardOrder(settings = state.linkSettings) {
     ensureSocialOrderControls();
     const order = normalizeSocialCardOrder(settings.social_card_order);
     const grid = document.querySelector('#links-panel .admin-link-grid');
-    const throneCard = grid?.querySelector('[data-link-card="throne"]');
     if (!grid) return;
 
     order.forEach(key => {
         const card = grid.querySelector(`[data-link-card="${key}"]`);
-        if (card) grid.insertBefore(card, throneCard || null);
+        if (card) grid.append(card);
     });
 
     order.forEach((key, index) => {
@@ -998,6 +1014,10 @@ function renderLinkSettings({ preserveDraft = false } = {}) {
     if (els.spotifyUrl) els.spotifyUrl.value = settings.spotify_url || '';
     if (els.spotifyUsername) els.spotifyUsername.value = settings.spotify_username ?? '';
     if (els.spotifyState) els.spotifyState.textContent = settings.spotify_enabled !== false ? 'visible' : 'hidden';
+    if (els.throneLinkEnabled) els.throneLinkEnabled.checked = settings.throne_link_enabled !== false;
+    if (els.throneLinkUrl) els.throneLinkUrl.value = settings.throne_link_url || '';
+    if (els.throneLinkUsername) els.throneLinkUsername.value = settings.throne_link_username ?? '';
+    if (els.throneLinkState) els.throneLinkState.textContent = settings.throne_link_enabled !== false ? 'visible' : 'hidden';
     if (els.throneEnabled) els.throneEnabled.checked = settings.throne_enabled !== false;
     if (els.throneUrl) els.throneUrl.value = settings.throne_url || '';
     if (els.throneState) els.throneState.textContent = settings.throne_enabled !== false ? 'visible' : 'hidden';
@@ -1086,6 +1106,11 @@ function getDraftLinkSettings() {
         spotify_enabled: els.spotifyEnabled?.checked !== false,
         spotify_card_video_url: state.linkSettings.spotify_card_video_url || '',
         spotify_card_video_path: state.linkSettings.spotify_card_video_path || '',
+        throne_link_url: els.throneLinkUrl?.value.trim() || state.linkSettings.throne_link_url || DEFAULT_LINK_SETTINGS.throne_link_url,
+        throne_link_username: getDraftSocialUsername('throne_link', els.throneLinkUsername),
+        throne_link_enabled: els.throneLinkEnabled?.checked !== false,
+        throne_link_card_video_url: state.linkSettings.throne_link_card_video_url || '',
+        throne_link_card_video_path: state.linkSettings.throne_link_card_video_path || '',
         social_card_order: normalizeSocialCardOrder(state.linkSettings.social_card_order),
         throne_url: els.throneUrl?.value.trim() || state.linkSettings.throne_url || DEFAULT_LINK_SETTINGS.throne_url,
         throne_enabled: els.throneEnabled?.checked !== false,
@@ -1128,6 +1153,7 @@ function syncLinkDraftLabels(settings = getDraftLinkSettings()) {
     if (els.discordState) els.discordState.textContent = settings.discord_enabled !== false ? 'visible' : 'hidden';
     if (els.onlyfansState) els.onlyfansState.textContent = settings.onlyfans_enabled !== false ? 'visible' : 'hidden';
     if (els.spotifyState) els.spotifyState.textContent = settings.spotify_enabled !== false ? 'visible' : 'hidden';
+    if (els.throneLinkState) els.throneLinkState.textContent = settings.throne_link_enabled !== false ? 'visible' : 'hidden';
     if (els.throneState) els.throneState.textContent = settings.throne_enabled !== false ? 'visible' : 'hidden';
     const homepageNoteText = String(settings.homepage_note_text || '');
     if (els.homepageNoteState) els.homepageNoteState.textContent = homepageNoteText ? 'visible' : 'blank';
@@ -1151,8 +1177,8 @@ function syncLinkDraftLabels(settings = getDraftLinkSettings()) {
     if (els.seoDescriptionCount) els.seoDescriptionCount.textContent = `${settings.seo_description.length}/180`;
     if (els.siteTaglineCount) els.siteTaglineCount.textContent = `${settings.site_tagline.length}/120`;
     if (els.seoState) els.seoState.textContent = settingsDraftDirty ? 'editing' : 'ready';
-    [...SOCIAL_CARD_KEYS, 'throne', 'maintenance', 'submissions'].forEach(key => {
-        const settingKey = key.replace('-', '_');
+    [...SOCIAL_CARD_KEYS, 'wishes', 'maintenance', 'submissions'].forEach(key => {
+        const settingKey = key === 'wishes' ? 'throne' : key.replace('-', '_');
         let disabled = settings[`${settingKey}_enabled`] === false;
         if (key === 'submissions') {
             disabled = settings.drawings_enabled === false && settings.questions_enabled === false;
@@ -1160,6 +1186,7 @@ function syncLinkDraftLabels(settings = getDraftLinkSettings()) {
         document.querySelector(`[data-link-card="${key}"]`)?.classList.toggle('is-disabled', disabled);
     });
     document.querySelector('[data-link-card="rooms-master"]')?.classList.toggle('is-disabled', settings.rooms_enabled === false);
+    renderStats(settings);
     updateAdminSafetyOverview(settings);
     renderStaticSeoStatus(settings);
 }
@@ -1328,13 +1355,15 @@ function renderSocialVideoControl(key) {
         const localFile = String(LOCAL_SOCIAL_CARD_VIDEOS[key] || '');
         setSocialVideoStatus(
             key,
-            localFile ? 'local GitHub file active' : 'local mode · no background file',
+            localFile ? 'local GitHub file active' : key === 'throne_link' ? 'awaiting Throne MP4' : 'local mode · no background file',
             'paused'
         );
         if (note) {
             note.textContent = localFile
                 ? `repository file: ${localFile}`
-                : 'Supabase media controls are paused; this card currently has no local video.';
+                : key === 'throne_link'
+                    ? 'The Throne icon is shown until its MP4 is added.'
+                    : 'Supabase media controls are paused; this card currently has no local video.';
         }
         return;
     }
@@ -2942,6 +2971,11 @@ async function persistLatestLinkSettings(requestId, { overrides = null, onCommit
             spotify_enabled: els.spotifyEnabled?.checked !== false,
             spotify_card_video_url: String(state.linkSettings.spotify_card_video_url || ''),
             spotify_card_video_path: String(state.linkSettings.spotify_card_video_path || ''),
+            throne_link_url: cleanUrl(els.throneLinkUrl?.value || state.linkSettings.throne_link_url, 'Throne link'),
+            throne_link_username: getDraftSocialUsername('throne_link', els.throneLinkUsername),
+            throne_link_enabled: els.throneLinkEnabled?.checked !== false,
+            throne_link_card_video_url: String(state.linkSettings.throne_link_card_video_url || ''),
+            throne_link_card_video_path: String(state.linkSettings.throne_link_card_video_path || ''),
             social_card_order: normalizeSocialCardOrder(state.linkSettings.social_card_order),
             throne_url: cleanUrl(els.throneUrl?.value || state.linkSettings.throne_url, 'Throne'),
             throne_enabled: els.throneEnabled?.checked !== false,
@@ -3559,10 +3593,11 @@ const ADMIN_PANEL_COMMANDS = [
     { panel: 'site-panel', target: '[data-link-card="first-visit-tour"]', icon: 'eye', title: 'first-visit tour', description: 'preview the dood, ask, and links guide', keywords: 'onboarding settings' },
     { panel: 'site-panel', target: '[data-link-card="submissions"]', icon: 'edit', title: 'posting switches', description: 'independent dood and ask controls', keywords: 'submissions safety settings' },
     { panel: 'site-panel', target: '[data-link-card="homepage-note"]', icon: 'note', title: 'homepage paper note', description: 'edit and preview the fitted note', keywords: 'settings text' },
-    { panel: 'links-panel', target: '.admin-link-grid', icon: 'drag', title: 'social card order', description: 'drag ten cards; Throne stays fixed', keywords: 'snapchat instagram kofi telegram x tiktok twitch discord onlyfans spotify' },
+    { panel: 'links-panel', target: '.admin-link-grid', icon: 'drag', title: 'link card order', description: 'drag to arrange the cards in Links', keywords: 'snapchat instagram kofi telegram x tiktok twitch discord onlyfans spotify throne' },
     { panel: 'links-panel', target: '[data-link-card="snapchat"]', icon: 'media', title: 'social card media', description: 'choose, preview, upload, or remove backgrounds', keywords: 'video gif mov mp4 storage' },
-    { panel: 'links-panel', target: '[data-link-card="throne"]', icon: 'wishlist', title: 'Throne card', description: 'destination, visibility, checkout, and layout', keywords: 'wishlist public links' },
-    { panel: 'wishlist-panel', target: '.admin-bulk-bar', icon: 'wishlist', title: 'featured wishlist', description: 'sync, filter, feature, and drag public order', keywords: 'throne sold out new items' },
+    { panel: 'links-panel', target: '[data-link-card="throne_link"]', icon: 'wishlist', title: 'Throne link card', description: 'destination, username, visibility, and background', keywords: 'throne public links banner' },
+    { panel: 'wishlist-panel', target: '[data-link-card="wishes"]', icon: 'wishlist', title: 'Wishes menu', description: 'wishlist destination, menu visibility, and layout', keywords: 'throne wishlist custom display' },
+    { panel: 'wishlist-panel', target: '.admin-bulk-bar', icon: 'wishlist', title: 'featured wishes', description: 'sync, filter, feature, and drag public order', keywords: 'throne sold out new items' },
     { panel: 'search-panel', target: '.admin-search-editor', icon: 'search', title: 'search preview', description: 'rendered title, description, and tagline', keywords: 'seo google metadata' },
     { panel: 'search-panel', target: '#static-seo-checks', icon: 'search', title: 'crawler copy', description: 'compare static, Open Graph, X, and schema copy', keywords: 'seo structured data github' },
     { panel: 'search-panel', target: '#admin-health-check', icon: 'check', title: 'site health checks', description: 'pages, sitemap, robots, icons, and noindex', keywords: 'status favicon share image' },
@@ -4242,17 +4277,6 @@ function initAdminCardInspector() {
         if (event.target === dialog) dialog.close();
     });
     dialog.addEventListener('close', restoreAdminCardInspector);
-
-    const throneActions = document.querySelector('[data-link-card="throne"] .admin-link-card-actions');
-    if (throneActions && !throneActions.querySelector('[data-social-edit="throne"]')) {
-        const edit = document.createElement('button');
-        edit.className = 'soft admin-social-edit';
-        edit.type = 'button';
-        edit.dataset.socialEdit = 'throne';
-        edit.setAttribute('aria-label', 'Edit Throne card');
-        edit.innerHTML = adminIcon('edit');
-        throneActions.prepend(edit);
-    }
 }
 
 function initAdminSocialCardReorder() {
@@ -4262,7 +4286,6 @@ function initAdminSocialCardReorder() {
         container: grid,
         handleSelector: '[data-social-drag]',
         itemSelector: '[data-link-card]',
-        // The throne card is pinned to the end and is not part of the order.
         canDrag: card => SOCIAL_CARD_KEYS.includes(card.dataset.linkCard),
         canStart: () => {
             // The old drop handler surfaced this on release; say it on the
@@ -4536,6 +4559,7 @@ async function init() {
         els.discordUrl,
         els.onlyfansUrl,
         els.spotifyUrl,
+        els.throneLinkUrl,
         els.throneUrl,
         els.throneCheckoutMode,
         els.wishlistViewMode,

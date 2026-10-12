@@ -2509,16 +2509,27 @@ body.has-posts-panel-open .button-group {
 }
 
 .social-links-shell.is-loading > .dwl-motion-viewport {
-    /* Keep the viewport stable while its reordered contents prepare. */
-    opacity: 1;
+    /* Keep the complete surface mounted for Safari decoding, but reveal it
+       as one group only after the media and its tint have settled. */
+    opacity: 0.001;
+    pointer-events: none;
+    /* Hiding for preparation must be immediate, including repeat opens. */
+    transition: none;
 }
 
 .social-links-shell.is-loading .social-link-preview {
-    opacity: 1 !important;
+    /* Decode at the final strength; full-strength video must never be an
+       intermediate state as the loading cover leaves. */
+    opacity: 0.34;
+}
+
+.social-links-shell:is(.is-loading, .is-revealing) .social-link-preview,
+.social-links-shell:is(.is-loading, .is-revealing) .social-link-poster,
+.social-links-shell:is(.is-loading, .is-revealing) .social-link-card::after {
+    transition: none;
 }
 
 .social-links-shell.is-loading .social-links-panel > * {
-    opacity: 0.001;
     pointer-events: none;
 }
 
@@ -2814,7 +2825,8 @@ body.has-social-panel-open .site-brand-footer {
     background: linear-gradient(90deg, rgba(255, 250, 253, 0.72), rgba(255, 240, 248, 0.38));
     opacity: 0;
     pointer-events: none;
-    transition: opacity 0.22s ease;
+    /* The tint is in place before video fades in, including late media. */
+    transition: none;
 }
 
 .social-link-card.has-social-preview::after {
@@ -3195,6 +3207,10 @@ body.has-social-panel-open .site-brand-footer {
 
 #instagram-option .social-link-icon img {
     transform: scale(0.98);
+}
+
+#throne-option .social-link-icon img {
+    transform: translateY(-0.9px) scale(1.14);
 }
 
 #telegram-option .social-link-icon img {
