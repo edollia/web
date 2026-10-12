@@ -98,9 +98,10 @@
     // The paw that boops a heart to show it's tappable (see runPawBoop).
     const PAW_BOOP_SVG = '<svg viewBox="0 0 40 52" aria-hidden="true"><path d="M8.5 52V24.5C8.5 12.8 13.6 5.5 20 5.5s11.5 7.3 11.5 19V52" fill="#fff" stroke="rgba(236,150,188,.85)" stroke-width="1.6" stroke-linejoin="round"/><g fill="#f8b2cd"><ellipse cx="20" cy="28" rx="6.4" ry="5.3"/><ellipse cx="13.4" cy="18.6" rx="2.3" ry="2.7"/><ellipse cx="17.8" cy="13.6" rx="2.3" ry="2.7"/><ellipse cx="22.2" cy="13.6" rx="2.3" ry="2.7"/><ellipse cx="26.6" cy="18.6" rx="2.3" ry="2.7"/></g></svg>';
     const PAW_BOOP_MARKUP = `<span class="dwl-paw-wave" aria-hidden="true"></span><span class="dwl-paw-float" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="${HEART_PATH}"/></svg></span><span class="dwl-paw" aria-hidden="true">${PAW_BOOP_SVG}</span>`;
-    const PAW_BOOP_FIRST_MS = 1600; // after the cards appear
+    const CARD_SCALE = 0.90;
+    const PAW_BOOP_FIRST_MS = 900; // after the cards appear
     const PAW_BOOP_MS = 1500; // one boop, matches the CSS animations
-    const PAW_BOOP_GAP_MS = 7000; // between boops
+    const PAW_BOOP_GAP_MS = 3500; // between boops
     const PAW_BOOP_RETRY_MS = 700; // when the moment is wrong (tour, preview, no heart in view)
 
     let panel = null;
@@ -135,6 +136,9 @@
     let wishlistViewMode = 'masonry'; // 'grid' | 'list' | 'masonry'
     const WISHLIST_VIEW_MODES = ['grid', 'list', 'masonry'];
     let pawBoopTimer = 0;
+    let pawBoopScrollTimer = 0;
+    let lastPawBoopAt = 0;
+    let lastPawBoopScrollTop = 0;
     let pawBoopRun = 0;
     let lastPawBoopId = '';
     let checkoutInFlight = false;
@@ -273,18 +277,26 @@
             if (!tab || tab.closed) return null;
             tab.opener = null;
             const loadingDocument = tab.document;
-            loadingDocument.title = 'starting checkout · doll.gg';
+            // Initialize the temporary document before styling its loader.
+            loadingDocument.open();
+            loadingDocument.write('<!doctype html><html><head></head><body></body></html>');
+            loadingDocument.close();
+            loadingDocument.title = 'checkout · doll.gg';
             loadingDocument.documentElement.lang = 'en';
             loadingDocument.body.style.cssText = 'margin:0;min-height:100vh;display:grid;place-content:center;justify-items:center;gap:12px;background:#fff7fb;color:#b94d84;font:18px "Comic Sans MS","Trebuchet MS",cursive;text-align:center;';
-            const animation = loadingDocument.createElement('img');
-            animation.src = new URL('loading.gif?v=13', document.baseURI).href;
-            animation.alt = '';
-            animation.width = 190;
-            animation.height = 138;
-            const message = loadingDocument.createElement('p');
-            message.textContent = 'starting checkout…';
-            message.style.margin = '0';
-            loadingDocument.body.replaceChildren(animation, message);
+            // Reuse the already-loaded shared paw rules without waiting on a
+            // stylesheet request from this temporary about:blank document.
+            const pawStylesheet = Array.from(document.styleSheets).find(sheet => (
+                sheet.href && new URL(sheet.href).pathname.endsWith('/paw-loader.css')
+            ));
+            const stylesheet = loadingDocument.createElement('style');
+            stylesheet.textContent = Array.from(pawStylesheet.cssRules, rule => rule.cssText).join('\n');
+            loadingDocument.head.appendChild(stylesheet);
+            const status = loadingDocument.createElement('div');
+            status.setAttribute('role', 'status');
+            status.setAttribute('aria-label', 'Loading checkout');
+            status.innerHTML = '<span class="loading-paw-print posts-fetch-paw" aria-hidden="true"></span>';
+            loadingDocument.body.replaceChildren(status);
             return tab;
         } catch (error) {
             try { tab?.close(); } catch (closeError) {}
@@ -1837,6 +1849,13 @@
                visitors see the hearts are tappable. JS (runPawBoop) picks
                the heart and only plays it while nothing is hearted yet.
                Everything here animates transform/opacity/scale only. */
+            .doll-wishlist-cart-btn::before {
+                content: '';
+                position: absolute;
+                /* Preserve the original 30px tap area after the 90% resize. */
+                inset: -1.667px;
+                border-radius: inherit;
+            }
             .doll-wishlist-cart-btn svg {
                 position: relative;
                 z-index: 1;
@@ -2223,6 +2242,22 @@
                 transition: transform 0.18s ease;
             }
 
+            .doll-wishlist-body .doll-wishlist-item,
+            .doll-wishlist-body .doll-wishlist-more-card {
+                zoom: ${CARD_SCALE};
+                width: ${CARD_SCALE * 100}% !important;
+                margin-inline: auto;
+            }
+            /* In the vertical see-all tile the arrow's row-only flex-basis
+               reserved blank height underneath it and biased the group up. */
+            .doll-wishlist-more-card.dwl-more-tile .dwl-more-arrow {
+                flex: 0 0 auto;
+            }
+            .doll-wishlist-more-card.dwl-more-tile .dwl-more-copy,
+            .doll-wishlist-more-card.dwl-more-tile .dwl-more-arrow {
+                translate: 0 5px;
+            }
+
             .doll-wishlist-state {
                 display: flex;
                 flex-direction: column;
@@ -2492,6 +2527,9 @@
             }
 
             .doll-wishlist-checkout {
+                display: flex;
+                align-items: center;
+                justify-content: center;
                 position: relative;
                 z-index: 1;
                 width: 100%;
@@ -3373,6 +3411,7 @@
 
     function onWishlistBodyScroll(event) {
         const body = event.currentTarget;
+        scheduleScrolledPawBoop(body);
         if (!body.classList.contains('dwl-scroll-body')) return;
         const shell = body.closest('.doll-wishlist-scroll-shell');
         if (window.dollQueuePanelScrollUpdate?.(body, shell)) return;
@@ -3479,7 +3518,7 @@
             // what keeps this alternating sensibly rather than piling every
             // card into one column if a hidden ancestor ever makes all the
             // heights measure zero.
-            totals[column] += card.getBoundingClientRect().height + PIN_MARGIN_PX;
+            totals[column] += card.getBoundingClientRect().height + PIN_MARGIN_PX * CARD_SCALE;
         });
 
         // The see-all card closes the SHORTER column, and is grown to at least
@@ -3497,9 +3536,9 @@
         const moreCard = masonry.querySelector('.doll-wishlist-more-card');
         const shorter = totals[0] <= totals[1] ? 0 : 1;
         if (moreCard) {
-            const needed = Math.abs(totals[0] - totals[1]) - PIN_MARGIN_PX + 6;
-            const height = Math.max(MORE_CARD_MIN_HEIGHT_PX, Math.round(needed));
-            const next = `${height}px`;
+            const needed = Math.abs(totals[0] - totals[1]) - PIN_MARGIN_PX * CARD_SCALE + 6;
+            const height = Math.max(MORE_CARD_MIN_HEIGHT_PX * CARD_SCALE, Math.round(needed));
+            const next = `${height / CARD_SCALE}px`;
             if (moreCard.style.minHeight !== next) moreCard.style.minHeight = next;
             dealt[shorter].push(moreCard);
         }
@@ -3620,6 +3659,8 @@
 
     function stopPawBoops() {
         pawBoopRun += 1;
+        window.clearTimeout(pawBoopScrollTimer);
+        pawBoopScrollTimer = 0;
         if (pawBoopTimer) {
             window.clearTimeout(pawBoopTimer);
             pawBoopTimer = 0;
@@ -3677,6 +3718,8 @@
         }
 
         lastPawBoopId = card.dataset.itemId || '';
+        lastPawBoopAt = performance.now();
+        lastPawBoopScrollTop = body.scrollTop;
         button.insertAdjacentHTML('beforeend', PAW_BOOP_MARKUP);
         card.classList.add('dwl-paw-boop');
         pawBoopTimer = window.setTimeout(() => {
@@ -3685,8 +3728,33 @@
         }, PAW_BOOP_MS);
     }
 
+    function scheduleScrolledPawBoop(body) {
+        if (loadState !== 'ready' || !isWishlistPanelVisible()) return;
+        window.clearTimeout(pawBoopScrollTimer);
+        const run = pawBoopRun;
+        pawBoopScrollTimer = window.setTimeout(() => {
+            pawBoopScrollTimer = 0;
+            if (run !== pawBoopRun || !body.isConnected
+                || Math.abs(body.scrollTop - lastPawBoopScrollTop) < Math.min(64, body.clientHeight * 0.25)) return;
+            const activeCard = panel.querySelector('.dwl-paw-boop');
+            if (activeCard) {
+                const heart = activeCard.querySelector('.doll-wishlist-cart-btn')?.getBoundingClientRect();
+                const viewport = body.getBoundingClientRect();
+                if (heart && heart.top >= viewport.top && heart.bottom <= viewport.bottom) return;
+                removePawBoop(activeCard);
+            }
+            // A new viewport gets a prompt hint, with at least one full boop
+            // and a quiet beat between gestures. Momentum scroll is debounced.
+            const delay = Math.max(0, 2600 - (performance.now() - lastPawBoopAt));
+            window.clearTimeout(pawBoopTimer);
+            pawBoopTimer = window.setTimeout(() => runPawBoop(body, run), delay);
+        }, 240);
+    }
+
     function startPawBoops(body) {
         stopPawBoops();
+        lastPawBoopAt = 0;
+        lastPawBoopScrollTop = body.scrollTop;
         const run = pawBoopRun;
         pawBoopTimer = window.setTimeout(() => runPawBoop(body, run), PAW_BOOP_FIRST_MS);
     }
@@ -4045,7 +4113,13 @@
         });
         const previewTag = previewOverlay?.querySelector('.doll-wishlist-preview-price-tag');
         if (previewTag) previewTag.disabled = checkoutInFlight || loadState !== 'ready';
-        checkoutBtn.textContent = checkoutInFlight ? 'loading…' : 'checkout';
+        checkoutBtn.setAttribute('aria-busy', String(checkoutInFlight));
+        checkoutBtn.setAttribute('aria-label', checkoutInFlight ? 'Loading checkout' : 'checkout');
+        if (checkoutInFlight) {
+            checkoutBtn.innerHTML = '<span class="loading-paw-print posts-fetch-paw" aria-hidden="true"></span>';
+        } else {
+            checkoutBtn.textContent = 'checkout';
+        }
         const statusEl = panel.querySelector('.doll-wishlist-status');
         if (statusEl) statusEl.textContent = checkoutStatusMessage;
         syncReservedHeight();

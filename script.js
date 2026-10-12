@@ -413,7 +413,9 @@ document.addEventListener("DOMContentLoaded", async function() {
     audio.loop = true;
     audio.playsInline = true;
     audio.setAttribute('playsinline', '');
+    const PROJECT_AUDIO_SCALE = 0.70;
     const backgroundMusicVolume = 0.4;
+    let backgroundAudioGain = null;
     const BACKGROUND_FADE_IN_MS = 900;
     let backgroundMusicRequestedVolume = backgroundMusicVolume;
     let backgroundFadeLevel = 0;
@@ -446,8 +448,12 @@ document.addEventListener("DOMContentLoaded", async function() {
     }
 
     function applyBackgroundMusicVolume() {
-        const volume = backgroundMusicRequestedVolume * backgroundFadeLevel;
-        audio.volume = volume;
+        const volume = backgroundMusicRequestedVolume * backgroundFadeLevel * PROJECT_AUDIO_SCALE;
+        if (backgroundAudioGain) {
+            backgroundAudioGain.gain.value = volume;
+        } else {
+            audio.volume = volume;
+        }
     }
 
     function updateBackgroundFade() {
@@ -603,7 +609,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         compressor.ratio.value = 6;
         compressor.attack.value = 0.003;
         compressor.release.value = 0.14;
-        masterGain.gain.value = 0.82;
+        masterGain.gain.value = 0.82 * PROJECT_AUDIO_SCALE;
         compressor.connect(masterGain);
         masterGain.connect(uiAudioContext.destination);
         uiAudioOutput = compressor;
@@ -623,14 +629,31 @@ document.addEventListener("DOMContentLoaded", async function() {
     const uiSoundFallbacks = Object.fromEntries(Object.entries(uiSounds).map(([type, src]) => {
         const sound = new Audio(src);
         sound.preload = 'auto';
-        sound.volume = 1;
+        sound.volume = PROJECT_AUDIO_SCALE;
         sound.playsInline = true;
         sound.setAttribute('playsinline', '');
         sound.load();
         return [type, sound];
     }));
 
+    const fallbackAudioGains = new WeakMap();
+
+    function connectBackgroundAudioMixer() {
+        if (!uiAudioContext || backgroundAudioGain) return;
+        try {
+            const source = uiAudioContext.createMediaElementSource(audio);
+            backgroundAudioGain = uiAudioContext.createGain();
+            source.connect(backgroundAudioGain);
+            backgroundAudioGain.connect(uiAudioContext.destination);
+            // iOS media-element volume may be read-only. Apply the complete
+            // existing fade and volume through Web Audio, exactly once.
+            audio.volume = 1;
+            applyBackgroundMusicVolume();
+        } catch (error) {}
+    }
+
     function resumeUiAudioMixer() {
+        connectBackgroundAudioMixer();
         if (!uiAudioContext || uiAudioContext.state === 'running') return;
         try {
             const resumeAttempt = uiAudioContext.resume();
@@ -684,6 +707,15 @@ document.addEventListener("DOMContentLoaded", async function() {
         // we are avoiding. Once Web Audio unlocks, all later taps can overlap.
         if (!sound || !sound.paused) return;
         try {
+            if (uiAudioContext && !fallbackAudioGains.has(sound)) {
+                const source = uiAudioContext.createMediaElementSource(sound);
+                const gain = uiAudioContext.createGain();
+                gain.gain.value = PROJECT_AUDIO_SCALE;
+                source.connect(gain);
+                gain.connect(uiAudioContext.destination);
+                fallbackAudioGains.set(sound, gain);
+                sound.volume = 1;
+            }
             sound.currentTime = 0;
             const playAttempt = sound.play();
             playAttempt?.catch?.(() => {});
@@ -2645,6 +2677,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     const ICON_COLLAPSE_PEAK_RATE = 1 / (1 - ICON_COLLAPSE_RAMP);
     const ICON_PILL_INTERACTION_PROGRESS = 0.92;
     let iconCollapseTweenRaf = 0;
+    let communityComposerCollapseReleaseTimer = 0;
     let iconCollapseDisplayed = 0;
     const panelScrollExtents = new WeakMap();
     const hasNativeScrollCollapse = Boolean(
@@ -3079,6 +3112,10 @@ document.addEventListener("DOMContentLoaded", async function() {
     // Keep it one-way and synchronous: an additional easing loop would lag
     // behind Safari momentum and continue repainting after the gesture ends.
     function setIconsScrollProgress(scrollTop) {
+        if (document.body.classList.contains('has-community-composer-collapse')) {
+            if (!iconCollapseTweenRaf) setIconCollapseProgress(1);
+            return;
+        }
         cancelIconCollapseTween();
         const shell = getActiveMotionShell();
         if (!shell?.classList.contains('dwl-motion-ready')) {
@@ -3100,6 +3137,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     // run this same reconciliation after scrollend/idle so a stale pill class
     // can never leave fully visible icons unclickable.
     function releaseIconHitTestingAtTop(scroller) {
+        if (document.body.classList.contains('has-community-composer-collapse')) return false;
         if (!scroller || scroller.scrollTop > ICON_TOP_RELEASE_PX) return false;
         const group = document.querySelector('.button-group');
         const pill = document.getElementById('dwl-icons-pill');
@@ -3126,6 +3164,9 @@ document.addEventListener("DOMContentLoaded", async function() {
     }
 
     function resetIconsCollapse() {
+        window.clearTimeout(communityComposerCollapseReleaseTimer);
+        document.body.classList.remove('has-community-composer-collapse');
+        document.getElementById('community-hub')?.classList.remove('is-composer-collapsed');
         cancelIconCollapseTween();
         setIconCollapseProgress(0);
     }
@@ -3145,6 +3186,15 @@ document.addEventListener("DOMContentLoaded", async function() {
     // top" both read as one gesture instead of two fighting ones.
     function scrollOpenPanelToTop() {
         const panel = getOpenPanelScroller();
+        if (document.body.classList.contains('has-community-composer-collapse')) {
+            panel?.scrollTo({ top: 0, behavior: 'auto' });
+            animateIconCollapseTo(0, prefersReducedLoadingMotion ? 1 : 280);
+            window.clearTimeout(communityComposerCollapseReleaseTimer);
+            communityComposerCollapseReleaseTimer = window.setTimeout(() => {
+                resetIconsCollapse();
+            }, prefersReducedLoadingMotion ? 10 : 300);
+            return true;
+        }
         if (panel && panel.scrollTop > 0) {
             panel.scrollTo({ top: 0, behavior: 'smooth' });
             return true;
@@ -3279,6 +3329,8 @@ document.addEventListener("DOMContentLoaded", async function() {
     }
 
     function applyCommunityComposerState(mode) {
+        if (!['ask', 'doodle'].includes(mode)
+            && document.body.classList.contains('has-community-composer-collapse')) resetIconsCollapse();
         const askForm = document.getElementById('ask-form-container');
         const askTab = document.getElementById('ask-button');
         const doodleTab = document.getElementById('toggle-button');
@@ -3307,6 +3359,21 @@ document.addEventListener("DOMContentLoaded", async function() {
         if (askActive) {
             loadDeferredImage(askForm?.querySelector('.ask-corner-mascot'), 'questionSrc');
         }
+    }
+
+    function revealCommunityComposerSpace() {
+        const generation = communityComposerTransitionGeneration;
+        window.setTimeout(() => {
+            if (generation !== communityComposerTransitionGeneration || !isCommunityHubOpen()
+                || !['ask', 'doodle'].includes(communityHub.dataset.composerMode)) return;
+            // Reclaim the row without scrolling drawing controls or the ask
+            // field offscreen. This also works when the wall has no posts.
+            window.clearTimeout(communityComposerCollapseReleaseTimer);
+            communityHub.classList.add('is-composer-collapsed');
+            document.body.classList.add('has-community-composer-collapse');
+            if (prefersReducedLoadingMotion) setIconCollapseProgress(1);
+            else animateIconCollapseTo(1, 320);
+        }, prefersReducedLoadingMotion ? 0 : 360);
     }
 
     function focusCommunityAskField() {
@@ -3472,6 +3539,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     function setCommunityHubOpen(open, { deferReveal = false } = {}) {
         if (!communityHub) return;
         if (!open) {
+            if (document.body.classList.contains('has-community-composer-collapse')) resetIconsCollapse();
             cancelCommunityOpenReveal();
             communityComposerTransitionGeneration += 1;
             window.cancelAnimationFrame(communityComposerTransitionRaf);
@@ -3925,6 +3993,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                 // The tabs work as a switch: tapping the open one turns it off.
                 const doodleOpen = communityHub?.dataset.composerMode === 'doodle';
                 setCommunityComposerMode(doodleOpen ? 'closed' : 'doodle');
+                if (!doodleOpen) revealCommunityComposerSpace();
                 return;
             }
             const open = drawingWidget.classList.contains('active');
@@ -5997,9 +6066,20 @@ document.addEventListener("DOMContentLoaded", async function() {
 
     window.addEventListener('pageshow', resetSocialCardPopState);
 
-    function openSocialDestinationInNewTab(destination) {
+    function openSocialDestinationInNewTab(destination, { appHandoff = false } = {}) {
+        let href = destination;
+        if (appHandoff) {
+            const url = new URL(destination, document.baseURI);
+            const domains = ['snapchat.com', 't.me', 'telegram.me', 'telegram.org', 'twitch.tv'];
+            if (url.protocol === 'https:' && !url.username && !url.password && !url.port
+                && domains.some(domain => url.hostname === domain || url.hostname.endsWith('.' + domain))) {
+                const handoff = new URL('outbound.html', document.baseURI);
+                handoff.searchParams.set('to', url.href);
+                href = handoff.href;
+            }
+        }
         const link = document.createElement('a');
-        link.href = destination;
+        link.href = href;
         link.target = '_blank';
         link.rel = 'noopener noreferrer';
         link.hidden = true;
@@ -6021,7 +6101,9 @@ document.addEventListener("DOMContentLoaded", async function() {
             // on this page, then a real destination link opens. Reserving an
             // empty tab synchronously made iPhone switch to about:blank for the
             // full animation plus the destination's network startup.
-            popSocialCardThen(option, () => openSocialDestinationInNewTab(destination));
+            popSocialCardThen(option, () => openSocialDestinationInNewTab(destination, {
+                appHandoff: ['snapchat', 'telegram', 'twitch'].includes(key),
+            }));
         }));
 
     donateOption?.addEventListener('click', function(e) {
@@ -6575,6 +6657,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                     // The tabs work as a switch: tapping the open one turns it off.
                     const askOpen = communityHub?.dataset.composerMode === 'ask';
                     setCommunityComposerMode(askOpen ? 'closed' : 'ask', { focus: !askOpen });
+                    if (!askOpen) revealCommunityComposerSpace();
                     return;
                 }
                 const open = askFormContainer.style.display === 'block';

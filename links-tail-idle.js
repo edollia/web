@@ -96,8 +96,10 @@
 
         [
             2 + motionRandom() * 1.8,
-            17.4 + motionRandom() * 1.7,
-            26.5 + motionRandom() * 1.25
+            7.1 + motionRandom() * 1.2,
+            16.0 + motionRandom() * 1.2,
+            21.4 + motionRandom() * 1.2,
+            27.5 + motionRandom() * 1.2
         ].forEach(time => {
             if (isClear(time, stretches, 4.35)) {
                 happy.push({ at: time, force: .82 + motionRandom() * .22 });
@@ -123,7 +125,7 @@
                     force: (motionRandom() > .5 ? 1 : -1) * (.34 + motionRandom() * .3)
                 });
             }
-            cursor += 3.4 + motionRandom() * 3.25;
+            cursor += 2.4 + motionRandom() * 2.1;
         }
 
         return {

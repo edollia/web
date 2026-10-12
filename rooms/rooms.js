@@ -12,6 +12,7 @@ async function ensureLk() {
 
 // ── § CONFIG ─────────────────────────────────────────────────────
 const VERSION        = '2026-07-05.40';
+const PROJECT_AUDIO_SCALE = 0.70;
 const SUPABASE_URL   = 'https://karogcjefsnnrvlxlgpf.supabase.co';
 const SUPABASE_ANON  = 'sb_publishable_z2jS9qvQUvkSXVspdi2U5w_dFGM_rG-';
 const LIVEKIT_WS_URL = 'wss://pawsweb-z0kamke4.livekit.cloud';
@@ -1335,6 +1336,7 @@ function lkCleanLocalTracks() {
 function lkOnTrackSubscribed(track, publication, participant) {
   const Track = _lk.Track; // _lk guaranteed loaded — we're inside a Room event callback
   if (track.kind === Track.Kind.Audio) {
+    track.setVolume(PROJECT_AUDIO_SCALE);
     const el = track.attach();
     el.className = 'lk-audio';
     el.dataset.sid = participant.identity;
@@ -2704,7 +2706,7 @@ function applyNpVolume(v, persist = true) {
   const audio  = document.getElementById('np-audio');
   const slider = document.getElementById('np-volume');
   const mute   = document.getElementById('btn-np-mute');
-  if (audio)  audio.volume = _npVolume / 100;
+  if (audio)  audio.volume = (_npVolume / 100) * PROJECT_AUDIO_SCALE;
   if (slider) { slider.value = _npVolume; slider.style.setProperty('--vol', _npVolume + '%'); }
   if (mute)   mute.classList.toggle('is-muted', _npVolume === 0);
   if (persist) { try { localStorage.setItem('dg_rooms_music_vol', String(_npVolume)); } catch {} }
@@ -4745,8 +4747,8 @@ function playJoinSound() {
     osc.type = 'sine';
     osc.frequency.setValueAtTime(880, ctx.currentTime);
     osc.frequency.setValueAtTime(1100, ctx.currentTime + 0.07);
-    gain.gain.setValueAtTime(0.08, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+    gain.gain.setValueAtTime(0.08 * PROJECT_AUDIO_SCALE, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001 * PROJECT_AUDIO_SCALE, ctx.currentTime + 0.3);
     osc.onended = () => ctx.close().catch(() => {});
     osc.start(ctx.currentTime);
     osc.stop(ctx.currentTime + 0.3);

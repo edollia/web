@@ -383,27 +383,27 @@ var kofiWidgetOverlayFloatingChatBuilder = kofiWidgetOverlayFloatingChatBuilder 
         popup.dataset.kofiTopOffset = topOffset;
         popup.dataset.kofiOpen = 'true';
         popup.setAttribute('aria-hidden', 'false');
-        popup.style = `z-index:10000;position:fixed!important;top:calc(50% + ${topOffset}px)!important;left:50%!important;right:auto!important;bottom:auto!important;width:328px!important;height:${displayHeight}px!important;max-height:92vh!important;transform:translate(-50%, -50%) scale(0.7)!important;transform-origin:center center!important;transition:height 0.5s ease, opacity 0.3s linear; opacity:1;`;
+        popup.style.setProperty('--kofi-height', `${displayHeight}px`);
+        popup.inert = false;
         var noticeMobi = document.getElementsByClassName("floating-chat-kofi-popup-iframe-notice-mobi")[0];
         var notice = document.getElementsByClassName("floating-chat-kofi-popup-iframe-notice")[0];
         if (noticeMobi) noticeMobi.style.display = "block";
         if (notice) notice.style.display = "block";
         window.setTimeout(function() {
-            popup.querySelector('[aria-label="Close Ko-fi"]')?.focus({ preventScroll: true });
+            if (popup.dataset.kofiOpen === 'true') {
+                popup.querySelector('[aria-label="Close Ko-fi"]')?.focus({ preventScroll: true });
+            }
         }, 80);
     };
 
     function closePopup(popup, donateButton) {
         // ar popup = document.getElementById(popupId);
-        var topOffset = popup.dataset.kofiTopOffset || 0;
         popup.dataset.kofiOpen = 'false';
         popup.setAttribute('aria-hidden', 'true');
-        popup.style = `z-index:10000;position:fixed!important;top:calc(50% + ${topOffset}px)!important;left:50%!important;right:auto!important;bottom:auto!important;width:328px!important;height:0px!important;transform:translate(-50%, -50%) scale(0.7)!important;transform-origin:center center!important;transition:height 0.3s ease 0s, opacity 0.3s linear; opacity:0;`;
+        // Keep the iframe geometry stable through the closing animation.
+        popup.inert = true;
         updateClass(donateButton, 'open', 'closed');
-        var noticeMobi = document.getElementsByClassName("floating-chat-kofi-popup-iframe-notice-mobi")[0];
-        var notice = document.getElementsByClassName("floating-chat-kofi-popup-iframe-notice")[0];
-        if (noticeMobi) noticeMobi.style.display = "none";
-        if (notice) notice.style.display = "none";
+        // The parent fades out; keep its contents intact until it is hidden.
         hideKofiScrim();
         kofiReturnFocus?.focus?.({ preventScroll: true });
         kofiReturnFocus = null;
@@ -416,7 +416,7 @@ var kofiWidgetOverlayFloatingChatBuilder = kofiWidgetOverlayFloatingChatBuilder 
         scrim = document.createElement('div');
         scrim.id = 'doll-kofi-scrim';
         scrim.setAttribute('data-nosnippet', '');
-        scrim.style = 'position:fixed!important;inset:0!important;z-index:9999!important;opacity:0!important;pointer-events:none!important;background:radial-gradient(circle at 50% 44%, rgba(255,214,235,0.72), transparent 34%), rgba(255,247,251,0.3)!important;backdrop-filter:blur(0px)!important;-webkit-backdrop-filter:blur(0px)!important;transition:opacity 0.5s ease, backdrop-filter 0.55s ease, -webkit-backdrop-filter 0.55s ease!important;';
+        scrim.style = 'position:fixed!important;inset:0!important;z-index:9999!important;opacity:0!important;pointer-events:none!important;background:radial-gradient(circle at 50% 44%, rgba(255,214,235,0.72), transparent 34%), rgba(255,247,251,0.3)!important;backdrop-filter:blur(9px)!important;-webkit-backdrop-filter:blur(9px)!important;transition:opacity 0.32s ease!important;';
         scrim.addEventListener('click', function() {
             if (typeof window.closeKofiOverlay === 'function') window.closeKofiOverlay();
         });
@@ -429,9 +429,9 @@ var kofiWidgetOverlayFloatingChatBuilder = kofiWidgetOverlayFloatingChatBuilder 
         document.body.classList.add('has-kofi-overlay-open');
         scrim.style.setProperty('pointer-events', 'auto', 'important');
         window.requestAnimationFrame(function() {
-            scrim.style.setProperty('opacity', '1', 'important');
-            scrim.style.setProperty('backdrop-filter', 'blur(9px)', 'important');
-            scrim.style.setProperty('-webkit-backdrop-filter', 'blur(9px)', 'important');
+            if (document.body.classList.contains('has-kofi-overlay-open')) {
+                scrim.style.setProperty('opacity', '1', 'important');
+            }
         });
     }
 
@@ -440,13 +440,12 @@ var kofiWidgetOverlayFloatingChatBuilder = kofiWidgetOverlayFloatingChatBuilder 
         document.body.classList.remove('has-kofi-overlay-open');
         if (!scrim) return;
         scrim.style.setProperty('opacity', '0', 'important');
-        scrim.style.setProperty('backdrop-filter', 'blur(0px)', 'important');
-        scrim.style.setProperty('-webkit-backdrop-filter', 'blur(0px)', 'important');
+        // Fade a fixed blur rather than repainting the blur radius each frame.
         window.setTimeout(function() {
             if (scrim.style.opacity === '0') {
                 scrim.style.setProperty('pointer-events', 'none', 'important');
             }
-        }, 520);
+        }, 340);
     }
 
     function injectKofiOrnamentStyle() {
@@ -455,6 +454,39 @@ var kofiWidgetOverlayFloatingChatBuilder = kofiWidgetOverlayFloatingChatBuilder 
         var style = document.createElement('style');
         style.id = 'doll-kofi-ornament-style';
         style.textContent = `
+            .doll-kofi-popup {
+                z-index: 10000;
+                position: fixed !important;
+                top: 50% !important;
+                left: 50% !important;
+                right: auto !important;
+                bottom: auto !important;
+                width: 328px !important;
+                height: var(--kofi-height, 490px) !important;
+                max-height: 92vh !important;
+                transform: translate(-50%, calc(-50% + 10px)) scale(0.68) !important;
+                transform-origin: center;
+                opacity: 0;
+                visibility: hidden;
+                pointer-events: none;
+                transition: transform 0.38s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.26s ease, visibility 0s linear 0.38s;
+            }
+            .doll-kofi-popup[data-kofi-open="true"] {
+                transform: translate(-50%, -50%) scale(0.7) !important;
+                opacity: 1;
+                visibility: visible;
+                pointer-events: auto;
+                transition-delay: 0s;
+            }
+            .doll-kofi-popup:not([data-kofi-open="true"]) .doll-kofi-ornaments span,
+            .doll-kofi-popup:not([data-kofi-open="true"]) .doll-kofi-ornaments i {
+                animation-play-state: paused;
+            }
+            @media (prefers-reduced-motion: reduce) {
+                .doll-kofi-popup, #doll-kofi-scrim { transition: none !important; }
+                .doll-kofi-ornaments span, .doll-kofi-ornaments i { animation: none !important; }
+            }
+
             .doll-kofi-ornaments span,
             .doll-kofi-ornaments i {
                 position: absolute;
@@ -558,7 +590,8 @@ var kofiWidgetOverlayFloatingChatBuilder = kofiWidgetOverlayFloatingChatBuilder 
         popup.setAttribute('aria-hidden', 'true');
         popup.setAttribute('data-nosnippet', '');
         popup.setAttribute('tabindex', '-1');
-        popup.style = `z-index:10000;height: 0px; width:0px; opacity: 0; transition: all 0.6s ease 0s;`;
+        popup.classList.add('doll-kofi-popup');
+        popup.inert = true;
 
         if (parentElementId) {
             document.getElementById(parentElementId).appendChild(popup);
@@ -753,7 +786,8 @@ var kofiWidgetOverlayUtilities = kofiWidgetOverlayUtilities || function () {
             parent.querySelector('iframe')?.remove();
             status.hidden = false;
             status.style.display = 'grid';
-            status.textContent = 'opening ko-fi…';
+            status.setAttribute('aria-label', 'Loading Ko-fi');
+            status.innerHTML = '<span class="loading-paw-print posts-fetch-paw" aria-hidden="true"></span>';
             const iframe = document.createElement('iframe');
             iframe.title = 'Ko-fi support page';
             iframe.referrerPolicy = 'strict-origin-when-cross-origin';

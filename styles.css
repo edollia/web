@@ -244,50 +244,6 @@ canvas {
     align-items: start;
 }
 
-.loading-paw-print {
-    --paw-rotation: 74deg;
-    position: relative;
-    justify-self: center;
-    width: 23px;
-    height: 27px;
-    margin-top: 3px;
-    opacity: 0;
-    transform: translateY(-2px) rotate(var(--paw-rotation)) scale(0.62);
-    transform-origin: center;
-    will-change: opacity, transform;
-    /* drop-shadow lives here, not on ::after — applying it to a pseudo-element
-       that also has a mask + gradient background renders a visible square
-       edge on older iOS/WebKit (the shadow is composited against the
-       unmasked box instead of the masked shape). */
-    filter:
-        drop-shadow(-1px -1px 0 rgba(255, 255, 255, 0.76))
-        drop-shadow(1px 1px 0 rgba(171, 91, 130, 0.12));
-}
-
-.loading-paw-print:nth-child(even) {
-    --paw-rotation: 106deg;
-    margin-top: 28px;
-}
-
-.loading-paw-print::before,
-.loading-paw-print::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 54'%3E%3Cellipse cx='7.5' cy='20' rx='5.5' ry='8' transform='rotate(-22 7.5 20)'/%3E%3Cellipse cx='18' cy='11.5' rx='5.8' ry='8.5' transform='rotate(-8 18 11.5)'/%3E%3Cellipse cx='30' cy='11.5' rx='5.8' ry='8.5' transform='rotate(8 30 11.5)'/%3E%3Cellipse cx='40.5' cy='20' rx='5.5' ry='8' transform='rotate(22 40.5 20)'/%3E%3Cpath d='M24 25c-8.5 0-14.5 7.2-13 14.8 1.3 6.6 7.8 8.9 12.5 4.9.3-.3.7-.3 1 0 4.7 4 11.2 1.7 12.5-4.9C38.5 32.2 32.5 25 24 25Z'/%3E%3C/svg%3E") center / contain no-repeat;
-    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 54'%3E%3Cellipse cx='7.5' cy='20' rx='5.5' ry='8' transform='rotate(-22 7.5 20)'/%3E%3Cellipse cx='18' cy='11.5' rx='5.8' ry='8.5' transform='rotate(-8 18 11.5)'/%3E%3Cellipse cx='30' cy='11.5' rx='5.8' ry='8.5' transform='rotate(8 30 11.5)'/%3E%3Cellipse cx='40.5' cy='20' rx='5.5' ry='8' transform='rotate(22 40.5 20)'/%3E%3Cpath d='M24 25c-8.5 0-14.5 7.2-13 14.8 1.3 6.6 7.8 8.9 12.5 4.9.3-.3.7-.3 1 0 4.7 4 11.2 1.7 12.5-4.9C38.5 32.2 32.5 25 24 25Z'/%3E%3C/svg%3E") center / contain no-repeat;
-}
-
-.loading-paw-print::before {
-    background: rgba(171, 91, 130, 0.2);
-    transform: translate(1.2px, 1.2px);
-    filter: blur(0.35px);
-}
-
-.loading-paw-print::after {
-    background: linear-gradient(145deg, rgba(140, 77, 108, 0.42), rgba(208, 125, 165, 0.18) 55%, rgba(255, 255, 255, 0.8));
-}
-
 .loading-paw-print.is-stamped {
     animation: loadingPawStamp 0.3s cubic-bezier(0.2, 0.9, 0.32, 1.25) both;
 }
@@ -4819,16 +4775,6 @@ body.first-visit-tour-active .tour-highlight-target {
     pointer-events: auto;
 }
 
-.posts-fetch-paw.loading-paw-print {
-    --paw-rotation: 0deg;
-    width: 19px;
-    height: 22px;
-    margin: 0;
-    opacity: 0.58;
-    transform: rotate(0deg) scale(0.78);
-    animation: postsFetchPaw 1.05s ease-in-out infinite;
-}
-
 /* All :3 records and reply media are prepared here while the visible lists
    continue to show only their paw state. It stays rendered (not display:none)
    so Safari will actually decode GIF/video/iframe media before the atomic
@@ -4857,11 +4803,6 @@ body.first-visit-tour-active .tour-highlight-target {
     font-family: var(--doll-hand);
     font-size: 9px;
     text-align: center;
-}
-
-@keyframes postsFetchPaw {
-    0%, 100% { opacity: 0.34; transform: translateY(1px) scale(0.72); }
-    50% { opacity: 0.72; transform: translateY(-1px) scale(0.84); }
 }
 
 @media (max-width: 428px) {
@@ -5649,7 +5590,7 @@ body.has-community-hub-open #action-menu-button.open .action-options {
        that the previous visual treatment had, without coupling it to height. */
     --dwl-collapse-distance: 41px;
     position: absolute;
-    top: var(--open-surface-top);
+    top: calc(var(--open-surface-top) - 12px);
     left: 50%;
     /* Match Wishlist's layer: the shared icon controls are z-index 10. The
        motion shell preallocates a transparent strip above the visible card;
@@ -6119,4 +6060,16 @@ body.has-community-hub-open #action-menu-button.open .action-options {
     .answer-text {
         color: #a8316c;
     }
+}
+
+/* Composer opening uses the same icon morph while keeping the controls in
+   view, including on a short or empty visitor wall. */
+body.has-community-composer-collapse .dwl-icons-row,
+body.has-community-composer-collapse .dwl-icons-pill,
+body.has-community-composer-collapse .community-hub.dwl-motion-ready > .dwl-motion-viewport,
+body.has-community-composer-collapse .community-hub.dwl-motion-ready .community-scroll-body {
+    animation: none !important;
+}
+.community-hub.is-composer-collapsed:not(.dwl-motion-ready) {
+    transform: translateX(-50%) translateY(calc(-1 * var(--dwl-collapse-distance) * var(--dwl-collapse)));
 }
