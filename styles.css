@@ -2601,7 +2601,12 @@ body.has-posts-panel-open .button-group {
    same place. Only this inner viewport then moves: at progress 0 the extra
    area sits clipped below the shell; at progress 1 it has slid fully into the
    newly exposed space above. Scroll-time layout geometry never changes. */
+/* Resolve derived distances on the shell that owns the measured distance.
+   Inheriting them from the toggle host freezes the old distance and pulls
+   fallback scrollers into the icon row when the header runway is added. */
 .dwl-motion-shell.dwl-motion-ready {
+    --dwl-scroll-grow: calc(var(--dwl-collapse-distance) * var(--dwl-collapse));
+    --dwl-motion-hidden: calc(var(--dwl-collapse-distance) - var(--dwl-scroll-grow));
     height: calc(var(--dwl-motion-base-height) + var(--dwl-collapse-distance));
     margin-top: calc(-1 * var(--dwl-collapse-distance));
     overflow: hidden;
