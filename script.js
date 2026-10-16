@@ -2766,12 +2766,34 @@ document.addEventListener("DOMContentLoaded", async function() {
     }
     window.dollRefreshPanelScrollExtent = refreshPanelScrollExtent;
 
+    function stageRangeFor(scroller) {
+        return scroller?.classList.contains('staged-scroller')
+            ? Number.parseFloat(scroller.style.getPropertyValue('--stage-range')) || 0
+            : 0;
+    }
+    function syncStageOffset(scroller) {
+        const range = stageRangeFor(scroller);
+        if (range && !hasNativeScrollCollapse) {
+            scroller.style.setProperty('--stage-offset', `${Math.min(range, Math.max(0, scroller.scrollTop)) - range}px`);
+        }
+    }
     function clearScrollMotion(shell) {
         if (!shell) return;
         const scroller = shell.querySelector(
             '.social-links-panel, .doll-wishlist-body, .community-scroll-body, .posts-content'
         );
         const host = shell.closest('.toggle-container');
+        let stageRestore = null;
+        const oldStageRange = stageRangeFor(scroller);
+        if (oldStageRange) {
+            stageRestore = {
+                progress: Math.min(1, Math.max(0, scroller.scrollTop) / oldStageRange),
+                contentTop: Math.max(0, scroller.scrollTop - oldStageRange),
+            };
+            scroller.classList.remove('staged-scroller');
+            for (const prop of ['--stage-range', '--stage-offset']) scroller.style.removeProperty(prop);
+            scroller.scrollTop = stageRestore.contentTop;
+        }
         if (scroller) panelScrollExtents.delete(scroller);
         shell.classList.remove('dwl-motion-ready');
         shell.style.removeProperty('--dwl-motion-base-height');
@@ -2784,6 +2806,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             host.style.removeProperty('--dwl-motion-range');
         }
         refreshMotionBodyState();
+        return stageRestore;
     }
 
     // Configure while the panel is stationary. The base measurement is saved
@@ -2792,7 +2815,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     // open-state appearance is unchanged until scrolling begins.
     function configureScrollMotion(shell, scroller, baseElement = scroller, { enabled = true } = {}) {
         if (!shell || !scroller || !baseElement) return false;
-        clearScrollMotion(shell);
+        const stageRestore = clearScrollMotion(shell);
         if (!enabled) return false;
 
         const baseHeight = baseElement.getBoundingClientRect().height;
@@ -2813,12 +2836,26 @@ document.addEventListener("DOMContentLoaded", async function() {
                 shell.style.setProperty('--dwl-collapse-distance', `${distance}px`);
             }
         }
+        // Reserve the entire final viewport before the content starts scrolling.
+        const headerArt = document.querySelector('header .header-image');
+        let headerTravel = window.innerWidth <= 600 && window.innerHeight > 500
+            ? Math.max(0, Math.round((headerArt?.getBoundingClientRect().height || 0) * 0.81 - 54))
+            : 0;
+        // The first native scroll segment belongs to the header. Only require
+        // genuine content overflow after the final viewport is revealed.
+        if (baseOverflow <= distance + headerTravel - 7 + 8) headerTravel = 0;
+        if (headerTravel > 0) {
+            distance += headerTravel - 7;
+            shell.style.setProperty('--dwl-collapse-distance', `${distance}px`);
+        }
+        document.querySelector('.main-screen')?.style.setProperty('--header-travel', `${headerTravel}px`);
+        document.querySelector('.main-screen')?.classList.toggle('has-retracting-header', headerTravel > 0);
         const finalOverflow = Math.max(0, baseOverflow - distance);
-        const desiredRange = isSocialPanel
+        const desiredRange = (isSocialPanel
             ? ICON_COLLAPSE_RANGES.social
             : document.body.classList.contains('has-wishlist-panel-open')
                 ? ICON_COLLAPSE_RANGES.wishlist
-                : ICON_COLLAPSE_RANGES.posts;
+                : ICON_COLLAPSE_RANGES.posts) + Math.ceil(headerTravel * 1.6);
         // Socials can have a small amount of genuine overflow on medium-height
         // phones. Requiring the shared 1.6x runway disabled its collapse
         // entirely at those heights (for example, 56px of usable scroll for a
@@ -2828,22 +2865,29 @@ document.addEventListener("DOMContentLoaded", async function() {
         const minimumSafeRange = isSocialPanel
             ? Math.ceil(distance)
             : Math.ceil(distance * 1.6);
-        const configuredRange = Math.min(desiredRange, Math.floor(finalOverflow));
+        const configuredRange = Math.ceil(desiredRange);
 
-        // Slightly short surfaces may use their available range. Socials has
-        // already adapted its growth above and can safely use a one-to-one
-        // runway; the larger Wishlist and :3 surfaces keep the conservative
-        // 1.6 scroll-pixels-per-reclaimed-pixel guard.
-        if (!(baseHeight > 0 && distance > 0 && configuredRange >= minimumSafeRange)) {
+        // The staged scroller supplies the header runway independently of
+        // content length. Require real overflow in the final viewport too.
+        if (!(baseHeight > 0 && distance > 0 && finalOverflow > 1 && configuredRange >= minimumSafeRange)) {
             refreshPanelScrollExtent(scroller);
             refreshMotionBodyState();
             return false;
         }
 
         shell.style.setProperty('--dwl-motion-base-height', `${baseHeight.toFixed(2)}px`);
+        document.querySelector('.main-screen')?.style.setProperty('--header-range', `${configuredRange}px`);
+        document.querySelector('.main-screen')?.style.setProperty('--header-easing', getComputedStyle(shell.closest('.toggle-container')).getPropertyValue('--dwl-collapse-easing'));
         shell.style.setProperty('--dwl-motion-range', `${configuredRange}px`);
         shell.closest('.toggle-container')?.style.setProperty('--dwl-motion-range', `${configuredRange}px`);
         shell.classList.add('dwl-motion-ready');
+        scroller.style.setProperty('--stage-range', `${configuredRange}px`);
+        scroller.style.setProperty('--stage-offset', `${-configuredRange}px`);
+        scroller.classList.add('staged-scroller');
+        if (stageRestore) {
+            scroller.scrollTop = configuredRange * stageRestore.progress + stageRestore.contentTop;
+        }
+        syncStageOffset(scroller);
         refreshPanelScrollExtent(scroller);
         refreshMotionBodyState();
         return true;
@@ -3090,6 +3134,13 @@ document.addEventListener("DOMContentLoaded", async function() {
     function setIconCollapseProgress(progress, { writeVisual = true } = {}) {
         const clamped = Math.max(0, Math.min(1, progress));
         iconCollapseDisplayed = clamped;
+        if (clamped === 1 && document.body.classList.contains('has-community-composer-collapse')) {
+            const scroller = getOpenPanelScroller();
+            const range = stageRangeFor(scroller);
+            if (range && scroller.scrollTop < range) scroller.scrollTop = range;
+            syncStageOffset(scroller);
+        }
+        document.querySelector('.main-screen')?.style.setProperty('--header-progress', clamped.toFixed(4));
         const host = document.querySelector('.toggle-container');
         const group = document.querySelector('.button-group');
         if (!host || !group) return;
@@ -3127,6 +3178,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             return;
         }
         cancelIconCollapseTween();
+        syncStageOffset(getOpenPanelScroller());
         const shell = getActiveMotionShell();
         if (!shell?.classList.contains('dwl-motion-ready')) {
             setIconCollapseProgress(0);
@@ -3223,8 +3275,9 @@ document.addEventListener("DOMContentLoaded", async function() {
         const maxScroll = panelScrollExtents.has(el)
             ? panelScrollExtents.get(el)
             : refreshPanelScrollExtent(el);
-        const scrollTop = Math.max(0, Math.min(maxScroll, el.scrollTop));
-        const remaining = Math.max(0, maxScroll - scrollTop);
+        const stageRange = stageRangeFor(el);
+        const scrollTop = Math.max(0, Math.min(maxScroll, el.scrollTop) - stageRange);
+        const remaining = Math.max(0, maxScroll - stageRange - scrollTop);
         const hadAbove = shell.classList.contains('has-content-above');
         const hadBelow = shell.classList.contains('has-content-below');
         const hasAbove = scrollTop > (hadAbove ? 1.5 : 6);
@@ -3806,16 +3859,14 @@ document.addEventListener("DOMContentLoaded", async function() {
                 );
             }
         } else {
-            setPanelFillMax(card, { reservedPad: 14, openMargin: 18, bottomGap: 16 });
+            setPanelFillMax(card, { reservedPad: 4, bottomGap: 0 });
             configureScrollMotion(postsPanel, postsContentEl, card);
         }
         const surface = isCommunityHubOpen() ? communityHub : postsPanel;
         const panelRect = surface.getBoundingClientRect();
         const hostRect = host.getBoundingClientRect();
-        // The unified surface already owns its outer padding. The legacy
-        // popup still needs its historical 26px tail, but applying that tail
-        // to :3 would spend the footer clearance a second time.
-        const reserveTail = isCommunityHubOpen() ? 4 : 26;
+        // Each surface reserves the same small tail before the shared footer.
+        const reserveTail = 4;
         const neededHeight = Math.max(60, Math.ceil(panelRect.bottom - hostRect.top + reserveTail));
         host.style.setProperty('--posts-panel-height', `${neededHeight}px`);
         const scroller = isCommunityHubOpen() ? communityScrollBody : postsContentEl;
@@ -8090,3 +8141,58 @@ document.addEventListener("DOMContentLoaded", async function() {
         initPostsSystem();
     }
 });
+
+/* Match Safari edge colors to the loading, entry, and main screens. */
+(() => {
+    const root = document.documentElement;
+    const palettes = {
+        loading: ['#ffeef6', '#fff7fb'],
+        entry: ['#fff7fb', '#fcf1f7'],
+        main: ['#fcf1f7', '#fcf1f7'],
+    };
+    let pending = 0;
+
+    function mix(a, b, progress) {
+        const rgb = color => [1, 3, 5].map(i => parseInt(color.slice(i, i + 2), 16));
+        const from = rgb(a);
+        const to = rgb(b);
+        return '#' + from.map((value, i) => Math.round(value * (1 - progress) + to[i] * progress)
+            .toString(16).padStart(2, '0')).join('');
+    }
+
+    function update() {
+        pending = 0;
+        const loader = document.getElementById('loading-screen');
+        const popup = document.getElementById('popup');
+        const loading = loader && getComputedStyle(loader).display !== 'none';
+        const entry = popup && getComputedStyle(popup).display !== 'none';
+        const screen = loading ? 'loading' : entry ? 'entry' : 'main';
+        const alpha = loading ? Number(getComputedStyle(loader).opacity) : 0;
+        const base = palettes[entry ? 'entry' : 'main'];
+        const colors = loading
+            ? [mix(base[0], palettes.loading[0], alpha), mix(base[1], palettes.loading[1], alpha)]
+            : palettes[screen];
+
+        if (root.dataset.siteScreen !== screen) {
+            root.dataset.siteScreen = screen;
+            document.querySelector('meta[name="theme-color"]')?.setAttribute('content', palettes[screen][0]);
+        }
+        root.style.setProperty('--screen-top', colors[0]);
+        root.style.setProperty('--screen-bottom', colors[1]);
+        if (loading && loader.style.opacity === '0' && alpha > 0) {
+            pending = requestAnimationFrame(update);
+        }
+    }
+
+    function schedule() {
+        if (!pending) pending = requestAnimationFrame(update);
+    }
+    const observer = new MutationObserver(schedule);
+    for (const id of ['loading-screen', 'popup']) {
+        const element = document.getElementById(id);
+        if (element) observer.observe(element, { attributes: true, attributeFilter: ['style', 'class', 'hidden'] });
+    }
+    document.addEventListener('transitionend', schedule);
+    window.addEventListener('pageshow', schedule);
+    update();
+})();

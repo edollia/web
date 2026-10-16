@@ -6107,3 +6107,241 @@ body.has-community-composer-collapse .community-hub.dwl-motion-ready .community-
 .community-hub.is-composer-collapsed:not(.dwl-motion-ready) {
     transform: translateX(-50%) translateY(calc(-1 * var(--dwl-collapse-distance) * var(--dwl-collapse)));
 }
+
+/* Compact header, shared footer spacing, and staged menu scrolling. */
+@media (max-width:600px) and (min-height:501px) {
+    .main-screen {
+        --header-travel: 0px;
+        --header-progress: 0;
+    }
+    .main-screen header,
+    .main-screen .button-group {
+        translate: 0 calc(-1 * var(--header-travel) * var(--header-progress));
+    }
+    .main-screen header { pointer-events: none; }
+}
+@media (max-width:600px) and (min-height:501px) {
+    /* Same control and motion, with a readable size below the lace. */
+    .has-retracting-header .dwl-icons-pill { width:64px; height:24px; top:31px; }
+    .has-retracting-header .pill-mesh { scale:1.2; }
+}
+@media (max-width:600px) and (min-height:501px) {
+    @supports ((animation-timeline: scroll()) and (timeline-scope: --header-test)) {
+        .main-screen { timeline-scope: --dwl-social-scroll, --dwl-wishlist-scroll, --dwl-posts-scroll; }
+        .toggle-container { timeline-scope:none; }
+        .main-screen header { translate:none; }
+        @keyframes polishedHeaderRetreat {
+            from { translate:0 0; }
+            to { translate:0 calc(-1 * var(--header-travel)); }
+        }
+        body.has-dwl-scroll-motion .header-image,
+        body.has-dwl-scroll-motion .button-group {
+            animation:polishedHeaderRetreat 1ms var(--header-easing, linear) both;
+            animation-range:0px var(--header-range, 250px);
+        }
+        body.has-social-panel-open .header-image,
+        body.has-social-panel-open .button-group { animation-timeline: --dwl-social-scroll; }
+        body.has-wishlist-panel-open .header-image,
+        body.has-wishlist-panel-open .button-group { animation-timeline: --dwl-wishlist-scroll; }
+        body.has-posts-panel-open .header-image,
+        body.has-posts-panel-open .button-group { animation-timeline: --dwl-posts-scroll; }
+    }
+}
+/* The compact artwork settles below a soft upper edge. Keep enough of the
+   original striped area for this blend to finish before the heart tips. */
+@media (max-width:600px) and (min-height:501px) {
+    .main-screen.has-retracting-header::before {
+        content:"";
+        position:fixed;
+        inset:0 0 auto;
+        height:3px;
+        z-index:30;
+        pointer-events:none;
+        background:linear-gradient(to bottom,
+            var(--edge-bottom-background, #fcf1f7) 0 10%,
+            color-mix(in srgb, var(--edge-bottom-background, #fcf1f7) 96%, transparent) 30%,
+            color-mix(in srgb, var(--edge-bottom-background, #fcf1f7) 78%, transparent) 52%,
+            color-mix(in srgb, var(--edge-bottom-background, #fcf1f7) 42%, transparent) 75%,
+            color-mix(in srgb, var(--edge-bottom-background, #fcf1f7) 10%, transparent) 92%,
+            transparent 100%);
+        opacity:var(--header-progress, 0);
+    }
+    @supports ((animation-timeline: scroll()) and (timeline-scope: --header-test)) {
+        @keyframes polishedHeaderVeil {
+            from { opacity:0; }
+            to { opacity:1; }
+        }
+        body.has-dwl-scroll-motion .main-screen.has-retracting-header::before {
+            animation:polishedHeaderVeil 1ms var(--header-easing, linear) both;
+            animation-range:0px var(--header-range, 250px);
+        }
+        body.has-social-panel-open .main-screen.has-retracting-header::before { animation-timeline:--dwl-social-scroll; }
+        body.has-wishlist-panel-open .main-screen.has-retracting-header::before { animation-timeline:--dwl-wishlist-scroll; }
+        body.has-posts-panel-open .main-screen.has-retracting-header::before { animation-timeline:--dwl-posts-scroll; }
+    }
+}
+/* Every full-screen surface provides its own edge colors from first paint. */
+html[data-site-screen] {
+    --screen-top:#ffeef6;
+    --screen-bottom:#fff7fb;
+    --edge-top-background:var(--screen-top);
+    --edge-bottom-background:var(--screen-bottom);
+    background-color:var(--screen-top);
+}
+html[data-site-screen="entry"] { --screen-top:#fff7fb; --screen-bottom:#fcf1f7; }
+html[data-site-screen="main"] { --screen-top:#fcf1f7; --screen-bottom:#fcf1f7; }
+html[data-site-screen] body { background-color:var(--screen-bottom); }
+html[data-site-screen] .safari-edge-top::after { background:var(--screen-top); }
+html[data-site-screen] .safari-edge-bottom::after { background:var(--screen-bottom); }
+#loading-screen { background:linear-gradient(180deg,#ffeef6 0%,#fff7fb 100%); }
+@media (max-width:600px) and (min-height:501px) {
+    /* Blend the full banner into the upper surface too, keeping the ears clear. */
+    .main-screen::after {
+        content:"";
+        position:fixed;
+        inset:0 0 auto;
+        height:6px;
+        opacity:calc(1 - var(--header-progress,0));
+        background:linear-gradient(var(--screen-top,#fcf1f7),transparent);
+        z-index:31;
+        pointer-events:none;
+    }
+}
+@media (max-width:600px) {
+    .safari-edge::after { content:""; position:fixed; left:0; right:0; pointer-events:none; z-index:0; }
+    .safari-edge-top::after { top:0; height:max(12px,env(safe-area-inset-top)); background:var(--screen-top); }
+    .safari-edge-bottom::after { bottom:0; height:max(12px,env(safe-area-inset-bottom)); background:var(--screen-bottom); }
+    html[data-site-screen="loading"] .safari-edge::after,
+    html[data-site-screen="entry"] .safari-edge::after { z-index:10001; }
+}
+/* One footer rhythm, including the four pixels each open surface reserves. */
+:root { --footer-gap:6px; --footer-pill-height:30px; }
+.main-screen .site-brand-footer {
+    margin-top:var(--footer-gap);
+    padding-bottom:max(var(--footer-gap),env(safe-area-inset-bottom));
+    min-height:calc(var(--footer-pill-height) + max(var(--footer-gap),env(safe-area-inset-bottom)));
+}
+body:is(.has-social-panel-open,.has-wishlist-panel-open,.has-posts-panel-open) .main-screen .site-brand-footer {
+    margin-top:calc(var(--footer-gap) - 4px) !important;
+    padding-bottom:max(var(--footer-gap),env(safe-area-inset-bottom));
+    min-height:calc(var(--footer-pill-height) + max(var(--footer-gap),env(safe-area-inset-bottom)));
+}
+@media (max-height:720px) { :root { --footer-pill-height:26px; } }
+/* One native scroller: first consume the header stage, then the content. */
+.staged-scroller {
+    overflow-anchor:none;
+}
+.staged-scroller::before {
+    content:"";
+    display:block;
+    height:var(--stage-range);
+    width:100%;
+    flex:none;
+    grid-column:1 / -1;
+    pointer-events:none;
+}
+.staged-scroller > :where(:not(.posts-loading-overlay,.dwl-initial-image-loader)) {
+    translate:0 var(--stage-offset);
+}
+@supports ((animation-timeline: scroll()) and (timeline-scope: --stage-test)) {
+    @keyframes stagedContentHold {
+        from { translate:0 calc(-1 * var(--stage-range)); }
+        to { translate:0 0; }
+    }
+    .staged-scroller > :where(:not(.posts-loading-overlay,.dwl-initial-image-loader)) {
+        animation:stagedContentHold 1ms linear both;
+        animation-range:0px var(--stage-range);
+    }
+    .social-links-panel.staged-scroller > * { animation-timeline:--dwl-social-scroll; }
+    .doll-wishlist-body.staged-scroller > * { animation-timeline:--dwl-wishlist-scroll; }
+    .community-scroll-body.staged-scroller > *,
+    .posts-content.staged-scroller > * { animation-timeline:--dwl-posts-scroll; }
+    body.has-community-composer-collapse .header-image,
+    body.has-community-composer-collapse .button-group {
+        animation:none !important;
+        translate:0 calc(-1 * var(--header-travel) * var(--header-progress));
+    }
+}
+
+/* One inherited, compositor-driven value lets the original buttons gather
+   into the same small mesh. Labels leave first; the pill arrives only after
+   the circles are close together. Scrolling back reverses the same path. */
+@property --nav-morph { syntax:"<number>"; inherits:true; initial-value:0; }
+.button-group { --nav-morph:var(--dwl-collapse,0); }
+.dwl-icons-row {
+    opacity:clamp(0, calc((.88 - var(--nav-morph)) / .22), 1);
+    transform:translate(-50%, calc(-50% - 10px * var(--nav-morph)));
+}
+.dwl-icons-row .icon-container {
+    --gather-x:0px;
+    translate:calc(var(--gather-x) * var(--nav-morph)) 0;
+    scale:calc(1 - .6 * var(--nav-morph));
+    transform-origin:50% 23px;
+}
+.dwl-icons-row .icon-container:first-child { --gather-x:49px; }
+.dwl-icons-row .icon-container:last-child { --gather-x:-49px; }
+.dwl-icons-row .dwl-icon-name {
+    opacity:clamp(0, calc(1 - 4 * var(--nav-morph)), 1);
+}
+.dwl-icons-pill {
+    opacity:clamp(0, calc((var(--nav-morph) - .66) / .26), 1);
+    transform:translate(-50%,calc(-50% - 19px * var(--nav-morph)))
+        scale(calc(.84 + .16 * var(--nav-morph)));
+}
+@supports ((animation-timeline:scroll()) and (timeline-scope:--nav-test)) {
+    @keyframes navGatherProgress {
+        from { --nav-morph:0; }
+        to { --nav-morph:1; }
+    }
+    @keyframes polishedHeaderRetreat {
+        from { translate:0 0; --nav-morph:0; }
+        to { translate:0 calc(-1 * var(--header-travel)); --nav-morph:1; }
+    }
+    body.has-dwl-scroll-motion .button-group {
+        animation:navGatherProgress 1ms var(--dwl-collapse-easing) both;
+        animation-range:0px var(--dwl-motion-range);
+    }
+    @media (max-width:600px) and (min-height:501px) {
+        body.has-dwl-scroll-motion .button-group {
+            animation-name:polishedHeaderRetreat;
+            animation-range:0px var(--header-range);
+        }
+    }
+    body.has-social-panel-open .button-group { animation-timeline:--dwl-social-scroll; }
+    body.has-wishlist-panel-open .button-group { animation-timeline:--dwl-wishlist-scroll; }
+    body.has-posts-panel-open .button-group { animation-timeline:--dwl-posts-scroll; }
+    body.has-dwl-scroll-motion .dwl-icons-row {
+        animation-name:dwlIconRowHitTesting;
+        animation-timing-function:linear;
+    }
+    body.has-dwl-scroll-motion .dwl-icons-pill {
+        animation-name:dwlIconsPillHitTesting;
+        animation-timing-function:linear;
+    }
+}
+
+/* Fade at the stationary clip edge, as Links and Wishes already do.
+   The moving scroller now owns only the upper fade. An empty final pixel
+   prevents a fractional raster edge from surviving as a horizontal rule. */
+.community-hub {
+    --dwl-edge-bottom:1;
+    -webkit-mask-repeat:no-repeat;
+    mask-repeat:no-repeat;
+    -webkit-mask-size:100% 100%;
+    mask-size:100% 100%;
+    -webkit-mask-image:linear-gradient(to bottom,#000 0,#000 calc(100% - 24px),rgba(0,0,0,var(--dwl-edge-bottom)) calc(100% - 1px),rgba(0,0,0,var(--dwl-edge-bottom)) 100%);
+    mask-image:linear-gradient(to bottom,#000 0,#000 calc(100% - 24px),rgba(0,0,0,var(--dwl-edge-bottom)) calc(100% - 1px),rgba(0,0,0,var(--dwl-edge-bottom)) 100%);
+}
+.community-hub.has-content-below { --dwl-edge-bottom:0; }
+.community-scroll-body {
+    -webkit-mask-repeat:no-repeat;
+    mask-repeat:no-repeat;
+    -webkit-mask-size:100% 100%;
+    mask-size:100% 100%;
+    -webkit-mask-image:linear-gradient(to bottom,rgba(0,0,0,var(--dwl-edge-top)) 0,#000 22px,#000 100%);
+    mask-image:linear-gradient(to bottom,rgba(0,0,0,var(--dwl-edge-top)) 0,#000 22px,#000 100%);
+}
+body.has-posts-panel-open.has-dwl-scroll-motion .community-hub.dwl-motion-ready .community-scroll-body { animation:none; }
+@media (max-width:600px) {
+    html[data-site-screen="main"] .safari-edge-top::after { height:max(4px,env(safe-area-inset-top)); }
+}
