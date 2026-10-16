@@ -1545,6 +1545,9 @@ document.addEventListener("DOMContentLoaded", async function() {
     
     // ===== LOADING SCREEN =====
     const loadingScreen = document.getElementById("loading-screen");
+    const mainLoadingStartedAt = performance.now();
+    const MAIN_LINKS_LOADING_BUDGET_MS = 8000;
+    const MAIN_LOADING_EXIT_MS = 500;
     const loadingBarContainer = document.getElementById("loading-bar-container");
     const loadingBarFill = document.getElementById("loading-bar-fill");
     const loadingSlowMessage = document.getElementById("loading-slow-message");
@@ -1737,6 +1740,24 @@ document.addEventListener("DOMContentLoaded", async function() {
             releaseVerificationPromise = null;
         });
         return releaseVerificationPromise;
+    }
+
+    async function finishMainLoadingScreen() {
+        setLoadingProgress(100);
+        // Cosmetic paw/exit motion shares the startup budget; slow videos
+        // must not add another animation wait after their deadline.
+        const remaining = Math.max(0, mainLoadingStartedAt + MAIN_LINKS_LOADING_BUDGET_MS
+            - MAIN_LOADING_EXIT_MS - performance.now());
+        await Promise.race([
+            waitForLoadingPawTrail().then(() => wait(prefersReducedLoadingMotion ? 80 : 360)),
+            wait(remaining),
+        ]);
+        clearSlowLoadingMessage();
+        loadingScreen.style.opacity = 0;
+        window.setTimeout(() => {
+            retireLoadingScreen();
+            initApp();
+        }, MAIN_LOADING_EXIT_MS);
     }
 
     function retireLoadingScreen() {
@@ -2372,27 +2393,16 @@ document.addEventListener("DOMContentLoaded", async function() {
         // drawings can never contend with the entrance interaction.
         await loadSiteLinkSettingsWithTimeout();
         clearInterval(progressTick);
-        setLoadingProgress(100);
-
-        // Let the far-right paw finish pressing in before revealing the site.
-        await waitForLoadingPawTrail();
-        await wait(prefersReducedLoadingMotion ? 80 : 360);
-        clearSlowLoadingMessage();
-        loadingScreen.style.opacity = 0;
-        setTimeout(() => {
-            retireLoadingScreen();
-            initApp();
-        }, 500);
-    }).catch(e => {
-        // Mobile fallback: show website even if loading fails
+        // Links is the landing surface: prepare its entire media set before
+        // dismissing the main loader, rather than loading it after entry.
+        await prepareInitialSocialPreviews();
+        await finishMainLoadingScreen();
+    }).catch(async e => {
+        // Data failures retain the same bounded media preparation before entry.
         if (!window.supabase) window.supabase = createUnavailableSupabaseClient();
         resolveSiteClientReady(window.supabase);
-        clearSlowLoadingMessage();
-        loadingScreen.style.opacity = 0;
-        setTimeout(() => {
-            retireLoadingScreen();
-            initApp();
-        }, 500);
+        await prepareInitialSocialPreviews();
+        await finishMainLoadingScreen();
     });
 
     // ===== SITE ENTRANCE =====
@@ -4160,15 +4170,14 @@ document.addEventListener("DOMContentLoaded", async function() {
     let socialPreviewObserver = null;
     let socialPreviewReleaseTimer = 0;
     let socialOpenGeneration = 0;
-    let socialAtomicRevealCleanups = [];
     let socialRevealTimer = 0;
+    let socialPreviewPreparationCount = 0;
+    let socialOpenDeadline = 0;
     const SOCIAL_PREVIEW_ROOT_MARGIN = 120;
     const SOCIAL_PREVIEW_RELEASE_DELAY_MS = 30000;
     const SOCIAL_PREVIEW_CACHE_LIMIT = 6;
-    // Social videos are intentionally non-critical to the homepage. The
-    // Socials surface owns their first load and waits for one atomic reveal,
-    // matching Wishlist's paw-first lifecycle. A stalled or data-saver-blocked
-    // video can never hold that surface longer than this deadline.
+    // After startup's budget, the Links loader gives media one final bounded
+    // chance. A miss reveals the complete group without any video layers.
     const SOCIAL_PREVIEW_OPEN_WAIT_MS = 8000;
     const SOCIAL_PREVIEW_MIN_LOADER_MS = 900;
     const initialSocialPreviewCards = new Set();
@@ -4214,6 +4223,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         socialPreviewRecency.delete(card);
         delete card.dataset.socialPreviewNear;
         delete card.dataset.socialPreviewDeferred;
+        delete card.dataset.socialPreviewFallback;
         const preview = card.querySelector('.social-link-preview');
         if (preview) {
             if (preview instanceof HTMLVideoElement) {
@@ -4236,6 +4246,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     }
 
     function trimSocialCardPreviewCache() {
+        if (socialPreviewPreparationCount) return;
         const loadedCards = getVisibleSocialOptions().filter(card => (
             card.querySelector('.social-link-preview[src]')
         ));
@@ -4378,7 +4389,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         preview.dataset.configuredSource = url;
         if (!preview.dataset.source) preview.dataset.source = url;
 
-        if (!loadMedia) return;
+        if (!loadMedia || card.dataset.socialPreviewFallback === 'true') return;
 
         const sourceFailed = preview.dataset.socialPreviewFailed === 'true';
         const sourceAssignmentPending = preview instanceof HTMLVideoElement
@@ -4467,6 +4478,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     function playSocialPreview(preview) {
         if (!(preview instanceof HTMLVideoElement)
             || document.hidden
+            || preview.parentElement?.dataset.socialPreviewFallback === 'true'
             || !socialsButton?.classList.contains('open')
             || !preview.getAttribute('src')
             || !preview.paused
@@ -4543,105 +4555,130 @@ document.addEventListener("DOMContentLoaded", async function() {
         });
     }
 
-    function clearSocialAtomicRevealWatchers() {
-        socialAtomicRevealCleanups.forEach(cleanup => cleanup());
-        socialAtomicRevealCleanups = [];
+    function socialAssetSignature() {
+        return JSON.stringify(getVisibleSocialOptions().map(card => {
+            const key = getSocialCardVideoKey(card);
+            return [key, getSocialCardVideoUrl(key)];
+        }));
     }
 
-    function revealSocialPreviewSetTogether(candidates, openGeneration) {
-        clearSocialAtomicRevealWatchers();
-        let revealFrame = 0;
-        const tryReveal = () => {
-            if (openGeneration !== socialOpenGeneration
-                || !socialsButton?.classList.contains('open')) {
-                clearSocialAtomicRevealWatchers();
+    function waitForSocialImage(image, timeoutMs) {
+        image.loading = 'eager';
+        return new Promise(resolve => {
+            let settled = false;
+            let timer = 0;
+            const finish = ready => {
+                if (settled) return;
+                settled = true;
+                window.clearTimeout(timer);
+                image.removeEventListener('load', loaded);
+                image.removeEventListener('error', failed);
+                resolve(ready);
+            };
+            const loaded = () => {
+                Promise.resolve(typeof image.decode === 'function' ? image.decode() : undefined)
+                    .then(() => finish(image.naturalWidth > 0), () => finish(false));
+            };
+            const failed = () => finish(false);
+            timer = window.setTimeout(() => finish(false), timeoutMs);
+            if (image.complete) {
+                if (image.naturalWidth) loaded();
+                else failed();
                 return;
             }
-            const completeSetIsReady = candidates.every(({ card, preview }) => (
-                preview.isConnected
-                && preview.parentElement === card
-                && isSocialPreviewReady(preview)
-            ));
-            if (!completeSetIsReady || revealFrame) return;
-            revealFrame = window.requestAnimationFrame(() => {
-                revealFrame = 0;
-                if (openGeneration !== socialOpenGeneration
-                    || !socialsButton?.classList.contains('open')) return;
-                candidates.forEach(({ card }) => {
-                    delete card.dataset.socialPreviewDeferred;
-                    card.classList.add('has-social-preview');
-                });
-                clearSocialAtomicRevealWatchers();
-            });
-        };
-
-        candidates.forEach(({ preview }) => {
-            if (isSocialPreviewReady(preview)) return;
-            const eventName = preview instanceof HTMLVideoElement
-                ? 'doll-social-frame-ready'
-                : 'load';
-            preview.addEventListener(eventName, tryReveal);
-            socialAtomicRevealCleanups.push(() => {
-                preview.removeEventListener(eventName, tryReveal);
-            });
+            image.addEventListener('load', loaded, { once: true });
+            image.addEventListener('error', failed, { once: true });
         });
-        tryReveal();
     }
 
-    async function prepareOpeningSocialPreviews(openGeneration) {
-        if (openGeneration !== socialOpenGeneration
-            || !socialsButton?.classList.contains('open')) return false;
-        const cards = getVisibleSocialOptions().filter(card => {
-            const key = getSocialCardVideoKey(card);
-            return Boolean(key && getSocialCardVideoUrl(key));
-        });
-        const candidates = cards.map(card => ({
-            card,
-            // Safari-localhost Blob transport has a real preview node while
-            // its ordinary file fetch is pending, but no src until the Blob
-            // URL exists. That pending fetch is part of opening readiness.
-            preview: card.querySelector('.social-link-preview'),
-        })).filter(({ preview }) => preview);
-        const readiness = Promise.all(candidates.map(async ({ card, preview }) => ({
-            card,
-            preview,
-            ready: await waitForSocialPreviewReady(preview, SOCIAL_PREVIEW_OPEN_WAIT_MS),
-        })));
-        await Promise.all([
-            readiness,
-            new Promise(resolve => {
-                window.setTimeout(resolve, SOCIAL_PREVIEW_MIN_LOADER_MS);
-            }),
-        ]);
-        // A settings refresh, close, or second open can replace/remove these
-        // exact preview nodes while the readiness wait is pending. Never let
-        // that stale preparation mutate the new opening cohort.
-        if (openGeneration !== socialOpenGeneration
-            || !socialsButton?.classList.contains('open')) return false;
-        const completeSetIsReady = candidates.every(({ card, preview }) => (
-            preview.isConnected
-            && preview.parentElement === card
-            && isSocialPreviewReady(preview)
-        ));
-        if (completeSetIsReady) {
-            candidates.forEach(({ card, preview }) => {
-                delete card.dataset.socialPreviewDeferred;
-                card.classList.add('has-social-preview');
-                if (preview instanceof HTMLVideoElement && !document.hidden) {
-                    playSocialPreview(preview);
-                }
-            });
-        } else {
-            // If even one preview misses the deadline, reveal a consistent
-            // poster-only set. Keep every video deferred until the complete
-            // set is ready, then cross-fade all of them in on the same frame.
-            candidates.forEach(({ card }) => {
-                card.dataset.socialPreviewDeferred = 'true';
-                card.classList.remove('has-social-preview');
-            });
-            revealSocialPreviewSetTogether(candidates, openGeneration);
+    async function prepareSocialAssets({ isCurrent, deadline, finalAttempt = false, minimumLoaderMs = 0 }) {
+        socialPreviewPreparationCount += 1;
+        try {
+            while (isCurrent()) {
+                const signature = socialAssetSignature();
+                const cards = getVisibleSocialOptions();
+                cards.forEach(card => {
+                    delete card.dataset.socialPreviewFallback;
+                    card.dataset.socialPreviewDeferred = 'true';
+                    card.classList.remove('has-social-preview');
+                    syncSocialCardVideo(getSocialCardVideoKey(card), card, true);
+                });
+                const candidates = cards.map(card => ({
+                    card, preview: card.querySelector('.social-link-preview'),
+                })).filter(({ preview }) => preview);
+                const images = [...new Set(cards.flatMap(card => [
+                    ...card.querySelectorAll('img:not(.social-link-preview):not(.social-link-poster)'),
+                    ...(card.closest('.social-link-card-frame')?.querySelectorAll('.social-link-mascot') || []),
+                ]))];
+                const allReady = () => candidates.every(({ card, preview }) => (
+                    preview.isConnected && preview.parentElement === card && isSocialPreviewReady(preview)
+                )) && images.every(image => image.complete && image.naturalWidth > 0);
+                const alreadyReady = allReady();
+                const remainingMs = Math.max(0, deadline - performance.now());
+                candidates.forEach(({ card, preview }) => {
+                    if (!(preview instanceof HTMLVideoElement) || isSocialPreviewReady(preview)) return;
+                    try {
+                        Promise.resolve(preview.play()).then(() => {
+                            if (!socialsButton?.classList.contains('open')
+                                || card.dataset.socialPreviewFallback === 'true') preview.pause();
+                        }).catch(() => {});
+                    } catch (error) {}
+                });
+                let stopWatchingChanges = () => {};
+                const results = await Promise.race([
+                    Promise.all([
+                        ...candidates.map(({ preview }) => waitForSocialPreviewReady(preview, remainingMs)),
+                        ...images.map(image => waitForSocialImage(image, remainingMs)),
+                        ...(alreadyReady || !minimumLoaderMs ? [] : [wait(Math.min(minimumLoaderMs, remainingMs)).then(() => true)]),
+                    ]),
+                    new Promise(resolve => {
+                        const changed = () => {
+                            if (!isCurrent() || signature !== socialAssetSignature()) resolve(null);
+                        };
+                        document.addEventListener('doll-social-assets-change', changed);
+                        stopWatchingChanges = () => document.removeEventListener('doll-social-assets-change', changed);
+                    }),
+                ]);
+                stopWatchingChanges();
+                if (!isCurrent()) return false;
+                if (!results || signature !== socialAssetSignature()) continue;
+                const complete = results.every(Boolean) && allReady();
+                cards.forEach(card => {
+                    const preview = card.querySelector('.social-link-preview');
+                    if (complete) delete card.dataset.socialPreviewDeferred;
+                    card.classList.toggle('has-social-preview', Boolean(complete && preview));
+                    if (finalAttempt && !complete) {
+                        // Freeze this opening in its static state. Late media,
+                        // scroll callbacks and settings refreshes cannot reveal
+                        // a partial video set; a later open gets a fresh chance.
+                        card.dataset.socialPreviewFallback = 'true';
+                        card.dataset.socialPreviewDeferred = 'true';
+                        pauseSocialCardPreview(card, { releaseSource: false });
+                    }
+                });
+                return true;
+            }
+            return false;
+        } finally {
+            socialPreviewPreparationCount -= 1;
         }
-        return true;
+    }
+
+    async function prepareInitialSocialPreviews() {
+        if (siteLinkSettings.maintenance_enabled === true) return;
+        await prepareSocialAssets({
+            isCurrent: () => loadingScreen?.style.display !== 'none' && siteLinkSettings.maintenance_enabled !== true,
+            deadline: mainLoadingStartedAt + MAIN_LINKS_LOADING_BUDGET_MS - MAIN_LOADING_EXIT_MS,
+        });
+    }
+
+    function prepareOpeningSocialPreviews(openGeneration) {
+        return prepareSocialAssets({
+            isCurrent: () => openGeneration === socialOpenGeneration && socialsButton?.classList.contains('open'),
+            deadline: socialOpenDeadline,
+            finalAttempt: true,
+            minimumLoaderMs: SOCIAL_PREVIEW_MIN_LOADER_MS,
+        });
     }
 
     function revealSocialPanelAfterPreviews(openGeneration) {
@@ -5328,7 +5365,14 @@ document.addEventListener("DOMContentLoaded", async function() {
         }
         if (socialsButton?.classList.contains('open')) {
             const panelAlreadyVisible = socialLinksShell?.classList.contains('active')
-                && !socialLinksShell.classList.contains('is-loading');
+                && !socialLinksShell.classList.contains('is-loading')
+                && getVisibleSocialOptions().every(card => {
+                    const key = getSocialCardVideoKey(card);
+                    const source = getSocialCardVideoUrl(key);
+                    const preview = card.querySelector('.social-link-preview');
+                    return !source || (preview?.dataset.configuredSource === source
+                        && (isSocialPreviewReady(preview) || card.dataset.socialPreviewFallback === 'true'));
+                });
             const stablePaintedCards = panelAlreadyVisible
                 ? new Set(getVisibleSocialOptions().filter(card => {
                     const key = getSocialCardVideoKey(card);
@@ -5347,6 +5391,12 @@ document.addEventListener("DOMContentLoaded", async function() {
                 ? socialOpenGeneration
                 : ++socialOpenGeneration;
             if (!panelAlreadyVisible) {
+                if (!socialLinksShell?.classList.contains('is-loading')) {
+                    socialOpenDeadline = performance.now() + SOCIAL_PREVIEW_OPEN_WAIT_MS;
+                }
+                socialLinksShell?.classList.add('is-loading');
+                socialLinksPanel?.setAttribute('aria-hidden', 'true');
+                if (socialLinksLoading) socialLinksLoading.setAttribute('aria-hidden', 'false');
                 getVisibleSocialOptions().forEach(card => {
                     const key = getSocialCardVideoKey(card);
                     const hasPreview = Boolean(key && getSocialCardVideoUrl(key));
@@ -5369,11 +5419,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                 getVisibleSocialOptions().forEach(card => {
                     const preview = card.querySelector('.social-link-preview[src]');
                     if (SOCIAL_CARD_VIDEO_SOURCE_MODE === 'github') {
-                        // A late settings read must not unlock only the ready
-                        // members of an opening set still waiting on a clip.
-                        // Its shared watcher will reveal the complete set.
-                        if (card.dataset.socialPreviewDeferred === 'true'
-                            && socialAtomicRevealCleanups.length) return;
+                        if (card.dataset.socialPreviewFallback === 'true') return;
                         delete card.dataset.socialPreviewDeferred;
                         if (preview && isSocialPreviewReady(preview)) {
                             card.classList.add('has-social-preview');
@@ -5411,6 +5457,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         renderSubmissionControls();
         renderHomepageNoteText();
         renderMaintenanceMode();
+        document.dispatchEvent(new Event('doll-social-assets-change'));
     }
 
     function syncThroneWidgetUrl() {
@@ -5533,7 +5580,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     function closeSocialsMenu() {
         if (!socialsButton) return;
         socialOpenGeneration += 1;
-        clearSocialAtomicRevealWatchers();
+        document.dispatchEvent(new Event('doll-social-assets-change'));
         const wasOpen = socialsButton.classList.contains('open');
         pauseSocialCardVideos();
         socialsButton.classList.remove('open');
@@ -5638,11 +5685,13 @@ document.addEventListener("DOMContentLoaded", async function() {
         noteImage?.classList.remove('hidden');
         resetIconsCollapse();
         const openGeneration = ++socialOpenGeneration;
+        socialOpenDeadline = performance.now() + SOCIAL_PREVIEW_OPEN_WAIT_MS;
+        document.dispatchEvent(new Event('doll-social-assets-change'));
         window.clearTimeout(socialRevealTimer);
         socialRevealTimer = 0;
         socialLinksShell?.classList.remove('is-revealing');
-        clearSocialAtomicRevealWatchers();
         getVisibleSocialOptions().forEach(card => {
+            delete card.dataset.socialPreviewFallback;
             const key = getSocialCardVideoKey(card);
             const hasPreview = Boolean(key && getSocialCardVideoUrl(key));
             if (hasPreview) {

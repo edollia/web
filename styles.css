@@ -127,6 +127,40 @@ body {
     touch-action: manipulation;
 }
 
+/* Safari can extend solid fixed backgrounds into its native controls.
+   Keep guides at the document root, outside animated/transformed panels.
+   The existing image backdrop still owns the rest of the page. */
+@media (hover: none) and (pointer: coarse) {
+    html {
+        --edge-top-background: #fff7fb;
+        --edge-bottom-background: #fcf1f7;
+        background-color: var(--edge-top-background);
+    }
+
+    body { background-color: var(--edge-bottom-background); }
+
+    .safari-edge::after {
+        content: "";
+        position: fixed;
+        left: 0;
+        right: 0;
+        pointer-events: none;
+        z-index: 0;
+    }
+
+    .safari-edge-top::after {
+        top: 0;
+        height: max(12px, env(safe-area-inset-top));
+        background: var(--edge-top-background);
+    }
+
+    .safari-edge-bottom::after {
+        bottom: 0;
+        height: max(12px, env(safe-area-inset-bottom));
+        background: var(--edge-bottom-background);
+    }
+}
+
 button,
 [role="button"],
 a,
