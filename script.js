@@ -2771,14 +2771,26 @@ document.addEventListener("DOMContentLoaded", async function() {
             ? Number.parseFloat(scroller.style.getPropertyValue('--stage-range')) || 0
             : 0;
     }
+    const stageOffsets = new WeakMap();
+    let paintedCollapseProgress = NaN;
+    let paintedCollapseShell = null;
     function syncStageOffset(scroller) {
         const range = stageRangeFor(scroller);
-        if (range && !hasNativeScrollCollapse) {
-            scroller.style.setProperty('--stage-offset', `${Math.min(range, Math.max(0, scroller.scrollTop)) - range}px`);
+        if (!range || hasNativeScrollCollapse) return;
+        const offset = Math.min(range, Math.max(0, scroller.scrollTop)) - range;
+        if (stageOffsets.get(scroller) === offset) return;
+        stageOffsets.set(scroller, offset);
+        // Only the content layers move. An inherited scroll variable on the
+        // scroller would recalculate every card and video descendant per frame.
+        for (const child of scroller.children) {
+            if (!child.matches('.posts-loading-overlay,.dwl-initial-image-loader')) {
+                child.style.translate = `0 ${offset}px`;
+            }
         }
     }
     function clearScrollMotion(shell) {
         if (!shell) return;
+        paintedCollapseProgress = NaN;
         const scroller = shell.querySelector(
             '.social-links-panel, .doll-wishlist-body, .community-scroll-body, .posts-content'
         );
@@ -2790,15 +2802,20 @@ document.addEventListener("DOMContentLoaded", async function() {
                 progress: Math.min(1, Math.max(0, scroller.scrollTop) / oldStageRange),
                 contentTop: Math.max(0, scroller.scrollTop - oldStageRange),
             };
+            for (const child of scroller.children) child.style.removeProperty('translate');
+            stageOffsets.delete(scroller);
             scroller.classList.remove('staged-scroller');
             for (const prop of ['--stage-range', '--stage-offset']) scroller.style.removeProperty(prop);
             scroller.scrollTop = stageRestore.contentTop;
         }
         if (scroller) panelScrollExtents.delete(scroller);
+        shell.querySelector(':scope > .dwl-motion-viewport')?.style.removeProperty('transform');
+        shell.querySelector('.doll-wishlist-foot-dock')?.style.removeProperty('transform');
         shell.classList.remove('dwl-motion-ready');
         shell.style.removeProperty('--dwl-motion-base-height');
         shell.style.removeProperty('--dwl-motion-range');
         shell.style.removeProperty('--dwl-collapse-distance');
+        shell.style.removeProperty('--composer-collapse');
         // The row and pill are siblings of the motion shell, so their native
         // animations inherit the measured range from this common host. Keep a
         // range owned by another ready shell; otherwise remove the stale value.
@@ -2875,6 +2892,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             return false;
         }
 
+        shell.style.setProperty('--dwl-collapse-distance', `${distance}px`);
         shell.style.setProperty('--dwl-motion-base-height', `${baseHeight.toFixed(2)}px`);
         document.querySelector('.main-screen')?.style.setProperty('--header-range', `${configuredRange}px`);
         document.querySelector('.main-screen')?.style.setProperty('--header-easing', getComputedStyle(shell.closest('.toggle-container')).getPropertyValue('--dwl-collapse-easing'));
@@ -3131,6 +3149,38 @@ document.addEventListener("DOMContentLoaded", async function() {
         }
     }
 
+    let headerVeilAnimations;
+    function paintHeaderVeils(main, progress) {
+        if (!main) return;
+        if (hasNativeScrollCollapse) {
+            main.style.setProperty('--header-progress', progress.toFixed(4));
+            return;
+        }
+        if (headerVeilAnimations === undefined) {
+            const animations = [];
+            try {
+                for (const pseudo of ['::before', '::after']) {
+                    const animation = main.animate(
+                        pseudo === '::before' ? [{ opacity: 0 }, { opacity: 1 }] : [{ opacity: 1 }, { opacity: 0 }],
+                        { duration: 1000, fill: 'both', pseudoElement: pseudo }
+                    );
+                    animations.push(animation);
+                    if (animation.effect?.pseudoElement !== pseudo) throw new Error('Pseudo-element animation unavailable');
+                    animation.pause();
+                }
+                headerVeilAnimations = animations;
+            } catch {
+                for (const animation of animations) animation.cancel();
+                headerVeilAnimations = null;
+            }
+        }
+        if (headerVeilAnimations) {
+            for (const animation of headerVeilAnimations) animation.currentTime = progress * 1000;
+        } else {
+            main.style.setProperty('--header-progress', progress.toFixed(4));
+        }
+    }
+
     function setIconCollapseProgress(progress, { writeVisual = true } = {}) {
         const clamped = Math.max(0, Math.min(1, progress));
         iconCollapseDisplayed = clamped;
@@ -3140,11 +3190,49 @@ document.addEventListener("DOMContentLoaded", async function() {
             if (range && scroller.scrollTop < range) scroller.scrollTop = range;
             syncStageOffset(scroller);
         }
-        document.querySelector('.main-screen')?.style.setProperty('--header-progress', clamped.toFixed(4));
-        const host = document.querySelector('.toggle-container');
         const group = document.querySelector('.button-group');
-        if (!host || !group) return;
-        if (writeVisual) host.style.setProperty('--dwl-collapse', clamped.toFixed(4));
+        if (!group) return;
+        const activeShell = getActiveMotionShell();
+        if (writeVisual && (clamped !== paintedCollapseProgress || activeShell !== paintedCollapseShell)) {
+            paintedCollapseProgress = clamped;
+            paintedCollapseShell = activeShell;
+            // Write only non-inherited visual properties on moving layers.
+            // No progress variable invalidates the icons or panel descendants.
+            const row = group.querySelector('.dwl-icons-row');
+            if (row) {
+                row.style.opacity = Math.max(0, Math.min(1, (.88 - clamped) / .22));
+                row.style.transform = `translate(-50%, calc(-50% - ${10 * clamped}px))`;
+                [...row.children].forEach((icon, index) => {
+                    const x = index === 0 ? 49 : index === 2 ? -49 : 0;
+                    icon.style.translate = `${x * clamped}px 0`;
+                    icon.style.scale = 1 - .6 * clamped;
+                    icon.querySelector('.dwl-icon-name')?.style.setProperty('opacity', Math.max(0, 1 - 4 * clamped));
+                });
+            }
+            const pill = document.getElementById('dwl-icons-pill');
+            if (pill) {
+                pill.style.opacity = Math.max(0, Math.min(1, (clamped - .66) / .26));
+                pill.style.transform = `translate(-50%, calc(-50% - ${19 * clamped}px)) scale(${.84 + .16 * clamped})`;
+            }
+            const main = document.querySelector('.main-screen');
+            // The edge fades also stay on their own layers.
+            paintHeaderVeils(main, clamped);
+            const mobileHeader = window.matchMedia('(max-width:600px) and (min-height:501px)').matches;
+            const travel = mobileHeader ? parseFloat(main?.style.getPropertyValue('--header-travel')) || 0 : 0;
+            const headerOffset = `0 ${-travel * clamped}px`;
+            document.querySelector('.header-image')?.style.setProperty('translate', headerOffset);
+            group.style.translate = headerOffset;
+            const shell = activeShell;
+            if (shell?.id === 'community-hub' && !shell.classList.contains('dwl-motion-ready')) {
+                shell.style.setProperty('--composer-collapse', clamped.toFixed(4));
+            }
+            if (shell?.classList.contains('dwl-motion-ready')) {
+                const distance = parseFloat(shell.style.getPropertyValue('--dwl-collapse-distance')) || 0;
+                const hidden = distance * (1 - clamped);
+                shell.querySelector(':scope > .dwl-motion-viewport')?.style.setProperty('transform', `translate3d(0, ${hidden}px, 0)`);
+                shell.querySelector('.doll-wishlist-foot-dock')?.style.setProperty('transform', `translate3d(0, ${-hidden}px, 0)`);
+            }
+        }
         setPillInteraction(clamped, group);
     }
 

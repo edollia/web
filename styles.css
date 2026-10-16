@@ -6110,8 +6110,14 @@ body.has-community-composer-collapse .community-hub.dwl-motion-ready .community-
     animation: none !important;
 }
 .community-hub.is-composer-collapsed:not(.dwl-motion-ready) {
-    transform: translateX(-50%) translateY(calc(-1 * var(--dwl-collapse-distance) * var(--dwl-collapse)));
+    transform: translateX(-50%) translateY(calc(-1 * var(--dwl-collapse-distance) * var(--composer-collapse,0)));
 }
+
+/* The edge blend is local to the two veils, never inherited by menu content. */
+@property --composer-collapse { syntax:"<number>"; inherits:false; initial-value:0; }
+@property --header-progress { syntax:"<number>"; inherits:false; initial-value:0; }
+.main-screen::before,
+.main-screen::after { --header-progress:inherit; }
 
 /* Compact header, shared footer spacing, and staged menu scrolling. */
 @media (max-width:600px) and (min-height:501px) {
@@ -6268,9 +6274,8 @@ body:is(.has-social-panel-open,.has-wishlist-panel-open,.has-posts-panel-open) .
     }
 }
 
-/* One inherited, compositor-driven value lets the original buttons gather
-   into the same small mesh. Labels leave first; the pill arrives only after
-   the circles are close together. Scrolling back reverses the same path. */
+/* Resting values for the original buttons. Labels leave first; the pill
+   arrives only after the circles are close together. */
 @property --nav-morph { syntax:"<number>"; inherits:true; initial-value:0; }
 .button-group { --nav-morph:var(--dwl-collapse,0); }
 .dwl-icons-row {
@@ -6293,37 +6298,84 @@ body:is(.has-social-panel-open,.has-wishlist-panel-open,.has-posts-panel-open) .
     transform:translate(-50%,calc(-50% - 19px * var(--nav-morph)))
         scale(calc(.84 + .16 * var(--nav-morph)));
 }
+/* Each native animation owns transform or opacity directly. Animating an
+   inherited custom property made the browser restyle the icon subtree at
+   every scroll sample, even though only these small layers were moving. */
+@keyframes navRowFade {
+    0% { opacity:1; }
+    62.8% { opacity:1; }
+    80% { opacity:0.02272727; }
+    80.457% { opacity:0; }
+    100% { opacity:0; }
+}
+@keyframes navLabelFade {
+    0% { opacity:1; }
+    5% { opacity:0.9688; }
+    10% { opacity:0.8748; }
+    15% { opacity:0.7188; }
+    20% { opacity:0.5; }
+    30% { opacity:0; }
+    100% { opacity:0; }
+}
+@keyframes navPillFade {
+    0% { opacity:0; }
+    62.8% { opacity:0; }
+    80% { opacity:0.8269231; }
+    84.113% { opacity:1; }
+    100% { opacity:1; }
+}
+@keyframes navRowShift {
+    from { transform:translate(-50%,-50%); }
+    to { transform:translate(-50%,calc(-50% - 10px)); }
+}
+@keyframes navPillShift {
+    from { transform:translate(-50%,-50%) scale(.84); }
+    to { transform:translate(-50%,calc(-50% - 19px)) scale(1); }
+}
+@keyframes navIconGather {
+    from { translate:0 0; scale:1; }
+    to { translate:var(--gather-x) 0; scale:.4; }
+}
 @supports ((animation-timeline:scroll()) and (timeline-scope:--nav-test)) {
-    @keyframes navGatherProgress {
-        from { --nav-morph:0; }
-        to { --nav-morph:1; }
-    }
-    @keyframes polishedHeaderRetreat {
-        from { translate:0 0; --nav-morph:0; }
-        to { translate:0 calc(-1 * var(--header-travel)); --nav-morph:1; }
-    }
-    body.has-dwl-scroll-motion .button-group {
-        animation:navGatherProgress 1ms var(--dwl-collapse-easing) both;
+    body.has-social-panel-open { --nav-scroll-timeline:--dwl-social-scroll; }
+    body.has-wishlist-panel-open { --nav-scroll-timeline:--dwl-wishlist-scroll; }
+    body.has-posts-panel-open { --nav-scroll-timeline:--dwl-posts-scroll; }
+    body.has-dwl-scroll-motion .dwl-icons-row {
+        animation:navRowShift 1ms var(--dwl-collapse-easing) both,
+            navRowFade 1ms linear both, dwlIconRowHitTesting 1ms linear both;
+        animation-timeline:var(--nav-scroll-timeline);
         animation-range:0px var(--dwl-motion-range);
     }
-    @media (max-width:600px) and (min-height:501px) {
-        body.has-dwl-scroll-motion .button-group {
-            animation-name:polishedHeaderRetreat;
-            animation-range:0px var(--header-range);
-        }
-    }
-    body.has-social-panel-open .button-group { animation-timeline:--dwl-social-scroll; }
-    body.has-wishlist-panel-open .button-group { animation-timeline:--dwl-wishlist-scroll; }
-    body.has-posts-panel-open .button-group { animation-timeline:--dwl-posts-scroll; }
-    body.has-dwl-scroll-motion .dwl-icons-row {
-        animation-name:dwlIconRowHitTesting;
-        animation-timing-function:linear;
-    }
     body.has-dwl-scroll-motion .dwl-icons-pill {
-        animation-name:dwlIconsPillHitTesting;
-        animation-timing-function:linear;
+        animation:navPillShift 1ms var(--dwl-collapse-easing) both,
+            navPillFade 1ms linear both, dwlIconsPillHitTesting 1ms linear both;
+        animation-timeline:var(--nav-scroll-timeline);
+        animation-range:0px var(--dwl-motion-range);
+    }
+    body.has-dwl-scroll-motion .main-screen.ui-ready .dwl-icons-row > .icon-container {
+        animation:iconButtonSettle .42s cubic-bezier(.2,.88,.28,1.08) both,
+            navIconGather 1ms var(--dwl-collapse-easing) both;
+        animation-delay:var(--icon-entry-delay,0s),0s;
+        animation-timeline:auto,var(--nav-scroll-timeline);
+        animation-range:normal,0px var(--dwl-motion-range);
+    }
+    .dwl-icons-row > .icon-container:nth-child(2) { --icon-entry-delay:.06s; }
+    .dwl-icons-row > .icon-container:nth-child(3) { --icon-entry-delay:.12s; }
+    body.has-dwl-scroll-motion .dwl-icons-row .dwl-icon-name {
+        animation:navLabelFade 1ms linear both;
+        animation-timeline:var(--nav-scroll-timeline);
+        animation-range:0px var(--dwl-motion-range);
     }
 }
+/* The composer also uses the direct leaf values for its no-scroll morph. */
+body.has-community-composer-collapse .main-screen.ui-ready .dwl-icons-row > .icon-container {
+    animation-name:iconButtonSettle;
+    animation-duration:.42s;
+    animation-delay:var(--icon-entry-delay,0s);
+    animation-timeline:auto;
+    animation-range:normal;
+}
+body.has-community-composer-collapse .dwl-icons-row .dwl-icon-name { animation:none; }
 
 /* Fade at the stationary clip edge, as Links and Wishes already do.
    The moving scroller now owns only the upper fade. An empty final pixel
@@ -6350,3 +6402,24 @@ body.has-posts-panel-open.has-dwl-scroll-motion .community-hub.dwl-motion-ready 
 @media (max-width:600px) {
     html[data-site-screen="main"] .safari-edge-top::after { height:max(4px,env(safe-area-inset-top)); }
 }
+
+@media (max-width:600px) and (min-height:501px) {
+    @supports ((animation-timeline:scroll()) and (timeline-scope:--header-veil)) {
+        body.has-dwl-scroll-motion .main-screen.has-retracting-header::after {
+            animation:polishedHeaderVeil 1ms var(--header-easing,linear) both reverse;
+            animation-range:0px var(--header-range,250px);
+        }
+        body.has-social-panel-open .main-screen.has-retracting-header::after { animation-timeline:--dwl-social-scroll; }
+        body.has-wishlist-panel-open .main-screen.has-retracting-header::after { animation-timeline:--dwl-wishlist-scroll; }
+        body.has-posts-panel-open .main-screen.has-retracting-header::after { animation-timeline:--dwl-posts-scroll; }
+    }
+}
+body.has-community-composer-collapse .main-screen::before,
+body.has-community-composer-collapse .main-screen::after { animation:none !important; }
+
+/* Keep moving artwork and the tiny edge blends on their own layers. */
+.header-image { will-change:transform,translate; }
+.main-screen::before, .main-screen::after { will-change:opacity; }
+.staged-scroller > :where(:not(.posts-loading-overlay,.dwl-initial-image-loader)) { will-change:transform,translate; }
+
+.dwl-icons-row .icon-container { will-change:transform,translate,scale; }
