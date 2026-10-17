@@ -3127,7 +3127,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             // No progress variable invalidates the icons or panel descendants.
             const row = group.querySelector('.dwl-icons-row');
             if (row) {
-                row.style.opacity = Math.max(0, Math.min(1, (.88 - clamped) / .22));
+                row.style.opacity = Math.max(0, Math.min(1, (.88 - clamped) / .53));
                 row.style.transform = `translate(-50%, calc(-50% - ${10 * clamped}px))`;
                 [...row.children].forEach((icon, index) => {
                     const x = index === 0 ? 49 : index === 2 ? -49 : 0;
@@ -3138,7 +3138,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             }
             const pill = document.getElementById('dwl-icons-pill');
             if (pill) {
-                pill.style.opacity = Math.max(0, Math.min(1, (clamped - .66) / .26));
+                pill.style.opacity = Math.max(0, Math.min(1, (clamped - .45) / .47));
                 pill.style.transform = `translate(-50%, calc(-50% - ${19 * clamped}px)) scale(${.84 + .16 * clamped})`;
             }
             const main = document.querySelector('.main-screen');
