@@ -2668,20 +2668,14 @@ document.addEventListener("DOMContentLoaded", async function() {
     renderEntryGateMode();
 
     // ===== TOP ICON ROW COLLAPSE (shared by wishlist + socials + :3) =====
-    // One shared progress value drives a visual morph only. Each eligible
-    // panel allocates its final scroll viewport once when it opens; scrolling
-    // thereafter changes transforms/opacity, never layout or scroller size.
-    //
-    // The reveal consumes exactly the distance it reclaims. Content therefore
-    // travels one pixel per scroll pixel, including at the native-scroll
-    // handoff. Header, controls and panel share that linear progress; separate
-    // easing curves used to open a dead band between the controls and content.
+    // Each panel gets a fixed final viewport and a leading spacer equal to
+    // the header reclaim. Content then uses ordinary native scrolling, even
+    // on Safari without scroll timelines. Only the small header/icon layers
+    // need scroll-linked transforms; the content never needs counter-motion.
     const ICON_PILL_INTERACTION_PROGRESS = 0.92;
     const ICON_PILL_PANEL_GAP = 6;
     let iconCollapseTweenRaf = 0;
-    let communityComposerCollapseReleaseTimer = 0;
     let iconCollapseDisplayed = 0;
-    let panelRevealDisplayed = 0;
     const panelScrollExtents = new WeakMap();
     const hasNativeScrollCollapse = Boolean(
         window.CSS?.supports?.('animation-timeline: scroll()')
@@ -2743,23 +2737,8 @@ document.addEventListener("DOMContentLoaded", async function() {
             ? Number.parseFloat(scroller.style.getPropertyValue('--stage-range')) || 0
             : 0;
     }
-    const stageOffsets = new WeakMap();
     let paintedCollapseProgress = NaN;
     let paintedCollapseShell = null;
-    function syncStageOffset(scroller) {
-        const range = stageRangeFor(scroller);
-        if (!range || hasNativeScrollCollapse) return;
-        const offset = Math.min(range, Math.max(0, scroller.scrollTop)) - range;
-        if (stageOffsets.get(scroller) === offset) return;
-        stageOffsets.set(scroller, offset);
-        // Only the content layers move. An inherited scroll variable on the
-        // scroller would recalculate every card and video descendant per frame.
-        for (const child of scroller.children) {
-            if (!child.matches('.posts-loading-overlay,.dwl-initial-image-loader')) {
-                child.style.translate = `0 ${offset}px`;
-            }
-        }
-    }
     function clearScrollMotion(shell) {
         if (!shell) return;
         paintedCollapseProgress = NaN;
@@ -2774,15 +2753,11 @@ document.addEventListener("DOMContentLoaded", async function() {
                 progress: Math.min(1, Math.max(0, scroller.scrollTop) / oldStageRange),
                 contentTop: Math.max(0, scroller.scrollTop - oldStageRange),
             };
-            for (const child of scroller.children) child.style.removeProperty('translate');
-            stageOffsets.delete(scroller);
             scroller.classList.remove('staged-scroller');
-            for (const prop of ['--stage-range', '--stage-offset']) scroller.style.removeProperty(prop);
+            scroller.style.removeProperty('--stage-range');
             scroller.scrollTop = stageRestore.contentTop;
         }
         if (scroller) panelScrollExtents.delete(scroller);
-        shell.querySelector(':scope > .dwl-motion-viewport')?.style.removeProperty('transform');
-        shell.querySelector('.doll-wishlist-foot-dock')?.style.removeProperty('transform');
         shell.classList.remove('dwl-motion-ready');
         shell.style.removeProperty('--dwl-motion-base-height');
         shell.style.removeProperty('--dwl-motion-range');
@@ -2808,8 +2783,7 @@ document.addEventListener("DOMContentLoaded", async function() {
 
     // Configure while the panel is stationary. The base measurement is saved
     // once and the real scroller is immediately given its final height. The
-    // moving child initially offsets that extra height below the shell, so the
-    // open-state appearance is unchanged until scrolling begins.
+    // leading spacer keeps the initial cards in their expanded positions.
     function configureScrollMotion(shell, scroller, baseElement = scroller, { enabled = true } = {}) {
         if (!shell || !scroller || !baseElement) return false;
         const stageRestore = clearScrollMotion(shell);
@@ -2864,12 +2838,10 @@ document.addEventListener("DOMContentLoaded", async function() {
         shell.closest('.toggle-container')?.style.setProperty('--dwl-motion-range', `${configuredRange}px`);
         shell.classList.add('dwl-motion-ready');
         scroller.style.setProperty('--stage-range', `${configuredRange}px`);
-        scroller.style.setProperty('--stage-offset', `${-configuredRange}px`);
         scroller.classList.add('staged-scroller');
         if (stageRestore) {
             scroller.scrollTop = configuredRange * stageRestore.progress + stageRestore.contentTop;
         }
-        syncStageOffset(scroller);
         refreshPanelScrollExtent(scroller);
         refreshMotionBodyState();
         return true;
@@ -2877,26 +2849,15 @@ document.addEventListener("DOMContentLoaded", async function() {
     window.dollConfigureScrollMotion = configureScrollMotion;
     window.dollClearScrollMotion = clearScrollMotion;
 
-    function getCurrentMotionGrow(panel) {
+    function getPanelScrollReserve(panel) {
         const shell = panel?.closest('.dwl-motion-shell');
         if (!shell?.classList.contains('dwl-motion-ready')) return 0;
-        const scroller = shell.querySelector(
-            '.social-links-panel, .doll-wishlist-body, .community-scroll-body, .posts-content'
-        );
-        const distance = parseFloat(
-            window.getComputedStyle(shell).getPropertyValue('--dwl-collapse-distance')
-        ) || 0;
-        const range = parseFloat(shell.style.getPropertyValue('--dwl-motion-range')) || getIconCollapseRange();
-        const progress = document.body.classList.contains('has-community-composer-collapse')
-            ? panelRevealDisplayed
-            : Math.max(0, Math.min(1, (scroller?.scrollTop || 0) / range));
-        return distance * progress;
+        return parseFloat(shell.style.getPropertyValue('--dwl-collapse-distance')) || 0;
     }
 
     // Size the open panel's base scroll window to the real screen height
-    // instead of a fixed cap. A ready motion viewport may be visually shifted
-    // upward by a known amount; normalizing that transform below gives us one
-    // stable expanded-state top for --panel-fill-max. Short screens receive a
+    // instead of a fixed cap. Add back the native viewport's leading reserve
+    // to obtain one stable expanded top for --panel-fill-max. Short screens receive a
     // genuinely shorter internal scroller; tall screens use all useful space.
     //
     // Use the smaller of visualViewport and 100svh. `dvh` resolves toward the
@@ -2995,11 +2956,9 @@ document.addEventListener("DOMContentLoaded", async function() {
         // without resizing a bordered panel after the visitor stops scrolling.
         const viewportBottom = getStableVisibleViewportBottom();
         const renderedPanelTop = panel.getBoundingClientRect().top;
-        // A ready motion viewport may already be visually translated upward.
-        // Normalize that transform back to its expanded-state top before
-        // calculating a new stationary fill cap.
-        const scrollGrow = getCurrentMotionGrow(panel);
-        const panelTop = renderedPanelTop + scrollGrow + Math.max(0, visualShift);
+        // The fixed viewport starts at the compact top. Add its leading
+        // reserve to recover the expanded top used for sizing the panel.
+        const panelTop = renderedPanelTop + getPanelScrollReserve(panel) + Math.max(0, visualShift);
         const footerHeight = footer ? (footer.getBoundingClientRect().height || 0) : 44;
         const computedFooterMargin = footer
             ? Number.parseFloat(window.getComputedStyle(footer).marginTop)
@@ -3147,15 +3106,16 @@ document.addEventListener("DOMContentLoaded", async function() {
         }
     }
 
-    function setIconCollapseProgress(progress, { writeVisual = true, panelProgress = progress } = {}) {
+    function setIconCollapseProgress(progress, { writeVisual = true } = {}) {
         const clamped = Math.max(0, Math.min(1, progress));
         iconCollapseDisplayed = clamped;
-        panelRevealDisplayed = Math.max(0, Math.min(1, panelProgress));
-        if (clamped === 1 && document.body.classList.contains('has-community-composer-collapse')) {
+        if (document.body.classList.contains('has-community-composer-collapse')) {
             const scroller = getOpenPanelScroller();
             const range = stageRangeFor(scroller);
-            if (range && scroller.scrollTop < range) scroller.scrollTop = range;
-            syncStageOffset(scroller);
+            // Composer opening is time-driven rather than a user scroll.
+            // Move the existing spacer out naturally during that one tween;
+            // leave a wall already scrolled beyond the header stage alone.
+            if (range && scroller.scrollTop <= range) scroller.scrollTop = range * clamped;
         }
         const group = document.querySelector('.button-group');
         if (!group) return;
@@ -3193,12 +3153,6 @@ document.addEventListener("DOMContentLoaded", async function() {
             if (shell?.id === 'community-hub' && !shell.classList.contains('dwl-motion-ready')) {
                 shell.style.setProperty('--composer-collapse', clamped.toFixed(4));
             }
-            if (shell?.classList.contains('dwl-motion-ready')) {
-                const distance = parseFloat(shell.style.getPropertyValue('--dwl-collapse-distance')) || 0;
-                const hidden = distance * (1 - Math.max(0, Math.min(1, panelProgress)));
-                shell.querySelector(':scope > .dwl-motion-viewport')?.style.setProperty('transform', `translate3d(0, ${hidden}px, 0)`);
-                shell.querySelector('.doll-wishlist-foot-dock')?.style.setProperty('transform', `translate3d(0, ${-hidden}px, 0)`);
-            }
         }
         setPillInteraction(clamped, group);
     }
@@ -3214,19 +3168,20 @@ document.addEventListener("DOMContentLoaded", async function() {
     function animateIconCollapseTo(target, duration = 280) {
         cancelIconCollapseTween();
         const start = iconCollapseDisplayed;
-        const panelStart = panelRevealDisplayed;
         // A composer can take over mid-scroll. Commit the currently displayed
         // positions before native timeline animation is disabled for its tween.
         paintedCollapseProgress = NaN;
-        if (target === 1) setIconCollapseProgress(start, { panelProgress: panelStart });
+        if (target === 1) setIconCollapseProgress(start);
         const startTime = performance.now();
         function tick(now) {
             const t = Math.max(0, Math.min(1, (now - startTime) / duration));
             const eased = 1 - Math.pow(1 - t, 3);
-            setIconCollapseProgress(start + (target - start) * eased, {
-                panelProgress: panelStart + (target - panelStart) * eased,
-            });
+            setIconCollapseProgress(start + (target - start) * eased);
             iconCollapseTweenRaf = t < 1 ? window.requestAnimationFrame(tick) : 0;
+            if (t === 1 && target === 0
+                && document.body.classList.contains('has-community-composer-collapse')) {
+                resetIconsCollapse();
+            }
         }
         iconCollapseTweenRaf = window.requestAnimationFrame(tick);
     }
@@ -3240,7 +3195,6 @@ document.addEventListener("DOMContentLoaded", async function() {
             return;
         }
         cancelIconCollapseTween();
-        syncStageOffset(getOpenPanelScroller());
         const shell = getActiveMotionShell();
         if (!shell?.classList.contains('dwl-motion-ready')) {
             setIconCollapseProgress(0);
@@ -3251,7 +3205,6 @@ document.addEventListener("DOMContentLoaded", async function() {
             // Native scroll timelines own the visual properties directly and
             // do not need main-thread style writes on every scroll frame.
             writeVisual: !hasNativeScrollCollapse,
-            panelProgress: linearProgress,
         });
     }
 
@@ -3289,7 +3242,6 @@ document.addEventListener("DOMContentLoaded", async function() {
     }
 
     function resetIconsCollapse() {
-        window.clearTimeout(communityComposerCollapseReleaseTimer);
         document.body.classList.remove('has-community-composer-collapse');
         document.getElementById('community-hub')?.classList.remove('is-composer-collapsed');
         cancelIconCollapseTween();
@@ -3312,12 +3264,8 @@ document.addEventListener("DOMContentLoaded", async function() {
     function scrollOpenPanelToTop() {
         const panel = getOpenPanelScroller();
         if (document.body.classList.contains('has-community-composer-collapse')) {
-            panel?.scrollTo({ top: 0, behavior: 'auto' });
+            panel?.scrollTo({ top: stageRangeFor(panel), behavior: 'auto' });
             animateIconCollapseTo(0, prefersReducedLoadingMotion ? 1 : 280);
-            window.clearTimeout(communityComposerCollapseReleaseTimer);
-            communityComposerCollapseReleaseTimer = window.setTimeout(() => {
-                resetIconsCollapse();
-            }, prefersReducedLoadingMotion ? 10 : 300);
             return true;
         }
         if (panel && panel.scrollTop > 0) {
@@ -3370,8 +3318,12 @@ document.addEventListener("DOMContentLoaded", async function() {
         if (panelScrollRafs.has(scroller)) return true;
         const raf = window.requestAnimationFrame(() => {
             panelScrollRafs.delete(scroller);
-            setIconsScrollProgress(scroller.scrollTop);
+            // Finish scroll reads before changing header/icon styles. Reading
+            // scrollTop after those writes forced another style flush per frame
+            // in the older-Safari path.
+            const scrollTop = scroller.scrollTop;
             updateScrollEdgeState(scroller, shell);
+            setIconsScrollProgress(scrollTop);
         });
         panelScrollRafs.set(scroller, raf);
         return true;
@@ -3494,7 +3446,6 @@ document.addEventListener("DOMContentLoaded", async function() {
                 || !['ask', 'doodle'].includes(communityHub.dataset.composerMode)) return;
             // Reclaim the row without scrolling drawing controls or the ask
             // field offscreen. This also works when the wall has no posts.
-            window.clearTimeout(communityComposerCollapseReleaseTimer);
             communityHub.classList.add('is-composer-collapsed');
             document.body.classList.add('has-community-composer-collapse');
             if (prefersReducedLoadingMotion) setIconCollapseProgress(1);

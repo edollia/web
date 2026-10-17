@@ -61,14 +61,6 @@
     initial-value: 1;
 }
 
-/* Keeps the community feed's bottom transparency edge aligned with the
-   stationary card bottom while its taller scroll viewport is revealed. */
-@property --community-edge-shift {
-    syntax: "<length>";
-    inherits: true;
-    initial-value: 0px;
-}
-
 html {
     height: 100%;
     /* KEYBOARD FIX: Prevent viewport resize on mobile */
@@ -1234,13 +1226,10 @@ button {
 }
 
 .toggle-container {
-    /* The scroll-linked value is visual only. Open panels allocate their
-       fully-grown viewport once, then the compositor reveals it by moving an
-       inner layer. No flow geometry changes while a finger is scrolling. */
+    /* Open panels allocate their full viewport once. A leading spacer lets
+       native scrolling reclaim the header without changing flow geometry. */
     --dwl-collapse: 0;
     --dwl-collapse-distance: 53px;
-    --dwl-scroll-grow: calc(var(--dwl-collapse-distance) * var(--dwl-collapse));
-    --dwl-motion-hidden: calc(var(--dwl-collapse-distance) - var(--dwl-scroll-grow));
     --dwl-collapse-easing: linear;
     position: relative;
     /* Closed-home geometry ends just below the note (including its soft
@@ -2580,17 +2569,9 @@ body.has-posts-panel-open .button-group {
     display: none;
 }
 
-/* The shell is enlarged once when a sufficiently long scroller opens. Its
-   negative margin keeps the bottom and every following element in exactly the
-   same place. Only this inner viewport then moves: at progress 0 the extra
-   area sits clipped below the shell; at progress 1 it has slid fully into the
-   newly exposed space above. Scroll-time layout geometry never changes. */
-/* Resolve derived distances on the shell that owns the measured distance.
-   Inheriting them from the toggle host freezes the old distance and pulls
-   fallback scrollers into the icon row when the header runway is added. */
+/* Allocate the compact viewport once and keep its bottom stationary. Its
+   native scroller's leading spacer preserves the expanded starting position. */
 .dwl-motion-shell.dwl-motion-ready {
-    --dwl-scroll-grow: calc(var(--dwl-collapse-distance) * var(--dwl-collapse));
-    --dwl-motion-hidden: calc(var(--dwl-collapse-distance) - var(--dwl-scroll-grow));
     height: calc(var(--dwl-motion-base-height) + var(--dwl-collapse-distance));
     margin-top: calc(-1 * var(--dwl-collapse-distance));
     overflow: hidden;
@@ -2606,8 +2587,6 @@ body.has-posts-panel-open .button-group {
     inset: 0;
     width: 100%;
     height: 100%;
-    transform: translate3d(0, var(--dwl-motion-hidden), 0);
-    will-change: transform;
 }
 
 .dwl-motion-ready > .dwl-motion-viewport > .social-links-panel,
@@ -4087,6 +4066,18 @@ body.first-visit-tour-active .tour-highlight-target {
     }
 }
 
+/* Keep the existing rotation on touch screens without repainting an animated
+   SVG image inside each moving icon on every frame. */
+@media (hover: none) and (pointer: coarse) {
+    .dwl-icons-row .icon-container::after {
+        background-image: url("site-images/fairy-trail-still.svg?v=2");
+    }
+
+    #support-menu-button .wishes-swirl-glyph::after {
+        background-image: url("site-images/fairy-spiral-still.svg?v=6");
+    }
+}
+
 .dwl-icons-row .action-menu-label {
     min-width: 0;
     margin-top: -2px;
@@ -4599,36 +4590,6 @@ body.first-visit-tour-active .tour-highlight-target {
     scroll-timeline-axis: block;
 }
 
-.dwl-motion-ready .doll-wishlist-foot-dock {
-    transform: translate3d(0, calc(-1 * var(--dwl-motion-hidden)), 0);
-    will-change: transform;
-}
-
-/* Safari 26+ can bind these compositor-friendly properties directly to the
-   native scroller. Older Safari keeps the identical transform-only result via
-   the rAF fallback driven by --dwl-collapse. In both paths, layout is frozen. */
-@keyframes dwlIconsRowCollapse {
-    from {
-        opacity: 1;
-        transform: translate(-50%, -50%) scale(1);
-    }
-    to {
-        opacity: 0;
-        transform: translate(-50%, calc(-50% - 26px)) scale(0.88);
-    }
-}
-
-@keyframes dwlIconsPillCollapse {
-    from {
-        opacity: 0;
-        transform: translate(-50%, -50%) scale(0.74);
-    }
-    to {
-        opacity: 1;
-        transform: translate(-50%, calc(-50% - 19px)) scale(1);
-    }
-}
-
 /* Switch hit-testing once the pill is fully visible. The native timeline
    and JS fallback share the same 92% handoff. */
 @keyframes dwlIconRowHitTesting {
@@ -4639,72 +4600,6 @@ body.first-visit-tour-active .tour-highlight-target {
 @keyframes dwlIconsPillHitTesting {
     0%, 92% { pointer-events: none; }
     92.01%, 100% { pointer-events: auto; }
-}
-
-@keyframes dwlPanelViewportReveal {
-    from { transform: translate3d(0, var(--dwl-collapse-distance), 0); }
-    to { transform: translate3d(0, 0, 0); }
-}
-
-@keyframes dwlWishlistDockReveal {
-    from { transform: translate3d(0, calc(-1 * var(--dwl-collapse-distance)), 0); }
-    to { transform: translate3d(0, 0, 0); }
-}
-
-@keyframes dwlCommunityBottomEdgeReveal {
-    from { --community-edge-shift: 41px; }
-    to { --community-edge-shift: 0px; }
-}
-
-@supports ((animation-timeline: scroll()) and (timeline-scope: --dwl-test)) {
-    body.has-dwl-scroll-motion .dwl-icons-row {
-        animation:
-            dwlIconsRowCollapse 1ms var(--dwl-collapse-easing) both,
-            dwlIconRowHitTesting 1ms linear both;
-    }
-
-    body.has-dwl-scroll-motion .dwl-icons-pill {
-        animation:
-            dwlIconsPillCollapse 1ms var(--dwl-collapse-easing) both,
-            dwlIconsPillHitTesting 1ms linear both;
-    }
-
-    body.has-dwl-scroll-motion .dwl-motion-ready > .dwl-motion-viewport {
-        animation: dwlPanelViewportReveal 1ms linear both;
-    }
-
-    body.has-dwl-scroll-motion .dwl-motion-ready .doll-wishlist-foot-dock {
-        animation: dwlWishlistDockReveal 1ms linear both;
-    }
-
-    body.has-social-panel-open.has-dwl-scroll-motion .dwl-icons-row,
-    body.has-social-panel-open.has-dwl-scroll-motion .dwl-icons-pill,
-    body.has-social-panel-open.has-dwl-scroll-motion .dwl-motion-ready > .dwl-motion-viewport {
-        animation-timeline: --dwl-social-scroll;
-        animation-range: 0px var(--dwl-motion-range, 72px);
-    }
-
-    body.has-wishlist-panel-open.has-dwl-scroll-motion .dwl-icons-row,
-    body.has-wishlist-panel-open.has-dwl-scroll-motion .dwl-icons-pill,
-    body.has-wishlist-panel-open.has-dwl-scroll-motion .dwl-motion-ready > .dwl-motion-viewport,
-    body.has-wishlist-panel-open.has-dwl-scroll-motion .dwl-motion-ready .doll-wishlist-foot-dock {
-        animation-timeline: --dwl-wishlist-scroll;
-        animation-range: 0px var(--dwl-motion-range, 90px);
-    }
-
-    body.has-posts-panel-open.has-dwl-scroll-motion .dwl-icons-row,
-    body.has-posts-panel-open.has-dwl-scroll-motion .dwl-icons-pill,
-    body.has-posts-panel-open.has-dwl-scroll-motion .dwl-motion-ready > .dwl-motion-viewport {
-        animation-timeline: --dwl-posts-scroll;
-        animation-range: 0px var(--dwl-motion-range, 106px);
-    }
-
-    body.has-posts-panel-open.has-dwl-scroll-motion
-        .community-hub.dwl-motion-ready .community-scroll-body {
-        animation: dwlCommunityBottomEdgeReveal 1ms var(--dwl-collapse-easing) both;
-        animation-timeline: --dwl-posts-scroll;
-        animation-range: 0px var(--dwl-motion-range, 106px);
-    }
 }
 
 .tab-button {
@@ -5641,16 +5536,12 @@ body.has-community-hub-open #action-menu-button.open .action-options {
     width: 100%;
     padding: 7px 0 0;
     overflow: hidden;
-    /* The shared motion shell preallocates the fully collapsed height once,
-       clips it at the stable footer edge, and moves this layer compositor-side.
-       Never change the native scroller's geometry under the visitor's finger. */
-    will-change: transform;
+    /* The shared shell keeps the full native viewport and footer edge fixed. */
 }
 
 .community-scroll-body {
     --dwl-edge-top: 1;
     --dwl-edge-bottom: 1;
-    --community-edge-shift: 0px;
     width: 100%;
     max-height: var(--panel-fill-max, 560px);
     height: var(--panel-fill-max, 560px);
@@ -5669,24 +5560,16 @@ body.has-community-hub-open #action-menu-button.open .action-options {
         to bottom,
         rgba(0, 0, 0, var(--dwl-edge-top)) 0,
         #000 22px,
-        #000 calc(100% - var(--community-edge-shift) - 22px),
-        rgba(0, 0, 0, var(--dwl-edge-bottom)) calc(100% - var(--community-edge-shift)),
+        #000 calc(100% - 22px),
         rgba(0, 0, 0, var(--dwl-edge-bottom)) 100%
     );
     mask-image: linear-gradient(
         to bottom,
         rgba(0, 0, 0, var(--dwl-edge-top)) 0,
         #000 22px,
-        #000 calc(100% - var(--community-edge-shift) - 22px),
-        rgba(0, 0, 0, var(--dwl-edge-bottom)) calc(100% - var(--community-edge-shift)),
+        #000 calc(100% - 22px),
         rgba(0, 0, 0, var(--dwl-edge-bottom)) 100%
     );
-}
-
-/* Fallback browsers use the existing rAF-written collapse value, so the
-   fade ends exactly at the visible bottom edge rather than under the clip. */
-.community-hub.dwl-motion-ready .community-scroll-body {
-    --community-edge-shift: max(0px, var(--dwl-motion-hidden));
 }
 
 /* The unified card owns the posts timeline. Its nested legacy content is
@@ -6086,9 +5969,7 @@ body.has-community-hub-open #action-menu-button.open .action-options {
 /* Composer opening uses the same icon morph while keeping the controls in
    view, including on a short or empty visitor wall. */
 body.has-community-composer-collapse .dwl-icons-row,
-body.has-community-composer-collapse .dwl-icons-pill,
-body.has-community-composer-collapse .community-hub.dwl-motion-ready > .dwl-motion-viewport,
-body.has-community-composer-collapse .community-hub.dwl-motion-ready .community-scroll-body {
+body.has-community-composer-collapse .dwl-icons-pill {
     animation: none !important;
 }
 .community-hub.is-composer-collapsed:not(.dwl-motion-ready) {
@@ -6220,7 +6101,8 @@ body:is(.has-social-panel-open,.has-wishlist-panel-open,.has-posts-panel-open) .
     min-height:calc(var(--footer-pill-height) + max(var(--footer-gap),env(safe-area-inset-bottom)));
 }
 @media (max-height:720px) { :root { --footer-pill-height:26px; } }
-/* One native scroller: first consume the header stage, then the content. */
+/* One native scroller. The leading reserve replaces the old opposing
+   viewport/content transforms, so the list stays native on older Safari. */
 .staged-scroller {
     overflow-anchor:none;
 }
@@ -6233,22 +6115,7 @@ body:is(.has-social-panel-open,.has-wishlist-panel-open,.has-posts-panel-open) .
     grid-column:1 / -1;
     pointer-events:none;
 }
-.staged-scroller > :where(:not(.posts-loading-overlay,.dwl-initial-image-loader)) {
-    translate:0 var(--stage-offset);
-}
 @supports ((animation-timeline: scroll()) and (timeline-scope: --stage-test)) {
-    @keyframes stagedContentHold {
-        from { translate:0 calc(-1 * var(--stage-range)); }
-        to { translate:0 0; }
-    }
-    .staged-scroller > :where(:not(.posts-loading-overlay,.dwl-initial-image-loader)) {
-        animation:stagedContentHold 1ms linear both;
-        animation-range:0px var(--stage-range);
-    }
-    .social-links-panel.staged-scroller > * { animation-timeline:--dwl-social-scroll; }
-    .doll-wishlist-body.staged-scroller > * { animation-timeline:--dwl-wishlist-scroll; }
-    .community-scroll-body.staged-scroller > *,
-    .posts-content.staged-scroller > * { animation-timeline:--dwl-posts-scroll; }
     body.has-community-composer-collapse .header-image,
     body.has-community-composer-collapse .button-group {
         animation:none !important;
@@ -6374,7 +6241,6 @@ body.has-community-composer-collapse .dwl-icons-row .dwl-icon-name { animation:n
     -webkit-mask-image:linear-gradient(to bottom,rgba(0,0,0,var(--dwl-edge-top)) 0,#000 22px,#000 100%);
     mask-image:linear-gradient(to bottom,rgba(0,0,0,var(--dwl-edge-top)) 0,#000 22px,#000 100%);
 }
-body.has-posts-panel-open.has-dwl-scroll-motion .community-hub.dwl-motion-ready .community-scroll-body { animation:none; }
 @media (max-width:600px) {
     html[data-site-screen="main"] .safari-edge-top::after { height:max(4px,env(safe-area-inset-top)); }
 }
@@ -6396,6 +6262,5 @@ body.has-community-composer-collapse .main-screen::after { animation:none !impor
 /* Keep moving artwork and the tiny edge blends on their own layers. */
 .header-image { will-change:transform,translate; }
 .main-screen::before, .main-screen::after { will-change:opacity; }
-.staged-scroller > :where(:not(.posts-loading-overlay,.dwl-initial-image-loader)) { will-change:transform,translate; }
 
 .dwl-icons-row .icon-container { will-change:transform,translate,scale; }

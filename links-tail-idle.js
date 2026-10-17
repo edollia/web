@@ -458,7 +458,10 @@
     function render(timestamp) {
         animationFrame = 0;
         if (!sourceReady || document.hidden || reducedMotion.matches || !started) return;
-        if (timestamp - lastFrameAt >= FRAME_INTERVAL) {
+        // Let native scrolling and the icon morph use the frame budget. The
+        // idle tail keeps its last pixels until the existing scroll-idle flag
+        // clears, then resumes without a second timer or animation controller.
+        if (!window.dollIsPanelScrolling?.() && timestamp - lastFrameAt >= FRAME_INTERVAL) {
             const elapsed = elapsedAt(timestamp);
             entries.forEach(entry => drawEntry(entry, elapsed));
             lastFrameAt = timestamp;
