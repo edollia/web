@@ -2672,20 +2672,12 @@ document.addEventListener("DOMContentLoaded", async function() {
     // panel allocates its final scroll viewport once when it opens; scrolling
     // thereafter changes transforms/opacity, never layout or scroller size.
     //
-    // A single 48px linear range made the content briefly travel at almost 2x
-    // finger speed on iPhone (native scroll + as much as 53px of panel rise).
-    // Give each surface roughly two scroll pixels per reclaimed pixel instead,
-    // with socials capped at 72px so its short list can still finish the morph.
-    // The eased ramp starts and ends at zero added velocity, removing the hard
-    // speed changes that made even a slow drag feel strangely unsmooth.
-    const ICON_COLLAPSE_RANGES = Object.freeze({
-        social: 72,
-        wishlist: 90,
-        posts: 106,
-    });
-    const ICON_COLLAPSE_RAMP = 0.2;
-    const ICON_COLLAPSE_PEAK_RATE = 1 / (1 - ICON_COLLAPSE_RAMP);
+    // The reveal consumes exactly the distance it reclaims. Content therefore
+    // travels one pixel per scroll pixel, including at the native-scroll
+    // handoff. Header, controls and panel share that linear progress; separate
+    // easing curves used to open a dead band between the controls and content.
     const ICON_PILL_INTERACTION_PROGRESS = 0.92;
+    const ICON_PILL_PANEL_GAP = 6;
     let iconCollapseTweenRaf = 0;
     let communityComposerCollapseReleaseTimer = 0;
     let iconCollapseDisplayed = 0;
@@ -2728,36 +2720,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             getActiveMotionShell()?.style.getPropertyValue('--dwl-motion-range') || ''
         );
         if (configuredRange > 0) return configuredRange;
-        if (document.body.classList.contains('has-social-panel-open')) {
-            return ICON_COLLAPSE_RANGES.social;
-        }
-        if (document.body.classList.contains('has-wishlist-panel-open')) {
-            return ICON_COLLAPSE_RANGES.wishlist;
-        }
-        return ICON_COLLAPSE_RANGES.posts;
-    }
-
-    // A short linear middle with quadratic shoulders. Compared with regular
-    // smoothstep it keeps the peak added speed lower (1.25x vs 1.5x) while
-    // still joining natural scrolling with no velocity jump at either end.
-    function easeIconCollapseProgress(progress) {
-        const t = Math.max(0, Math.min(1, progress));
-        const ramp = ICON_COLLAPSE_RAMP;
-        const rate = ICON_COLLAPSE_PEAK_RATE;
-        if (t < ramp) return (rate * t * t) / (2 * ramp);
-        if (t > 1 - ramp) {
-            const remaining = 1 - t;
-            return 1 - ((rate * remaining * remaining) / (2 * ramp));
-        }
-        return ((rate * ramp) / 2) + (rate * (t - ramp));
-    }
-
-    // Content must join ordinary scrolling at the same speed at the end of
-    // the reserved runway. The icon/header easing deliberately slows to rest;
-    // using that curve here brakes the list to zero just before native scroll.
-    function panelRevealProgress(progress, distance, range) {
-        const t = Math.max(0, Math.min(1, progress));
-        return distance > 0 && range > 0 ? Math.pow(t, range / distance) : t;
+        return 53;
     }
 
     function refreshMotionBodyState() {
@@ -2823,7 +2786,6 @@ document.addEventListener("DOMContentLoaded", async function() {
         shell.classList.remove('dwl-motion-ready');
         shell.style.removeProperty('--dwl-motion-base-height');
         shell.style.removeProperty('--dwl-motion-range');
-        shell.style.removeProperty('--dwl-reveal-easing');
         shell.style.removeProperty('--dwl-collapse-distance');
         shell.style.removeProperty('--composer-collapse');
         // The row and pill are siblings of the motion shell, so their native
@@ -2834,6 +2796,14 @@ document.addEventListener("DOMContentLoaded", async function() {
         }
         refreshMotionBodyState();
         return stageRestore;
+    }
+
+    function getPanelLayoutTop(element) {
+        let top = 0;
+        for (let current = element; current; current = current.offsetParent) {
+            top += current.offsetTop + (current.offsetParent?.clientTop || 0);
+        }
+        return top;
     }
 
     // Configure while the panel is stationary. The base measurement is saved
@@ -2850,19 +2820,6 @@ document.addEventListener("DOMContentLoaded", async function() {
             window.getComputedStyle(shell).getPropertyValue('--dwl-collapse-distance')
         ) || 0;
         const baseOverflow = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
-        const isSocialPanel = document.body.classList.contains('has-social-panel-open');
-        // On a narrow band of medium-height phones, Socials can scroll but its
-        // normal 38px viewport growth would consume most of that short range.
-        // Cap only the shell's growth to half the available overflow so the
-        // content still expands upward and the icon-to-pill motion can finish.
-        // Long Socials lists keep the full, established 38px treatment.
-        if (isSocialPanel && baseOverflow > 0 && baseOverflow - distance < distance) {
-            const adaptiveDistance = Math.floor(baseOverflow / 2);
-            if (adaptiveDistance > 0) {
-                distance = adaptiveDistance;
-                shell.style.setProperty('--dwl-collapse-distance', `${distance}px`);
-            }
-        }
         // Reserve the entire final viewport before the content starts scrolling.
         const headerArt = document.querySelector('header .header-image');
         let headerTravel = window.innerWidth <= 600 && window.innerHeight > 500
@@ -2870,55 +2827,39 @@ document.addEventListener("DOMContentLoaded", async function() {
             : 0;
         // The first native scroll segment belongs to the header. Only require
         // genuine content overflow after the final viewport is revealed.
-        if (baseOverflow <= distance + headerTravel - 7 + 8) headerTravel = 0;
-        if (headerTravel > 0) {
-            distance += headerTravel - 7;
-            shell.style.setProperty('--dwl-collapse-distance', `${distance}px`);
+        if (baseOverflow <= distance + headerTravel + 8) headerTravel = 0;
+        const main = document.querySelector('.main-screen');
+        main?.style.setProperty('--header-travel', `${headerTravel}px`);
+        main?.classList.toggle('has-retracting-header', headerTravel > 0);
+        // Measure the real compact endpoint, including the larger mobile pill.
+        // A fixed per-panel reclaim left different gaps and even overlapped the
+        // pill on desktop. Layout offsets exclude both scroll transforms and
+        // the panels' entrance animations, including during a mid-scroll resize.
+        const group = document.querySelector('.button-group');
+        const pill = document.getElementById('dwl-icons-pill');
+        if (group && pill) {
+            const compactPillBottom = getPanelLayoutTop(group) - headerTravel
+                + pill.offsetTop - 19 + pill.offsetHeight / 2;
+            distance = Math.floor(getPanelLayoutTop(scroller) - compactPillBottom - ICON_PILL_PANEL_GAP);
         }
-        document.querySelector('.main-screen')?.style.setProperty('--header-travel', `${headerTravel}px`);
-        document.querySelector('.main-screen')?.classList.toggle('has-retracting-header', headerTravel > 0);
         const finalOverflow = Math.max(0, baseOverflow - distance);
-        const desiredRange = (isSocialPanel
-            ? ICON_COLLAPSE_RANGES.social
-            : document.body.classList.contains('has-wishlist-panel-open')
-                ? ICON_COLLAPSE_RANGES.wishlist
-                : ICON_COLLAPSE_RANGES.posts) + Math.ceil(headerTravel * 1.6);
-        // Socials can have a small amount of genuine overflow on medium-height
-        // phones. Requiring the shared 1.6x runway disabled its collapse
-        // entirely at those heights (for example, 56px of usable scroll for a
-        // 38px reclaim), even though the panel visibly scrolled. A one-to-one
-        // runway remains smooth and is enough to complete the Socials pill;
-        // keep the more conservative guard for Wishlist and :3.
-        const minimumSafeRange = isSocialPanel
-            ? Math.ceil(distance)
-            : Math.ceil(distance * 1.6);
-        const configuredRange = Math.ceil(desiredRange);
+        const configuredRange = distance;
 
         // The staged scroller supplies the header runway independently of
         // content length. Require real overflow in the final viewport too.
-        if (!(baseHeight > 0 && distance > 0 && finalOverflow > 1 && configuredRange >= minimumSafeRange)) {
+        // A near-fitting list should scroll normally, rather than snapping the
+        // entire menu into a pill over a one- or two-pixel adaptive reveal.
+        if (!(baseHeight > 0 && distance >= 24 && finalOverflow > 1)) {
+            document.querySelector('.main-screen')?.classList.remove('has-retracting-header');
+            document.querySelector('.main-screen')?.style.setProperty('--header-travel', '0px');
             refreshPanelScrollExtent(scroller);
             refreshMotionBodyState();
             return false;
         }
 
         shell.style.setProperty('--dwl-collapse-distance', `${distance}px`);
-        // Sample the same content trajectory used by the fallback. Its final
-        // physical speed approaches one scroll pixel per input pixel, while
-        // the original header and icon morph keep their approved easing.
-        // Include equal-distance samples too, so a tiny viewport growth still
-        // has a faithful exit tangent rather than one coarse final segment.
-        const revealOffsets = new Set([0, 1]);
-        for (let i = 1; i < 64; i++) {
-            revealOffsets.add(i / 64);
-            revealOffsets.add(Math.pow(i / 64, distance / configuredRange));
-        }
-        const revealStops = [...revealOffsets].sort((a, b) => a - b).map(t =>
-            `${panelRevealProgress(t, distance, configuredRange).toFixed(6)} ${(t * 100).toFixed(4)}%`);
-        shell.style.setProperty('--dwl-reveal-easing', `linear(${revealStops.join(',')})`);
         shell.style.setProperty('--dwl-motion-base-height', `${baseHeight.toFixed(2)}px`);
         document.querySelector('.main-screen')?.style.setProperty('--header-range', `${configuredRange}px`);
-        document.querySelector('.main-screen')?.style.setProperty('--header-easing', getComputedStyle(shell.closest('.toggle-container')).getPropertyValue('--dwl-collapse-easing'));
         shell.style.setProperty('--dwl-motion-range', `${configuredRange}px`);
         shell.closest('.toggle-container')?.style.setProperty('--dwl-motion-range', `${configuredRange}px`);
         shell.classList.add('dwl-motion-ready');
@@ -2948,7 +2889,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         const range = parseFloat(shell.style.getPropertyValue('--dwl-motion-range')) || getIconCollapseRange();
         const progress = document.body.classList.contains('has-community-composer-collapse')
             ? panelRevealDisplayed
-            : panelRevealProgress((scroller?.scrollTop || 0) / range, distance, range);
+            : Math.max(0, Math.min(1, (scroller?.scrollTop || 0) / range));
         return distance * progress;
     }
 
@@ -3306,12 +3247,11 @@ document.addEventListener("DOMContentLoaded", async function() {
             return;
         }
         const linearProgress = Math.max(0, Math.min(1, scrollTop / getIconCollapseRange()));
-        setIconCollapseProgress(easeIconCollapseProgress(linearProgress), {
+        setIconCollapseProgress(linearProgress, {
             // Native scroll timelines own the visual properties directly and
             // do not need main-thread style writes on every scroll frame.
             writeVisual: !hasNativeScrollCollapse,
-            panelProgress: panelRevealProgress(linearProgress,
-                parseFloat(shell.style.getPropertyValue('--dwl-collapse-distance')), getIconCollapseRange()),
+            panelProgress: linearProgress,
         });
     }
 

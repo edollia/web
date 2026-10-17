@@ -1241,23 +1241,7 @@ button {
     --dwl-collapse-distance: 53px;
     --dwl-scroll-grow: calc(var(--dwl-collapse-distance) * var(--dwl-collapse));
     --dwl-motion-hidden: calc(var(--dwl-collapse-distance) - var(--dwl-scroll-grow));
-    --dwl-collapse-easing: linear(
-        0,
-        0.0078 5%,
-        0.0313 10%,
-        0.0703 15%,
-        0.125 20%,
-        0.25 30%,
-        0.375 40%,
-        0.5 50%,
-        0.625 60%,
-        0.75 70%,
-        0.875 80%,
-        0.9297 85%,
-        0.9688 90%,
-        0.9922 95%,
-        1
-    );
+    --dwl-collapse-easing: linear;
     position: relative;
     /* Closed-home geometry ends just below the note (including its soft
        shadow) instead of reserving a panel-sized empty tail. Open Socials,
@@ -4645,18 +4629,16 @@ body.first-visit-tour-active .tour-highlight-target {
     }
 }
 
-/* Hit-testing follows the native scroll timeline independently of the visual
-   transforms. Keep the original controls active until their eased visual
-   opacity is about 8%; switching earlier made still-visible icons appear
-   broken. The 84% timeline point matches the JS 92% eased threshold. */
+/* Switch hit-testing once the pill is fully visible. The native timeline
+   and JS fallback share the same 92% handoff. */
 @keyframes dwlIconRowHitTesting {
-    0%, 84% { pointer-events: auto; }
-    84.01%, 100% { pointer-events: none; }
+    0%, 92% { pointer-events: auto; }
+    92.01%, 100% { pointer-events: none; }
 }
 
 @keyframes dwlIconsPillHitTesting {
-    0%, 84% { pointer-events: none; }
-    84.01%, 100% { pointer-events: auto; }
+    0%, 92% { pointer-events: none; }
+    92.01%, 100% { pointer-events: auto; }
 }
 
 @keyframes dwlPanelViewportReveal {
@@ -4688,11 +4670,11 @@ body.first-visit-tour-active .tour-highlight-target {
     }
 
     body.has-dwl-scroll-motion .dwl-motion-ready > .dwl-motion-viewport {
-        animation: dwlPanelViewportReveal 1ms var(--dwl-reveal-easing, var(--dwl-collapse-easing)) both;
+        animation: dwlPanelViewportReveal 1ms linear both;
     }
 
     body.has-dwl-scroll-motion .dwl-motion-ready .doll-wishlist-foot-dock {
-        animation: dwlWishlistDockReveal 1ms var(--dwl-reveal-easing, var(--dwl-collapse-easing)) both;
+        animation: dwlWishlistDockReveal 1ms linear both;
     }
 
     body.has-social-panel-open.has-dwl-scroll-motion .dwl-icons-row,
@@ -6147,7 +6129,7 @@ body.has-community-composer-collapse .community-hub.dwl-motion-ready .community-
         }
         body.has-dwl-scroll-motion .header-image,
         body.has-dwl-scroll-motion .button-group {
-            animation:polishedHeaderRetreat 1ms var(--header-easing, linear) both;
+            animation:polishedHeaderRetreat 1ms linear both;
             animation-range:0px var(--header-range, 250px);
         }
         body.has-social-panel-open .header-image,
@@ -6183,7 +6165,7 @@ body.has-community-composer-collapse .community-hub.dwl-motion-ready .community-
             to { opacity:1; }
         }
         body.has-dwl-scroll-motion .main-screen.has-retracting-header::before {
-            animation:polishedHeaderVeil 1ms var(--header-easing, linear) both;
+            animation:polishedHeaderVeil 1ms linear both;
             animation-range:0px var(--header-range, 250px);
         }
         body.has-social-panel-open .main-screen.has-retracting-header::before { animation-timeline:--dwl-social-scroll; }
@@ -6303,25 +6285,19 @@ body:is(.has-social-panel-open,.has-wishlist-panel-open,.has-posts-panel-open) .
    every scroll sample, even though only these small layers were moving. */
 @keyframes navRowFade {
     0% { opacity:1; }
-    62.8% { opacity:1; }
-    80% { opacity:0.02272727; }
-    80.457% { opacity:0; }
+    66% { opacity:1; }
+    88% { opacity:0; }
     100% { opacity:0; }
 }
 @keyframes navLabelFade {
     0% { opacity:1; }
-    5% { opacity:0.9688; }
-    10% { opacity:0.8748; }
-    15% { opacity:0.7188; }
-    20% { opacity:0.5; }
-    30% { opacity:0; }
+    25% { opacity:0; }
     100% { opacity:0; }
 }
 @keyframes navPillFade {
     0% { opacity:0; }
-    62.8% { opacity:0; }
-    80% { opacity:0.8269231; }
-    84.113% { opacity:1; }
+    66% { opacity:0; }
+    92% { opacity:1; }
     100% { opacity:1; }
 }
 @keyframes navRowShift {
@@ -6406,7 +6382,7 @@ body.has-posts-panel-open.has-dwl-scroll-motion .community-hub.dwl-motion-ready 
 @media (max-width:600px) and (min-height:501px) {
     @supports ((animation-timeline:scroll()) and (timeline-scope:--header-veil)) {
         body.has-dwl-scroll-motion .main-screen.has-retracting-header::after {
-            animation:polishedHeaderVeil 1ms var(--header-easing,linear) both reverse;
+            animation:polishedHeaderVeil 1ms linear both reverse;
             animation-range:0px var(--header-range,250px);
         }
         body.has-social-panel-open .main-screen.has-retracting-header::after { animation-timeline:--dwl-social-scroll; }
