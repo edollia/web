@@ -4688,11 +4688,11 @@ body.first-visit-tour-active .tour-highlight-target {
     }
 
     body.has-dwl-scroll-motion .dwl-motion-ready > .dwl-motion-viewport {
-        animation: dwlPanelViewportReveal 1ms var(--dwl-collapse-easing) both;
+        animation: dwlPanelViewportReveal 1ms var(--dwl-reveal-easing, var(--dwl-collapse-easing)) both;
     }
 
     body.has-dwl-scroll-motion .dwl-motion-ready .doll-wishlist-foot-dock {
-        animation: dwlWishlistDockReveal 1ms var(--dwl-collapse-easing) both;
+        animation: dwlWishlistDockReveal 1ms var(--dwl-reveal-easing, var(--dwl-collapse-easing)) both;
     }
 
     body.has-social-panel-open.has-dwl-scroll-motion .dwl-icons-row,

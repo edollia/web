@@ -2689,6 +2689,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     let iconCollapseTweenRaf = 0;
     let communityComposerCollapseReleaseTimer = 0;
     let iconCollapseDisplayed = 0;
+    let panelRevealDisplayed = 0;
     const panelScrollExtents = new WeakMap();
     const hasNativeScrollCollapse = Boolean(
         window.CSS?.supports?.('animation-timeline: scroll()')
@@ -2749,6 +2750,14 @@ document.addEventListener("DOMContentLoaded", async function() {
             return 1 - ((rate * remaining * remaining) / (2 * ramp));
         }
         return ((rate * ramp) / 2) + (rate * (t - ramp));
+    }
+
+    // Content must join ordinary scrolling at the same speed at the end of
+    // the reserved runway. The icon/header easing deliberately slows to rest;
+    // using that curve here brakes the list to zero just before native scroll.
+    function panelRevealProgress(progress, distance, range) {
+        const t = Math.max(0, Math.min(1, progress));
+        return distance > 0 && range > 0 ? Math.pow(t, range / distance) : t;
     }
 
     function refreshMotionBodyState() {
@@ -2814,6 +2823,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         shell.classList.remove('dwl-motion-ready');
         shell.style.removeProperty('--dwl-motion-base-height');
         shell.style.removeProperty('--dwl-motion-range');
+        shell.style.removeProperty('--dwl-reveal-easing');
         shell.style.removeProperty('--dwl-collapse-distance');
         shell.style.removeProperty('--composer-collapse');
         // The row and pill are siblings of the motion shell, so their native
@@ -2893,6 +2903,19 @@ document.addEventListener("DOMContentLoaded", async function() {
         }
 
         shell.style.setProperty('--dwl-collapse-distance', `${distance}px`);
+        // Sample the same content trajectory used by the fallback. Its final
+        // physical speed approaches one scroll pixel per input pixel, while
+        // the original header and icon morph keep their approved easing.
+        // Include equal-distance samples too, so a tiny viewport growth still
+        // has a faithful exit tangent rather than one coarse final segment.
+        const revealOffsets = new Set([0, 1]);
+        for (let i = 1; i < 64; i++) {
+            revealOffsets.add(i / 64);
+            revealOffsets.add(Math.pow(i / 64, distance / configuredRange));
+        }
+        const revealStops = [...revealOffsets].sort((a, b) => a - b).map(t =>
+            `${panelRevealProgress(t, distance, configuredRange).toFixed(6)} ${(t * 100).toFixed(4)}%`);
+        shell.style.setProperty('--dwl-reveal-easing', `linear(${revealStops.join(',')})`);
         shell.style.setProperty('--dwl-motion-base-height', `${baseHeight.toFixed(2)}px`);
         document.querySelector('.main-screen')?.style.setProperty('--header-range', `${configuredRange}px`);
         document.querySelector('.main-screen')?.style.setProperty('--header-easing', getComputedStyle(shell.closest('.toggle-container')).getPropertyValue('--dwl-collapse-easing'));
@@ -2923,7 +2946,9 @@ document.addEventListener("DOMContentLoaded", async function() {
             window.getComputedStyle(shell).getPropertyValue('--dwl-collapse-distance')
         ) || 0;
         const range = parseFloat(shell.style.getPropertyValue('--dwl-motion-range')) || getIconCollapseRange();
-        const progress = easeIconCollapseProgress((scroller?.scrollTop || 0) / range);
+        const progress = document.body.classList.contains('has-community-composer-collapse')
+            ? panelRevealDisplayed
+            : panelRevealProgress((scroller?.scrollTop || 0) / range, distance, range);
         return distance * progress;
     }
 
@@ -3181,9 +3206,10 @@ document.addEventListener("DOMContentLoaded", async function() {
         }
     }
 
-    function setIconCollapseProgress(progress, { writeVisual = true } = {}) {
+    function setIconCollapseProgress(progress, { writeVisual = true, panelProgress = progress } = {}) {
         const clamped = Math.max(0, Math.min(1, progress));
         iconCollapseDisplayed = clamped;
+        panelRevealDisplayed = Math.max(0, Math.min(1, panelProgress));
         if (clamped === 1 && document.body.classList.contains('has-community-composer-collapse')) {
             const scroller = getOpenPanelScroller();
             const range = stageRangeFor(scroller);
@@ -3228,7 +3254,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             }
             if (shell?.classList.contains('dwl-motion-ready')) {
                 const distance = parseFloat(shell.style.getPropertyValue('--dwl-collapse-distance')) || 0;
-                const hidden = distance * (1 - clamped);
+                const hidden = distance * (1 - Math.max(0, Math.min(1, panelProgress)));
                 shell.querySelector(':scope > .dwl-motion-viewport')?.style.setProperty('transform', `translate3d(0, ${hidden}px, 0)`);
                 shell.querySelector('.doll-wishlist-foot-dock')?.style.setProperty('transform', `translate3d(0, ${-hidden}px, 0)`);
             }
@@ -3247,11 +3273,18 @@ document.addEventListener("DOMContentLoaded", async function() {
     function animateIconCollapseTo(target, duration = 280) {
         cancelIconCollapseTween();
         const start = iconCollapseDisplayed;
+        const panelStart = panelRevealDisplayed;
+        // A composer can take over mid-scroll. Commit the currently displayed
+        // positions before native timeline animation is disabled for its tween.
+        paintedCollapseProgress = NaN;
+        if (target === 1) setIconCollapseProgress(start, { panelProgress: panelStart });
         const startTime = performance.now();
         function tick(now) {
-            const t = Math.min(1, (now - startTime) / duration);
+            const t = Math.max(0, Math.min(1, (now - startTime) / duration));
             const eased = 1 - Math.pow(1 - t, 3);
-            setIconCollapseProgress(start + (target - start) * eased);
+            setIconCollapseProgress(start + (target - start) * eased, {
+                panelProgress: panelStart + (target - panelStart) * eased,
+            });
             iconCollapseTweenRaf = t < 1 ? window.requestAnimationFrame(tick) : 0;
         }
         iconCollapseTweenRaf = window.requestAnimationFrame(tick);
@@ -3277,6 +3310,8 @@ document.addEventListener("DOMContentLoaded", async function() {
             // Native scroll timelines own the visual properties directly and
             // do not need main-thread style writes on every scroll frame.
             writeVisual: !hasNativeScrollCollapse,
+            panelProgress: panelRevealProgress(linearProgress,
+                parseFloat(shell.style.getPropertyValue('--dwl-collapse-distance')), getIconCollapseRange()),
         });
     }
 
