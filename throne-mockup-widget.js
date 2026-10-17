@@ -186,6 +186,10 @@
     let loaderShownAt = 0;
     let masonryResizeObserver = null;
     let masonryRepackRaf = 0;
+    let pendingMasonry = null;
+    let bodyRenderPending = false;
+    let resizePending = false;
+    let flushingDeferredLayout = false;
     const imageHydrationQueue = [];
     const imageHydrationQueued = new Set();
     const activeImageHydrations = new Map();
@@ -1118,6 +1122,11 @@
 
     function revealPreparedWishlistBody(body, run) {
         if (run !== itemsLoadRun || !isWishlistPanelVisible() || !body?.isConnected) return false;
+        if (window.dollIsPanelScrolling?.()) {
+            bodyRenderPending = true;
+            window.dollSchedulePanelFillSync?.({ force: true });
+            return false;
+        }
         body.querySelector('.dwl-initial-image-loader')?.remove();
         body.classList.remove('dwl-images-preparing');
         void body.offsetWidth;
@@ -3033,10 +3042,14 @@
         if (typeof window.ResizeObserver === 'function') {
             panelResizeObserver?.disconnect();
             panelResizeObserver = new ResizeObserver(() => {
-                // Motion setup keeps the panel's flow height unchanged. Never
-                // remeasure a ready viewport during its open session.
-                if (window.dollIsPanelScrolling?.()
-                    || panel.querySelector('.dwl-motion-ready')) return;
+                // Ready viewports stay fixed throughout their open session;
+                // retain an actual resize until the shared scroll lock clears.
+                if (!panel.classList.contains('active')) return;
+                if (window.dollIsPanelScrolling?.()) {
+                    window.dollSchedulePanelFillSync?.({ force: true });
+                    return;
+                }
+                if (panel.querySelector('.dwl-motion-ready')) return;
                 syncReservedHeight();
             });
             panelResizeObserver.observe(panel);
@@ -3201,8 +3214,47 @@
     }
 
     function syncReservedHeight(force = false) {
-        if (!panel) return;
-        if (!force && !panel?.classList.contains('active')) return;
+        if (!panel || flushingDeferredLayout) return;
+        if (!panel.classList.contains('active') && !panelOpening) return;
+        if (window.dollIsPanelScrolling?.()) {
+            window.dollSchedulePanelFillSync?.({ force: true });
+            return;
+        }
+        const bodyBefore = panel.querySelector('.doll-wishlist-body');
+        const restoreTop = bodyRenderPending ? bodyBefore?.scrollTop : null;
+        // All background work converges here after the shared activity lock
+        // releases. Inner render helpers must not start another sizing pass.
+        flushingDeferredLayout = true;
+        try {
+            if (bodyRenderPending) {
+                bodyRenderPending = false;
+                renderBody();
+                if (loadState === 'ready') {
+                    const body = panel.querySelector('.doll-wishlist-body');
+                    materializeMasonryColumns(body);
+                    setupProgressiveItemImages(body);
+                    renderFoot();
+                }
+            }
+            if (pendingMasonry) {
+                const masonry = pendingMasonry;
+                pendingMasonry = null;
+                window.cancelAnimationFrame(masonryRepackRaf);
+                masonryRepackRaf = 0;
+                if (masonry.isConnected) {
+                    if (masonry.classList.contains('dwl-masonry-materialized')) packMasonryColumns(masonry);
+                    else materializeMasonryColumns(masonry.closest('.doll-wishlist-body'));
+                }
+            }
+            if (resizePending) {
+                resizePending = false;
+                renderDots();
+                updateActiveDot();
+                syncTitleMarquees();
+            }
+        } finally {
+            flushingDeferredLayout = false;
+        }
         const host = panel.closest('.toggle-container');
         if (!host) return;
         // The scroll cap lives on .doll-wishlist-body, but the checkout foot
@@ -3229,6 +3281,9 @@
         const hostRect = host.getBoundingClientRect();
         const neededHeight = Math.max(60, Math.ceil(panelRect.bottom - hostRect.top + 4));
         host.style.setProperty('--dwl-wishlist-height', `${neededHeight}px`);
+        if (restoreTop != null && body) body.scrollTop = restoreTop;
+        window.dollRefreshPanelScrollExtent?.(body);
+        window.dollUpdateScrollEdgeState?.(body, shell);
     }
     // Exposed for the shared settled-resize scheduler in script.js. It is not
     // called by the scroll-driven icon morph; that separation keeps Safari's
@@ -3334,6 +3389,11 @@
 
     function renderDots() {
         if (!panel) return;
+        if (window.dollIsPanelScrolling?.()) {
+            resizePending = true;
+            window.dollSchedulePanelFillSync?.({ force: true });
+            return;
+        }
         syncReservedHeight();
         const dotsEl = panel.querySelector('.doll-wishlist-dots');
         const scroll = panel.querySelector('.doll-wishlist-scroll');
@@ -3411,6 +3471,7 @@
 
     function onWishlistBodyScroll(event) {
         const body = event.currentTarget;
+        if (!panel?.classList.contains('active') || !body.isConnected) return;
         scheduleScrolledPawBoop(body);
         if (!body.classList.contains('dwl-scroll-body')) return;
         const shell = body.closest('.doll-wishlist-scroll-shell');
@@ -3419,6 +3480,7 @@
         if (bodyScrollRaf) return;
         bodyScrollRaf = window.requestAnimationFrame(() => {
             bodyScrollRaf = 0;
+            if (!panel?.classList.contains('active') || !body.isConnected) return;
             window.dollSetIconsScrollProgress?.(body.scrollTop);
             updateWishlistEdgeFade(body);
         });
@@ -3491,6 +3553,7 @@
     }
 
     function stopMasonryRepacking() {
+        pendingMasonry = null;
         masonryResizeObserver?.disconnect();
         masonryResizeObserver = null;
         if (masonryRepackRaf) {
@@ -3503,6 +3566,11 @@
     // Reads `order` (the list order captured before anything moved) rather than
     // DOM order, because after one pass the DOM order is column-by-column.
     function packMasonryColumns(masonry) {
+        if (window.dollIsPanelScrolling?.()) {
+            pendingMasonry = masonry;
+            window.dollSchedulePanelFillSync?.({ force: true });
+            return;
+        }
         const columns = masonry?.querySelector('.dwl-masonry-columns');
         const order = masonry?.dwlCardOrder;
         if (!columns || !order?.length) return;
@@ -3580,10 +3648,24 @@
     }
 
     function scheduleMasonryRepack(masonry) {
+        if (!masonry.isConnected || !panel?.classList.contains('active')) return;
+        pendingMasonry = masonry;
+        if (window.dollIsPanelScrolling?.()) {
+            window.dollSchedulePanelFillSync?.({ force: true });
+            return;
+        }
         if (masonryRepackRaf) return;
         masonryRepackRaf = window.requestAnimationFrame(() => {
             masonryRepackRaf = 0;
-            if (masonry.isConnected) packMasonryColumns(masonry);
+            if (window.dollIsPanelScrolling?.()) {
+                window.dollSchedulePanelFillSync?.({ force: true });
+                return;
+            }
+            const current = pendingMasonry;
+            pendingMasonry = null;
+            if (current?.isConnected && panel?.classList.contains('active')) {
+                packMasonryColumns(current);
+            }
         });
     }
 
@@ -3591,6 +3673,11 @@
         if (wishlistViewMode !== 'masonry' || !body) return;
         const masonry = body.querySelector('.doll-wishlist-masonry');
         if (!masonry || masonry.classList.contains('dwl-masonry-materialized')) return;
+        if (window.dollIsPanelScrolling?.()) {
+            pendingMasonry = masonry;
+            window.dollSchedulePanelFillSync?.({ force: true });
+            return;
+        }
 
         const cards = Array.from(masonry.children).filter(child => (
             child.classList.contains('doll-wishlist-item')
@@ -3702,7 +3789,8 @@
         const later = delay => {
             pawBoopTimer = window.setTimeout(() => runPawBoop(body, run), delay);
         };
-        if (document.hidden
+        if (window.dollIsPanelScrolling?.()
+            || document.hidden
             || panelOpening
             || previewItemId !== null
             || document.body.classList.contains('first-visit-tour-active')
@@ -3803,6 +3891,11 @@
 
     function renderBody() {
         if (!panel) return;
+        if (window.dollIsPanelScrolling?.()) {
+            bodyRenderPending = true;
+            window.dollSchedulePanelFillSync?.({ force: true });
+            return;
+        }
         const body = panel.querySelector('.doll-wishlist-body');
         stopPawBoops();
         titleMarqueeObserver?.disconnect();
@@ -4009,7 +4102,12 @@
     }
 
     function syncTitleMarquees(root = panel) {
-        if (!root) return;
+        if (!root?.isConnected || !panel?.classList.contains('active')) return;
+        if (window.dollIsPanelScrolling?.()) {
+            resizePending = true;
+            window.dollSchedulePanelFillSync?.({ force: true });
+            return;
+        }
         titleMarqueeObserver?.disconnect();
         titleMarqueeObserver = null;
         const sheet = getMarqueeStyleSheet();
@@ -4691,6 +4789,9 @@
         closePreview();
         clearIframeFallbackWatchdog();
         stopMasonryRepacking();
+        bodyRenderPending = resizePending = false;
+        window.cancelAnimationFrame(resizeRaf);
+        resizeRaf = 0;
         stopPawBoops();
         cancelSwipeHintSequence();
         document.body.classList.remove('has-wishlist-panel-open', 'has-wishlist-selection');
@@ -4728,6 +4829,12 @@
         if (resizeRaf || loadState !== 'ready') return;
         resizeRaf = window.requestAnimationFrame(() => {
             resizeRaf = 0;
+            if (!panel?.classList.contains('active')) return;
+            if (window.dollIsPanelScrolling?.()) {
+                resizePending = true;
+                window.dollSchedulePanelFillSync?.({ force: true });
+                return;
+            }
             renderDots();
             updateActiveDot();
             syncTitleMarquees();

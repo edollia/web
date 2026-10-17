@@ -6123,14 +6123,26 @@ body:is(.has-social-panel-open,.has-wishlist-panel-open,.has-posts-panel-open) .
     }
 }
 
-/* Labels leave first, then the circles and pill crossfade while gathering.
-   A fade over just 22% of the range left fast flicks with very few
-   intermediate states, even at a steady frame rate. Keep the same total
-   travel, but distribute the crossfade across more of that native scroll. */
+/* Pause decorative layers only. Scroll timelines and the navigation morph
+   keep following the native scroller throughout dragging and momentum. */
+body.is-panel-scroll-busy .dwl-icons-row .icon-container::after,
+body.is-panel-scroll-busy #support-menu-button .wishes-swirl-glyph,
+body.is-panel-scroll-busy .main-screen.ui-ready .support-menu-button:not(.open) > .menu-main-icon,
+body.is-panel-scroll-busy .answer-text .answer-link::after,
+body.is-panel-scroll-busy .doll-wishlist-item .dwl-glow,
+body.is-panel-scroll-busy .doll-wishlist-name.dwl-marquee > span,
+body.is-panel-scroll-busy .doll-wishlist-cart-btn .dwl-paw,
+body.is-panel-scroll-busy .doll-wishlist-cart-btn .dwl-paw-float,
+body.is-panel-scroll-busy .doll-wishlist-cart-btn .dwl-paw-wave,
+body.is-panel-scroll-busy .doll-wishlist-item.dwl-paw-boop .doll-wishlist-cart-btn {
+    animation-play-state:paused !important;
+}
+
+/* Labels leave first; the circles meet the pill near the compact endpoint. */
 @property --nav-morph { syntax:"<number>"; inherits:true; initial-value:0; }
 .button-group { --nav-morph:var(--dwl-collapse,0); }
 .dwl-icons-row {
-    opacity:clamp(0, calc((.88 - var(--nav-morph)) / .53), 1);
+    opacity:clamp(0, calc((.88 - var(--nav-morph)) / .22), 1);
     transform:translate(-50%, calc(-50% - 10px * var(--nav-morph)));
 }
 .dwl-icons-row .icon-container {
@@ -6145,7 +6157,7 @@ body:is(.has-social-panel-open,.has-wishlist-panel-open,.has-posts-panel-open) .
     opacity:clamp(0, calc(1 - 4 * var(--nav-morph)), 1);
 }
 .dwl-icons-pill {
-    opacity:clamp(0, calc((var(--nav-morph) - .45) / .47), 1);
+    opacity:clamp(0, calc((var(--nav-morph) - .66) / .26), 1);
     transform:translate(-50%,calc(-50% - 19px * var(--nav-morph)))
         scale(calc(.84 + .16 * var(--nav-morph)));
 }
@@ -6154,7 +6166,7 @@ body:is(.has-social-panel-open,.has-wishlist-panel-open,.has-posts-panel-open) .
    every scroll sample, even though only these small layers were moving. */
 @keyframes navRowFade {
     0% { opacity:1; }
-    35% { opacity:1; }
+    66% { opacity:1; }
     88% { opacity:0; }
     100% { opacity:0; }
 }
@@ -6165,7 +6177,7 @@ body:is(.has-social-panel-open,.has-wishlist-panel-open,.has-posts-panel-open) .
 }
 @keyframes navPillFade {
     0% { opacity:0; }
-    45% { opacity:0; }
+    66% { opacity:0; }
     92% { opacity:1; }
     100% { opacity:1; }
 }

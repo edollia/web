@@ -264,6 +264,10 @@ document.addEventListener("DOMContentLoaded", async function() {
     function retryMountedSocialVideo(key, video, canonicalSource, reason) {
         if (!(video instanceof HTMLVideoElement)
             || video.dataset.socialRetryUsed === 'true') return false;
+        if (window.dollIsPanelScrolling?.()) {
+            video.dataset.socialPreviewFailed = 'true';
+            return true;
+        }
         video.dataset.socialRetryUsed = 'true';
         video.dataset.configuredSource = canonicalSource;
         delete video.dataset.socialFrameReady;
@@ -2786,6 +2790,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     // leading spacer keeps the initial cards in their expanded positions.
     function configureScrollMotion(shell, scroller, baseElement = scroller, { enabled = true } = {}) {
         if (!shell || !scroller || !baseElement) return false;
+        if (deferPanelLayout()) return false;
         const stageRestore = clearScrollMotion(shell);
         if (!enabled) return false;
 
@@ -2947,7 +2952,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         extraReserve = 0,
         visualShift = 0,
     } = {}) {
-        if (!panel) return;
+        if (!panel || deferPanelLayout()) return;
         const footer = document.querySelector('.site-brand-footer');
         // getBoundingClientRect() is expressed in layout-viewport coordinates.
         // iOS can pan its smaller visual viewport inside that layout viewport,
@@ -2976,57 +2981,150 @@ document.addEventListener("DOMContentLoaded", async function() {
     // bottom and therefore do not resize an open card. Width/orientation and a
     // genuinely smaller keyboard viewport still settle through this scheduler.
     let panelFillTimer = 0;
+    let panelFillRaf = 0;
     let panelScrollIdleTimer = 0;
+    let panelScrollSettleRaf = 0;
     let panelScrolling = false;
+    let panelTouchDown = false;
+    let panelAwaitingScrollEnd = false;
+    let panelActivityScroller = null;
     let panelFillPending = false;
     let panelFillForcePending = false;
     let lastPanelViewportWidth = window.visualViewport?.width || window.innerWidth;
     let lastPanelViewportBottom = getStableVisibleViewportBottom();
-    // The visible bottom the panels are currently sized against. Only a sync
-    // that actually runs moves this, which is what lets an animated toolbar's
-    // many small steps accumulate into one growth worth reacting to.
+    // Only a layout that actually runs advances the applied viewport size.
     let appliedViewportBottom = lastPanelViewportBottom;
 
     function hasOpenScrollPanel() {
-        return document.body.classList.contains('has-social-panel-open')
-            || document.body.classList.contains('has-wishlist-panel-open')
-            || document.body.classList.contains('has-posts-panel-open');
+        return Boolean(getOpenPanelScroller());
     }
 
-    function markPanelScrollActivity() {
-        panelScrolling = true;
+    function cancelPanelFillWork() {
+        window.clearTimeout(panelFillTimer);
+        window.cancelAnimationFrame(panelFillRaf);
+        panelFillTimer = panelFillRaf = 0;
+        // Keep the pending flags until a stationary layout actually runs.
+    }
+
+    function syncPanelDecoration() {
+        const paused = panelScrolling || document.hidden;
+        document.body.classList.toggle('is-panel-scroll-busy', paused);
+        if (paused) {
+            document.querySelectorAll('video.social-link-preview').forEach(video => video.pause());
+        } else {
+            resumeVisibleSocialPreviews();
+        }
+    }
+
+    function resetPanelScrollActivity() {
+        const scroller = panelActivityScroller || getOpenPanelScroller();
+        if (scroller) {
+            window.cancelAnimationFrame(panelScrollRafs.get(scroller));
+            panelScrollRafs.delete(scroller);
+        }
         window.clearTimeout(panelScrollIdleTimer);
-        panelScrollIdleTimer = window.setTimeout(() => {
-            panelScrolling = false;
-            reconcilePanelScrollState();
-            // The browser toolbar usually retracts during this scroll. Now that
-            // the finger is off, claim the space it left instead of keeping the
-            // panel and the footer frozen above an empty band.
-            const grew = adoptGrownViewportHeight();
-            if (grew) panelFillPending = true;
-            if (panelFillPending) {
-                schedulePanelFillSync({ force: panelFillForcePending || grew });
-            }
-        }, 180);
+        window.cancelAnimationFrame(panelScrollSettleRaf);
+        cancelPanelFillWork();
+        panelScrollIdleTimer = panelScrollSettleRaf = 0;
+        panelScrolling = panelTouchDown = panelAwaitingScrollEnd = false;
+        panelActivityScroller = null;
+        panelFillPending = panelFillForcePending = false;
+        syncPanelDecoration();
+    }
+
+    function settlePanelScroll(scroller = panelActivityScroller) {
+        if (!panelScrolling || panelTouchDown || document.hidden
+            || scroller !== panelActivityScroller || scroller !== getOpenPanelScroller()) return;
+        window.clearTimeout(panelScrollIdleTimer);
+        window.cancelAnimationFrame(panelScrollSettleRaf);
+        // A quiet timer alone can fire between momentum updates. Confirm the
+        // same position across two frames; this is a finite check, not a loop.
+        const top = scroller.scrollTop;
+        panelScrollSettleRaf = window.requestAnimationFrame(() => {
+            panelScrollSettleRaf = window.requestAnimationFrame(() => {
+                panelScrollSettleRaf = 0;
+                if (panelTouchDown || document.hidden || scroller !== panelActivityScroller
+                    || scroller !== getOpenPanelScroller()) return;
+                if (scroller.scrollTop !== top) {
+                    armPanelScrollIdle();
+                    return;
+                }
+                panelScrolling = false;
+                panelActivityScroller = null;
+                reconcilePanelScrollState(scroller);
+                const grew = adoptGrownViewportHeight();
+                if (panelFillPending || grew) {
+                    schedulePanelFillSync({ force: panelFillForcePending || grew });
+                }
+                syncPanelDecoration();
+            });
+        });
+    }
+
+    function armPanelScrollIdle() {
+        window.clearTimeout(panelScrollIdleTimer);
+        // Native scrollend owns momentum settlement when supported. The quiet
+        // timer covers older Safari and a touch that never actually scrolled.
+        if (panelAwaitingScrollEnd) return;
+        panelScrollIdleTimer = window.setTimeout(() => settlePanelScroll(), 180);
+    }
+
+    function markPanelScrollActivity(scroller = getOpenPanelScroller()) {
+        if (!scroller || scroller !== getOpenPanelScroller()) return;
+        const wasScrolling = panelScrolling;
+        panelActivityScroller = scroller;
+        panelScrolling = true;
+        cancelPanelFillWork();
+        window.cancelAnimationFrame(panelScrollSettleRaf);
+        panelScrollSettleRaf = 0;
+        armPanelScrollIdle();
+        if (!wasScrolling) syncPanelDecoration();
     }
     window.dollMarkPanelScrollActivity = markPanelScrollActivity;
-    window.dollIsPanelScrolling = () => panelScrolling;
+    window.dollIsPanelScrolling = () => panelScrolling || document.hidden;
+
+    document.addEventListener('touchstart', event => {
+        const scroller = getOpenPanelScroller();
+        if (!scroller?.contains(event.target)) return;
+        panelTouchDown = true;
+        markPanelScrollActivity(scroller);
+    }, { passive: true, capture: true });
+    const releasePanelTouch = event => {
+        if (!panelTouchDown || event.touches.length) return;
+        panelTouchDown = false;
+        // Releasing a finger starts momentum; it does not finish scrolling.
+        armPanelScrollIdle();
+    };
+    document.addEventListener('touchend', releasePanelTouch, { passive: true, capture: true });
+    document.addEventListener('touchcancel', releasePanelTouch, { passive: true, capture: true });
+    document.addEventListener('scrollend', event => {
+        if (event.target !== panelActivityScroller) return;
+        panelAwaitingScrollEnd = false;
+        settlePanelScroll(event.target);
+    }, { passive: true, capture: true });
+
+    function deferPanelLayout() {
+        if (!panelScrolling && !document.hidden) return false;
+        schedulePanelFillSync({ force: true });
+        return true;
+    }
 
     function schedulePanelFillSync({ force = false } = {}) {
-        // Browser-toolbar height changes are intentionally frozen until the
-        // panel closes. This keeps both native and fallback scrollers immutable
-        // under a finger and during momentum.
         if (hasOpenScrollPanel() && !force) return;
         panelFillPending = true;
         panelFillForcePending ||= force;
-        window.clearTimeout(panelFillTimer);
-        if (panelScrolling) return;
+        cancelPanelFillWork();
+        if (panelScrolling || document.hidden) return;
+        const scroller = getOpenPanelScroller();
         panelFillTimer = window.setTimeout(() => {
-            const forceSync = panelFillForcePending;
-            panelFillPending = false;
-            panelFillForcePending = false;
-            appliedViewportBottom = getStableVisibleViewportBottom();
-            window.requestAnimationFrame(() => {
+            panelFillTimer = 0;
+            if (panelScrolling || document.hidden || scroller !== getOpenPanelScroller()) return;
+            panelFillRaf = window.requestAnimationFrame(() => {
+                panelFillRaf = 0;
+                if (panelScrolling || document.hidden || scroller !== getOpenPanelScroller()) return;
+                const forceSync = panelFillForcePending;
+                panelFillPending = panelFillForcePending = false;
+                appliedViewportBottom = getStableVisibleViewportBottom();
                 if (document.body.classList.contains('has-social-panel-open')) {
                     window.dollSyncSocialReservedHeight?.(forceSync);
                 } else if (document.body.classList.contains('has-wishlist-panel-open')) {
@@ -3034,9 +3132,12 @@ document.addEventListener("DOMContentLoaded", async function() {
                 } else if (document.body.classList.contains('has-posts-panel-open')) {
                     syncPostsPanelSpace(forceSync);
                 }
+                reconcilePanelScrollState();
             });
         }, 120);
     }
+    // The wishlist uses this same deferred pass for media/masonry updates.
+    window.dollSchedulePanelFillSync = schedulePanelFillSync;
 
     function handlePanelViewportResize() {
         const visualViewport = window.visualViewport;
@@ -3127,7 +3228,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             // No progress variable invalidates the icons or panel descendants.
             const row = group.querySelector('.dwl-icons-row');
             if (row) {
-                row.style.opacity = Math.max(0, Math.min(1, (.88 - clamped) / .53));
+                row.style.opacity = Math.max(0, Math.min(1, (.88 - clamped) / .22));
                 row.style.transform = `translate(-50%, calc(-50% - ${10 * clamped}px))`;
                 [...row.children].forEach((icon, index) => {
                     const x = index === 0 ? 49 : index === 2 ? -49 : 0;
@@ -3138,7 +3239,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             }
             const pill = document.getElementById('dwl-icons-pill');
             if (pill) {
-                pill.style.opacity = Math.max(0, Math.min(1, (clamped - .45) / .47));
+                pill.style.opacity = Math.max(0, Math.min(1, (clamped - .66) / .26));
                 pill.style.transform = `translate(-50%, calc(-50% - ${19 * clamped}px)) scale(${.84 + .16 * clamped})`;
             }
             const main = document.querySelector('.main-screen');
@@ -3242,6 +3343,12 @@ document.addEventListener("DOMContentLoaded", async function() {
     }
 
     function resetIconsCollapse() {
+        // A visual reset (for example, finishing the composer tween) must not
+        // end a gesture. Closing/replacing its owning panel does cancel it.
+        const scroller = getOpenPanelScroller();
+        if (!scroller || (panelActivityScroller && panelActivityScroller !== scroller)) {
+            resetPanelScrollActivity();
+        }
         document.body.classList.remove('has-community-composer-collapse');
         document.getElementById('community-hub')?.classList.remove('is-composer-collapsed');
         cancelIconCollapseTween();
@@ -3303,21 +3410,15 @@ document.addEventListener("DOMContentLoaded", async function() {
     window.dollUpdateScrollEdgeState = updateScrollEdgeState;
 
     const panelScrollRafs = new WeakMap();
-    const panelScrollEndBound = new WeakSet();
     function queuePanelScrollUpdate(scroller, shell) {
-        if (!scroller || !shell) return false;
+        if (!scroller || !shell || scroller !== getOpenPanelScroller()) return false;
         releaseIconHitTestingAtTop(scroller);
-        if (!panelScrollEndBound.has(scroller)) {
-            panelScrollEndBound.add(scroller);
-            scroller.addEventListener('scrollend', () => {
-                reconcilePanelScrollState(scroller);
-                updateScrollEdgeState(scroller, shell);
-            }, { passive: true });
-        }
-        markPanelScrollActivity();
+        panelAwaitingScrollEnd = 'onscrollend' in scroller;
+        markPanelScrollActivity(scroller);
         if (panelScrollRafs.has(scroller)) return true;
         const raf = window.requestAnimationFrame(() => {
             panelScrollRafs.delete(scroller);
+            if (scroller !== getOpenPanelScroller()) return;
             // Finish scroll reads before changing header/icon styles. Reading
             // scrollTop after those writes forced another style flush per frame
             // in the older-Safari path.
@@ -3351,6 +3452,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     let postsPanelResizeObserver = null;
     let postsPanelSpaceRaf = 0;
     let postsPanelSpaceForcePending = false;
+    let postsPanelRenderPending = null;
     let postsOpenGeneration = 0;
     let communityComposerTransitionGeneration = 0;
     let communityComposerTransitionRaf = 0;
@@ -3464,7 +3566,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     }
 
     function restoreCommunityComposerScrollPosition() {
-        if (!communityScrollBody) return;
+        if (!communityScrollBody || deferPanelLayout()) return;
         const maxScroll = Math.max(
             0,
             communityScrollBody.scrollHeight - communityScrollBody.clientHeight
@@ -3492,7 +3594,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     }
 
     function syncCommunityComposerHeight({ immediate = true } = {}) {
-        if (!communityComposerSlot || !communityHub) return;
+        if (!communityComposerSlot || !communityHub || deferPanelLayout()) return;
         const mode = resolveCommunityComposerMode(communityHub.dataset.composerMode || 'closed');
         const targetHeight = measureCommunityComposerHeight(mode);
         if (immediate) {
@@ -3523,6 +3625,7 @@ document.addEventListener("DOMContentLoaded", async function() {
 
     function setCommunityComposerMode(requestedMode, { focus = false, immediate = false } = {}) {
         if (!communityHub) return;
+        resetPanelScrollActivity();
         immediate ||= prefersReducedLoadingMotion;
         const askForm = document.getElementById('ask-form-container');
         const mode = resolveCommunityComposerMode(requestedMode);
@@ -3826,10 +3929,12 @@ document.addEventListener("DOMContentLoaded", async function() {
     }
 
     function schedulePostsPanelSpaceSync(force = false) {
+        if (!postsPanel?.classList.contains('active')) return;
         postsPanelSpaceForcePending ||= force;
         if (postsPanelSpaceRaf) return;
         postsPanelSpaceRaf = window.requestAnimationFrame(() => {
             postsPanelSpaceRaf = 0;
+            if (!postsPanel?.classList.contains('active') || deferPanelLayout()) return;
             const forceSync = postsPanelSpaceForcePending;
             postsPanelSpaceForcePending = false;
             syncPostsPanelSpace(forceSync);
@@ -3837,7 +3942,15 @@ document.addEventListener("DOMContentLoaded", async function() {
     }
 
     function syncPostsPanelSpace(force = false) {
-        if (!postsPanel?.classList.contains('active')) return;
+        if (!postsPanel?.classList.contains('active') || deferPanelLayout()) return;
+        const renderPending = postsPanelRenderPending;
+        postsPanelRenderPending = null;
+        if (renderPending) {
+            void renderPending().catch(error => {
+                if (error?.name !== 'AbortError') console.error('Error rendering deferred wall:', error);
+            });
+        }
+        postsPanelSpaceForcePending = false;
         const host = postsPanel.closest('.toggle-container');
         const card = postsPanel.querySelector('.popup-content');
         if (!host || !card) return;
@@ -3892,6 +4005,8 @@ document.addEventListener("DOMContentLoaded", async function() {
         document.body.classList.toggle('has-posts-panel-open', open);
         const host = postsPanel?.closest('.toggle-container');
         if (!open) {
+            postsPanelRenderPending = null;
+            resetPanelScrollActivity();
             clearScrollMotion(communityHub);
             clearScrollMotion(postsPanel);
             host?.style.removeProperty('--posts-panel-height');
@@ -3912,7 +4027,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         if (measuredSurface && typeof window.ResizeObserver === 'function') {
             postsPanelResizeObserver?.disconnect();
             postsPanelResizeObserver = new ResizeObserver(() => {
-                if (panelScrolling) return;
+                if (deferPanelLayout()) return;
                 schedulePostsPanelSpaceSync();
             });
             postsPanelResizeObserver.observe(measuredSurface);
@@ -4311,7 +4426,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     }
 
     function trimSocialCardPreviewCache() {
-        if (socialPreviewPreparationCount) return;
+        if (socialPreviewPreparationCount || panelScrolling || document.hidden) return;
         const loadedCards = getVisibleSocialOptions().filter(card => (
             card.querySelector('.social-link-preview[src]')
         ));
@@ -4361,7 +4476,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     }
 
     function syncSocialCardVideo(key, card, loadMedia = false) {
-        if (!card) return;
+        if (!card || panelScrolling || document.hidden) return;
         const url = getSocialCardVideoUrl(key);
         if (!url || !isPublicLinkEnabled(key)) {
             removeSocialCardVideo(card);
@@ -4435,6 +4550,9 @@ document.addEventListener("DOMContentLoaded", async function() {
                     }
                     touchSocialCardPreview(card);
                     trimSocialCardPreviewCache();
+                    // Readiness can arrive after a gesture or a playback
+                    // request. The same activity/visibility gate owns retries.
+                    if (preview instanceof HTMLVideoElement) playSocialPreview(preview);
                 };
                 void revealReadyPreview();
             });
@@ -4541,10 +4659,13 @@ document.addEventListener("DOMContentLoaded", async function() {
     }
 
     function playSocialPreview(preview) {
-        if (!(preview instanceof HTMLVideoElement)
+        if (panelScrolling
+            || !(preview instanceof HTMLVideoElement)
             || document.hidden
             || preview.parentElement?.dataset.socialPreviewFallback === 'true'
             || !socialsButton?.classList.contains('open')
+            || !preview.isConnected
+            || !isSocialCardVisibleInPanel(preview.parentElement)
             || !preview.getAttribute('src')
             || !preview.paused
             || preview.dataset.socialPlayPending === 'true') return;
@@ -4559,13 +4680,19 @@ document.addEventListener("DOMContentLoaded", async function() {
         }
         let shouldRetryWhenReady = false;
         Promise.resolve(playAttempt)
-            .then(() => { delete preview.dataset.socialPlayRetryUsed; })
+            .then(() => {
+                delete preview.dataset.socialPlayRetryUsed;
+                if (panelScrolling || document.hidden || !preview.isConnected
+                    || !socialsButton?.classList.contains('open')
+                    || !isSocialCardVisibleInPanel(preview.parentElement)) preview.pause();
+            })
             .catch(() => {
                 shouldRetryWhenReady = preview.dataset.socialPlayRetryUsed !== 'true';
             })
             .finally(() => {
                 delete preview.dataset.socialPlayPending;
                 if (!shouldRetryWhenReady
+                    || panelScrolling
                     || document.hidden
                     || !socialsButton?.classList.contains('open')) return;
                 preview.dataset.socialPlayRetryUsed = 'true';
@@ -4681,10 +4808,13 @@ document.addEventListener("DOMContentLoaded", async function() {
                 const alreadyReady = allReady();
                 const remainingMs = Math.max(0, deadline - performance.now());
                 candidates.forEach(({ card, preview }) => {
-                    if (!(preview instanceof HTMLVideoElement) || isSocialPreviewReady(preview)) return;
+                    if (panelScrolling || document.hidden
+                        || !(preview instanceof HTMLVideoElement) || isSocialPreviewReady(preview)) return;
                     try {
                         Promise.resolve(preview.play()).then(() => {
-                            if (!socialsButton?.classList.contains('open')
+                            if (panelScrolling || document.hidden
+                                || !socialsButton?.classList.contains('open')
+                                || !isSocialCardVisibleInPanel(card)
                                 || card.dataset.socialPreviewFallback === 'true') preview.pause();
                         }).catch(() => {});
                     } catch (error) {}
@@ -4830,8 +4960,16 @@ document.addEventListener("DOMContentLoaded", async function() {
         return true;
     }
 
+    function resumeVisibleSocialPreviews() {
+        if (panelScrolling || document.hidden || !socialsButton?.classList.contains('open')) return;
+        getSocialCardVideoEntries().forEach(([key, card]) => {
+            if (isSocialCardNearPanel(card)) syncSocialCardVideo(key, card, true);
+        });
+        trimSocialCardPreviewCache();
+    }
+
     function playSocialCardVideos() {
-        if (document.hidden || !socialsButton?.classList.contains('open')) return;
+        if (panelScrolling || document.hidden || !socialsButton?.classList.contains('open')) return;
         window.clearTimeout(socialPreviewReleaseTimer);
         socialPreviewReleaseTimer = 0;
         const usingObserver = observeSocialCardPreviews();
@@ -5620,7 +5758,8 @@ document.addEventListener("DOMContentLoaded", async function() {
     // shifts the panel's own top without changing the panel's own height).
     function syncSocialReservedHeight(force = false) {
         if (!socialLinksPanel || !socialLinksShell) return;
-        if (!force && !socialLinksShell.classList.contains('active')) return;
+        if ((!socialLinksShell.classList.contains('active')
+            && !socialLinksShell.classList.contains('measure-open')) || deferPanelLayout()) return;
         const host = socialLinksPanel.closest('.toggle-container');
         if (!host) return;
         // Establish the base fill cap, then allocate the final viewport once.
@@ -5647,6 +5786,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         socialOpenGeneration += 1;
         document.dispatchEvent(new Event('doll-social-assets-change'));
         const wasOpen = socialsButton.classList.contains('open');
+        if (wasOpen) resetPanelScrollActivity();
         pauseSocialCardVideos();
         socialsButton.classList.remove('open');
         socialsButton.setAttribute('aria-expanded', 'false');
@@ -5816,9 +5956,17 @@ document.addEventListener("DOMContentLoaded", async function() {
     addMenuActivation(socialsButton, handleSocialsButtonActivate);
     document.addEventListener('visibilitychange', () => {
         if (document.hidden) {
-            pauseSocialCardVideos();
-        } else if (socialsButton?.classList.contains('open')) {
-            playSocialCardVideos();
+            cancelPanelFillWork();
+            window.clearTimeout(panelScrollIdleTimer);
+            window.cancelAnimationFrame(panelScrollSettleRaf);
+            panelTouchDown = false;
+            syncPanelDecoration();
+        } else {
+            panelScrolling = panelAwaitingScrollEnd = false;
+            panelActivityScroller = null;
+            reconcilePanelScrollState();
+            schedulePanelFillSync({ force: true });
+            syncPanelDecoration();
         }
         if (!document.hidden) void verifyCurrentSiteRelease();
         if (!document.hidden && backgroundMusicRequested) {
@@ -7372,7 +7520,13 @@ document.addEventListener("DOMContentLoaded", async function() {
         }
 
         async function loadMoreCommunitySubmissions(openGeneration, signal, control) {
+            if (signal.aborted || openGeneration !== postsOpenGeneration
+                || !postsPopup?.classList.contains('active')) return;
             if (postsLoadMorePromise || !hasMoreSubmissionPages()) return;
+            if (deferPanelLayout()) {
+                postsPanelRenderPending ||= () => loadMoreCommunitySubmissions(openGeneration, signal, control);
+                return;
+            }
             // A keyboard user who pressed this keeps their place: focus moves
             // to the first newly pinned note once the wall re-renders.
             const hadFocus = document.activeElement === control;
@@ -7429,6 +7583,10 @@ document.addEventListener("DOMContentLoaded", async function() {
             if (signal.aborted || openGeneration !== postsOpenGeneration
                 || !postsPopup?.classList.contains('active')) {
                 throw createSubmissionsAbortError();
+            }
+            if (deferPanelLayout()) {
+                postsPanelRenderPending = () => renderCurrentSubmissions(openGeneration, signal);
+                return;
             }
 
             const wallScroller = communityScrollBody || postsContentEl;
