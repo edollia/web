@@ -3220,7 +3220,7 @@ async function runSiteHealthCheck() {
         },
         {
             label: 'share image',
-            run: async () => (await fetch('../screenshotbackground.png', { method: 'HEAD', cache: 'no-store' })).ok
+            run: async () => (await fetch('../site-images/thumbnail-stripes.png?v=2026.10.17.7', { method: 'HEAD', cache: 'no-store' })).ok
         }
     ];
 
