@@ -5,10 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="robots" content="noindex, nofollow">
     <meta name="referrer" content="strict-origin-when-cross-origin">
-    <meta name="doll-build" content="2026.10.17.7">
+    <meta name="doll-build" content="2026.10.18.5">
     <title>Lia Admin</title>
     <link rel="icon" type="image/png" href="/favicon.png">
-    <link rel="stylesheet" href="../admin.css?v=6.2&r=2026.09.06.1">
+    <link rel="stylesheet" href="../admin.css?v=7.4&r=2026.10.18.5">
 </head>
 <body>
     <svg class="admin-icon-sprite" aria-hidden="true">
@@ -26,6 +26,7 @@
         <symbol id="admin-i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/></symbol>
         <symbol id="admin-i-grid" viewBox="0 0 24 24"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/></symbol>
         <symbol id="admin-i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="19" cy="12" r="1.4"/></symbol>
+        <symbol id="admin-i-filter" viewBox="0 0 24 24"><path d="M4 5h16l-6 7v6l-4 2v-8z"/></symbol>
         <symbol id="admin-i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
         <symbol id="admin-i-check" viewBox="0 0 24 24"><path d="m5 12 4.2 4.2L19 6.8"/></symbol>
         <symbol id="admin-i-trash" viewBox="0 0 24 24"><path d="M5 7h14M9 7V4h6v3M7 7l1 13h8l1-13M10 10v7M14 10v7"/></symbol>
@@ -44,15 +45,20 @@
         <symbol id="admin-i-question" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.8 9a2.4 2.4 0 1 1 3.2 2.3c-.8.3-1 1-1 1.7M12 17h.01"/></symbol>
         <symbol id="admin-i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
         <symbol id="admin-i-eye" viewBox="0 0 24 24"><path d="M3 12s3.4-6 9-6 9 6 9 6-3.4 6-9 6-9-6-9-6Z"/><circle cx="12" cy="12" r="2.5"/></symbol>
+        <symbol id="admin-i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7h.01"/></symbol>
+        <symbol id="admin-i-save" viewBox="0 0 24 24"><path d="M5 3h12l4 4v14H3V3h2ZM7 3v6h10V3M7 21v-8h10v8M14 5v2"/></symbol>
+        <symbol id="admin-i-send" viewBox="0 0 24 24"><path d="m3 10 18-7-7 18-3-8-8-3ZM11 13 21 3"/></symbol>
+        <symbol id="admin-i-star" viewBox="0 0 24 24"><path fill="var(--admin-star-fill, none)" d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9L12 3Z"/></symbol>
+        <symbol id="admin-i-user-remove" viewBox="0 0 24 24"><circle cx="9" cy="7" r="4"/><path d="M2 21a7 7 0 0 1 14 0M17 9l5 5M22 9l-5 5"/></symbol>
     </svg>
     <main class="admin-shell">
         <section class="admin-auth-panel" id="gate-panel">
             <div class="admin-auth-card">
-                <p class="admin-kicker">locked</p>
-                <h1>secret door</h1>
+
+                <h1>Admin access</h1>
                 <form id="admin-passcode-form" class="admin-form">
-                    <input id="admin-passcode" type="password" inputmode="numeric" autocomplete="off" maxlength="8" placeholder="passcode">
-                    <button type="submit">enter</button>
+                    <input aria-label="Admin passcode" id="admin-passcode" type="password" inputmode="numeric" autocomplete="off" maxlength="8" placeholder="passcode">
+                    <button type="submit">Continue</button>
                 </form>
                 <p class="admin-status" id="gate-status"></p>
             </div>
@@ -61,18 +67,19 @@
         <section class="admin-auth-panel hidden" id="login-panel">
             <div class="admin-auth-card">
                 <p class="admin-kicker">admin</p>
-                <h1>login</h1>
+                <h1>Log in</h1>
                 <form id="admin-login-form" class="admin-form">
-                    <input id="admin-email" type="email" autocomplete="email" placeholder="email">
-                    <input id="admin-password" type="password" autocomplete="current-password" placeholder="password">
-                    <button type="submit">open</button>
+                    <input aria-label="Email" id="admin-email" type="email" autocomplete="email" placeholder="email">
+                    <input aria-label="Password" id="admin-password" type="password" autocomplete="current-password" placeholder="password">
+                    <button type="submit">Log in</button>
                 </form>
                 <p class="admin-status" id="login-status"></p>
             </div>
         </section>
 
         <section class="admin-dashboard hidden" id="dashboard-panel">
-            <nav class="admin-tabs" id="admin-tabs">
+            <nav class="admin-tabs" id="admin-tabs" aria-label="Dashboard sections">
+                <a class="admin-brand" href="../index.html">doll.gg</a>
                 <button class="active" data-panel="review-panel"><svg aria-hidden="true"><use href="#admin-i-review"></use></svg><span>review <b id="review-tab-count">0</b></span><svg class="admin-nav-drag" aria-hidden="true"><use href="#admin-i-drag"></use></svg></button>
                 <button data-panel="published-panel"><svg aria-hidden="true"><use href="#admin-i-published"></use></svg><span>published <b id="published-tab-count">0</b></span><svg class="admin-nav-drag" aria-hidden="true"><use href="#admin-i-drag"></use></svg></button>
                 <button data-panel="site-panel"><svg aria-hidden="true"><use href="#admin-i-site"></use></svg><span>site</span><svg class="admin-nav-drag" aria-hidden="true"><use href="#admin-i-drag"></use></svg></button>
@@ -85,34 +92,30 @@
 
             <div class="admin-dashboard-main">
             <header class="admin-header">
-                <div class="admin-title-block">
-                    <svg class="admin-brand-icon" aria-hidden="true"><use href="#admin-i-wishlist"></use></svg>
-                    <h1>dashboard</h1>
-                </div>
-                <button class="admin-command-trigger soft" type="button" id="admin-command-open">
-                    <svg aria-hidden="true"><use href="#admin-i-search"></use></svg>
-                    <span>jump to any tool or setting…</span>
-                    <kbd>⌘ K</kbd>
+                <h1 id="admin-page-title">Review</h1>
+                <button class="admin-command-trigger soft" type="button" id="admin-command-open" aria-label="Search tools and content">
+                    <svg aria-hidden="true"><use href="#admin-i-search"></use></svg><span>Search tools and content</span><kbd>⌘ K</kbd>
                 </button>
-                <div class="admin-header-actions">
-                    <span class="admin-save-state" id="admin-save-state" role="status" aria-live="polite">
-                        <span aria-hidden="true"></span><strong>ready</strong>
-                    </span>
-                    <button class="soft" type="button" id="admin-density-toggle" aria-pressed="false" title="Use compact density"><svg aria-hidden="true"><use href="#admin-i-grid"></use></svg><span>compact</span></button>
-                    <a class="admin-back-home" href="../index.html"><svg aria-hidden="true"><use href="#admin-i-home"></use></svg><span>site</span></a>
-                    <button id="refresh-admin"><svg aria-hidden="true"><use href="#admin-i-refresh"></use></svg><span>refresh</span></button>
-                    <button id="logout-admin"><svg aria-hidden="true"><use href="#admin-i-logout"></use></svg><span>logout</span></button>
-                </div>
+                <span class="admin-save-state" id="admin-save-state" role="status" aria-live="polite"><span aria-hidden="true"></span><strong>Saved</strong></span>
+                <button class="soft" type="button" id="admin-arrange-open" aria-pressed="false">Arrange</button>
+                <details class="admin-account-menu">
+                    <summary aria-label="Dashboard actions"><svg aria-hidden="true"><use href="#admin-i-more"></use></svg></summary>
+                    <div class="admin-account-actions">
+                        <a class="admin-back-home" href="../index.html" aria-label="Open public site">Open site</a>
+                        <button id="refresh-admin" type="button" aria-label="Refresh dashboard">Refresh</button>
+                        <button id="logout-admin" type="button" aria-label="Log out">Log out</button>
+                    </div>
+                </details>
             </header>
-
-            <div class="admin-alerts" aria-live="polite">
-                <p id="lockdown-banner" class="hidden">lockdown is ON — only the admin can create or join rooms.</p>
-                <p id="rooms-disabled-banner" class="hidden">rooms are OFF — the public Rooms page is disabled.</p>
+            <div class="admin-arrange-bar" id="admin-arrange-bar" hidden>
+                <span>Arrange dashboard <small>Saved on this browser</small></span>
+                <button type="button" id="admin-arrange-done">Done</button>
+                <button type="button" class="soft" id="admin-arrange-cancel">Cancel</button>
+                <button type="button" class="soft" id="admin-arrange-reset">Reset layout</button>
+                <label class="admin-sidebar-width">Sidebar width <input id="admin-sidebar-width" type="range" min="168" max="280" step="8" value="200"></label>
+                <div id="admin-nav-arrange" aria-label="Arrange navigation"></div>
             </div>
-
-            <section class="admin-stats" id="admin-stats"></section>
-
-            <p class="admin-status" id="admin-status"></p>
+            <p class="admin-status" id="admin-status" role="status" aria-live="polite"></p>
 
             <section class="admin-panel active" id="review-panel">
                 <div class="admin-panel-intro">
@@ -123,7 +126,7 @@
                     <div class="admin-lane-tabs" role="tablist" aria-label="Review queue">
                         <button class="active" type="button" data-admin-review-lane="doods" role="tab" aria-selected="true">doods</button>
                         <button type="button" data-admin-review-lane="asks" role="tab" aria-selected="false">asks</button>
-                        <button type="button" data-admin-review-lane="safety" role="tab" aria-selected="false">safety</button>
+
                     </div>
                 </div>
                 <div class="admin-review-grid">
@@ -134,7 +137,7 @@
                                 <button class="soft" data-bulk-action="select" data-list="pending-drawings-list">select all</button>
                                 <button data-bulk-action="approve" data-list="pending-drawings-list">approve</button>
                                 <button class="danger" data-bulk-action="delete" data-list="pending-drawings-list">delete</button>
-                                <button class="danger emergency" data-bulk-action="delete-all-pending-drawings" data-list="pending-drawings-list">clear waiting</button>
+                                <button class="danger emergency" data-bulk-action="delete-all-pending-drawings" data-list="pending-drawings-list" aria-label="Clear all waiting doods">Clear all</button>
                             </div>
                         </div>
                         <div class="admin-review-dood-layout">
@@ -156,23 +159,13 @@
                         <div class="admin-section-heading">
                             <h2>waiting asks</h2>
                             <div class="admin-bulk-bar compact">
-                                <button class="danger emergency" data-bulk-action="delete-all-pending-questions" data-list="pending-questions-list">clear waiting</button>
+                                <button class="danger emergency" data-bulk-action="delete-all-pending-questions" data-list="pending-questions-list" aria-label="Clear all waiting asks">Clear all</button>
                             </div>
                         </div>
                         <div class="admin-list admin-text-list" id="pending-questions-list"></div>
                     </section>
                 </div>
-                <section class="admin-safety-overview" data-admin-review-content="safety" hidden>
-                    <div class="admin-tool-card">
-                        <div class="admin-card-title-row"><h2>submission controls</h2><span class="admin-preview-pill" id="admin-safety-submissions">loading</span></div>
-                        <p class="admin-tool-note">The real dood, ask, and first-visit switches remain in Site controls so there is only one authoritative copy of each setting.</p>
-                        <button class="soft" type="button" data-admin-jump="site-panel">open site controls</button>
-                    </div>
-                    <div class="admin-tool-card">
-                        <div class="admin-card-title-row"><h2>moderation safeguards</h2><span class="admin-preview-pill">active</span></div>
-                        <ul class="admin-safety-list"><li>user text is escaped</li><li>bulk selections use frozen snapshots</li><li>linked-reaction deletion errors are reported</li><li>partial mutations refresh and report exact results</li></ul>
-                    </div>
-                </section>
+
             </section>
 
             <section class="admin-panel" id="published-panel">
@@ -213,13 +206,14 @@
                     </div>
                 </div>
 
+                <div class="admin-alerts" aria-live="polite"><p id="lockdown-banner" class="hidden">Lockdown is on. Only you can create or join rooms.</p><p id="rooms-disabled-banner" class="hidden">Rooms are off.</p></div>
                 <div class="admin-control-grid">
                     <details class="admin-link-card admin-control-card" data-link-card="rooms-master" open>
                         <summary>
                             <div class="admin-link-card-title">
                                 <span class="admin-link-icon"><svg aria-hidden="true"><use href="#admin-i-rooms"></use></svg></span>
                                 <div>
-                                    <strong>rooms master switch</strong>
+                                    <strong>Enable Rooms</strong>
                                     <small id="rooms-master-state">enabled</small>
                                 </div>
                             </div>
@@ -229,7 +223,7 @@
                             </label>
                         </summary>
                         <div class="admin-link-card-body">
-                            <p class="admin-tool-note">Turn this off to send every public Rooms visit to the 404 page and close active rooms. The homepage note still peels independently.</p>
+                            <p class="admin-tool-note">Turning Rooms off closes active rooms and makes the Rooms page unavailable.</p>
                         </div>
                     </details>
 
@@ -238,7 +232,7 @@
                             <div class="admin-link-card-title">
                                 <span class="admin-link-icon"><svg aria-hidden="true"><use href="#admin-i-lock"></use></svg></span>
                                 <div>
-                                    <strong>rooms lockdown</strong>
+                                    <strong>Private access</strong>
                                     <small id="lockdown-state">off</small>
                                 </div>
                             </div>
@@ -248,24 +242,24 @@
                             </label>
                         </summary>
                         <div class="admin-link-card-body">
-                            <p class="admin-tool-note">No one but you can create or join rooms while this is on.</p>
+                            <p class="admin-tool-note">Only you can create or join rooms while private access is on.</p>
                             <div class="admin-inline-actions">
-                                <button class="danger emergency" type="button" id="btn-force-close-all">force-close all active rooms</button>
+                                <button class="danger emergency" type="button" id="btn-force-close-all">Close all rooms</button>
                             </div>
                         </div>
                     </details>
                 </div>
 
                 <div class="admin-section-heading">
-                    <h2>rooms</h2>
+                    <h2>Recent rooms</h2>
                     <div class="admin-bulk-bar compact">
-                        <button type="button" id="btn-list-recent">list recent</button>
-                        <button type="button" id="btn-list-stale">list stale</button>
-                        <button class="danger" type="button" id="btn-cleanup">cleanup stale</button>
+                        <button type="button" id="btn-list-recent" aria-pressed="true">Recent</button>
+                        <button type="button" id="btn-list-stale" aria-pressed="false">Stale</button>
+                        <details class="admin-secondary-actions"><summary aria-label="More room actions" title="More room actions"><svg aria-hidden="true"><use href="#admin-i-more"></use></svg></summary><div><button class="danger" type="button" id="btn-cleanup">Close stale rooms</button></div></details>
                     </div>
                 </div>
 
-                <p class="admin-status" id="rooms-status"></p>
+                <div class="admin-room-feedback"><p class="admin-status" id="rooms-status" role="status"></p><button type="button" class="soft" id="rooms-retry" hidden>Retry</button></div>
 
                 <div id="table-wrap">
                     <table>
@@ -282,7 +276,7 @@
                     <button class="back-link soft" type="button" id="btn-back"><svg aria-hidden="true"><use href="#admin-i-arrow-left"></use></svg><span>back to list</span></button>
                     <div id="inspect-detail" style="margin-top:14px"></div>
                     <div style="margin-top:14px">
-                        <button class="danger hidden" type="button" id="btn-force-close">force-close this room</button>
+                        <button class="danger hidden" type="button" id="btn-force-close">Close room</button>
                     </div>
                     <div class="participants-list">
                         <p class="admin-section-title">live participants</p>
@@ -291,15 +285,15 @@
                 </div>
 
                 <div class="admin-section-heading">
-                    <h2>global bans</h2>
+                    <h2>Global bans</h2>
                 </div>
                 <form class="bans-form" id="ban-add-form">
-                    <select id="ban-type">
+                    <select id="ban-type" aria-label="Ban type">
                         <option value="session">session</option>
                         <option value="nickname">nickname</option>
                     </select>
-                    <input id="ban-value" type="text" placeholder="value" maxlength="128">
-                    <button type="submit">add ban</button>
+                    <input id="ban-value" aria-label="Ban value" type="text" placeholder="Session ID or nickname" maxlength="128">
+                    <button type="submit">Add ban</button>
                 </form>
                 <div id="bans-table-wrap">
                     <table>
@@ -330,7 +324,7 @@
                                 <div class="admin-link-card-title">
                                     <span class="admin-link-icon"><svg aria-hidden="true"><use href="#admin-i-power"></use></svg></span>
                                     <div>
-                                            <strong>update mode</strong>
+                                            <strong>Maintenance</strong>
                                         <small id="maintenance-state">off</small>
                                     </div>
                                 </div>
@@ -360,7 +354,7 @@
                                 <div class="admin-link-card-title">
                                     <span class="admin-link-icon"><svg aria-hidden="true"><use href="#admin-i-spark"></use></svg></span>
                                     <div>
-                                        <strong>site entrance</strong>
+                                        <strong>Entrance</strong>
                                         <small id="entrance-mode-state">paw press</small>
                                     </div>
                                 </div>
@@ -384,7 +378,7 @@
                                 <div class="admin-link-card-title">
                                     <span class="admin-link-icon"><svg aria-hidden="true"><use href="#admin-i-eye"></use></svg></span>
                                     <div>
-                                        <strong>first-visit tour</strong>
+                                        <strong>First-visit tour</strong>
                                         <small id="first-visit-tour-state">on</small>
                                     </div>
                                 </div>
@@ -408,7 +402,7 @@
                                 <div class="admin-link-card-title">
                                     <span class="admin-link-icon"><svg aria-hidden="true"><use href="#admin-i-edit"></use></svg></span>
                                     <div>
-                                        <strong>posting switches</strong>
+                                        <strong>Submissions</strong>
                                         <small id="submissions-state">open</small>
                                     </div>
                                 </div>
@@ -417,7 +411,7 @@
                                 <label class="admin-toggle-row">
                                     <span>
                                         <strong>doodles</strong>
-                                        <small>drawing button + sends</small>
+                                        <small>Allow visitors to send doods</small>
                                     </span>
                                     <span class="admin-switch">
                                         <input id="drawings-enabled" type="checkbox">
@@ -427,7 +421,7 @@
                                 <label class="admin-toggle-row">
                                     <span>
                                         <strong>questions</strong>
-                                        <small>ask button + sends</small>
+                                        <small>Allow visitors to send asks</small>
                                     </span>
                                     <span class="admin-switch">
                                         <input id="questions-enabled" type="checkbox">
@@ -442,7 +436,7 @@
                                 <div class="admin-link-card-title">
                                     <span class="admin-link-icon"><svg aria-hidden="true"><use href="#admin-i-note"></use></svg></span>
                                     <div>
-                                        <strong>paper note</strong>
+                                        <strong>Homepage note</strong>
                                         <small id="homepage-note-state">blank</small>
                                     </div>
                                 </div>
@@ -452,7 +446,7 @@
                                     <span>text on the homepage note <small id="homepage-note-count">0/220</small></span>
                                     <textarea id="homepage-note-text-input" maxlength="220" placeholder="write directly on the pink note"></textarea>
                                 </label>
-                                <p class="admin-tool-note">Autosaves. Line breaks are kept, and the homepage gently resizes the handwriting so it stays inside the paper.</p>
+                                <p class="admin-tool-note">Appears on the homepage. Line breaks are kept.</p>
                                 <div class="admin-note-preview" id="admin-note-preview" aria-label="Homepage paper note preview">blank note stays hidden</div>
                             </div>
                         </details>
@@ -466,17 +460,11 @@
                             <p class="admin-kicker">links</p>
                             <h2>link cards</h2>
                         </div>
-                        <button class="soft" type="button" id="link-settings-reset">restore defaults</button>
+                        <button class="soft" type="button" id="link-settings-reset">Reset link settings</button>
                     </div>
 
-                    <p class="admin-social-order-note">drag the dotted handle to reorder — mouse or finger — or use the arrow controls for keyboard. changes save automatically.</p>
+                    <div class="admin-order-toolbar"><button class="soft" type="button" id="admin-link-order" aria-pressed="false" aria-label="Edit links">Edit</button><span>Drag or use the arrows to change the order on your site. Changes save automatically.</span></div>
 
-                    <p class="admin-tool-note">These controls manage cards in Links. Manage the Wishes menu and featured items in Wishes.</p>
-
-                    <aside class="admin-social-hosting-pause" role="note">
-                        <strong>local video mode</strong>
-                        <span>Card backgrounds are currently hosted with the website on GitHub Pages. Supabase upload, replace, preview, and remove controls are taking a break; saved Supabase settings and files are preserved.</span>
-                    </aside>
 
                     <div class="admin-link-grid">
                         <details class="admin-link-card" data-link-card="snapchat">
@@ -489,7 +477,7 @@
                                     </div>
                                 </div>
                                 <div class="admin-link-card-actions">
-                                    <button class="soft admin-link-open" type="button" data-link-open="snapchat">open</button>
+                                    <button class="soft admin-link-open" type="button" data-link-open="snapchat">Open link</button>
                                     <label class="admin-switch">
                                         <input id="snapchat-enabled" type="checkbox">
                                         <span></span>
@@ -535,7 +523,7 @@
                                     </div>
                                 </div>
                                 <div class="admin-link-card-actions">
-                                    <button class="soft admin-link-open" type="button" data-link-open="instagram">open</button>
+                                    <button class="soft admin-link-open" type="button" data-link-open="instagram">Open link</button>
                                     <label class="admin-switch">
                                         <input id="instagram-enabled" type="checkbox">
                                         <span></span>
@@ -582,7 +570,7 @@
                                     </div>
                                 </div>
                                 <div class="admin-link-card-actions">
-                                    <button class="soft admin-link-open" type="button" data-link-open="kofi">open</button>
+                                    <button class="soft admin-link-open" type="button" data-link-open="kofi">Open link</button>
                                     <label class="admin-switch">
                                         <input id="kofi-enabled" type="checkbox">
                                         <span></span>
@@ -628,7 +616,7 @@
                                     </div>
                                 </div>
                                 <div class="admin-link-card-actions">
-                                    <button class="soft admin-link-open" type="button" data-link-open="telegram">open</button>
+                                    <button class="soft admin-link-open" type="button" data-link-open="telegram">Open link</button>
                                     <label class="admin-switch">
                                         <input id="telegram-enabled" type="checkbox">
                                         <span></span>
@@ -674,7 +662,7 @@
                                     </div>
                                 </div>
                                 <div class="admin-link-card-actions">
-                                    <button class="soft admin-link-open" type="button" data-link-open="x">open</button>
+                                    <button class="soft admin-link-open" type="button" data-link-open="x">Open link</button>
                                     <label class="admin-switch">
                                         <input id="x-enabled" type="checkbox">
                                         <span></span>
@@ -720,7 +708,7 @@
                                     </div>
                                 </div>
                                 <div class="admin-link-card-actions">
-                                    <button class="soft admin-link-open" type="button" data-link-open="tiktok">open</button>
+                                    <button class="soft admin-link-open" type="button" data-link-open="tiktok">Open link</button>
                                     <label class="admin-switch">
                                         <input id="tiktok-enabled" type="checkbox">
                                         <span></span>
@@ -766,7 +754,7 @@
                                     </div>
                                 </div>
                                 <div class="admin-link-card-actions">
-                                    <button class="soft admin-link-open" type="button" data-link-open="twitch">open</button>
+                                    <button class="soft admin-link-open" type="button" data-link-open="twitch">Open link</button>
                                     <label class="admin-switch">
                                         <input id="twitch-enabled" type="checkbox">
                                         <span></span>
@@ -812,7 +800,7 @@
                                     </div>
                                 </div>
                                 <div class="admin-link-card-actions">
-                                    <button class="soft admin-link-open" type="button" data-link-open="discord">open</button>
+                                    <button class="soft admin-link-open" type="button" data-link-open="discord">Open link</button>
                                     <label class="admin-switch">
                                         <input id="discord-enabled" type="checkbox">
                                         <span></span>
@@ -858,7 +846,7 @@
                                     </div>
                                 </div>
                                 <div class="admin-link-card-actions">
-                                    <button class="soft admin-link-open" type="button" data-link-open="onlyfans">open</button>
+                                    <button class="soft admin-link-open" type="button" data-link-open="onlyfans">Open link</button>
                                     <label class="admin-switch">
                                         <input id="onlyfans-enabled" type="checkbox">
                                         <span></span>
@@ -904,7 +892,7 @@
                                     </div>
                                 </div>
                                 <div class="admin-link-card-actions">
-                                    <button class="soft admin-link-open" type="button" data-link-open="spotify">open</button>
+                                    <button class="soft admin-link-open" type="button" data-link-open="spotify">Open link</button>
                                     <label class="admin-switch">
                                         <input id="spotify-enabled" type="checkbox">
                                         <span></span>
@@ -950,7 +938,7 @@
                                     </div>
                                 </div>
                                 <div class="admin-link-card-actions">
-                                    <button class="soft admin-link-open" type="button" data-link-open="throne_link">open</button>
+                                    <button class="soft admin-link-open" type="button" data-link-open="throne_link">Open link</button>
                                     <label class="admin-switch">
                                         <input id="throne-link-enabled" type="checkbox">
                                         <span></span>
@@ -994,7 +982,7 @@
                         <div>
                             <p class="admin-kicker">wishes</p>
                             <h2>featured items</h2>
-                            <p>Auto-synced from your live Throne wishlist. Toggle "feature" to choose what shows on doll.gg — sold-out items drop off the site automatically.</p>
+                            <p>Star wishes to show them on doll.gg. Sold-out items hide automatically.</p>
                         </div>
                     </div>
 
@@ -1009,7 +997,7 @@
                                     </div>
                                 </div>
                                 <div class="admin-link-card-actions">
-                                    <button class="soft admin-link-open" type="button" data-link-open="throne">open Throne</button>
+                                    <a class="admin-soft-link admin-icon-button" href="https://throne.com/edoll" target="_blank" rel="noopener noreferrer" aria-label="Open Throne" title="Open Throne"><svg aria-hidden="true"><use href="#admin-i-external"></use></svg></a>
                                     <label class="admin-switch">
                                         <input id="throne-enabled" type="checkbox">
                                         <span></span>
@@ -1018,10 +1006,7 @@
                             </summary>
                             <div class="admin-link-card-body">
                                 <p class="admin-tool-note">Controls the Wishes menu and its layout on doll.gg. The separate Throne link card is managed in Links.</p>
-                                <label class="admin-url-field">
-                                    <span>wishlist URL</span>
-                                    <input id="throne-url" type="url" inputmode="url" placeholder="https://throne.com/name">
-                                </label>
+                                <p class="admin-tool-note">Wishlist source: <a href="https://throne.com/edoll" target="_blank" rel="noopener noreferrer">throne.com/edoll</a>. The sync and checkout are configured for this account. Changing the separate Throne card in Links changes only that link.</p>
                                 <label class="admin-url-field">
                                     <span>wishlist layout</span>
                                     <select id="wishlist-view-mode">
@@ -1034,23 +1019,34 @@
                         </details>
                     </div>
 
-                    <div class="admin-bulk-bar">
-                        <span id="wishlist-sync-status">last synced: —</span>
-                        <button class="soft" type="button" id="wishlist-sync-now">sync now</button>
-                        <button class="soft" type="button" id="wishlist-feature-all">feature all</button>
-                        <button class="soft" type="button" id="wishlist-unfeature-all">unfeature all</button>
-                        <select id="wishlist-sort" aria-label="Sort wishlist items">
-                            <option value="featured">featured first</option>
-                            <option value="newest">newest first</option>
-                            <option value="name">name A–Z</option>
-                        </select>
-                        <select id="wishlist-filter" aria-label="Filter wishlist items">
-                            <option value="all">all items</option>
-                            <option value="available">available</option>
-                            <option value="sold-out">sold out</option>
-                            <option value="new">new today</option>
-                        </select>
-                        <input type="search" id="wishlist-search" placeholder="search items...">
+                    <div class="admin-order-toolbar admin-wishlist-toolbar">
+                        <span id="wishlist-sync-status">Synced: —</span>
+                        <button class="soft" type="button" id="wishlist-sync-now">Sync</button>
+                        <button class="soft" type="button" id="admin-wish-order" aria-pressed="false" aria-label="Edit wishes">Edit</button>
+                        <details class="admin-secondary-actions">
+                            <summary aria-label="More wish actions" title="More wish actions"><svg aria-hidden="true"><use href="#admin-i-more"></use></svg></summary>
+                            <div><button class="soft" type="button" id="wishlist-feature-all">Feature all</button><button class="soft" type="button" id="wishlist-unfeature-all">Unfeature all</button></div>
+                        </details>
+                        <span class="admin-order-hint">Drag featured wishes or use the arrows to change their order on your site. Changes save automatically.</span>
+                    </div>
+                    <div class="admin-bulk-bar admin-wishlist-filters">
+                        <input type="search" id="wishlist-search" aria-label="Search wishes" placeholder="Search wishes">
+                        <details class="admin-wishlist-filter-options" open>
+                            <summary aria-label="Wish sort and filters" title="Sort and filters"><svg aria-hidden="true"><use href="#admin-i-filter"></use></svg></summary>
+                            <div>
+                                <select id="wishlist-sort" aria-label="Sort wishlist items">
+                                    <option value="featured">featured first</option>
+                                    <option value="newest">newest first</option>
+                                    <option value="name">name A–Z</option>
+                                </select>
+                                <select id="wishlist-filter" aria-label="Filter wishlist items">
+                                    <option value="all">all items</option>
+                                    <option value="available">available</option>
+                                    <option value="sold-out">sold out</option>
+                                    <option value="new">new today</option>
+                                </select>
+                            </div>
+                        </details>
                     </div>
                     <p class="admin-tool-note" id="wishlist-featured-warning"></p>
 
@@ -1093,31 +1089,31 @@
                                     <input id="site-tagline" type="text" maxlength="120" placeholder="Lia's little space.">
                                 </label>
                             </div>
-                            <p class="admin-tool-note">Saving updates the JavaScript-rendered page. If the crawler copy differs, index.html must also be committed and pushed to GitHub so search engines receive the same copy immediately.</p>
+                            <p class="admin-tool-note">These fields save automatically. Search engines also read the published HTML; use “Check published text” to compare it with your saved settings.</p>
                         </section>
 
                         <aside class="admin-chat-tools">
                             <div class="admin-tool-card">
                                 <div class="admin-card-title-row">
-                                    <h2>crawler file</h2>
+                                    <h2>Published search text</h2>
                                     <span class="admin-preview-pill" id="static-seo-state">not checked</span>
                                 </div>
                                 <div class="admin-inline-actions">
-                                    <button class="soft" type="button" id="static-seo-check">check crawler copy</button>
+                                    <button class="soft" type="button" id="static-seo-check">Check published text</button>
                                 </div>
-                                <div class="admin-health-list" id="static-seo-checks"></div>
+                                <details class="admin-check-details"><summary>Comparison details</summary><div class="admin-health-list" id="static-seo-checks"></div></details>
                             </div>
 
                             <div class="admin-tool-card">
                                 <div class="admin-card-title-row">
-                                    <h2>quick checks</h2>
+                                    <h2>Site checks</h2>
                                     <span class="admin-preview-pill" id="health-state">ready</span>
                                 </div>
                                 <div class="admin-inline-actions">
                                     <a class="admin-soft-link" href="../index.html?previewTour=1" target="_blank" rel="noopener noreferrer">preview intro</a>
                                     <a class="admin-soft-link" href="https://github.com/edollia/web/actions" target="_blank" rel="noopener noreferrer">GitHub deploys</a>
                                     <a class="admin-soft-link" href="https://search.google.com/search-console" target="_blank" rel="noopener noreferrer">Search Console</a>
-                                    <button class="soft" type="button" id="run-health-check">run health check</button>
+                                    <button class="soft" type="button" id="run-health-check">Check site files</button>
                                 </div>
                                 <div class="admin-health-list" id="admin-health-check"></div>
                             </div>
@@ -1132,16 +1128,17 @@
             <form method="dialog" class="admin-dialog-shell">
                 <div class="admin-dialog-head">
                     <div>
-                        <p class="admin-kicker">quick jump</p>
-                        <h2 id="admin-command-title">find a panel</h2>
+
+                        <h2 id="admin-command-title">Search tools and content</h2>
                     </div>
-                    <button class="admin-icon-button soft" value="cancel" aria-label="close quick jump"><svg aria-hidden="true"><use href="#admin-i-close"></use></svg></button>
+                    <button class="admin-icon-button soft" value="cancel" aria-label="Close search"><svg aria-hidden="true"><use href="#admin-i-close"></use></svg></button>
                 </div>
                 <label class="admin-command-search">
                     <svg aria-hidden="true"><use href="#admin-i-search"></use></svg>
-                    <input id="admin-command-input" type="search" autocomplete="off" placeholder="review, media, wishes, rooms…">
+                    <input id="admin-command-input" type="search" autocomplete="off" placeholder="Search…" aria-label="Search tools and content">
                 </label>
-                <div class="admin-command-results" id="admin-command-results"></div>
+                <p class="admin-tool-note" id="admin-search-help">Find tools, settings, asks, links and wishes. Doods: exact ID, YYYY-MM-DD, pending or published.</p>
+                <div class="admin-command-results" id="admin-command-results" aria-live="polite"></div>
             </form>
         </dialog>
 
@@ -1154,11 +1151,7 @@
                     </div>
                     <button class="admin-icon-button soft" value="cancel" aria-label="close more tools"><svg aria-hidden="true"><use href="#admin-i-close"></use></svg></button>
                 </div>
-                <div class="admin-more-grid">
-                    <button type="button" data-more-panel="wishlist-panel"><svg aria-hidden="true"><use href="#admin-i-wishlist"></use></svg><span>wishes</span></button>
-                    <button type="button" data-more-panel="search-panel"><svg aria-hidden="true"><use href="#admin-i-search"></use></svg><span>search + SEO</span></button>
-                    <button type="button" data-more-panel="rooms-panel"><svg aria-hidden="true"><use href="#admin-i-rooms"></use></svg><span>rooms</span></button>
-                </div>
+                <div class="admin-more-grid"></div>
             </form>
         </dialog>
 
@@ -1206,8 +1199,8 @@
         });
     }
     </script>
-    <script src="../admin-rooms.js?v=4.5"></script>
+    <script src="../admin-rooms.js?v=5.2&r=2026.10.18.3"></script>
     <script src="../social-card-media-config.js?v=11&r=2026.10.11.6"></script>
-    <script src="../admin.js?v=6.5&r=2026.10.17.7"></script>
+    <script src="../admin.js?v=7.3&r=2026.10.18.5"></script>
 </body>
 </html>

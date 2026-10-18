@@ -260,7 +260,6 @@ const els = {
     password: document.getElementById('admin-password'),
     loginStatus: document.getElementById('login-status'),
     adminStatus: document.getElementById('admin-status'),
-    stats: document.getElementById('admin-stats'),
     tabs: document.getElementById('admin-tabs'),
     reviewTabCount: document.getElementById('review-tab-count'),
     publishedTabCount: document.getElementById('published-tab-count'),
@@ -319,9 +318,7 @@ const els = {
     throneLinkUsername: document.getElementById('throne-link-username'),
     throneLinkState: document.getElementById('throne-link-state'),
     throneEnabled: document.getElementById('throne-enabled'),
-    throneUrl: document.getElementById('throne-url'),
     throneState: document.getElementById('throne-state'),
-    throneCheckoutMode: document.getElementById('throne-checkout-mode'),
     wishlistViewMode: document.getElementById('wishlist-view-mode'),
     wishlistItemsList: document.getElementById('wishlist-items-list'),
     wishlistSyncStatus: document.getElementById('wishlist-sync-status'),
@@ -368,33 +365,29 @@ const els = {
 };
 
 function showPanel(panel) {
+    if (panel !== els.dashboardPanel) {
+        document.dispatchEvent(new Event('admin-content-changing'));
+        cancelAdminSearch();
+        if (adminArrangeSnapshot) document.getElementById('admin-arrange-cancel')?.click();
+        document.querySelectorAll('dialog[open]').forEach(dialog => dialog.close());
+    }
     [els.gatePanel, els.loginPanel, els.dashboardPanel].forEach(el => el.classList.add('hidden'));
     panel.classList.remove('hidden');
 }
 
 function setStatus(element, message) {
     if (element) element.textContent = message || '';
-    if (element === els.adminStatus) updateAdminSaveState(message);
 }
 
-function updateAdminSaveState(message = '') {
+let adminSettingsSaveError = false;
+function updateAdminSaveState() {
     const indicator = document.getElementById('admin-save-state');
     if (!indicator) return;
-    const text = String(message || '').trim();
-    const normalized = text.toLowerCase();
-    let tone = 'ready';
-    let label = text || 'ready';
-    if (/saving|syncing|loading|checking|refreshing|working|uploading/.test(normalized)) {
-        tone = 'working';
-    } else if (/fail|error|could not|not allowed|attention|missing|unavailable/.test(normalized)) {
-        tone = 'error';
-    } else if (/saved|approved|deleted|featured|moved|synced|updated|complete|disabled|enabled/.test(normalized)) {
-        tone = 'saved';
-    }
+    const tone = !state.linkSettingsAvailable ? 'unavailable' : adminSettingsSaveError ? 'error' : !linkSettingsHydrated ? 'loading' : settingsSavePending ? 'working' : settingsDraftDirty ? 'draft' : 'saved';
+    const label = { error: "Couldn’t save", working: 'Saving', draft: 'Unsaved changes', saved: 'Saved', loading: 'Loading settings', unavailable: 'Settings unavailable' }[tone];
     indicator.dataset.tone = tone;
-    const strong = indicator.querySelector('strong');
-    if (strong) strong.textContent = label.length > 34 ? `${label.slice(0, 31)}…` : label;
-    indicator.title = text;
+    indicator.querySelector('strong').textContent = label;
+    indicator.title = label;
 }
 
 function hasGateAccess() {
@@ -508,11 +501,8 @@ function renderStats(linkSettings = state.linkSettings) {
     if (els.publishedTabCount) els.publishedTabCount.textContent = String(publishedDrawings + publishedQuestions);
     if (els.linksTabCount) els.linksTabCount.textContent = `${activeLinks}/${publicLinkKeys.length}`;
 
-    els.stats.innerHTML = `
-        <div class="admin-stat"><strong>${pendingDrawings + pendingQuestions}</strong><span>waiting review</span></div>
-        <div class="admin-stat"><strong>${publishedDrawings + publishedQuestions}</strong><span>published posts</span></div>
-        <div class="admin-stat"><strong>${activeLinks}/${publicLinkKeys.length}</strong><span>public links</span></div>
-    `;
+    updateAdminLaneCounts(pendingDrawings, pendingQuestions, publishedDrawings, publishedQuestions);
+    syncAdminNavigationLabels();
 }
 
 function emptyMessage(text) {
@@ -559,7 +549,7 @@ function paginateAdminList(list, container) {
     if (!config) return list;
 
     const controls = ensureAdminPagination(container);
-    const totalItems = state.adminListTotals[listId] || 0;
+    const totalItems = getAdminVisibleTotal(listId);
     const totalPages = Math.max(1, Math.ceil(totalItems / config.pageSize));
     const requestedPage = adminListPages.get(listId) || 1;
     const currentPage = Math.max(1, Math.min(requestedPage, totalPages));
@@ -611,8 +601,9 @@ function isAdminListItemSelected(listId, id) {
 }
 
 function renderDrawings(list, container, published) {
+    document.dispatchEvent(new Event('admin-content-changing'));
     const pageItems = paginateAdminList(list, container);
-    if (!(state.adminListTotals[container.id] || 0)) {
+    if (!getAdminVisibleTotal(container.id)) {
         container.innerHTML = emptyMessage(published ? 'no posted doods' : 'nothing waiting');
         if (!published) renderAdminSelectionPreview();
         return;
@@ -621,20 +612,20 @@ function renderDrawings(list, container, published) {
     container.innerHTML = pageItems.map(item => `
         <article class="admin-card" data-id="${escapeHtml(item.id)}">
             <label class="admin-select">
-                <input type="checkbox" data-select-id="${escapeHtml(item.id)}"${isAdminListItemSelected(container.id, item.id) ? ' checked' : ''}>
+                <input type="checkbox" aria-label="Select dood ${escapeHtml(String(item.id))}" data-select-id="${escapeHtml(item.id)}"${isAdminListItemSelected(container.id, item.id) ? ' checked' : ''}>
                 <span></span>
             </label>
             <img src="${getDrawingSrc(item.imageData)}" alt="" loading="lazy" decoding="async">
-            ${renderMeta(item)}
-            <div class="admin-actions">
-                ${published
-                    ? '<span class="admin-pill">approved</span>'
-                    : `<button data-action="approve-drawing">${adminIcon('check')}<span>approve</span></button>`}
-                <button class="danger" data-action="delete-drawing">${adminIcon('trash')}<span>delete</span></button>
-            </div>
+            <footer class="admin-record-footer">
+                <details class="admin-meta-details"><summary aria-label="Dood details" title="Dood details">${adminIcon('info')}<time>${escapeHtml(String(item.created_at || "Unknown date").slice(0, 10))}</time></summary>${renderMeta(item)}</details>
+                <div class="admin-actions">
+                    ${published ? '' : `<button type="button" class="admin-icon-button" data-action="approve-drawing" aria-label="Approve dood ${escapeHtml(String(item.id))}" title="Approve dood">${adminIcon('check')}</button>`}
+                    <button type="button" class="admin-icon-button danger" data-action="delete-drawing" aria-label="Delete dood ${escapeHtml(String(item.id))}" title="Delete dood">${adminIcon('trash')}</button>
+                </div>
+            </footer>
         </article>
     `).join('');
-    if (!published) renderAdminSelectionPreview();
+    if (!published) renderAdminSelectionPreview(); else updateAdminPublishedSelection();
 }
 
 function renderAdminSelectionPreview() {
@@ -646,7 +637,8 @@ function renderAdminSelectionPreview() {
     const output = preview.querySelector('[data-selection-items]');
     const actions = preview.querySelector('[data-selection-actions]');
     if (countLabel) countLabel.textContent = `${count} selected`;
-    if (actions) actions.hidden = count === 0;
+    if (actions) actions.hidden = true;
+    updateAdminSelectionBar(count);
     if (!output) return;
     if (!count) {
         output.innerHTML = '<p class="admin-tool-note">Choose doods to preview the exact bulk action set.</p>';
@@ -664,8 +656,9 @@ function renderAdminSelectionPreview() {
 }
 
 function renderQuestions(list, container, published) {
+    document.dispatchEvent(new Event('admin-content-changing'));
     const pageItems = paginateAdminList(list, container);
-    if (!(state.adminListTotals[container.id] || 0)) {
+    if (!getAdminVisibleTotal(container.id)) {
         container.innerHTML = emptyMessage(published ? 'no answered asks' : 'no asks waiting');
         return;
     }
@@ -673,12 +666,14 @@ function renderQuestions(list, container, published) {
     container.innerHTML = pageItems.map(item => `
         <article class="admin-card admin-question-card" data-id="${escapeHtml(item.id)}">
             <p class="admin-question">${escapeHtml(item.question)}</p>
-            ${renderShortMeta(item)}
-            <textarea data-answer-for="${escapeHtml(item.id)}" placeholder="reply">${escapeHtml(adminQuestionDrafts.has(String(item.id)) ? adminQuestionDrafts.get(String(item.id)) : (item.answer || ''))}</textarea>
-            <div class="admin-actions">
-                <button data-action="save-question">${adminIcon('edit')}<span>${published ? 'save edit' : 'save reply'}</span></button>
-                <button class="danger" data-action="delete-question">${adminIcon('trash')}<span>delete</span></button>
-            </div>
+            <textarea aria-label="Reply to ask ${escapeHtml(String(item.id))}" data-answer-for="${escapeHtml(item.id)}" placeholder="reply">${escapeHtml(adminQuestionDrafts.has(String(item.id)) ? adminQuestionDrafts.get(String(item.id)) : (item.answer || ''))}</textarea>
+            <footer class="admin-record-footer">
+                <details class="admin-meta-details"><summary aria-label="Ask details" title="Ask details">${adminIcon('info')}<time>${escapeHtml(String(item.created_at || "Unknown date").slice(0, 10))}</time></summary>${renderShortMeta(item)}</details>
+                <div class="admin-actions">
+                    <button type="button" class="admin-icon-button" data-action="save-question" aria-label="${published ? 'Save reply' : 'Publish reply'} to ask ${escapeHtml(String(item.id))}" title="${published ? 'Save reply' : 'Publish reply'}">${adminIcon(published ? 'save' : 'send')}</button>
+                    <button type="button" class="admin-icon-button danger" data-action="delete-question" aria-label="Delete ask ${escapeHtml(String(item.id))}" title="Delete ask">${adminIcon('trash')}</button>
+                </div>
+            </footer>
         </article>
     `).join('');
 }
@@ -884,16 +879,21 @@ function ensureSocialOrderControls() {
         if (!actions || actions.querySelector('.admin-social-order-controls')) return;
         const label = card.querySelector('summary strong')?.textContent?.trim() || key;
         card.classList.add('has-social-order');
+        card.querySelector('summary').setAttribute('aria-haspopup', 'dialog');
+        const subtitle = document.createElement('small'); subtitle.className = 'admin-social-subtitle';
+        card.querySelector('.admin-link-card-title > div')?.append(subtitle);
         const controls = document.createElement('span');
         controls.className = 'admin-social-order-controls';
         controls.innerHTML = `
             <button class="admin-social-drag" type="button" data-social-drag="${key}" aria-label="Drag ${label} card to reorder" title="Drag to reorder">${adminIcon('drag')}</button>
-            <button class="admin-social-edit" type="button" data-social-edit="${key}" aria-label="Edit ${label} card">${adminIcon('edit')}</button>
+            <button class="admin-social-edit admin-icon-button" type="button" data-social-edit="${key}" aria-label="Edit ${label} card" title="Edit ${label} card">${adminIcon('edit')}</button>
             <button class="admin-social-move" type="button" data-social-move="up" data-social-key="${key}" aria-label="Move ${label} card up">${adminIcon('arrow-up')}</button>
             <span class="admin-social-position" aria-label="Card position"></span>
             <button class="admin-social-move" type="button" data-social-move="down" data-social-key="${key}" aria-label="Move ${label} card down">${adminIcon('arrow-down')}</button>
         `;
         actions.prepend(controls);
+        const open = actions.querySelector('[data-link-open]');
+        if (open) { open.textContent = 'Open ' + label; card.querySelector('.admin-link-card-body')?.append(open); }
     });
 }
 
@@ -920,42 +920,35 @@ function applyAdminSocialCardOrder(settings = state.linkSettings) {
 }
 
 function moveSocialCard(key, direction) {
-    if (!linkSettingsHydrated) {
-        setStatus(els.adminStatus, 'Saved site settings are still loading.');
-        return;
-    }
+    if (!linkSettingsHydrated) { setStatus(els.adminStatus, 'Saved site settings are still loading.'); return; }
     const order = normalizeSocialCardOrder(state.linkSettings.social_card_order);
-    const currentIndex = order.indexOf(key);
-    const nextIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
-    if (currentIndex < 0 || nextIndex < 0 || nextIndex >= order.length) return;
-    [order[currentIndex], order[nextIndex]] = [order[nextIndex], order[currentIndex]];
-    state.linkSettings.social_card_order = order;
-    settingsDraftDirty = true;
-    applyAdminSocialCardOrder(state.linkSettings);
-    renderLinkPreview();
-    scheduleAutoSave();
+    const current = order.indexOf(key), target = current + (direction === 'up' ? -1 : 1);
+    if (current < 0 || target < 0 || target >= order.length) return;
+    [order[current], order[target]] = [order[target], order[current]];
+    commitSocialCardOrder(order);
+    requestAnimationFrame(() => document.querySelector(`[data-social-key="${key}"][data-social-move="${direction}"]`)?.focus({ preventScroll: true }));
 }
-
 function commitSocialCardOrder(keys) {
-    if (!linkSettingsHydrated) {
-        setStatus(els.adminStatus, 'Saved site settings are still loading.');
-        applyAdminSocialCardOrder(state.linkSettings);
-        return false;
-    }
-    const next = normalizeSocialCardOrder(keys);
-    const current = normalizeSocialCardOrder(state.linkSettings.social_card_order);
-    if (next.every((key, index) => key === current[index])) return false;
+    if (!linkSettingsHydrated) { setStatus(els.adminStatus, 'Saved site settings are still loading.'); return false; }
+    const next = normalizeSocialCardOrder(keys), previous = normalizeSocialCardOrder(state.linkSettings.social_card_order);
+    if (next.every((key, index) => key === previous[index])) return false;
     state.linkSettings.social_card_order = next;
-    settingsDraftDirty = true;
-    applyAdminSocialCardOrder(state.linkSettings);
-    renderLinkPreview();
-    scheduleAutoSave();
-    setStatus(els.adminStatus, 'saving social card order...');
+    settingsDraftDirty = true; applyAdminSocialCardOrder(state.linkSettings); renderLinkPreview();
+    setStatus(els.adminStatus, 'Saving link order…');
+    void saveLinkSettingsNow({ overrides: { social_card_order: next }, onFailure: () => {
+        const current = normalizeSocialCardOrder(state.linkSettings.social_card_order);
+        if (!current.every((key, index) => key === next[index])) return;
+        state.linkSettings.social_card_order = previous;
+        applyAdminSocialCardOrder(state.linkSettings); renderLinkPreview();
+        setStatus(els.adminStatus, 'Couldn’t save link order. The previous order was restored.');
+    } });
     return true;
 }
 
 function setLinkSettingsHydrated(ready) {
     linkSettingsHydrated = Boolean(ready);
+    updateAdminSaveState();
+    if (!state.linkSettingsAvailable) setStatus(els.adminStatus, 'Settings are unavailable. Refresh the dashboard to try again.');
     if (!els.linkSettingsForm) return;
     els.linkSettingsForm.classList.toggle('settings-hydrating', !linkSettingsHydrated);
     els.linkSettingsForm.toggleAttribute('inert', !linkSettingsHydrated);
@@ -1019,9 +1012,7 @@ function renderLinkSettings({ preserveDraft = false } = {}) {
     if (els.throneLinkUsername) els.throneLinkUsername.value = settings.throne_link_username ?? '';
     if (els.throneLinkState) els.throneLinkState.textContent = settings.throne_link_enabled !== false ? 'visible' : 'hidden';
     if (els.throneEnabled) els.throneEnabled.checked = settings.throne_enabled !== false;
-    if (els.throneUrl) els.throneUrl.value = settings.throne_url || '';
     if (els.throneState) els.throneState.textContent = settings.throne_enabled !== false ? 'visible' : 'hidden';
-    if (els.throneCheckoutMode) els.throneCheckoutMode.value = 'mockup';
     if (els.wishlistViewMode) els.wishlistViewMode.value = WISHLIST_VIEW_MODES.includes(settings.wishlist_view_mode) ? settings.wishlist_view_mode : 'masonry';
     if (els.homepageNoteText) els.homepageNoteText.value = settings.homepage_note_text || '';
     if (els.maintenanceEnabled) els.maintenanceEnabled.checked = settings.maintenance_enabled === true;
@@ -1112,7 +1103,7 @@ function getDraftLinkSettings() {
         throne_link_card_video_url: state.linkSettings.throne_link_card_video_url || '',
         throne_link_card_video_path: state.linkSettings.throne_link_card_video_path || '',
         social_card_order: normalizeSocialCardOrder(state.linkSettings.social_card_order),
-        throne_url: els.throneUrl?.value.trim() || state.linkSettings.throne_url || DEFAULT_LINK_SETTINGS.throne_url,
+        throne_url: state.linkSettings.throne_url || DEFAULT_LINK_SETTINGS.throne_url,
         throne_enabled: els.throneEnabled?.checked !== false,
         throne_checkout_mode: 'mockup',
         wishlist_view_mode: WISHLIST_VIEW_MODES.includes(els.wishlistViewMode?.value) ? els.wishlistViewMode.value : 'masonry',
@@ -1142,6 +1133,13 @@ function getSubmissionsStateLabel(settings) {
 }
 
 function syncLinkDraftLabels(settings = getDraftLinkSettings()) {
+    SOCIAL_CARD_KEYS.forEach(key => {
+        const subtitle = document.querySelector(`[data-link-card="${key}"] .admin-social-subtitle`);
+        if (subtitle) { const username = String(settings[`${key}_username`] || ''); subtitle.textContent = username ? '@' + username.replace(/^@/, '') : ''; }
+    });
+    const entrance = document.getElementById('admin-entrance-preview');
+    if (entrance) { entrance.dataset.mode = settings.entrance_mode === 'bubbles' ? 'bubbles' : 'paw'; entrance.querySelector('strong').textContent = settings.entrance_mode === 'bubbles' ? 'Pop the bubbles' : 'Press the paw'; }
+    document.querySelector('.admin-tour-preview')?.classList.toggle('is-disabled', settings.first_visit_tour_enabled === false);
     if (els.snapchatState) els.snapchatState.textContent = settings.snapchat_enabled !== false ? 'visible' : 'hidden';
     if (els.instagramState) els.instagramState.textContent = settings.instagram_enabled !== false ? 'visible' : 'hidden';
     if (els.kofiState) els.kofiState.textContent = settings.kofi_enabled !== false ? 'visible' : 'hidden';
@@ -1162,7 +1160,7 @@ function syncLinkDraftLabels(settings = getDraftLinkSettings()) {
     if (notePreview) {
         notePreview.textContent = homepageNoteText || 'blank note stays hidden';
         notePreview.classList.toggle('is-blank', !homepageNoteText);
-        notePreview.style.fontSize = `${settings.homepage_note_font_size || DEFAULT_LINK_SETTINGS.homepage_note_font_size}px`;
+        notePreview.style.setProperty('--admin-note-font-size', `${settings.homepage_note_font_size || DEFAULT_LINK_SETTINGS.homepage_note_font_size}px`);
     }
     document.querySelector('[data-link-card="homepage-note"]')?.classList.toggle('is-disabled', !homepageNoteText);
     if (els.maintenanceState) els.maintenanceState.textContent = settings.maintenance_enabled === true ? 'on' : 'off';
@@ -1187,13 +1185,13 @@ function syncLinkDraftLabels(settings = getDraftLinkSettings()) {
     });
     document.querySelector('[data-link-card="rooms-master"]')?.classList.toggle('is-disabled', settings.rooms_enabled === false);
     renderStats(settings);
-    updateAdminSafetyOverview(settings);
     renderStaticSeoStatus(settings);
 }
 
 function renderLinkPreview() {
     const settings = getDraftLinkSettings();
     syncLinkDraftLabels(settings);
+    updateAdminSaveState();
 }
 
 function getSocialVideoControl(key) {
@@ -1340,7 +1338,7 @@ function renderSocialVideoControl(key) {
     const note = control.querySelector('.admin-card-video-note');
 
     control.classList.toggle('is-hosting-paused', SOCIAL_CARD_VIDEO_HOSTING_PAUSED);
-    control.setAttribute('aria-disabled', String(SOCIAL_CARD_VIDEO_HOSTING_PAUSED));
+    control.removeAttribute('aria-disabled');
     if (SOCIAL_CARD_VIDEO_HOSTING_PAUSED) {
         revokeSocialVideoObjectUrl(key);
         socialVideoSelectedFiles.delete(key);
@@ -1350,20 +1348,27 @@ function renderSocialVideoControl(key) {
         }
         if (uploadButton) uploadButton.disabled = true;
         if (removeButton) removeButton.disabled = true;
-        if (pickerLabel) pickerLabel.textContent = 'paused';
-        setAdminSocialMediaPreview(control, '', false);
+        control.querySelector('.admin-card-video-actions')?.setAttribute('hidden', '');
         const localFile = String(LOCAL_SOCIAL_CARD_VIDEOS[key] || '');
+        const previewUrl = localFile ? new URL('../' + localFile, location.href).href : '';
+        const video = control.querySelector('[data-video-preview]');
+        if (video) {
+            video.controls = true; video.autoplay = false; video.preload = 'none';
+            const poster = SOCIAL_CARD_MEDIA_CONFIG.localPosters?.[key];
+            if (poster) video.poster = new URL('../' + poster, location.href).href;
+        }
+        setAdminSocialMediaPreview(control, previewUrl, false);
         setSocialVideoStatus(
             key,
-            localFile ? 'local GitHub file active' : key === 'throne_link' ? 'awaiting Throne MP4' : 'local mode · no background file',
+            localFile ? 'Current background' : 'No video background',
             'paused'
         );
         if (note) {
             note.textContent = localFile
-                ? `repository file: ${localFile}`
+                ? 'This background is stored with the website. Play to preview.'
                 : key === 'throne_link'
-                    ? 'The Throne icon is shown until its MP4 is added.'
-                    : 'Supabase media controls are paused; this card currently has no local video.';
+                    ? 'The Throne icon is currently shown.'
+                    : 'This card uses its icon. Backgrounds are managed in the website files.';
         }
         return;
     }
@@ -1381,8 +1386,6 @@ function renderSocialVideoControl(key) {
 }
 
 function renderAllSocialVideoControls() {
-    const pauseNotice = document.querySelector('.admin-social-hosting-pause');
-    if (pauseNotice) pauseNotice.hidden = !SOCIAL_CARD_VIDEO_HOSTING_PAUSED;
     SOCIAL_CARD_VIDEO_KEYS.forEach(renderSocialVideoControl);
 }
 
@@ -1797,10 +1800,12 @@ function renderStaticSeoStatus(settings = getDraftLinkSettings()) {
 }
 
 async function checkStaticSeoStatus() {
+    if (els.staticSeoCheck?.disabled) return;
+    if (els.staticSeoCheck) els.staticSeoCheck.disabled = true;
     if (els.staticSeoState) els.staticSeoState.textContent = 'checking';
     try {
         staticSeoCheckFailed = false;
-        const response = await fetch('../index.html', { cache: 'no-store' });
+        const response = await adminFetchWithDeadline('../index.html', { cache: 'no-store' });
         const text = await response.text();
         if (!response.ok) throw new Error('index.html could not load');
         const doc = new DOMParser().parseFromString(text, 'text/html');
@@ -1843,6 +1848,7 @@ async function checkStaticSeoStatus() {
         staticSeoCheckFailed = true;
         if (els.staticSeoState) els.staticSeoState.textContent = 'check failed';
     }
+    if (els.staticSeoCheck) els.staticSeoCheck.disabled = false;
     renderStaticSeoStatus();
 }
 
@@ -1885,23 +1891,31 @@ function timeAgo(isoString) {
 
 function renderWishlistSyncStatus() {
     if (els.wishlistSyncStatus) {
-        els.wishlistSyncStatus.textContent = `last synced: ${timeAgo(state.wishlistSyncedAt)}`;
+        els.wishlistSyncStatus.textContent = `Synced ${timeAgo(state.wishlistSyncedAt)}`;
     }
 }
 
 function renderWishlistItems() {
+    document.dispatchEvent(new Event('admin-content-changing'));
     const container = els.wishlistItemsList;
     if (!container) return;
+    const expanded = new Set([...container.querySelectorAll('.admin-wish-info[open]')].map(details => details.closest('[data-id]').dataset.id));
+    const editing = document.getElementById('wishlist-panel').classList.contains('is-public-order');
+    ['wishlist-sync-now', 'wishlist-feature-all', 'wishlist-unfeature-all', 'wishlist-sort', 'wishlist-filter', 'wishlist-search', 'admin-wish-order'].forEach(id => {
+        const control = document.getElementById(id); if (!control) return;
+        if (!state.wishlistItemsAvailable && !control.disabled) { control.dataset.availabilityDisabled = 'true'; control.disabled = true; }
+        else if (state.wishlistItemsAvailable && control.dataset.availabilityDisabled === 'true') { control.disabled = false; delete control.dataset.availabilityDisabled; }
+    });
 
     renderWishlistSyncStatus();
 
     if (!state.wishlistItemsAvailable) {
         paginateAdminList([], container);
-        container.innerHTML = emptyMessage('wishlist_items table not set up yet');
+        container.innerHTML = emptyMessage('Wishes are unavailable. Refresh the dashboard to try again.');
         return;
     }
-    const totalItems = state.adminListTotals['wishlist-items-list'] || 0;
-    if (!totalItems && !state.wishlistSearch.trim() && state.wishlistFilter === 'all') {
+    const totalItems = getAdminVisibleTotal('wishlist-items-list');
+    if (!totalItems && !adminExactFilters.has('wishlist-items-list') && !state.wishlistSearch.trim() && state.wishlistFilter === 'all') {
         paginateAdminList([], container);
         container.innerHTML = emptyMessage('nothing synced yet — hit "sync now"');
         return;
@@ -1924,10 +1938,28 @@ function renderWishlistItems() {
     }
 
     const pageItems = paginateAdminList(visible, container);
-    const canReorder = state.wishlistSort === 'featured';
+    const canReorder = state.wishlistSort === 'featured' && !adminExactFilters.has('wishlist-items-list');
 
     container.innerHTML = pageItems.map(item => {
         const isNew = item.first_synced_at && (Date.now() - new Date(item.first_synced_at).getTime()) < WISHLIST_NEW_WINDOW_MS;
+        if (editing && item.featured && canReorder) return `
+        <article class="admin-card admin-wish-order-row is-featured${item.is_available ? '' : ' is-unavailable'}" data-id="${escapeHtml(item.throne_item_id)}">
+            <button class="admin-wishlist-drag" type="button" aria-label="Drag ${escapeHtml(item.name || 'wishlist item')} to reorder" title="Drag to reorder">${adminIcon('drag')}</button>
+            <details class="admin-wish-info"${expanded.has(String(item.throne_item_id)) ? ' open' : ''}>
+                <summary aria-label="Details for ${escapeHtml(item.name || 'wish')}" title="${escapeHtml(item.name || 'Wish details')}">
+                    <img src="${escapeHtml(item.image_url || '')}" alt="" loading="lazy" decoding="async">
+                    <strong>${escapeHtml(item.name || '')}</strong>
+                </summary>
+                <div class="admin-wish-info-body">
+                    <div><strong>${escapeHtml(formatWishlistPrice(item.price_cents))}</strong><p class="admin-tool-note">${item.is_available ? 'available' : 'sold out / removed'} · qty ${escapeHtml(String(item.quantity ?? 0))}${isNew ? ' · new' : ''}</p></div>
+                    <button type="button" class="admin-icon-button admin-feature-toggle" data-action="unfeature-wishlist-item" aria-pressed="true" aria-label="Unfeature ${escapeHtml(item.name || 'wish')}" title="Remove from featured wishes">${adminIcon('star')}</button>
+                </div>
+            </details>
+            <div class="admin-actions">
+                <button type="button" data-action="move-wishlist-item-up" ${String(item.throne_item_id) === state.wishlistFirstFeaturedId ? 'disabled' : ''} aria-label="Move ${escapeHtml(item.name || 'wish')} up" title="Move up">${adminIcon('arrow-up')}</button>
+                <button type="button" data-action="move-wishlist-item-down" ${String(item.throne_item_id) === state.wishlistLastFeaturedId ? 'disabled' : ''} aria-label="Move ${escapeHtml(item.name || 'wish')} down" title="Move down">${adminIcon('arrow-down')}</button>
+            </div>
+        </article>`;
         return `
         <article class="admin-card${item.featured ? ' is-featured' : ''}${item.is_available ? '' : ' is-unavailable'}" data-id="${escapeHtml(item.throne_item_id)}">
             ${item.featured && canReorder ? `<button class="admin-wishlist-drag" type="button" aria-label="Drag ${escapeHtml(item.name || 'wishlist item')} to reorder" title="Drag to reorder">${adminIcon('drag')}</button>` : ''}
@@ -1943,10 +1975,10 @@ function renderWishlistItems() {
             </div>
             <div class="admin-actions">
                 ${item.featured && canReorder ? `
-                    <button data-action="move-wishlist-item-up" ${String(item.throne_item_id) === state.wishlistFirstFeaturedId ? 'disabled' : ''} aria-label="move up">${adminIcon('arrow-up')}</button>
-                    <button data-action="move-wishlist-item-down" ${String(item.throne_item_id) === state.wishlistLastFeaturedId ? 'disabled' : ''} aria-label="move down">${adminIcon('arrow-down')}</button>
+                    <button type="button" data-action="move-wishlist-item-up" ${String(item.throne_item_id) === state.wishlistFirstFeaturedId ? 'disabled' : ''} aria-label="move up">${adminIcon('arrow-up')}</button>
+                    <button type="button" data-action="move-wishlist-item-down" ${String(item.throne_item_id) === state.wishlistLastFeaturedId ? 'disabled' : ''} aria-label="move down">${adminIcon('arrow-down')}</button>
                 ` : ''}
-                <button data-action="${item.featured ? 'unfeature-wishlist-item' : 'feature-wishlist-item'}">${adminIcon(item.featured ? 'trash' : 'plus')}<span>${item.featured ? 'unfeature' : 'feature'}</span></button>
+                <button type="button" class="admin-icon-button admin-feature-toggle" data-action="${item.featured ? 'unfeature-wishlist-item' : 'feature-wishlist-item'}" aria-pressed="${Boolean(item.featured)}" aria-label="${item.featured ? 'Unfeature' : 'Feature'} ${escapeHtml(item.name || 'wish')}" title="${item.featured ? 'Remove from featured wishes' : 'Feature on site'}">${adminIcon('star')}</button>
             </div>
         </article>
     `; }).join('');
@@ -2184,7 +2216,8 @@ function applyWishlistScopeFilter(query, {
 function buildAdminListQuery(listId, {
     wishlistSearch = state.wishlistSearch,
     wishlistFilter = state.wishlistFilter,
-    wishlistSort = state.wishlistSort
+    wishlistSort = state.wishlistSort,
+    ignoreExact = false
 } = {}) {
     const columns = ADMIN_LIST_COLUMNS[listId];
     if (!columns) throw new Error(`Unknown admin list: ${listId}`);
@@ -2193,7 +2226,9 @@ function buildAdminListQuery(listId, {
         let query = adminClient
             .from('wishlist_items')
             .select(columns, { count: 'exact' });
-        query = applyWishlistScopeFilter(query, { search: wishlistSearch, filter: wishlistFilter });
+        const exact = !ignoreExact && adminExactFilters.get(listId);
+        if (exact) query = query.eq('throne_item_id', exact.id);
+        else query = applyWishlistScopeFilter(query, { search: wishlistSearch, filter: wishlistFilter });
         if (wishlistSort === 'newest') {
             return query
                 .order('first_synced_at', { ascending: false, nullsFirst: false })
@@ -2215,6 +2250,8 @@ function buildAdminListQuery(listId, {
     const table = listId.includes('drawings') ? 'drawings' : 'questions';
     let query = adminClient.from(table).select(columns, { count: 'exact' });
     query = applyAdminListFilter(query, listId);
+    const exact = !ignoreExact && adminExactFilters.get(listId);
+    if (exact) query = query.eq('id', exact.id);
     return query
         .order('created_at', { ascending: false })
         .order('id', { ascending: false });
@@ -2256,8 +2293,15 @@ async function fetchAdminListPage(listId) {
         total = result.count ?? total;
     }
 
+    let unfilteredTotal;
+    if (adminExactFilters.has(listId)) {
+        const countResult = await buildAdminListQuery(listId, { wishlistSearch: queryWishlistSearch, wishlistFilter: queryWishlistFilter, wishlistSort: queryWishlistSort, ignoreExact: true }).select(listId === 'wishlist-items-list' ? 'throne_item_id' : 'id', { count: 'exact', head: true });
+        if (countResult.error) throw countResult.error;
+        unfilteredTotal = countResult.count || 0;
+    }
     return {
         items: result.data || [],
+        unfilteredTotal,
         total,
         page,
         wishlistSearch: queryWishlistSearch,
@@ -2269,7 +2313,11 @@ async function fetchAdminListPage(listId) {
 
 function applyAdminListPage(listId, result) {
     state.adminListItems[listId] = result.items;
-    state.adminListTotals[listId] = result.total;
+    if (adminExactFilters.has(listId)) {
+        adminExactFilters.get(listId).total = result.total;
+        if (result.unfilteredTotal !== undefined) state.adminListTotals[listId] = result.unfilteredTotal;
+    }
+    else state.adminListTotals[listId] = result.total;
     adminListPages.set(listId, result.page);
     adminListCommittedPages.set(listId, result.page);
     if (listId === 'wishlist-items-list') {
@@ -2310,11 +2358,20 @@ function setAdminListError(listId, message) {
     const cleanMessage = String(message || `Could not load ${ADMIN_LIST_PAGINATION[listId]?.label || 'items'}.`);
     adminListErrors.set(listId, cleanMessage);
     setStatus(els.adminStatus, cleanMessage);
+    let error = document.getElementById(`${listId}-error`);
+    if (!error) {
+        error = document.createElement('div'); error.id = `${listId}-error`; error.className = 'admin-list-error';
+        error.innerHTML = '<span></span><button type="button" class="soft">Retry</button>';
+        document.getElementById(listId).before(error);
+        error.querySelector('button').addEventListener('click', () => void loadAdminList(listId));
+    }
+    error.querySelector('span').textContent = cleanMessage; error.hidden = false;
 }
 
 function clearAdminListError(listId) {
     const previousError = adminListErrors.get(listId);
     adminListErrors.delete(listId);
+    const error = document.getElementById(`${listId}-error`); if (error) error.hidden = true;
     if (previousError && els.adminStatus?.textContent === previousError) {
         setStatus(els.adminStatus, '');
     }
@@ -2743,6 +2800,7 @@ async function moveWishlistItemByDrag(sourceId, targetId, placeAfter = false) {
 
         await refreshAdminListSet(['wishlist-items-list'], { refreshWishlistMeta: true });
         setStatus(els.adminStatus, writes.length ? 'wishlist order saved ✓' : 'wishlist order unchanged');
+        return true;
     } catch (error) {
         let reloadFailed = false;
         try {
@@ -2752,6 +2810,7 @@ async function moveWishlistItemByDrag(sourceId, targetId, placeAfter = false) {
         }
         const partial = savedRows ? `${savedRows} row${savedRows === 1 ? '' : 's'} moved before the error; ` : '';
         setStatus(els.adminStatus, `${partial}${formatAdminMutationError(error, 'Could not reorder wishlist.', 'item')} ${reloadFailed ? 'Refresh failed.' : 'List refreshed.'}`);
+        return false;
     } finally {
         wishlistActionBusy = false;
         document.querySelectorAll('.admin-wishlist-drag').forEach(handle => { handle.disabled = false; });
@@ -2762,7 +2821,11 @@ async function runAction(button) {
     const card = button.closest('.admin-card');
     const id = card?.dataset.id;
     const action = button.dataset.action;
-    if (!id || !action) return;
+    if (!id || !action || button.disabled) return;
+    if (action === 'delete-drawing' || action === 'delete-question') {
+        const noun = action === 'delete-drawing' ? 'dood' : 'ask';
+        if (!confirmDangerAction(`Delete ${noun} ${id}? This cannot be undone.`)) return;
+    }
 
     const sourceListId = card.closest('.admin-list')?.id || '';
     const isSubmissionAction = action === 'approve-drawing'
@@ -2921,63 +2984,63 @@ async function persistLatestLinkSettings(requestId, { overrides = null, onCommit
     let nextSettings;
     try {
         nextSettings = {
-            snapchat_url: cleanUrl(els.snapchatUrl?.value || state.linkSettings.snapchat_url, 'Snapchat'),
+            snapchat_url: cleanUrl(els.snapchatUrl?.value ?? state.linkSettings.snapchat_url, 'Snapchat'),
             snapchat_username: getDraftSocialUsername('snapchat', els.snapchatUsername),
             snapchat_enabled: els.snapchatEnabled?.checked !== false,
             snapchat_card_video_url: String(state.linkSettings.snapchat_card_video_url || ''),
             snapchat_card_video_path: String(state.linkSettings.snapchat_card_video_path || ''),
-            instagram_url: cleanUrl(els.instagramUrl?.value || state.linkSettings.instagram_url, 'Instagram'),
+            instagram_url: cleanUrl(els.instagramUrl?.value ?? state.linkSettings.instagram_url, 'Instagram'),
             instagram_username: getDraftSocialUsername('instagram', els.instagramUsername),
             instagram_enabled: els.instagramEnabled?.checked !== false,
             instagram_card_video_url: String(state.linkSettings.instagram_card_video_url || ''),
             instagram_card_video_path: String(state.linkSettings.instagram_card_video_path || ''),
-            kofi_url: cleanUrl(els.kofiUrl?.value || state.linkSettings.kofi_url, 'Ko-fi'),
+            kofi_url: cleanUrl(els.kofiUrl?.value ?? state.linkSettings.kofi_url, 'Ko-fi'),
             kofi_username: getDraftSocialUsername('kofi', els.kofiUsername),
             kofi_enabled: els.kofiEnabled?.checked !== false,
             kofi_card_video_url: String(state.linkSettings.kofi_card_video_url || ''),
             kofi_card_video_path: String(state.linkSettings.kofi_card_video_path || ''),
-            telegram_url: cleanUrl(els.telegramUrl?.value || state.linkSettings.telegram_url, 'Telegram'),
+            telegram_url: cleanUrl(els.telegramUrl?.value ?? state.linkSettings.telegram_url, 'Telegram'),
             telegram_username: getDraftSocialUsername('telegram', els.telegramUsername),
             telegram_enabled: els.telegramEnabled?.checked !== false,
             telegram_card_video_url: String(state.linkSettings.telegram_card_video_url || ''),
             telegram_card_video_path: String(state.linkSettings.telegram_card_video_path || ''),
-            x_url: cleanUrl(els.xUrl?.value || state.linkSettings.x_url, 'X'),
+            x_url: cleanUrl(els.xUrl?.value ?? state.linkSettings.x_url, 'X'),
             x_username: getDraftSocialUsername('x', els.xUsername),
             x_enabled: els.xEnabled?.checked !== false,
             x_card_video_url: String(state.linkSettings.x_card_video_url || ''),
             x_card_video_path: String(state.linkSettings.x_card_video_path || ''),
-            tiktok_url: cleanUrl(els.tiktokUrl?.value || state.linkSettings.tiktok_url, 'TikTok'),
+            tiktok_url: cleanUrl(els.tiktokUrl?.value ?? state.linkSettings.tiktok_url, 'TikTok'),
             tiktok_username: getDraftSocialUsername('tiktok', els.tiktokUsername),
             tiktok_enabled: els.tiktokEnabled?.checked !== false,
             tiktok_card_video_url: String(state.linkSettings.tiktok_card_video_url || ''),
             tiktok_card_video_path: String(state.linkSettings.tiktok_card_video_path || ''),
-            twitch_url: cleanUrl(els.twitchUrl?.value || state.linkSettings.twitch_url, 'Twitch'),
+            twitch_url: cleanUrl(els.twitchUrl?.value ?? state.linkSettings.twitch_url, 'Twitch'),
             twitch_username: getDraftSocialUsername('twitch', els.twitchUsername),
             twitch_enabled: els.twitchEnabled?.checked !== false,
             twitch_card_video_url: String(state.linkSettings.twitch_card_video_url || ''),
             twitch_card_video_path: String(state.linkSettings.twitch_card_video_path || ''),
-            discord_url: cleanUrl(els.discordUrl?.value || state.linkSettings.discord_url, 'Discord'),
+            discord_url: cleanUrl(els.discordUrl?.value ?? state.linkSettings.discord_url, 'Discord'),
             discord_username: getDraftSocialUsername('discord', els.discordUsername),
             discord_enabled: els.discordEnabled?.checked !== false,
             discord_card_video_url: String(state.linkSettings.discord_card_video_url || ''),
             discord_card_video_path: String(state.linkSettings.discord_card_video_path || ''),
-            onlyfans_url: cleanUrl(els.onlyfansUrl?.value || state.linkSettings.onlyfans_url, 'OnlyFans'),
+            onlyfans_url: cleanUrl(els.onlyfansUrl?.value ?? state.linkSettings.onlyfans_url, 'OnlyFans'),
             onlyfans_username: getDraftSocialUsername('onlyfans', els.onlyfansUsername),
             onlyfans_enabled: els.onlyfansEnabled?.checked !== false,
             onlyfans_card_video_url: String(state.linkSettings.onlyfans_card_video_url || ''),
             onlyfans_card_video_path: String(state.linkSettings.onlyfans_card_video_path || ''),
-            spotify_url: cleanUrl(els.spotifyUrl?.value || state.linkSettings.spotify_url, 'Spotify'),
+            spotify_url: cleanUrl(els.spotifyUrl?.value ?? state.linkSettings.spotify_url, 'Spotify'),
             spotify_username: getDraftSocialUsername('spotify', els.spotifyUsername),
             spotify_enabled: els.spotifyEnabled?.checked !== false,
             spotify_card_video_url: String(state.linkSettings.spotify_card_video_url || ''),
             spotify_card_video_path: String(state.linkSettings.spotify_card_video_path || ''),
-            throne_link_url: cleanUrl(els.throneLinkUrl?.value || state.linkSettings.throne_link_url, 'Throne link'),
+            throne_link_url: cleanUrl(els.throneLinkUrl?.value ?? state.linkSettings.throne_link_url, 'Throne link'),
             throne_link_username: getDraftSocialUsername('throne_link', els.throneLinkUsername),
             throne_link_enabled: els.throneLinkEnabled?.checked !== false,
             throne_link_card_video_url: String(state.linkSettings.throne_link_card_video_url || ''),
             throne_link_card_video_path: String(state.linkSettings.throne_link_card_video_path || ''),
             social_card_order: normalizeSocialCardOrder(state.linkSettings.social_card_order),
-            throne_url: cleanUrl(els.throneUrl?.value || state.linkSettings.throne_url, 'Throne'),
+            throne_url: state.linkSettings.throne_url,
             throne_enabled: els.throneEnabled?.checked !== false,
             throne_checkout_mode: 'mockup',
             wishlist_view_mode: WISHLIST_VIEW_MODES.includes(els.wishlistViewMode?.value) ? els.wishlistViewMode.value : 'masonry',
@@ -3018,7 +3081,7 @@ async function persistLatestLinkSettings(requestId, { overrides = null, onCommit
 
     if (error) {
         if (requestId === latestSettingsSaveRequest) {
-            if (els.seoState) els.seoState.textContent = 'error';
+            if (els.seoState) els.seoState.textContent = 'Couldn’t save';
             setStatus(els.adminStatus, error.code === '42P01'
                 ? 'Install site_settings.sql in Supabase first.'
                 : (error.message || 'Could not save links.'));
@@ -3072,6 +3135,8 @@ function saveLinkSettingsNow({ overrides = null, onCommitted = null, onFailure =
     const requestId = ++settingsSaveRevision;
     latestSettingsSaveRequest = requestId;
     settingsSavePending += 1;
+    adminSettingsSaveError = false;
+    updateAdminSaveState();
     const settingOverrides = overrides && typeof overrides === 'object'
         ? { ...overrides }
         : null;
@@ -3082,12 +3147,13 @@ function saveLinkSettingsNow({ overrides = null, onCommitted = null, onFailure =
     }));
     const safeRun = run.catch(error => {
         if (requestId === latestSettingsSaveRequest) {
-            if (els.seoState) els.seoState.textContent = 'error';
+            if (els.seoState) els.seoState.textContent = 'Couldn’t save';
             setStatus(els.adminStatus, error?.message || 'Could not save links.');
         }
         return false;
     });
     const guardedRun = safeRun.then(async saved => {
+        if (requestId === latestSettingsSaveRequest) adminSettingsSaveError = !saved;
         if (!saved && typeof onFailure === 'function') {
             try { await onFailure(); } catch (rollbackError) {
                 console.warn('Settings rollback cleanup failed:', rollbackError);
@@ -3099,10 +3165,13 @@ function saveLinkSettingsNow({ overrides = null, onCommitted = null, onFailure =
     settingsSaveTail = guardedRun.then(() => undefined, () => undefined);
     return guardedRun.finally(() => {
         settingsSavePending = Math.max(0, settingsSavePending - 1);
+        updateAdminSaveState();
     });
 }
 
 function scheduleAutoSave() {
+    adminSettingsSaveError = false;
+    updateAdminSaveState();
     clearTimeout(autoSaveTimer);
     if (!linkSettingsHydrated) {
         autoSaveTimer = null;
@@ -3117,13 +3186,12 @@ function resetLinkSettings() {
         setStatus(els.adminStatus, 'Saved site settings are still loading.');
         return;
     }
-    const existingVideos = Object.fromEntries(
-        SOCIAL_CARD_VIDEO_KEYS.flatMap(key => [
-            [getSocialVideoSettingKey(key, 'url'), state.linkSettings[getSocialVideoSettingKey(key, 'url')] || ''],
-            [getSocialVideoSettingKey(key, 'path'), state.linkSettings[getSocialVideoSettingKey(key, 'path')] || '']
-        ])
-    );
-    state.linkSettings = { ...DEFAULT_LINK_SETTINGS, ...existingVideos };
+    if (!confirmDangerAction('Reset all link destinations, usernames, visibility, and link order to their defaults? Other site settings and backgrounds are kept.')) return;
+    const next = { ...getDraftLinkSettings(), social_card_order: [...DEFAULT_SOCIAL_CARD_ORDER] };
+    SOCIAL_CARD_KEYS.forEach(key => ['url', 'username', 'enabled'].forEach(field => {
+        next[`${key}_${field}`] = DEFAULT_LINK_SETTINGS[`${key}_${field}`];
+    }));
+    state.linkSettings = next;
     renderLinkSettings();
     settingsDraftDirty = true;
     scheduleAutoSave();
@@ -3172,7 +3240,8 @@ async function handleRoomsMasterToggle(event) {
 }
 
 async function runSiteHealthCheck() {
-    if (!els.healthCheck) return;
+    if (!els.healthCheck || els.runHealthCheck?.disabled) return;
+    if (els.runHealthCheck) els.runHealthCheck.disabled = true;
     const checks = [
         {
             label: 'settings table',
@@ -3181,7 +3250,7 @@ async function runSiteHealthCheck() {
         {
             label: 'front page',
             run: async () => {
-                const response = await fetch('../index.html', { cache: 'no-store' });
+                const response = await adminFetchWithDeadline('../index.html', { cache: 'no-store' });
                 const text = await response.text();
                 return response.ok && text.includes('site-structured-data');
             }
@@ -3189,19 +3258,19 @@ async function runSiteHealthCheck() {
         {
             label: 'rooms page',
             run: async () => {
-                const response = await fetch('../rooms/index.html', { cache: 'no-store' });
+                const response = await adminFetchWithDeadline('../rooms/index.html', { cache: 'no-store' });
                 const text = await response.text();
                 return response.ok && text.includes('id="view-lobby"');
             }
         },
         {
             label: 'sitemap',
-            run: async () => (await fetch('../sitemap.xml', { cache: 'no-store' })).ok
+            run: async () => (await adminFetchWithDeadline('../sitemap.xml', { cache: 'no-store' })).ok
         },
         {
             label: 'robots',
             run: async () => {
-                const response = await fetch('../robots.txt', { cache: 'no-store' });
+                const response = await adminFetchWithDeadline('../robots.txt', { cache: 'no-store' });
                 const text = await response.text();
                 return response.ok && text.includes('Sitemap: https://doll.gg/sitemap.xml');
             }
@@ -3209,18 +3278,18 @@ async function runSiteHealthCheck() {
         {
             label: 'admin noindex',
             run: async () => {
-                const response = await fetch('./index.html', { cache: 'no-store' });
+                const response = await adminFetchWithDeadline('./index.html', { cache: 'no-store' });
                 const text = await response.text();
                 return response.ok && text.includes('noindex');
             }
         },
         {
             label: 'favicon',
-            run: async () => (await fetch('../favicon.png', { method: 'HEAD', cache: 'no-store' })).ok
+            run: async () => (await adminFetchWithDeadline('../favicon.png', { method: 'HEAD', cache: 'no-store' })).ok
         },
         {
             label: 'share image',
-            run: async () => (await fetch('../site-images/thumbnail-stripes.png?v=2026.10.17.7', { method: 'HEAD', cache: 'no-store' })).ok
+            run: async () => (await adminFetchWithDeadline('../site-images/thumbnail-stripes.png?v=2026.10.17.7', { method: 'HEAD', cache: 'no-store' })).ok
         }
     ];
 
@@ -3250,6 +3319,7 @@ async function runSiteHealthCheck() {
     }
 
     if (els.healthState) els.healthState.textContent = `${passed}/${checks.length}`;
+    if (els.runHealthCheck) els.runHealthCheck.disabled = false;
 }
 
 function getSelectedIds(listId) {
@@ -3274,6 +3344,7 @@ function clearAdminListSelection(listId) {
     selection.ids.clear();
     selection.snapshotCutoff = '';
     if (listId === 'pending-drawings-list') renderAdminSelectionPreview();
+    if (listId === 'published-drawings-list') updateAdminPublishedSelection();
 }
 
 function forgetAdminSelectionId(id) {
@@ -3282,6 +3353,7 @@ function forgetAdminSelectionId(id) {
         selection.ids.delete(cleanId);
     });
     renderAdminSelectionPreview();
+    updateAdminPublishedSelection();
 }
 
 function refreshVisibleListSelection(listId) {
@@ -3292,6 +3364,7 @@ function refreshVisibleListSelection(listId) {
         input.checked = Boolean(selection?.ids.has(String(input.dataset.selectId)));
     });
     if (listId === 'pending-drawings-list') renderAdminSelectionPreview();
+    if (listId === 'published-drawings-list') updateAdminPublishedSelection();
 }
 
 function getAdminListTable(listId) {
@@ -3487,7 +3560,7 @@ async function clearPendingAdminList(button, listId, noun) {
 async function runBulkAction(button) {
     const action = button.dataset.bulkAction;
     const listId = button.dataset.list;
-    if (!action || !listId) return;
+    if (!action || !listId || button.disabled) return;
 
     if (action === 'delete-all-pending-drawings') {
         await clearPendingAdminList(button, 'pending-drawings-list', 'doods');
@@ -3500,6 +3573,13 @@ async function runBulkAction(button) {
     }
 
     if (action === 'select') {
+        const exact = adminExactFilters.get(listId);
+        if (exact) {
+            const selection = adminListSelections.get(listId);
+            if (!selection || !getAdminVisibleTotal(listId)) return;
+            if (selection.ids.has(exact.id)) selection.ids.delete(exact.id); else selection.ids.add(exact.id);
+            refreshVisibleListSelection(listId); return;
+        }
         const selectedCount = getAdminSelectionCount(listId);
         const totalCount = state.adminListTotals[listId] || 0;
         if (selectedCount === totalCount && totalCount > 0) {
@@ -3581,35 +3661,34 @@ async function runBulkAction(button) {
     }
 }
 
-const ADMIN_PANEL_IDS = ['review-panel', 'published-panel', 'site-panel', 'links-panel', 'wishlist-panel', 'search-panel', 'rooms-panel'];
+const ADMIN_PANEL_IDS = ['review-panel', 'links-panel', 'wishlist-panel', 'published-panel', 'site-panel', 'search-panel', 'rooms-panel'];
+const ADMIN_PANEL_NAMES = { 'review-panel': 'Review', 'links-panel': 'Links', 'wishlist-panel': 'Wishes', 'published-panel': 'Published', 'site-panel': 'Site', 'search-panel': 'Search appearance', 'rooms-panel': 'Rooms' };
 const ADMIN_PANEL_COMMANDS = [
     { panel: 'review-panel', target: '[data-admin-review-content="doods"]', lane: ['review', 'doods'], icon: 'review', title: 'waiting doods', description: 'select, preview, approve, delete, or clear', keywords: 'inbox bulk pending' },
     { panel: 'review-panel', target: '[data-admin-review-content="asks"]', lane: ['review', 'asks'], icon: 'question', title: 'waiting asks', description: 'reply, paste a GIF link, delete, or clear', keywords: 'inbox questions drafts pending' },
-    { panel: 'review-panel', target: '[data-admin-review-content="safety"]', lane: ['review', 'safety'], icon: 'lock', title: 'moderation safety', description: 'submission controls and safeguards', keywords: 'bulk snapshots escaped text' },
     { panel: 'published-panel', target: '[data-admin-published-content="doods"]', lane: ['published', 'doods'], icon: 'published', title: 'posted doods', description: 'select or remove public drawings', keywords: 'published bulk public' },
     { panel: 'published-panel', target: '[data-admin-published-content="asks"]', lane: ['published', 'asks'], icon: 'question', title: 'answered asks', description: 'edit or remove public answers', keywords: 'published replies public' },
     { panel: 'site-panel', target: '[data-link-card="maintenance"]', icon: 'power', title: 'update mode', description: 'headline, message, and return time', keywords: 'maintenance settings' },
     { panel: 'site-panel', target: '[data-link-card="entrance"]', icon: 'spark', title: 'site entrance', description: 'paw press or bubbles with preview', keywords: 'interaction settings' },
     { panel: 'site-panel', target: '[data-link-card="first-visit-tour"]', icon: 'eye', title: 'first-visit tour', description: 'preview the dood, ask, and links guide', keywords: 'onboarding settings' },
-    { panel: 'site-panel', target: '[data-link-card="submissions"]', icon: 'edit', title: 'posting switches', description: 'independent dood and ask controls', keywords: 'submissions safety settings' },
+    { panel: 'site-panel', target: '[data-link-card="submissions"]', icon: 'edit', title: 'Submissions', description: 'independent dood and ask controls', keywords: 'submissions safety settings' },
     { panel: 'site-panel', target: '[data-link-card="homepage-note"]', icon: 'note', title: 'homepage paper note', description: 'edit and preview the fitted note', keywords: 'settings text' },
     { panel: 'links-panel', target: '.admin-link-grid', icon: 'drag', title: 'link card order', description: 'drag to arrange the cards in Links', keywords: 'snapchat instagram kofi telegram x tiktok twitch discord onlyfans spotify throne' },
-    { panel: 'links-panel', target: '[data-link-card="snapchat"]', icon: 'media', title: 'social card media', description: 'choose, preview, upload, or remove backgrounds', keywords: 'video gif mov mp4 storage' },
+    { panel: 'links-panel', target: '[data-link-card="snapchat"]', icon: 'media', title: 'social card media', description: 'preview the backgrounds currently on your site', keywords: 'video gif mov mp4 storage' },
     { panel: 'links-panel', target: '[data-link-card="throne_link"]', icon: 'wishlist', title: 'Throne link card', description: 'destination, username, visibility, and background', keywords: 'throne public links banner' },
-    { panel: 'wishlist-panel', target: '[data-link-card="wishes"]', icon: 'wishlist', title: 'Wishes menu', description: 'wishlist destination, menu visibility, and layout', keywords: 'throne wishlist custom display' },
+    { panel: 'wishlist-panel', target: '[data-link-card="wishes"]', icon: 'wishlist', title: 'Wishes menu', description: 'Throne sync source, menu visibility, and layout', keywords: 'throne wishlist custom display' },
     { panel: 'wishlist-panel', target: '.admin-bulk-bar', icon: 'wishlist', title: 'featured wishes', description: 'sync, filter, feature, and drag public order', keywords: 'throne sold out new items' },
     { panel: 'search-panel', target: '.admin-search-editor', icon: 'search', title: 'search preview', description: 'rendered title, description, and tagline', keywords: 'seo google metadata' },
-    { panel: 'search-panel', target: '#static-seo-checks', icon: 'search', title: 'crawler copy', description: 'compare static, Open Graph, X, and schema copy', keywords: 'seo structured data github' },
+    { panel: 'search-panel', target: '#static-seo-checks', icon: 'search', title: 'Published search text', description: 'compare static, Open Graph, X, and schema copy', keywords: 'seo structured data github' },
     { panel: 'search-panel', target: '#admin-health-check', icon: 'check', title: 'site health checks', description: 'pages, sitemap, robots, icons, and noindex', keywords: 'status favicon share image' },
     { panel: 'rooms-panel', target: '#table-wrap', icon: 'rooms', title: 'Rooms operations', description: 'recent, stale, cleanup, inspect, and close', keywords: 'participants host livekit' },
     { panel: 'rooms-panel', target: '#bans-table-wrap', icon: 'lock', title: 'Rooms bans', description: 'session and nickname bans', keywords: 'block global safety' }
 ];
 
 const ADMIN_NAV_ORDER_KEY = 'doll_admin_panel_order_v1';
-let adminNavSuppressClickUntil = 0;
-const initializedHorizontalRails = new WeakSet();
 
 function activateAdminPanel(panelId, { focusHeading = false, scrollToTop = false } = {}) {
+    document.dispatchEvent(new Event('admin-content-changing'));
     const panel = document.getElementById(panelId);
     const button = els.tabs?.querySelector(`button[data-panel="${panelId}"]`);
     if (!panel || !button) return false;
@@ -3625,78 +3704,217 @@ function activateAdminPanel(panelId, { focusHeading = false, scrollToTop = false
     });
 
     const moreButton = document.getElementById('admin-mobile-more');
-    moreButton?.classList.toggle('more-active', ['wishlist-panel', 'search-panel', 'rooms-panel'].includes(panelId));
+    moreButton?.classList.toggle('more-active', button.hasAttribute('data-mobile-hidden'));
+    document.getElementById('admin-page-title').textContent = ADMIN_PANEL_NAMES[panelId];
+    window.roomsPanelVisibilityChanged?.(panelId === 'rooms-panel');
+    renderAdminMore();
 
     if (panelId === 'rooms-panel') window.initRoomsPanel?.();
-    if (scrollToTop) window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (scrollToTop) window.scrollTo({ top: 0, behavior: 'instant' });
     if (focusHeading) {
-        const heading = panel.querySelector('.admin-panel-intro h2, h2');
+        const heading = document.getElementById('admin-page-title');
         if (heading) {
             heading.tabIndex = -1;
             requestAnimationFrame(() => heading.focus({ preventScroll: true }));
         }
     }
-    requestAnimationFrame(setupAdminHorizontalScroll);
+    setupAdminHorizontalScroll();
     return true;
 }
 
-function renderAdminCommands(filter = '') {
-    const output = document.getElementById('admin-command-results');
-    if (!output) return;
-    const needle = String(filter || '').trim().toLowerCase();
-    const matches = ADMIN_PANEL_COMMANDS.filter(command => (
-        `${command.title} ${command.description} ${command.keywords}`.toLowerCase().includes(needle)
-    ));
-    output.innerHTML = matches.length ? matches.map(command => `
-        <button class="admin-command-result" type="button" data-command-index="${ADMIN_PANEL_COMMANDS.indexOf(command)}" data-command-panel="${command.panel}">
-            ${adminIcon(command.icon, '')}
-            <span><strong>${command.title}</strong><small>${command.description}</small></span>
-            ${adminIcon('arrow-right', '')}
-        </button>
-    `).join('') : '<div class="admin-command-empty">no matching admin tool</div>';
+const adminExactFilters = new Map();
+const adminSearch = { token: 0, timer: 0, controller: null, term: '', groups: {}, results: [], pages: {} };
+const ADMIN_SEARCH_PAGE_SIZE = 8;
+function getAdminVisibleTotal(listId) {
+    return adminExactFilters.get(listId)?.total ?? state.adminListTotals[listId] ?? 0;
 }
-
-function initAdminCommandPalette() {
-    const opener = document.getElementById('admin-command-open');
-    const dialog = document.getElementById('admin-command-dialog');
-    const input = document.getElementById('admin-command-input');
-    if (!opener || !dialog || !input) return;
-
-    const open = () => {
-        if (els.dashboardPanel?.classList.contains('hidden') || dialog.open) return;
-        renderAdminCommands('');
-        input.value = '';
-        dialog.showModal();
-        requestAnimationFrame(() => input.focus());
+function adminSearchPattern(term) { return `%${term.replace(/[\\%_]/g, char => `\\${char}`)}%`; }
+function adminPostgrestValue(value) { return '"' + value.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"'; }
+function adminDateBounds(day) {
+    const format = new Intl.DateTimeFormat('en-CA', { timeZone: ADMIN_TIME_ZONE, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' });
+    const midnight = date => {
+        const desired = Date.parse(date + 'T00:00:00Z'); let guess = desired;
+        for (let i = 0; i < 3; i++) {
+            const parts = Object.fromEntries(format.formatToParts(new Date(guess)).map(part => [part.type, part.value]));
+            const actual = Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day), Number(parts.hour), Number(parts.minute), Number(parts.second));
+            guess += desired - actual;
+        }
+        return new Date(guess).toISOString();
     };
-
+    const next = new Date(Date.parse(day + 'T00:00:00Z') + 86400000).toISOString().slice(0, 10);
+    return [midnight(day), midnight(next)];
+}
+function getAdminToolCommands() {
+    const commands = ADMIN_PANEL_COMMANDS.slice();
+    const seen = new Set(commands.map(command => command.target));
+    document.querySelectorAll('.admin-panel input[id]:not([type="file"]), .admin-panel textarea[id], .admin-panel select[id], #admin-card-inspector input[id]:not([type="file"]), #admin-card-inspector textarea[id], #admin-card-inspector select[id]').forEach(input => {
+        const panel = input.closest('.admin-panel') || adminCardInspectorRestore?.placeholder?.closest('.admin-panel');
+        if (!panel) return;
+        const label = input.getAttribute('aria-label') || input.closest('label')?.querySelector(':scope > span')?.textContent.trim() || input.id.replaceAll('-', ' ');
+        const target = '#' + input.id;
+        if (seen.has(target)) return; seen.add(target);
+        commands.push({ panel: panel.id, target, title: label, description: ADMIN_PANEL_NAMES[panel.id], keywords: input.id.replaceAll('-', ' '), icon: 'edit' });
+    });
+    return commands;
+}
+function getAdminLocalSearchResults(term) {
+    const needle = term.toLowerCase();
+    const tools = getAdminToolCommands().filter(command => `${command.title} ${command.description} ${command.keywords}`.toLowerCase().includes(needle)).slice(0, term ? 16 : 12).map(command => ({ ...command, kind: 'tool' }));
+    const settings = getDraftLinkSettings();
+    const links = term ? SOCIAL_CARD_KEYS.filter(key => `${key} ${settings[`${key}_username`]} ${settings[`${key}_url`]}`.toLowerCase().includes(needle)).map(key => ({ kind: 'tool', panel: 'links-panel', target: `[data-link-card="${key}"]`, title: document.querySelector(`[data-link-card="${key}"] summary strong`)?.textContent || key, description: settings[`${key}_username`] || settings[`${key}_url`], icon: 'links' })) : [];
+    return { tools, links };
+}
+function renderAdminSearchResults() {
+    const output = document.getElementById('admin-command-results');
+    const local = getAdminLocalSearchResults(adminSearch.term);
+    const groups = [{ name: 'Tools', rows: local.tools }, { name: 'Links', rows: local.links }];
+    if (adminSearch.term) ['Doods', 'Asks', 'Wishes'].forEach(name => groups.push({ name, ...(adminSearch.groups[name] || { rows: [], loading: true }) }));
+    adminSearch.results = [];
+    output.innerHTML = groups.map(group => {
+        if (!group.rows?.length && !group.loading && !group.error && !group.count) return '';
+        const content = (group.rows || []).map(result => {
+            const index = adminSearch.results.push(result) - 1;
+            return `<button class="admin-command-result" type="button" data-search-result="${index}">${adminIcon(result.icon || 'search')}<span><strong>${escapeHtml(result.title)}</strong><small>${escapeHtml(result.description || '')}</small></span>${adminIcon('arrow-right')}</button>`;
+        }).join('');
+        const page = adminSearch.pages[group.name] || 0;
+        const paging = group.count > ADMIN_SEARCH_PAGE_SIZE ? `<div class="admin-pagination"><button type="button" class="soft" data-search-page="${group.name}" data-search-step="-1" ${page === 0 ? 'disabled' : ''} aria-label="Previous ${group.name} search results">${adminIcon('arrow-left')}</button><span>${page * ADMIN_SEARCH_PAGE_SIZE + 1}–${Math.min(group.count, (page + 1) * ADMIN_SEARCH_PAGE_SIZE)} of ${group.count}</span><button type="button" class="soft" data-search-page="${group.name}" data-search-step="1" ${(page + 1) * ADMIN_SEARCH_PAGE_SIZE >= group.count ? 'disabled' : ''} aria-label="Next ${group.name} search results">${adminIcon('arrow-right')}</button></div>` : '';
+        return `<section aria-label="${group.name} results"><h3>${group.name}</h3>${content}${group.loading ? '<p class="admin-tool-note">Searching…</p>' : ''}${group.error ? `<p class="admin-tool-note">${escapeHtml(group.error)}</p><button type="button" class="soft" data-search-retry="${group.name}">Retry ${group.name.toLowerCase()}</button>` : ''}${paging}</section>`;
+    }).join('');
+    if (!output.textContent.trim()) output.innerHTML = '<p class="admin-command-empty">No matches. Try another search.</p>';
+}
+async function fetchAdminSearchGroup(name, term, signal) {
+    const start = (adminSearch.pages[name] || 0) * ADMIN_SEARCH_PAGE_SIZE;
+    let query;
+    const exactId = /^(?:[0-9]+|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i.test(term);
+    if (name === 'Doods') {
+        query = adminClient.from('drawings').select('id,created_at,approved', { count: 'exact' });
+        if (exactId) query = query.eq('id', term);
+        else if (/^\d{4}-\d{2}-\d{2}$/.test(term) && !Number.isNaN(Date.parse(term)) && new Date(term + 'T00:00:00Z').toISOString().startsWith(term)) {
+            const [from, to] = adminDateBounds(term); query = query.gte('created_at', from).lt('created_at', to);
+        } else if (/^(?:pending|waiting)(?: doods?)?$/i.test(term)) query = query.or('approved.is.null,approved.eq.false');
+        else if (/^(?:published|approved|posted)(?: doods?)?$/i.test(term)) query = query.eq('approved', true);
+        else if (!/^doods?$/i.test(term)) return { rows: [], count: 0 };
+    } else if (name === 'Asks') {
+        query = adminClient.from('questions').select('id,question,answer,created_at', { count: 'exact' });
+        if (exactId) query = query.eq('id', term);
+        else { const value = adminPostgrestValue(adminSearchPattern(term)); query = query.or(`question.ilike.${value},answer.ilike.${value}`); }
+    } else query = adminClient.from('wishlist_items').select('throne_item_id,name,featured', { count: 'exact' }).ilike('name', adminSearchPattern(term));
+    query = name === 'Wishes' ? query.order('name').order('throne_item_id') : query.order('created_at', { ascending: false }).order('id', { ascending: false });
+    if (typeof query.abortSignal === 'function') query = query.abortSignal(signal);
+    const result = await withAdminDeadline(query.range(start, start + ADMIN_SEARCH_PAGE_SIZE - 1));
+    if (result.error) throw result.error;
+    return { count: result.count || 0, rows: (result.data || []).map(item => {
+        if (name === 'Doods') return { kind: 'record', list: item.approved ? 'published-drawings-list' : 'pending-drawings-list', id: String(item.id), title: `Dood ${String(item.id).slice(0, 12)}`, description: `${item.approved ? 'Published' : 'Pending'} · ${formatAdminSearchDate(item.created_at)}`, icon: 'edit' };
+        if (name === 'Asks') return { kind: 'record', list: String(item.answer || '').trim() ? 'published-questions-list' : 'pending-questions-list', id: String(item.id), title: String(item.question || 'Ask').slice(0, 160), description: String(item.answer || 'Waiting for a reply').slice(0, 160), icon: 'question' };
+        return { kind: 'record', list: 'wishlist-items-list', id: String(item.throne_item_id), title: item.name || 'Wish', description: item.featured ? 'Featured' : 'Not featured', icon: 'wishlist' };
+    }) };
+}
+function formatAdminSearchDate(value) { const date = parseAdminDate(value); return date && !Number.isNaN(date.getTime()) ? adminDateFormatter.format(date) : 'Unknown date'; }
+function cancelAdminSearch() {
+    clearTimeout(adminSearch.timer); adminSearch.controller?.abort(); adminSearch.controller = null; adminSearch.token += 1;
+}
+function renderAdminCommands(filter = '', onlyGroup = null) {
+    cancelAdminSearch();
+    const term = String(filter).trim().slice(0, 160);
+    if (term !== adminSearch.term) { adminSearch.pages = {}; adminSearch.groups = {}; }
+    adminSearch.term = term;
+    const names = onlyGroup ? [...new Set([onlyGroup, ...Object.keys(adminSearch.groups).filter(name => adminSearch.groups[name].loading)])] : ['Doods', 'Asks', 'Wishes'];
+    names.forEach(name => { adminSearch.groups[name] = { rows: [], loading: Boolean(term) }; });
+    renderAdminSearchResults();
+    if (!term) return;
+    const token = adminSearch.token, controller = new AbortController(); adminSearch.controller = controller;
+    adminSearch.timer = setTimeout(() => {
+        names.forEach(async name => {
+            try {
+                const result = await fetchAdminSearchGroup(name, term, controller.signal);
+                if (token === adminSearch.token && !controller.signal.aborted) adminSearch.groups[name] = result;
+            } catch (error) {
+                if (token !== adminSearch.token || controller.signal.aborted) return;
+                adminSearch.groups[name] = { rows: [], error: error.message || 'Couldn’t search. Try again.' };
+            }
+            if (token === adminSearch.token && document.getElementById('admin-command-dialog').open) renderAdminSearchResults();
+        });
+    }, 200);
+}
+async function openAdminSearchResult(result) {
+    document.getElementById('admin-command-dialog').close();
+    if (result.kind === 'record') {
+        const listId = result.list, panel = listId.startsWith('pending') ? 'review-panel' : listId.startsWith('published') ? 'published-panel' : 'wishlist-panel';
+        const group = panel === 'review-panel' ? 'review' : 'published';
+        if (panel !== 'wishlist-panel') setAdminLane(group, listId.includes('drawings') ? 'doods' : 'asks');
+        const previous = adminExactFilters.get(listId);
+        adminExactFilters.set(listId, { id: result.id, total: 0, previousPage: previous?.previousPage || adminListPages.get(listId) || 1 });
+        adminListPages.set(listId, 1); renderAdminExactFilter(listId);
+        activateAdminPanel(panel, { scrollToTop: true });
+        await loadAdminList(listId);
+        if (adminExactFilters.get(listId)?.id !== result.id || !document.getElementById(panel).classList.contains('active')) return;
+        if (!getAdminVisibleTotal(listId)) setStatus(els.adminStatus, 'This item was removed or moved since the search. Clear the result or search again.');
+        const card = document.getElementById(listId).querySelector(`[data-id="${CSS.escape(result.id)}"]`);
+        if (card) { card.tabIndex = -1; card.focus({ preventScroll: true }); card.scrollIntoView({ block: 'center', behavior: 'instant' }); }
+        return;
+    }
+    const inspector = document.getElementById('admin-card-inspector');
+    if (inspector.open) { inspector.close(); restoreAdminCardInspector(); }
+    if (result.lane) setAdminLane(...result.lane);
+    activateAdminPanel(result.panel, { scrollToTop: true });
+    const root = document.getElementById(result.panel);
+    let target = root.querySelector(result.target);
+    if (!target) return;
+    const card = target.closest('#links-panel [data-link-card]');
+    if (card && (target === card || target.closest('.admin-link-card-body'))) {
+        openAdminCardInspector(card.dataset.linkCard, document.getElementById('admin-command-open'));
+        target = result.target.startsWith('#') ? document.querySelector(result.target) : document.querySelector('#admin-card-inspector input');
+    } else { let details = target.closest('details'); if (details) details.open = true; }
+    if (target) { if (!target.matches('input, textarea, select, button')) target.tabIndex = -1; target.focus({ preventScroll: true }); target.scrollIntoView({ block: 'center', behavior: 'instant' }); }
+}
+function renderAdminExactFilter(listId) {
+    const list = document.getElementById(listId); let bar = document.getElementById(`${listId}-exact`);
+    if (!bar) {
+        bar = document.createElement('div'); bar.className = 'admin-exact-filter'; bar.id = `${listId}-exact`;
+        bar.innerHTML = '<span></span><button type="button">Clear result</button>'; list.before(bar);
+        bar.querySelector('button').addEventListener('click', async () => {
+            const exact = adminExactFilters.get(listId); if (!exact) return;
+            adminExactFilters.delete(listId); adminListPages.set(listId, exact.previousPage); renderAdminExactFilter(listId);
+            await loadAdminList(listId);
+            document.getElementById(listId).tabIndex = -1; document.getElementById(listId).focus({ preventScroll: true });
+        });
+    }
+    const exact = adminExactFilters.get(listId); bar.hidden = !exact;
+    document.querySelectorAll(`[data-list="${listId}"][data-bulk-action="select"]`).forEach(button => { button.textContent = exact ? 'Select result' : 'Select all'; });
+    bar.querySelector('span').textContent = exact ? `Search result · ${exact.id}` : '';
+}
+function initAdminCommandPalette() {
+    const opener = document.getElementById('admin-command-open'), dialog = document.getElementById('admin-command-dialog'), input = document.getElementById('admin-command-input');
+    const open = () => {
+        if (els.dashboardPanel.classList.contains('hidden') || dialog.open) return;
+        adminSearch.term = ''; adminSearch.groups = {}; adminSearch.pages = {}; input.value = '';
+        dialog.showModal(); renderAdminCommands(''); input.focus();
+    };
     opener.addEventListener('click', open);
     input.addEventListener('input', () => renderAdminCommands(input.value));
+    input.addEventListener('keydown', event => {
+        if (event.isComposing) return;
+        if (event.key === 'Enter') { event.preventDefault(); dialog.querySelector('[data-search-result]')?.click(); return; }
+        if (event.key === 'ArrowDown') { event.preventDefault(); dialog.querySelector('[data-search-result]')?.focus(); }
+    });
+    dialog.querySelector('form').addEventListener('submit', event => {
+        if (event.submitter?.value === 'cancel') return;
+        event.preventDefault(); dialog.querySelector('[data-search-result]')?.click();
+    });
     dialog.addEventListener('click', event => {
-        if (event.target === dialog) dialog.close();
-        const button = event.target.closest('[data-command-index]');
-        if (!button) return;
-        const command = ADMIN_PANEL_COMMANDS[Number(button.dataset.commandIndex)];
-        if (!command) return;
-        dialog.close();
-        if (command.lane) setAdminLane(command.lane[0], command.lane[1]);
-        activateAdminPanel(command.panel, { scrollToTop: true });
-        const target = command.target ? document.querySelector(command.target) : document.getElementById(command.panel);
-        if (target instanceof HTMLDetailsElement) target.open = true;
-        if (target) {
-            target.tabIndex = -1;
-            requestAnimationFrame(() => {
-                target.scrollIntoView({ block: 'center', behavior: 'smooth' });
-                target.focus({ preventScroll: true });
-            });
-        }
+        if (event.target === dialog) { const rect = dialog.getBoundingClientRect(); if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) dialog.close(); }
+        const button = event.target.closest('[data-search-result], [data-search-retry], [data-search-page]'); if (!button) return;
+        if (button.dataset.searchResult !== undefined) { const result = adminSearch.results[Number(button.dataset.searchResult)]; if (result) void openAdminSearchResult(result).catch(error => setStatus(els.adminStatus, error.message || 'Couldn’t open result.')); }
+        else if (button.dataset.searchRetry) renderAdminCommands(input.value, button.dataset.searchRetry);
+        else { const group = button.dataset.searchPage; adminSearch.pages[group] = Math.max(0, (adminSearch.pages[group] || 0) + Number(button.dataset.searchStep)); renderAdminCommands(input.value, group); }
     });
-    document.addEventListener('keydown', event => {
-        if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
-            event.preventDefault();
-            open();
-        }
+    dialog.addEventListener('keydown', event => {
+        if (!event.target.closest('[data-search-result]') || !['ArrowDown', 'ArrowUp'].includes(event.key)) return;
+        event.preventDefault(); const buttons = [...dialog.querySelectorAll('[data-search-result]')], index = buttons.indexOf(event.target);
+        if (index === 0 && event.key === 'ArrowUp') input.focus(); else buttons[Math.min(buttons.length - 1, index + (event.key === 'ArrowDown' ? 1 : -1))]?.focus();
     });
+    dialog.addEventListener('close', cancelAdminSearch);
+    document.addEventListener('keydown', event => { if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); open(); } });
 }
 
 function initAdminMobileMore() {
@@ -3721,341 +3939,187 @@ function normalizeAdminNavOrder(value) {
     return [...new Set(input.filter(panel => allowed.includes(panel))), ...allowed.filter(panel => !input.includes(panel))];
 }
 
-function restoreAdminNavOrder() {
-    if (!els.tabs) return;
-    let saved = [];
-    try {
-        saved = JSON.parse(localStorage.getItem(ADMIN_NAV_ORDER_KEY) || '[]');
-    } catch (error) {
-        console.warn('admin nav order:', error);
-    }
-    const more = document.getElementById('admin-mobile-more');
-    normalizeAdminNavOrder(saved).forEach(panelId => {
-        const button = els.tabs.querySelector(`button[data-panel="${panelId}"]`);
-        if (button) els.tabs.insertBefore(button, more);
-    });
-}
-
-function persistAdminNavOrder() {
-    if (!els.tabs) return;
-    const order = Array.from(els.tabs.querySelectorAll('button[data-panel]')).map(button => button.dataset.panel);
-    try {
-        localStorage.setItem(ADMIN_NAV_ORDER_KEY, JSON.stringify(normalizeAdminNavOrder(order)));
-    } catch (error) {
-        console.warn('admin nav order save:', error);
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Shared pointer-driven sort engine.
-//
-// The three reorderable lists (nav rail, social cards, featured wishlist) used
-// to run on the HTML5 drag-and-drop API. That API never fires from touch, so
-// reordering was silently desktop-only — on a phone the press just scrolled the
-// page. Pointer events cover mouse, touch and pen through one code path, so all
-// three lists share this engine instead.
-// ---------------------------------------------------------------------------
 const ADMIN_DRAG_SLOP = 4;
-const ADMIN_DRAG_EDGE_ZONE = 72;
-const ADMIN_DRAG_EDGE_SPEED = 18;
-// Live reordering moves the real element, so the card under the pointer keeps
-// changing. Uneven card heights can make that oscillate, so the list is left
-// alone for a beat after each move.
-const ADMIN_DRAG_SETTLE_MS = 70;
-// A finished drag fires no click of its own here (preventDefault on pointermove
-// sees to that), so this only has to outlast a browser that disagrees — not a
-// deliberate tap. Keep it short: a longer guard just makes the order arrows and
-// the pencil ignore real clicks for a beat after every drop.
+const ADMIN_DRAG_EDGE_ZONE = 60;
+const ADMIN_DRAG_EDGE_SPEED = 16;
 const ADMIN_DRAG_CLICK_GUARD_MS = 120;
 
 function adminDragEdgeDelta(top, bottom, point) {
-    if (point < top + ADMIN_DRAG_EDGE_ZONE) {
-        return -Math.ceil(((top + ADMIN_DRAG_EDGE_ZONE - point) / ADMIN_DRAG_EDGE_ZONE) * ADMIN_DRAG_EDGE_SPEED);
-    }
-    if (point > bottom - ADMIN_DRAG_EDGE_ZONE) {
-        return Math.ceil(((point - (bottom - ADMIN_DRAG_EDGE_ZONE)) / ADMIN_DRAG_EDGE_ZONE) * ADMIN_DRAG_EDGE_SPEED);
-    }
+    const zone = Math.min(ADMIN_DRAG_EDGE_ZONE, (bottom - top) / 3);
+    if (point < top + zone) return -Math.min(ADMIN_DRAG_EDGE_SPEED, Math.ceil((top + zone - point) / zone * ADMIN_DRAG_EDGE_SPEED));
+    if (point > bottom - zone) return Math.min(ADMIN_DRAG_EDGE_SPEED, Math.ceil((point - bottom + zone) / zone * ADMIN_DRAG_EDGE_SPEED));
     return 0;
 }
 
-// Measured, not read off the stylesheet: `.admin-wishlist-list` is a flex
-// column that still inherits `grid-template-columns` from `.admin-list`, so the
-// computed value lies about the layout. Two cards sitting side by side is the
-// only reliable tell that the list wraps into columns.
-function adminDragIsMultiColumn(items) {
-    for (let index = 1; index < items.length; index += 1) {
-        const previous = items[index - 1].getBoundingClientRect();
-        const current = items[index].getBoundingClientRect();
-        if (!previous.height || !current.height) continue;
-        if (current.left >= previous.right - 1 && current.top < previous.bottom - 1) return true;
-    }
-    return false;
-}
+// One engine for workspace arrangement and public content order. Persistence
+// stays with each caller. No gesture ever writes settings before release.
+function createAdminDragSort({ container: containerRef, handleSelector, itemSelector,
+    canDrag = () => true, canStart = () => true, onDragFinish = () => {}, onCommit = () => {} }) {
+    const getContainer = () => typeof containerRef === 'function' ? containerRef() : containerRef;
+    let pending = null, dragged = null, placeholder = null, pointerId = null;
+    let x = 0, y = 0, startX = 0, startY = 0, offsetX = 0, offsetY = 0;
+    let originalStyle = null, originalChildren = [], originalOrder = [], frame = 0, capture = null;
+    let lastTime = 0, geometry = null;
+    const animations = new Map();
+    const items = container => [...container.children].filter(el => el.matches?.(itemSelector) && canDrag(el));
 
-function createAdminDragSort(config) {
-    const {
-        container: containerRef,
-        handleSelector,
-        itemSelector,
-        canDrag = () => true,
-        canStart = () => true,
-        onDragFinish = () => {},
-        onCommit = () => {}
-    } = config;
-
-    const getContainer = () => (typeof containerRef === 'function' ? containerRef() : containerRef);
-
-    let pending = null;
-    let dragged = null;
-    let pointerId = null;
-    let pointerX = 0;
-    let pointerY = 0;
-    let originX = 0;
-    let originY = 0;
-    let multiColumn = false;
-    let settleUntil = 0;
-    let scrollFrame = 0;
-    let originalOrder = [];
-    let originalAnchor = null;
-
-    function sortableItems(container) {
-        return Array.from(container.children).filter(el =>
-            typeof el.matches === 'function' && el.matches(itemSelector) && canDrag(el));
-    }
-
-    function placeAfterTarget(target) {
-        const rect = target.getBoundingClientRect();
-        // Inside a wrapped grid row the meaningful axis is horizontal; anywhere
-        // else (and between rows) it is the vertical midpoint.
-        if (multiColumn && pointerY >= rect.top && pointerY <= rect.bottom) {
-            return pointerX > rect.left + (rect.width / 2);
+    function stopAnimations() { animations.forEach(animation => animation.cancel()); animations.clear(); }
+    function scrollParent(element) {
+        for (let parent = element.parentElement; parent && parent !== document.body; parent = parent.parentElement) {
+            const css = getComputedStyle(parent);
+            if (/(auto|scroll)/.test(css.overflowY) && parent.scrollHeight > parent.clientHeight + 1) return parent;
         }
-        return pointerY > rect.top + (rect.height / 2);
+        return null;
     }
-
-    function findTarget(container) {
-        const under = document.elementFromPoint(pointerX, pointerY);
-        const direct = under && typeof under.closest === 'function' ? under.closest(itemSelector) : null;
-        if (direct) {
-            // Over the dragged card itself, a pinned card (throne), an
-            // unfeatured row, or a card in some other list: no move.
-            if (direct === dragged || direct.parentElement !== container || !canDrag(direct)) return null;
-            return direct;
-        }
-        // In a gutter or just past the last card. Snap to the closest card, but
-        // only while the pointer is still near the list.
-        const bounds = container.getBoundingClientRect();
-        const slack = 48;
-        if (pointerX < bounds.left - slack || pointerX > bounds.right + slack
-            || pointerY < bounds.top - slack || pointerY > bounds.bottom + slack) return null;
-
-        let best = null;
-        let bestDistance = Infinity;
-        sortableItems(container).forEach(item => {
-            if (item === dragged) return;
-            const rect = item.getBoundingClientRect();
-            const dx = pointerX - Math.max(rect.left, Math.min(pointerX, rect.right));
-            const dy = pointerY - Math.max(rect.top, Math.min(pointerY, rect.bottom));
-            const distance = (dx * dx) + (dy * dy);
-            if (distance < bestDistance) {
-                bestDistance = distance;
-                best = item;
-            }
-        });
-        return best;
-    }
-
-    function updatePlacement() {
-        const container = getContainer();
-        if (!container || !dragged || performance.now() < settleUntil) return;
-        const target = findTarget(container);
-        if (!target) return;
-        if (placeAfterTarget(target)) {
-            if (target.nextElementSibling === dragged) return;
-            container.insertBefore(dragged, target.nextElementSibling);
-        } else {
-            if (dragged.nextElementSibling === target) return;
-            container.insertBefore(dragged, target);
-        }
-        settleUntil = performance.now() + ADMIN_DRAG_SETTLE_MS;
-    }
-
-    function tick() {
-        if (!dragged) {
-            scrollFrame = 0;
-            return;
-        }
-        // A background refresh can replace the list mid-drag.
-        if (!dragged.isConnected) {
-            endDrag(false);
-            return;
-        }
-        scrollFrame = requestAnimationFrame(tick);
-        const delta = adminDragEdgeDelta(0, window.innerHeight, pointerY);
-        if (delta) window.scrollBy(0, delta);
-        updatePlacement();
-    }
-
-    function restoreOrder(container) {
-        originalOrder.forEach(item => {
-            if (item.isConnected) container.insertBefore(item, originalAnchor);
-        });
-    }
-
     function detach() {
-        window.removeEventListener('pointermove', handlePointerMove);
-        window.removeEventListener('pointerup', handlePointerUp);
-        window.removeEventListener('pointercancel', handlePointerCancel);
-        window.removeEventListener('keydown', handleKeyDown, true);
-        window.removeEventListener('blur', handlePointerCancel);
+        window.removeEventListener('pointermove', move);
+        window.removeEventListener('pointerup', up);
+        window.removeEventListener('pointercancel', cancel);
+        window.removeEventListener('blur', cancel);
+        window.removeEventListener('resize', cancel);
+        document.removeEventListener('visibilitychange', visibility);
+        document.removeEventListener('admin-content-changing', cancel);
+        document.removeEventListener('keydown', keydown, true);
+        capture?.removeEventListener('lostpointercapture', lostCapture);
     }
-
-    function endDrag(commit) {
-        const container = getContainer();
-        const item = dragged;
-        if (scrollFrame) {
-            cancelAnimationFrame(scrollFrame);
-            scrollFrame = 0;
+    function finish(commit) {
+        const container = getContainer(), item = dragged, id = pointerId;
+        if (frame) cancelAnimationFrame(frame);
+        frame = 0;
+        detach(); stopAnimations();
+        const connected = item?.isConnected && container?.isConnected && item.parentElement === container;
+        if (connected && placeholder?.isConnected) placeholder.replaceWith(item);
+        else placeholder?.remove();
+        if (item) {
+            if (originalStyle === null) item.removeAttribute('style'); else item.setAttribute('style', originalStyle);
+            item.classList.remove('dragging');
         }
-        detach();
-        // A settle window may still be open, holding back the placement the
-        // pointer is sitting on. Flush it so releasing right after a move drops
-        // where the cursor is rather than one slot short.
-        if (commit && container && item && item.isConnected) {
-            settleUntil = 0;
-            updatePlacement();
-        }
+        if (!commit && connected) originalChildren.forEach(node => { if (node.parentElement === container) container.appendChild(node); });
+        const order = container ? items(container) : [];
+        const previousOrder = originalOrder.slice();
+        const changed = connected && order.length === previousOrder.length && order.some((el, i) => el !== previousOrder[i]);
+        pending = dragged = placeholder = null; pointerId = null; geometry = null;
         document.body.classList.remove('admin-dragging');
-        if (item) item.classList.remove('dragging');
-        if (container) container.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
-        dragged = null;
-        pending = null;
-        pointerId = null;
-        if (!item || !container) return;
-
-        if (!item.isConnected) {
-            originalOrder = [];
-            originalAnchor = null;
-            return;
-        }
-        const order = sortableItems(container);
-        const changed = order.length !== originalOrder.length
-            || order.some((el, index) => el !== originalOrder[index]);
-        if (!commit) {
-            if (changed) restoreOrder(container);
-        } else if (changed) {
-            onCommit({ container, item, order, previousOrder: originalOrder.slice() });
-        }
-        originalOrder = [];
-        originalAnchor = null;
+        if (capture?.hasPointerCapture?.(id)) capture.releasePointerCapture(id);
+        capture = null; originalChildren = []; originalOrder = [];
+        if (item) onDragFinish();
+        if (commit && changed) onCommit({ container, item, order, previousOrder });
     }
-
-    function handlePointerDown(event) {
-        if (dragged || pending) return;
-        if (event.pointerType === 'mouse' && event.button !== 0) return;
+    function measureGeometry(container) {
+        const parent = scrollParent(container);
+        geometry = {
+            rects: new Map(items(container).filter(el => el !== dragged).map(el => [el, el.getBoundingClientRect()]).filter(([, rect]) => rect.height > 0)),
+            slot: placeholder.getBoundingClientRect(), bounds: container.getBoundingClientRect(),
+            scrollX: window.scrollX, scrollY: window.scrollY, parent,
+            parentX: parent?.scrollLeft || 0, parentY: parent?.scrollTop || 0
+        };
+    }
+    function placement(container) {
+        if (!geometry) measureGeometry(container);
+        const px = x + window.scrollX - geometry.scrollX + (geometry.parent?.scrollLeft || 0) - geometry.parentX;
+        const py = y + window.scrollY - geometry.scrollY + (geometry.parent?.scrollTop || 0) - geometry.parentY;
+        const { slot, bounds, rects } = geometry;
+        if (px >= slot.left && px <= slot.right && py >= slot.top && py <= slot.bottom) return;
+        if (px < bounds.left - 40 || px > bounds.right + 40 || py < bounds.top - 60 || py > bounds.bottom + 60) return;
+        let target = null, distance = Infinity;
+        rects.forEach((rect, el) => {
+            const dx = px - Math.max(rect.left, Math.min(px, rect.right));
+            const dy = py - Math.max(rect.top, Math.min(py, rect.bottom));
+            const value = dx * dx + dy * dy;
+            if (value < distance) { distance = value; target = el; }
+        });
+        if (!target) return;
+        const rect = rects.get(target);
+        const sameRow = slot.top < rect.bottom - 1 && slot.bottom > rect.top + 1 && Math.abs(slot.left - rect.left) > 2;
+        const after = sameRow && py >= rect.top && py <= rect.bottom ? px > rect.left + rect.width / 2 : py > rect.top + rect.height / 2;
+        let anchor = after ? target.nextElementSibling : target;
+        if (anchor === dragged) anchor = dragged.nextElementSibling;
+        if (anchor === placeholder || placeholder.nextElementSibling === anchor) return;
+        // Only a slot change measures layout. Between changes the cached final
+        // rectangles keep hit testing independent of the settling animation.
+        const before = new Map([...rects.keys()].map(el => [el, el.getBoundingClientRect()]));
+        stopAnimations();
+        container.insertBefore(placeholder, anchor);
+        measureGeometry(container);
+        if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+            before.forEach((old, el) => {
+                const next = geometry.rects.get(el); if (!next) return;
+                const dx = old.left - next.left, dy = old.top - next.top;
+                if (!dx && !dy) return;
+                animations.set(el, el.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'translate(0, 0)' }], { duration: 140, easing: 'ease-out' }));
+            });
+        }
+    }
+    function tick(time) {
+        frame = 0;
         const container = getContainer();
-        if (!container || typeof event.target.closest !== 'function') return;
-        const handle = event.target.closest(handleSelector);
-        if (!handle || !container.contains(handle)) return;
-        const item = handle.closest(itemSelector);
-        if (!item || item.parentElement !== container || !canDrag(item) || !canStart(item)) return;
-
-        pending = item;
-        pointerId = event.pointerId;
-        originX = pointerX = event.clientX;
-        originY = pointerY = event.clientY;
-        window.addEventListener('pointermove', handlePointerMove, { passive: false });
-        window.addEventListener('pointerup', handlePointerUp);
-        window.addEventListener('pointercancel', handlePointerCancel);
-        window.addEventListener('keydown', handleKeyDown, true);
-        window.addEventListener('blur', handlePointerCancel);
+        if (!dragged || !container || !dragged.isConnected || !placeholder?.isConnected) { finish(false); return; }
+        const ratio = lastTime ? Math.min(2, (time - lastTime) / (1000 / 60)) : 1;
+        lastTime = time;
+        dragged.style.transform = `translate3d(${x - offsetX}px, ${y - offsetY}px, 0)`;
+        const parent = scrollParent(container);
+        const bounds = parent ? parent.getBoundingClientRect() : { top: 0, bottom: window.innerHeight };
+        const delta = adminDragEdgeDelta(bounds.top + 40, bounds.bottom - 70, y) * ratio;
+        if (delta) { if (parent) parent.scrollTop += delta; else window.scrollBy(0, delta); }
+        placement(container);
+        frame = requestAnimationFrame(tick);
     }
-
-    function beginDrag(container, item) {
-        dragged = item;
-        originalOrder = sortableItems(container);
-        multiColumn = adminDragIsMultiColumn(originalOrder);
-        originalAnchor = originalOrder.length
-            ? originalOrder[originalOrder.length - 1].nextElementSibling
-            : null;
-        settleUntil = 0;
-        item.classList.add('dragging');
-        document.body.classList.add('admin-dragging');
-        if (!scrollFrame) scrollFrame = requestAnimationFrame(tick);
+    function down(event) {
+        if (document.body.classList.contains('admin-dragging') || pending || dragged || event.isPrimary === false || (event.pointerType === 'mouse' && event.button !== 0)) return;
+        const container = getContainer(), handle = event.target.closest?.(handleSelector), item = handle?.closest(itemSelector);
+        if (!container || !handle || !container.contains(handle) || handle.disabled || !item || item.parentElement !== container || !canDrag(item) || !canStart(item)) return;
+        pending = item; pointerId = event.pointerId;
+        startX = x = event.clientX; startY = y = event.clientY;
+        window.addEventListener('pointermove', move, { passive: false });
+        window.addEventListener('pointerup', up);
+        window.addEventListener('pointercancel', cancel);
+        window.addEventListener('blur', cancel);
+        window.addEventListener('resize', cancel);
+        document.addEventListener('visibilitychange', visibility);
+        document.addEventListener('admin-content-changing', cancel);
+        document.addEventListener('keydown', keydown, true);
     }
-
-    function handlePointerMove(event) {
+    function move(event) {
         if (event.pointerId !== pointerId) return;
-        pointerX = event.clientX;
-        pointerY = event.clientY;
+        x = event.clientX; y = event.clientY;
         if (pending) {
-            if (Math.abs(pointerX - originX) < ADMIN_DRAG_SLOP && Math.abs(pointerY - originY) < ADMIN_DRAG_SLOP) return;
-            const container = getContainer();
-            const item = pending;
-            pending = null;
-            if (!container || !item.isConnected) {
-                endDrag(false);
-                return;
-            }
-            beginDrag(container, item);
+            if (Math.hypot(x - startX, y - startY) < ADMIN_DRAG_SLOP) return;
+            const container = getContainer(), item = pending;
+            if (!container || !item.isConnected) { finish(false); return; }
+            const rect = item.getBoundingClientRect();
+            originalChildren = [...container.children]; originalOrder = items(container); originalStyle = item.getAttribute('style');
+            offsetX = startX - rect.left; offsetY = startY - rect.top;
+            placeholder = document.createElement('div'); placeholder.className = 'admin-drag-placeholder'; placeholder.setAttribute('aria-hidden', 'true');
+            placeholder.style.width = `${rect.width}px`; placeholder.style.height = `${rect.height}px`;
+            placeholder.style.gridColumn = getComputedStyle(item).gridColumn;
+            container.insertBefore(placeholder, item);
+            dragged = item; pending = null;
+            Object.assign(item.style, { position: 'fixed', left: '0px', top: '0px', width: `${rect.width}px`, height: `${rect.height}px`, minWidth: '0', gridColumn: 'auto', transform: `translate3d(${rect.left}px, ${rect.top}px, 0)` });
+            item.classList.add('dragging'); document.body.classList.add('admin-dragging');
+            capture = container;
+            capture.addEventListener('lostpointercapture', lostCapture);
+            capture.setPointerCapture?.(pointerId);
+            lastTime = 0; measureGeometry(container);
         }
-        if (!dragged) return;
-        // Stops the press turning into a text selection or a native image drag.
         if (event.cancelable) event.preventDefault();
-        updatePlacement();
+        if (!frame) frame = requestAnimationFrame(tick);
     }
-
-    function handlePointerUp(event) {
+    function up(event) {
         if (event.pointerId !== pointerId) return;
-        const wasDragging = Boolean(dragged);
-        if (!wasDragging) {
-            // A plain tap on the handle: let the click through untouched.
-            detach();
-            pending = null;
-            pointerId = null;
-            return;
-        }
-        endDrag(true);
-        // pointerup lands before click, so this is early enough to stop the
-        // drop from also activating whatever the handle sits inside.
-        onDragFinish();
+        if (dragged) { x = event.clientX; y = event.clientY; placement(getContainer()); if (event.cancelable) event.preventDefault(); }
+        finish(true);
     }
-
-    function handlePointerCancel(event) {
-        if (event && event.pointerId !== undefined && event.pointerId !== pointerId) return;
-        if (!dragged) {
-            detach();
-            pending = null;
-            pointerId = null;
-            return;
-        }
-        endDrag(false);
-        onDragFinish();
+    function lostCapture(event) {
+        // Touch begins with implicit capture on the handle. Transferring it
+        // to our stable container emits a bubbling loss event on that handle;
+        // only loss of the container's own capture cancels this gesture.
+        if (event.target === capture && event.pointerId === pointerId && !capture.hasPointerCapture(pointerId)) finish(false);
     }
-
-    function handleKeyDown(event) {
-        if (event.key !== 'Escape') return;
-        event.preventDefault();
-        event.stopPropagation();
-        handlePointerCancel(null);
-    }
-
-    const container = getContainer();
-    if (container) container.addEventListener('pointerdown', handlePointerDown);
-}
-
-function initAdminNavReorder() {
-    if (!els.tabs) return;
-    createAdminDragSort({
-        container: els.tabs,
-        handleSelector: '.admin-nav-drag',
-        itemSelector: 'button[data-panel]',
-        // Below 861px the rail becomes the fixed bottom bar and the handles are
-        // hidden, so ordering is a desktop affordance only.
-        canStart: () => window.matchMedia('(min-width: 861px)').matches,
-        onDragFinish: () => { adminNavSuppressClickUntil = performance.now() + ADMIN_DRAG_CLICK_GUARD_MS; },
-        onCommit: () => persistAdminNavOrder()
-    });
+    function cancel(event) { if (event?.pointerId !== undefined && event.pointerId !== pointerId) return; finish(false); }
+    function visibility() { if (document.hidden) finish(false); }
+    function keydown(event) { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); finish(false); } }
+    getContainer()?.addEventListener('pointerdown', down);
+    return () => finish(false);
 }
 
 function getAdminButtonIcon(button) {
@@ -4106,6 +4170,9 @@ function decorateAdminControls(root = document) {
         button.insertAdjacentHTML('afterbegin', adminIcon(icon));
         button.classList.add('has-admin-icon');
     });
+    root.querySelectorAll('button[aria-label], summary[aria-label], a[aria-label]').forEach(control => {
+        if (!control.title && !control.textContent.trim()) control.title = control.getAttribute('aria-label');
+    });
     root.querySelectorAll('.admin-video-picker').forEach(picker => {
         if (picker.querySelector(':scope > svg')) return;
         picker.insertAdjacentHTML('afterbegin', adminIcon('media'));
@@ -4117,50 +4184,10 @@ function decorateAdminControls(root = document) {
 }
 
 function setupAdminHorizontalScroll() {
-    const rails = document.querySelectorAll('.admin-stats, .admin-bulk-bar, .admin-inline-actions, .admin-card-video-actions');
-    rails.forEach(rail => {
-        const update = () => {
-            const overflowing = rail.scrollWidth > rail.clientWidth + 1;
-            rail.dataset.scrollReady = String(overflowing);
-            if (overflowing) {
-                if (!rail.hasAttribute('tabindex')) {
-                    rail.tabIndex = 0;
-                    rail.dataset.adminScrollTab = 'true';
-                }
-            } else if (rail.dataset.adminScrollTab === 'true') {
-                rail.removeAttribute('tabindex');
-                delete rail.dataset.adminScrollTab;
-            }
-            rail.classList.toggle('can-scroll-left', overflowing && rail.scrollLeft > 1);
-            rail.classList.toggle('can-scroll-right', overflowing && rail.scrollLeft < rail.scrollWidth - rail.clientWidth - 1);
-        };
-
-        if (!initializedHorizontalRails.has(rail)) {
-            initializedHorizontalRails.add(rail);
-            rail.addEventListener('scroll', update, { passive: true });
-            rail.addEventListener('wheel', event => {
-                if (Math.abs(event.deltaX) >= Math.abs(event.deltaY) || Math.abs(event.deltaY) < 1) return;
-                const canMove = event.deltaY > 0
-                    ? rail.scrollLeft < rail.scrollWidth - rail.clientWidth - 1
-                    : rail.scrollLeft > 1;
-                if (!canMove) return;
-                event.preventDefault();
-                rail.scrollLeft += event.deltaY;
-            }, { passive: false });
-            rail.addEventListener('keydown', event => {
-                if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
-                event.preventDefault();
-                if (event.key === 'Home') rail.scrollTo({ left: 0, behavior: 'smooth' });
-                else if (event.key === 'End') rail.scrollTo({ left: rail.scrollWidth, behavior: 'smooth' });
-                else rail.scrollBy({ left: event.key === 'ArrowLeft' ? -120 : 120, behavior: 'smooth' });
-            });
-        }
-        update();
-        requestAnimationFrame(update);
-    });
+    // Kept for existing callers. Toolbars now wrap and use native scrolling.
+    scheduleAdminLayout();
 }
 
-const ADMIN_DENSITY_KEY = 'doll_admin_density_v1';
 const ADMIN_REVIEW_LANE_KEY = 'doll_admin_review_lane_v1';
 const ADMIN_PUBLISHED_LANE_KEY = 'doll_admin_published_lane_v1';
 let adminCardInspectorRestore = null;
@@ -4183,33 +4210,9 @@ function writeAdminLocalPreference(key, value) {
     }
 }
 
-function initAdminDensity() {
-    const button = document.getElementById('admin-density-toggle');
-    if (!button || !els.dashboardPanel) return;
-    const apply = compact => {
-        els.dashboardPanel.classList.toggle('is-compact', compact);
-        button.setAttribute('aria-pressed', String(compact));
-        button.title = compact ? 'Use comfortable density' : 'Use compact density';
-        const label = button.querySelector('span');
-        if (label) label.textContent = compact ? 'roomy' : 'compact';
-        writeAdminLocalPreference(ADMIN_DENSITY_KEY, compact ? 'compact' : 'comfortable');
-        requestAnimationFrame(setupAdminHorizontalScroll);
-    };
-    apply(readAdminLocalPreference(ADMIN_DENSITY_KEY, 'comfortable') === 'compact');
-    button.addEventListener('click', () => apply(!els.dashboardPanel.classList.contains('is-compact')));
-}
-
-function updateAdminSafetyOverview(settings = state.linkSettings || {}) {
-    const status = document.getElementById('admin-safety-submissions');
-    if (!status) return;
-    const doods = settings.drawings_enabled !== false;
-    const asks = settings.questions_enabled !== false;
-    status.textContent = doods && asks ? 'doods + asks open' : doods ? 'asks paused' : asks ? 'doodles paused' : 'both paused';
-}
-
 function setAdminLane(group, value) {
     const isReview = group === 'review';
-    const allowed = isReview ? ['doods', 'asks', 'safety'] : ['doods', 'asks'];
+    const allowed = ['doods', 'asks'];
     const lane = allowed.includes(value) ? value : 'doods';
     const panel = document.getElementById(isReview ? 'review-panel' : 'published-panel');
     if (!panel) return;
@@ -4217,13 +4220,14 @@ function setAdminLane(group, value) {
         const active = button.dataset[`admin${group[0].toUpperCase()}${group.slice(1)}Lane`] === lane;
         button.classList.toggle('active', active);
         button.setAttribute('aria-selected', String(active));
+        button.tabIndex = active ? 0 : -1;
     });
     panel.querySelectorAll(`[data-admin-${group}-content]`).forEach(content => {
         content.hidden = content.dataset[`admin${group[0].toUpperCase()}${group.slice(1)}Content`] !== lane;
     });
-    if (isReview && lane === 'safety') updateAdminSafetyOverview();
+    document.dispatchEvent(new Event('admin-content-changing'));
     writeAdminLocalPreference(isReview ? ADMIN_REVIEW_LANE_KEY : ADMIN_PUBLISHED_LANE_KEY, lane);
-    requestAnimationFrame(setupAdminHorizontalScroll);
+    setupAdminHorizontalScroll();
 }
 
 function initAdminLaneNavigation() {
@@ -4235,6 +4239,15 @@ function initAdminLaneNavigation() {
             if (laneButton) setAdminLane(group, laneButton.dataset[`admin${group[0].toUpperCase()}${group.slice(1)}Lane`]);
             const jump = event.target.closest('[data-admin-jump]');
             if (jump) activateAdminPanel(jump.dataset.adminJump, { focusHeading: true, scrollToTop: true });
+        });
+        panel.querySelector('.admin-lane-tabs')?.addEventListener('keydown', event => {
+            if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+            const buttons = [...panel.querySelectorAll(`[data-admin-${group}-lane]`)];
+            const index = buttons.indexOf(event.target);
+            if (index < 0) return;
+            event.preventDefault();
+            const next = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + buttons.length) % buttons.length;
+            buttons[next].click(); buttons[next].focus();
         });
         setAdminLane(group, readAdminLocalPreference(key, 'doods'));
     });
@@ -4266,7 +4279,7 @@ function openAdminCardInspector(key, returnFocus) {
     const title = document.getElementById('admin-card-inspector-title');
     if (title) title.textContent = `${card.querySelector('summary strong')?.textContent?.trim() || key} card`;
     dialog.showModal();
-    requestAnimationFrame(() => body.querySelector('input, select, textarea, button')?.focus({ preventScroll: true }));
+    requestAnimationFrame(() => { if (dialog.open && body.isConnected && output.contains(body)) body.querySelector('input, select, textarea, button')?.focus({ preventScroll: true }); });
 }
 
 function initAdminCardInspector() {
@@ -4310,28 +4323,397 @@ function initAdminWishlistReorder() {
         itemSelector: '.admin-card',
         canDrag: card => card.classList.contains('is-featured'),
         canStart: () => !wishlistActionBusy,
-        onCommit: ({ item, order }) => {
-            // Positions live server-side across every page of the list, so the
-            // move is expressed against a neighbour rather than a page index.
-            const index = order.indexOf(item);
-            const previous = index > 0 ? order[index - 1] : null;
-            const next = index >= 0 && index < order.length - 1 ? order[index + 1] : null;
-            if (previous) void moveWishlistItemByDrag(item.dataset.id, previous.dataset.id, true);
-            else if (next) void moveWishlistItemByDrag(item.dataset.id, next.dataset.id, false);
+        onCommit: async ({ item, order, previousOrder }) => {
+            const index = order.indexOf(item), previous = index > 0 ? order[index - 1] : null, next = order[index + 1];
+            const saved = previous ? await moveWishlistItemByDrag(item.dataset.id, previous.dataset.id, true) : next ? await moveWishlistItemByDrag(item.dataset.id, next.dataset.id, false) : true;
+            // A failed reload leaves the original nodes connected. Restore
+            // their last known order while retaining the error and retry UI.
+            if (!saved && previousOrder.every(node => node.parentElement === list)) previousOrder.forEach(node => list.append(node));
         }
     });
 }
 
+const ADMIN_LAYOUT_KEY = 'doll_admin_layout_v1';
+const adminBlockGrids = new Map();
+let adminLayout = { version: 1, nav: [...ADMIN_PANEL_IDS], sidebar: 200, blocks: {} };
+let adminArrangeSnapshot = null;
+let adminLayoutFrame = 0;
+
+function syncAdminNavigationLabels() {
+    const mobile = matchMedia('(max-width: 860px)').matches;
+    document.querySelectorAll('#admin-tabs [data-panel]').forEach(button => {
+        const name = ADMIN_PANEL_NAMES[button.dataset.panel], label = button.querySelector('span');
+        const text = (mobile && name === 'Search appearance' ? 'Search' : name) + ' ';
+        if (label?.firstChild?.nodeType === Node.TEXT_NODE && label.firstChild.textContent !== text) label.firstChild.textContent = text;
+        button.setAttribute('aria-label', name + (label.querySelector('b') ? ' ' + label.querySelector('b').textContent : ''));
+    });
+}
+function scheduleAdminLayout() {
+    if (adminLayoutFrame) return;
+    adminLayoutFrame = requestAnimationFrame(() => {
+        adminLayoutFrame = 0;
+        syncAdminNavigationLabels();
+        const headerHeight = document.querySelector('.admin-header')?.getBoundingClientRect().height || 80;
+        if (document.documentElement.style.getPropertyValue('--admin-header-height') !== `${headerHeight}px`) document.documentElement.style.setProperty('--admin-header-height', `${headerHeight}px`);
+        const viewport = window.visualViewport;
+        const editing = document.activeElement?.matches('input:not([type="checkbox"]):not([type="range"]), textarea');
+        const keyboard = Boolean(editing && viewport && window.innerHeight - viewport.height > 120);
+        document.documentElement.classList.toggle('admin-keyboard-open', keyboard);
+        if (keyboard) {
+            document.documentElement.style.setProperty('--admin-visible-height', `${viewport.height}px`);
+            document.documentElement.style.setProperty('--admin-visible-top', `${viewport.offsetTop}px`);
+        }
+        adminBlockGrids.forEach(grid => {
+            if (!grid.getBoundingClientRect().width) return;
+            const columns = matchMedia('(max-width: 860px)').matches ? 1 : Math.max(1, Math.min(Number(grid.dataset.maxColumns) || 3, Math.floor((grid.clientWidth + 12) / 292)));
+            if (grid.dataset.columns !== String(columns)) {
+                grid.dataset.columns = String(columns);
+                grid.style.setProperty('--admin-columns', columns);
+            }
+            [...grid.children].filter(el => el.dataset.adminBlock).forEach(block => {
+                const saved = adminLayout.blocks[block.dataset.adminBlock];
+                let preferred = saved?.span || Number(block.dataset.defaultSpan) || 1;
+                if (block.dataset.adminBlock === 'review-feed' && !saved) preferred = getAdminSelectionCount('pending-drawings-list') ? 2 : 3;
+                const span = Math.min(columns, preferred);
+                if (block.style.getPropertyValue('--admin-span') !== String(span)) block.style.setProperty('--admin-span', span);
+                const resize = block.querySelector(':scope > .admin-block-tools .admin-block-resize');
+                if (resize) resize.setAttribute('aria-valuenow', String(span));
+            });
+        });
+    });
+}
+function readAdminLayout() {
+    let saved;
+    try { saved = JSON.parse(readAdminLocalPreference(ADMIN_LAYOUT_KEY, 'null')); } catch {}
+    let legacy;
+    try { legacy = JSON.parse(readAdminLocalPreference(ADMIN_NAV_ORDER_KEY, 'null')); } catch {}
+    adminLayout = { version: 1, nav: normalizeAdminNavOrder(saved?.version === 1 ? saved.nav : legacy), sidebar: 200, blocks: {} };
+    if (saved?.version !== 1) return;
+    if (Number.isFinite(saved.sidebar)) adminLayout.sidebar = Math.min(280, Math.max(168, saved.sidebar));
+    if (!saved.blocks || typeof saved.blocks !== 'object' || Array.isArray(saved.blocks)) return;
+    Object.entries(saved.blocks).forEach(([id, value]) => {
+        if (!document.querySelector(`[data-admin-block="${CSS.escape(id)}"]`) || !value || typeof value !== 'object') return;
+        adminLayout.blocks[id] = { order: Number.isFinite(value.order) ? Math.max(0, Math.min(100, value.order)) : 100, span: [1, 2, 3].includes(value.span) ? value.span : 1 };
+    });
+}
+function saveAdminLayout() {
+    try {
+        localStorage.setItem(ADMIN_LAYOUT_KEY, JSON.stringify(adminLayout));
+        localStorage.setItem(ADMIN_NAV_ORDER_KEY, JSON.stringify(adminLayout.nav));
+        return true;
+    } catch { setStatus(els.adminStatus, 'Couldn’t save layout on this browser. Your current arrangement is still available until reload.'); return false; }
+}
+function applyAdminLayout() {
+    const more = document.getElementById('admin-mobile-more');
+    adminLayout.nav.forEach((id, index) => {
+        const button = els.tabs.querySelector(`[data-panel="${id}"]`);
+        if (!button) return;
+        els.tabs.insertBefore(button, more);
+        const label = button.querySelector('span');
+        if (label?.firstChild?.nodeType === Node.TEXT_NODE) label.firstChild.textContent = ADMIN_PANEL_NAMES[id] + ' ';
+        button.dataset.navIndex = index;
+        button.toggleAttribute('data-mobile-hidden', index >= 4);
+    });
+    document.documentElement.style.setProperty('--admin-sidebar', `${adminLayout.sidebar}px`);
+    document.getElementById('admin-sidebar-width').value = adminLayout.sidebar;
+    adminBlockGrids.forEach(grid => {
+        const blocks = [...grid.children].filter(el => el.dataset.adminBlock);
+        blocks.sort((a, b) => (adminLayout.blocks[a.dataset.adminBlock]?.order ?? Number(a.dataset.defaultOrder)) - (adminLayout.blocks[b.dataset.adminBlock]?.order ?? Number(b.dataset.defaultOrder)));
+        blocks.forEach(block => grid.appendChild(block));
+        grid.classList.toggle('has-custom-layout', blocks.some(block => adminLayout.blocks[block.dataset.adminBlock]));
+    });
+    renderAdminNavArrangement(); renderAdminMore(); scheduleAdminLayout();
+}
+function recordAdminBlockOrder(grid) {
+    [...grid.children].filter(el => el.dataset.adminBlock).forEach((block, order) => {
+        const id = block.dataset.adminBlock;
+        adminLayout.blocks[id] = { span: adminLayout.blocks[id]?.span || Number(block.dataset.defaultSpan), order };
+    });
+}
+function registerAdminBlockGrid(name, parent, nodes) {
+    const entries = nodes.filter(entry => entry.node);
+    if (!entries.length) return;
+    const grid = document.createElement('div'); grid.className = 'admin-block-grid'; grid.dataset.adminGrid = name;
+    parent.insertBefore(grid, entries[0].node);
+    entries.forEach(({ node, id, label, span = 1 }, index) => {
+        const block = document.createElement('section'); block.className = 'admin-layout-block'; block.dataset.adminBlock = id; block.dataset.defaultSpan = span; block.dataset.defaultOrder = index;
+        block.setAttribute('aria-label', label);
+        const tools = document.createElement('div'); tools.className = 'admin-block-tools';
+        tools.innerHTML = `<button type="button" class="admin-block-drag" aria-label="Drag ${escapeHtml(label)}">${adminIcon('drag')}</button><strong>${escapeHtml(label)}</strong><button type="button" data-block-move="up" aria-label="Move ${escapeHtml(label)} up">${adminIcon('arrow-up')}</button><button type="button" data-block-move="down" aria-label="Move ${escapeHtml(label)} down">${adminIcon('arrow-down')}</button><button type="button" class="admin-block-resize" role="slider" aria-label="Resize ${escapeHtml(label)} width" aria-valuemin="1" aria-valuemax="3" aria-valuenow="${span}" title="Drag to resize; arrow keys also work">${adminIcon('arrow-left')}${adminIcon('arrow-right')}</button>`;
+        block.append(tools, node); grid.append(block);
+    });
+    adminBlockGrids.set(name, grid);
+    createAdminDragSort({ container: grid, handleSelector: '.admin-block-drag', itemSelector: '[data-admin-block]', canStart: () => Boolean(adminArrangeSnapshot), onCommit: () => recordAdminBlockOrder(grid) });
+    grid.addEventListener('click', event => {
+        const button = event.target.closest('[data-block-move]');
+        if (!button || !adminArrangeSnapshot) return;
+        const block = button.closest('[data-admin-block]');
+        const adjacent = button.dataset.blockMove === 'up' ? block.previousElementSibling : block.nextElementSibling;
+        if (!adjacent) return;
+        grid.insertBefore(block, button.dataset.blockMove === 'up' ? adjacent : adjacent.nextElementSibling);
+        recordAdminBlockOrder(grid); button.focus({ preventScroll: true });
+    });
+    initAdminBlockResize(grid);
+}
+function initAdminBlockResize(grid) {
+    const setSpan = (block, span) => {
+        const id = block.dataset.adminBlock;
+        adminLayout.blocks[id] = { order: adminLayout.blocks[id]?.order ?? Number(block.dataset.defaultOrder), span };
+        scheduleAdminLayout();
+    };
+    grid.addEventListener('keydown', event => {
+        const button = event.target.closest('.admin-block-resize');
+        if (!button || !adminArrangeSnapshot || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+        event.preventDefault();
+        const block = button.closest('[data-admin-block]'), old = adminLayout.blocks[block.dataset.adminBlock]?.span || Number(block.dataset.defaultSpan);
+        setSpan(block, event.key === 'Home' ? 1 : event.key === 'End' ? 3 : Math.min(3, Math.max(1, old + (event.key === 'ArrowRight' ? 1 : -1))));
+    });
+    grid.addEventListener('pointerdown', event => {
+        const button = event.target.closest('.admin-block-resize');
+        if (!button || !adminArrangeSnapshot || event.isPrimary === false || document.body.classList.contains('admin-dragging') || matchMedia('(max-width: 860px)').matches || (event.pointerType === 'mouse' && event.button !== 0)) return;
+        event.preventDefault();
+        document.dispatchEvent(new Event('admin-content-changing'));
+        const block = button.closest('[data-admin-block]'), id = block.dataset.adminBlock;
+        const previous = adminLayout.blocks[id] ? { ...adminLayout.blocks[id] } : null;
+        const start = event.clientX, width = block.getBoundingClientRect().width, columns = Number(grid.dataset.columns) || 1, unit = (grid.clientWidth + 12) / columns;
+        let pendingX = start, resizeFrame = 0, active = true;
+        button.setPointerCapture(event.pointerId);
+        const flush = () => { resizeFrame = 0; setSpan(block, Math.max(1, Math.min(columns, Math.round((width + pendingX - start + 12) / unit)))); };
+        const move = e => { if (e.pointerId !== event.pointerId) return; pendingX = e.clientX; if (!resizeFrame) resizeFrame = requestAnimationFrame(flush); };
+        const finish = commit => {
+            if (!active) return; active = false;
+            if (resizeFrame) cancelAnimationFrame(resizeFrame);
+            if (commit) flush(); else { if (previous) adminLayout.blocks[id] = previous; else delete adminLayout.blocks[id]; scheduleAdminLayout(); }
+            button.removeEventListener('pointermove', move); button.removeEventListener('pointerup', up); button.removeEventListener('pointercancel', cancel); button.removeEventListener('lostpointercapture', cancel);
+            document.removeEventListener('admin-content-changing', cancel); window.removeEventListener('resize', cancel); window.removeEventListener('blur', cancel); document.removeEventListener('keydown', key, true);
+            if (button.hasPointerCapture(event.pointerId)) button.releasePointerCapture(event.pointerId);
+        };
+        const up = e => { if (e.pointerId === event.pointerId) { pendingX = e.clientX; finish(true); } };
+        const cancel = () => finish(false);
+        const key = e => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); cancel(); } };
+        button.addEventListener('pointermove', move); button.addEventListener('pointerup', up); button.addEventListener('pointercancel', cancel); button.addEventListener('lostpointercapture', cancel);
+        document.addEventListener('admin-content-changing', cancel); window.addEventListener('resize', cancel); window.addEventListener('blur', cancel); document.addEventListener('keydown', key, true);
+    });
+}
+function renderAdminNavArrangement() {
+    const output = document.getElementById('admin-nav-arrange');
+    output.replaceChildren(...adminLayout.nav.map((id, index) => {
+        const row = document.createElement('div'); row.className = 'admin-nav-arrange-row'; row.dataset.arrangePanel = id;
+        row.innerHTML = `<button type="button" class="admin-nav-arrange-drag" aria-label="Drag ${ADMIN_PANEL_NAMES[id]} navigation">${adminIcon('drag')}</button><strong>${ADMIN_PANEL_NAMES[id]}</strong><button type="button" data-nav-move="up" ${index === 0 ? 'disabled' : ''} aria-label="Move ${ADMIN_PANEL_NAMES[id]} navigation up">${adminIcon('arrow-up')}</button><button type="button" data-nav-move="down" ${index === adminLayout.nav.length - 1 ? 'disabled' : ''} aria-label="Move ${ADMIN_PANEL_NAMES[id]} navigation down">${adminIcon('arrow-down')}</button>`;
+        return row;
+    }));
+}
+function renderAdminMore() {
+    const output = document.querySelector('.admin-more-grid');
+    if (!output) return;
+    const active = document.querySelector('#admin-tabs [aria-current="page"]')?.dataset.panel || 'review-panel';
+    const order = adminLayout.nav;
+    output.innerHTML = order.slice(4).map(id => {
+        const icon = els.tabs.querySelector(`[data-panel="${id}"] > svg`)?.outerHTML || '';
+        return `<button type="button" data-more-panel="${id}" ${id === active ? 'aria-current="page"' : ''}>${icon}<span>${ADMIN_PANEL_NAMES[id]}</span></button>`;
+    }).join('');
+    document.getElementById('admin-mobile-more')?.classList.toggle('more-active', order.indexOf(active) >= 4);
+}
+function initAdminLayout() {
+    const select = selector => document.querySelector(selector);
+    const review = select('.admin-review-dood-layout');
+    registerAdminBlockGrid('review-doods', review, [
+        { node: select('.admin-review-primary'), id: 'review-feed', label: 'Doods', span: 3 },
+        { node: select('#admin-selection-preview'), id: 'review-selection', label: 'Selection preview' }
+    ]);
+    const asks = select('[data-admin-review-content="asks"]');
+    const askFeed = document.createElement('div');
+    [...asks.children].forEach(child => askFeed.append(child)); asks.append(askFeed);
+    registerAdminBlockGrid('review-asks', asks, [{ node: askFeed, id: 'review-asks', label: 'Asks', span: 3 }]);
+    ['doods', 'asks'].forEach(lane => {
+        const root = select(`[data-admin-published-content="${lane}"]`), feed = document.createElement('div');
+        [...root.children].forEach(child => feed.append(child)); root.append(feed);
+        registerAdminBlockGrid(`published-${lane}`, root, [{ node: feed, id: `published-${lane}`, label: lane === 'doods' ? 'Published doods' : 'Answered asks', span: 3 }]);
+    });
+    const site = select('#site-panel .admin-control-grid');
+    // Group existing settings by purpose. Stable block IDs preserve saved widths.
+    const siteCards = new Map([...site.children].map(node => [node.dataset.linkCard, node]));
+    [['site', 'Content', ['homepage-note', 'submissions']], ['site-entry', 'First visit', ['entrance', 'first-visit-tour']], ['site-availability', 'Availability', ['maintenance']]].forEach(([id, label, keys]) => {
+        const group = document.createElement('section'); group.className = 'admin-settings-section';
+        const heading = document.createElement('h2'); heading.textContent = label; group.append(heading);
+        const content = document.createElement('div'); group.append(content); site.before(group);
+        const cards = keys.map(key => siteCards.get(key));
+        cards.forEach(card => { card.open = card.dataset.linkCard === 'homepage-note' || card.dataset.linkCard === 'submissions'; content.append(card); });
+        registerAdminBlockGrid(id, content, cards.map(node => ({ node, id: `site-${node.dataset.linkCard}`, label: node.querySelector('summary strong').textContent.trim(), span: id === 'site-availability' ? 3 : 1 })));
+        if (id !== 'site-availability') adminBlockGrids.get(id).dataset.maxColumns = '2';
+    });
+    site.remove();
+    const links = select('#links-panel'), linkFeed = document.createElement('div');
+    links.insertBefore(linkFeed, select('#links-panel .admin-order-toolbar'));
+    [...links.children].filter(node => node !== linkFeed && !node.classList.contains('admin-panel-intro')).forEach(node => linkFeed.append(node));
+    registerAdminBlockGrid('links', links, [{ node: linkFeed, id: 'links-feed', label: 'Link cards', span: 3 }]);
+    const wishes = select('#wishlist-panel'), wishFeed = document.createElement('div'), menu = select('#wishlist-panel .admin-link-grid');
+    wishes.append(wishFeed);
+    [...wishes.children].filter(node => node !== wishFeed && node !== menu && !node.classList.contains('admin-panel-intro')).forEach(node => wishFeed.append(node));
+    registerAdminBlockGrid('wishes', wishes, [{ node: menu, id: 'wishes-menu', label: 'Wishes menu' }, { node: wishFeed, id: 'wishes-feed', label: 'Featured wishes', span: 2 }]);
+    const seo = select('.admin-search-layout'), seoTools = [...seo.querySelector('.admin-chat-tools').children];
+    seoTools.forEach(node => seo.append(node)); seo.querySelector('.admin-chat-tools').remove();
+    registerAdminBlockGrid('search', seo, [...seo.children].map((node, index) => ({ node, id: ['search-editor', 'search-crawler', 'search-checks'][index], label: ['Search appearance', 'Crawler copy', 'Site checks'][index], span: index === 0 ? 2 : 1 })));
+    const rooms = select('#rooms-panel'), operations = document.createElement('div'), bans = document.createElement('div');
+    const roomHeading = select('#table-wrap').previousElementSibling.previousElementSibling;
+    rooms.insertBefore(operations, roomHeading);
+    let next = roomHeading;
+    while (next && next !== select('#ban-add-form').previousElementSibling) { const following = next.nextElementSibling; operations.append(next); next = following; }
+    const banHeading = select('#ban-add-form').previousElementSibling;
+    rooms.insertBefore(bans, banHeading);
+    [banHeading, select('#ban-add-form'), select('#bans-table-wrap')].forEach(node => bans.append(node));
+    const roomSettings = select('#rooms-panel .admin-control-grid');
+    roomSettings.classList.add('admin-room-settings');
+    roomSettings.querySelectorAll('details').forEach(card => card.open = false);
+    registerAdminBlockGrid('rooms', rooms, [{ node: operations, id: 'rooms-operations', label: 'Recent rooms', span: 3 }, { node: roomSettings, id: 'rooms-settings', label: 'Access' }, { node: bans, id: 'rooms-bans', label: 'Global bans', span: 2 }]);
+    readAdminLayout(); applyAdminLayout();
+    const bar = document.getElementById('admin-arrange-bar'), opener = document.getElementById('admin-arrange-open');
+    const end = commit => {
+        document.dispatchEvent(new Event('admin-content-changing'));
+        if (!adminArrangeSnapshot) return;
+        if (!commit) adminLayout = adminArrangeSnapshot;
+        adminArrangeSnapshot = null;
+        els.dashboardPanel.classList.remove('is-arranging'); bar.hidden = true; opener.setAttribute('aria-pressed', 'false');
+        applyAdminLayout(); updateAdminSelectionBar(getAdminSelectionCount('pending-drawings-list'));
+        if (commit && saveAdminLayout()) setStatus(els.adminStatus, 'Dashboard layout saved on this browser.');
+        opener.focus({ preventScroll: true });
+    };
+    opener.addEventListener('click', () => {
+        if (adminArrangeSnapshot) { end(true); return; }
+        document.dispatchEvent(new Event('admin-content-changing'));
+        adminArrangeSnapshot = JSON.parse(JSON.stringify(adminLayout));
+        ['links-panel', 'wishlist-panel'].forEach(id => setAdminPublicEditing(id, false));
+        els.dashboardPanel.classList.add('is-arranging'); bar.hidden = false; opener.setAttribute('aria-pressed', 'true');
+        window.scrollTo({ top: 0, behavior: 'instant' });
+        updateAdminSelectionBar(getAdminSelectionCount('pending-drawings-list'));
+        document.getElementById('admin-arrange-done').focus({ preventScroll: true });
+    });
+    document.getElementById('admin-arrange-done').addEventListener('click', () => end(true));
+    document.getElementById('admin-arrange-cancel').addEventListener('click', () => end(false));
+    document.getElementById('admin-arrange-reset').addEventListener('click', () => {
+        document.dispatchEvent(new Event('admin-content-changing'));
+        adminLayout = { version: 1, nav: [...ADMIN_PANEL_IDS], sidebar: 200, blocks: {} }; applyAdminLayout();
+    });
+    document.getElementById('admin-sidebar-width').addEventListener('input', event => { adminLayout.sidebar = Number(event.target.value); document.documentElement.style.setProperty('--admin-sidebar', `${adminLayout.sidebar}px`); scheduleAdminLayout(); });
+    const nav = document.getElementById('admin-nav-arrange');
+    nav.addEventListener('click', event => {
+        const button = event.target.closest('[data-nav-move]'); if (!button || !adminArrangeSnapshot) return;
+        const id = button.closest('[data-arrange-panel]').dataset.arrangePanel, index = adminLayout.nav.indexOf(id), target = index + (button.dataset.navMove === 'up' ? -1 : 1);
+        if (target < 0 || target >= adminLayout.nav.length) return;
+        [adminLayout.nav[index], adminLayout.nav[target]] = [adminLayout.nav[target], adminLayout.nav[index]]; applyAdminLayout();
+        nav.querySelector(`[data-arrange-panel="${id}"] [data-nav-move="${button.dataset.navMove}"]`)?.focus({ preventScroll: true });
+    });
+    createAdminDragSort({ container: nav, handleSelector: '.admin-nav-arrange-drag', itemSelector: '[data-arrange-panel]', canStart: () => Boolean(adminArrangeSnapshot), onCommit: ({ order }) => { adminLayout.nav = order.map(row => row.dataset.arrangePanel); applyAdminLayout(); } });
+    const resize = new ResizeObserver(scheduleAdminLayout); resize.observe(els.dashboardPanel.querySelector('.admin-dashboard-main')); resize.observe(document.querySelector('.admin-header'));
+    window.visualViewport?.addEventListener('resize', scheduleAdminLayout, { passive: true });
+    window.visualViewport?.addEventListener('scroll', scheduleAdminLayout, { passive: true });
+    document.addEventListener('focusin', scheduleAdminLayout); document.addEventListener('focusout', scheduleAdminLayout);
+    document.addEventListener('keydown', event => { if (!event.defaultPrevented && event.key === 'Escape' && adminArrangeSnapshot && !document.querySelector('dialog[open]') && !document.body.classList.contains('admin-dragging')) { event.preventDefault(); end(false); } });
+    updateAdminSelectionBar(getAdminSelectionCount('pending-drawings-list'));
+    updateAdminPublishedSelection();
+    activateAdminPanel('review-panel');
+}
+function updateAdminPublishedSelection() {
+    const list = document.getElementById('published-drawings-list');
+    if (!list) return;
+    let bar = document.getElementById('admin-published-selection-bar');
+    if (!bar) {
+        bar = document.createElement('div'); bar.id = 'admin-published-selection-bar'; bar.className = 'admin-selection-bar admin-bulk-bar';
+        bar.innerHTML = '<strong></strong><button type="button" class="danger" data-bulk-action="delete" data-list="published-drawings-list">Delete</button><button type="button" class="soft" data-clear-published>Clear selection</button>';
+        list.before(bar);
+        bar.addEventListener('click', event => { const button = event.target.closest('button'); if (!button) return; if (button.hasAttribute('data-clear-published')) { clearAdminListSelection('published-drawings-list'); refreshVisibleListSelection('published-drawings-list'); } else if (button.dataset.bulkAction) void runBulkAction(button); });
+        document.querySelector('[data-admin-published-content="doods"] .admin-section-heading [data-bulk-action="delete"]')?.remove();
+    }
+    const count = getAdminSelectionCount('published-drawings-list'); bar.hidden = !count; bar.querySelector('strong').textContent = `${count} selected`;
+}
+function updateAdminSelectionBar(count) {
+    const list = document.getElementById('pending-drawings-list'); if (!list) return;
+    let bar = document.getElementById('admin-review-selection-bar');
+    if (!bar) {
+        bar = document.createElement('div'); bar.id = 'admin-review-selection-bar'; bar.className = 'admin-selection-bar admin-bulk-bar';
+        bar.innerHTML = '<strong data-current-selection></strong><button type="button" data-bulk-action="approve" data-list="pending-drawings-list">Approve</button><button type="button" class="danger" data-bulk-action="delete" data-list="pending-drawings-list">Delete</button><button type="button" class="soft" data-clear-selection>Clear selection</button>';
+        list.before(bar);
+        bar.addEventListener('click', event => { const button = event.target.closest('button'); if (!button) return; if (button.hasAttribute('data-clear-selection')) { clearAdminListSelection('pending-drawings-list'); refreshVisibleListSelection('pending-drawings-list'); } else if (button.dataset.bulkAction) void runBulkAction(button); });
+        const old = document.querySelector('[data-admin-review-content="doods"] > .admin-section-heading .admin-bulk-bar');
+        old?.querySelectorAll('[data-bulk-action="approve"], [data-bulk-action="delete"]').forEach(button => button.remove());
+        document.querySelector('#admin-selection-preview [data-selection-actions]')?.remove();
+    }
+    bar.hidden = !count; bar.querySelector('[data-current-selection]').textContent = `${count} selected`;
+    const preview = document.querySelector('[data-admin-block="review-selection"]');
+    if (preview) preview.hidden = !count && !adminArrangeSnapshot;
+    scheduleAdminLayout();
+}
+function updateAdminLaneCounts(doods, asks, postedDoods, postedAsks) {
+    [['review', 'doods', doods, 'Doods'], ['review', 'asks', asks, 'Asks'], ['published', 'doods', postedDoods, 'Doods'], ['published', 'asks', postedAsks, 'Answered']].forEach(([group, lane, count, label]) => {
+        const button = document.querySelector(`[data-admin-${group}-lane="${lane}"]`);
+        if (button && button.textContent !== `${label} ${count}`) button.textContent = `${label} ${count}`;
+    });
+}
+function setAdminPublicEditing(panelId, active) {
+    const panel = document.getElementById(panelId);
+    const button = document.getElementById(panelId === 'links-panel' ? 'admin-link-order' : 'admin-wish-order');
+    const changed = panel.classList.contains('is-public-order') !== active;
+    panel.classList.toggle('is-public-order', active);
+    button.setAttribute('aria-pressed', String(active));
+    button.textContent = active ? 'Done' : 'Edit';
+    button.setAttribute('aria-label', `${active ? 'Finish editing' : 'Edit'} ${panelId === 'links-panel' ? 'links' : 'wishes'}`);
+    if (changed && panelId === 'wishlist-panel') {
+        panel.querySelector('.admin-wishlist-filter-options').open = !active;
+        renderWishlistItems();
+    }
+}
+function initAdminPublicOrdering() {
+    [['admin-link-order', 'links-panel'], ['admin-wish-order', 'wishlist-panel']].forEach(([id, panelId]) => {
+        const button = document.getElementById(id), panel = document.getElementById(panelId);
+        button.addEventListener('click', async () => {
+            if (adminArrangeSnapshot) { setStatus(els.adminStatus, 'Finish arranging the dashboard before editing site content.'); return; }
+            const active = !panel.classList.contains('is-public-order');
+            // Entering Edit should work from any wishlist sort. Return to the
+            // actual public ordering scope rather than displaying a dead toggle.
+            if (active && panelId === 'wishlist-panel' && (state.wishlistSort !== 'featured' || adminExactFilters.has('wishlist-items-list'))) {
+                if (adminExactFilters.has('wishlist-items-list')) { setStatus(els.adminStatus, 'Clear the single-item search result before editing the order of wishes.'); return; }
+                state.wishlistSort = 'featured'; els.wishlistSort.value = 'featured';
+                adminListPages.set('wishlist-items-list', 1);
+                button.disabled = true;
+                try { await loadAdminList('wishlist-items-list'); } finally { button.disabled = !state.wishlistItemsAvailable; }
+                if (adminArrangeSnapshot || adminListErrors.has('wishlist-items-list') || state.wishlistSort !== 'featured' || state.wishlistLoadedSort !== 'featured' || !panel.classList.contains('active')) return;
+            }
+            document.dispatchEvent(new Event('admin-content-changing'));
+            setAdminPublicEditing(panelId, active);
+        });
+    });
+}
+function initAdminFieldLabels() {
+    document.querySelectorAll('.admin-switch input').forEach(input => {
+        if (input.getAttribute('aria-label')) return;
+        const title = input.closest('.admin-toggle-row')?.querySelector('strong')?.textContent.trim() || input.closest('.admin-link-card')?.querySelector('summary strong')?.textContent.trim() || input.id.replaceAll('-', ' ');
+        input.setAttribute('aria-label', title);
+    });
+    const reset = document.getElementById('link-settings-reset');
+    const actions = document.createElement('details'); actions.className = 'admin-secondary-actions';
+    actions.innerHTML = `<summary aria-label="More link actions" title="More link actions">${adminIcon('more')}</summary><div></div>`;
+    actions.querySelector('div').append(reset); document.querySelector('#links-panel .admin-order-toolbar').append(actions);
+    document.querySelectorAll('.admin-panel-intro .admin-kicker, .admin-panel-intro > div:first-child > h2').forEach(el => el.remove());
+    document.querySelectorAll('.admin-panel-intro > div:first-child').forEach(el => { if (!el.textContent.trim() && !el.children.length) el.remove(); });
+    document.querySelectorAll('#links-panel .admin-social-order-note').forEach(el => el.remove());
+}
+
 function initAdminExperience() {
-    restoreAdminNavOrder();
-    initAdminNavReorder();
+    initAdminLayout();
     initAdminCommandPalette();
     initAdminMobileMore();
-    initAdminDensity();
     initAdminLaneNavigation();
     initAdminCardInspector();
     initAdminSocialCardReorder();
     initAdminWishlistReorder();
+    initAdminPublicOrdering();
+    initAdminFieldLabels();
+    const account = document.querySelector('.admin-account-menu');
+    document.addEventListener('click', event => {
+        if (account.open && !account.contains(event.target)) account.open = false;
+        document.querySelectorAll('.admin-secondary-actions[open]').forEach(menu => { if (!menu.contains(event.target) || event.target.closest('button, a')) menu.open = false; });
+    });
+    document.addEventListener('keydown', event => { if (event.key === 'Escape' && account.open) { account.open = false; account.querySelector('summary').focus(); } });
     decorateAdminControls();
     setupAdminHorizontalScroll();
 
@@ -4341,7 +4723,7 @@ function initAdminExperience() {
                 if (node instanceof Element) decorateAdminControls(node.matches('button, .admin-video-picker, .admin-soft-link') ? node.parentElement : node);
             });
         });
-        requestAnimationFrame(setupAdminHorizontalScroll);
+        scheduleAdminLayout();
     });
     observer.observe(els.dashboardPanel, { childList: true, subtree: true });
     window.addEventListener('resize', setupAdminHorizontalScroll);
@@ -4350,7 +4732,7 @@ function initAdminExperience() {
 function initTabs() {
     els.tabs.addEventListener('click', event => {
         const button = event.target.closest('button[data-panel]');
-        if (!button || performance.now() < adminNavSuppressClickUntil) return;
+        if (!button) return;
         activateAdminPanel(button.dataset.panel, { scrollToTop: true });
     });
 }
@@ -4365,7 +4747,7 @@ async function init() {
         e.preventDefault();
         const entered = await hashPin(els.passcode.value.trim());
         if (entered !== ADMIN_PASSCODE_HASH) {
-            setStatus(els.gateStatus, 'nope');
+            setStatus(els.gateStatus, 'Incorrect passcode.');
             els.passcode.select();
             return;
         }
@@ -4377,11 +4759,13 @@ async function init() {
 
     els.loginForm.addEventListener('submit', handleLogin);
     els.refresh.addEventListener('click', () => {
+        els.refresh.closest('details')?.removeAttribute('open');
         void loadAdminData().catch(error => {
             setStatus(els.adminStatus, error.message || 'Could not refresh admin data.');
         });
     });
     els.logout.addEventListener('click', async () => {
+        els.logout.closest('details')?.removeAttribute('open');
         if (els.logout.disabled) return;
         els.logout.disabled = true;
         try {
@@ -4419,6 +4803,7 @@ async function init() {
                 selection.ids.delete(id);
             }
             if (list.id === 'pending-drawings-list') renderAdminSelectionPreview();
+            if (list.id === 'published-drawings-list') updateAdminPublishedSelection();
         });
         list.addEventListener('input', event => {
             const textarea = event.target.closest('textarea[data-answer-for]');
@@ -4452,6 +4837,8 @@ async function init() {
     els.wishlistFeatureAll?.addEventListener('click', featureAllWishlistItems);
     els.wishlistUnfeatureAll?.addEventListener('click', unfeatureAllWishlistItems);
     const queueWishlistReload = () => {
+        document.dispatchEvent(new Event('admin-content-changing'));
+        setAdminPublicEditing('wishlist-panel', false);
         adminListPages.set('wishlist-items-list', 1);
         adminListLoadTokens.set(
             'wishlist-items-list',
@@ -4531,7 +4918,11 @@ async function init() {
             return;
         }
         const button = event.target.closest('[data-social-move]');
-        if (!button) return;
+        if (!button) {
+            const summary = event.target.closest('summary');
+            if (summary && !event.target.closest('button, input, label, a')) { event.preventDefault(); openAdminCardInspector(summary.closest('[data-link-card]').dataset.linkCard, summary); }
+            return;
+        }
         event.preventDefault();
         event.stopPropagation();
         moveSocialCard(button.dataset.socialKey, button.dataset.socialMove);
@@ -4541,7 +4932,7 @@ async function init() {
         toggle.addEventListener('keydown', e => e.stopPropagation());
         // Rooms has a confirmed, immediate save path above. Registering this
         // generic debounce too would save twice (even after a cancelled toggle).
-        if (els.roomsMasterEnabled && toggle.contains(els.roomsMasterEnabled)) return;
+        if ((els.roomsMasterEnabled && toggle.contains(els.roomsMasterEnabled)) || toggle.querySelector('#lockdown-toggle')) return;
         toggle.addEventListener('change', () => {
             settingsDraftDirty = true;
             renderLinkPreview();
@@ -4560,8 +4951,6 @@ async function init() {
         els.onlyfansUrl,
         els.spotifyUrl,
         els.throneLinkUrl,
-        els.throneUrl,
-        els.throneCheckoutMode,
         els.wishlistViewMode,
         els.homepageNoteText,
         els.maintenanceTitle,
