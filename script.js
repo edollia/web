@@ -1067,12 +1067,25 @@ document.addEventListener("DOMContentLoaded", async function() {
         const adminCode = '7769';
         let tapCount = 0;
         let tapResetTimer = null;
+        let activeTouch = null;
+        let lastTouch = null;
         let gateReturnFocus = null;
         const mainScreen = document.getElementById('main-screen');
         let mainScreenWasInert = false;
 
+        function resetTaps() {
+            tapCount = 0;
+            clearTimeout(tapResetTimer);
+        }
+
+        function playGateSound(type) {
+            // Audio can be interrupted by iOS; access must still work.
+            try { playUiSound(type); } catch (audioError) {}
+        }
+
         function showGate() {
             if (gate.classList.contains('show')) return;
+            resetTaps();
             gateReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
             mainScreenWasInert = mainScreen?.inert || false;
             if (mainScreen) mainScreen.inert = true;
@@ -1095,47 +1108,100 @@ document.addEventListener("DOMContentLoaded", async function() {
             gateReturnFocus = null;
         }
 
+        function countTap() {
+            tapCount++;
+            clearTimeout(tapResetTimer);
+            tapResetTimer = setTimeout(resetTaps, 2600);
+
+            if (tapCount >= 5) {
+                showGate();
+                playGateSound('tap');
+            }
+        }
+
+        function isTouchClick(event) {
+            return lastTouch && performance.now() - lastTouch.at < 800
+                && Math.hypot(event.clientX - lastTouch.x, event.clientY - lastTouch.y) < 24;
+        }
+
+        // Count the completed touch itself. Safari can omit or delay its
+        // compatibility click during repeated taps on moving artwork.
+        trigger.addEventListener('touchstart', event => {
+            if (event.touches.length !== 1) {
+                activeTouch = null;
+                resetTaps();
+                return;
+            }
+            const touch = event.touches[0];
+            activeTouch = { id: touch.identifier, x: touch.clientX, y: touch.clientY, at: performance.now() };
+        }, { passive: true });
+        trigger.addEventListener('touchmove', event => {
+            const touch = Array.from(event.touches).find(touch => touch.identifier === activeTouch?.id);
+            if (!touch || Math.hypot(touch.clientX - activeTouch.x, touch.clientY - activeTouch.y) > 14) {
+                activeTouch = null;
+                resetTaps();
+            }
+        }, { passive: true });
+        trigger.addEventListener('touchcancel', () => {
+            activeTouch = null;
+            resetTaps();
+        }, { passive: true });
+        trigger.addEventListener('touchend', event => {
+            const start = activeTouch;
+            activeTouch = null;
+            const touch = Array.from(event.changedTouches).find(touch => touch.identifier === start?.id);
+            if (!start || !touch || event.touches.length) return;
+            if (performance.now() - start.at > 1000
+                || Math.hypot(touch.clientX - start.x, touch.clientY - start.y) > 14) {
+                resetTaps();
+                return;
+            }
+            lastTouch = { x: touch.clientX, y: touch.clientY, at: performance.now() };
+            // Suppress the generated click, including the fifth tap's click
+            // landing on the newly opened dialog backdrop and closing it.
+            if (event.cancelable) event.preventDefault();
+            countTap();
+        }, { passive: false });
+
+        trigger.addEventListener('keydown', event => {
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                showGate();
+            }
+        });
         trigger.addEventListener('click', function(event) {
-            // Keyboard and assistive activation need only one press.
+            if (isTouchClick(event)) return;
+            // Assistive activation can supply a click without a keyboard event.
             if (event.detail === 0) {
                 showGate();
                 return;
             }
-            tapCount++;
-            clearTimeout(tapResetTimer);
-            tapResetTimer = setTimeout(() => {
-                tapCount = 0;
-            }, 2600);
-
-            if (tapCount >= 5) {
-                tapCount = 0;
-                clearTimeout(tapResetTimer);
-                playUiSound('tap');
-                showGate();
-            }
+            countTap();
         });
 
         form.addEventListener('submit', function(e) {
             e.preventDefault();
             if (input.value.trim() !== adminCode) {
                 if (error) error.textContent = 'nope';
-                playUiSound('tap');
+                playGateSound('tap');
                 input.select();
                 return;
             }
 
             // Private browsing can refuse storage; the admin login still works.
             try { sessionStorage.setItem('doll_admin_gate', 'open'); } catch (storageError) {}
-            playUiSound('link');
+            playGateSound('link');
             window.location.href = resolveSiteRoute('admin/');
         });
 
         closeButton?.addEventListener('click', hideGate);
         gate.addEventListener('click', function(e) {
-            if (e.target === gate) hideGate();
+            if (e.target === gate && !isTouchClick(e)) hideGate();
         });
         gate.addEventListener('keydown', function(e) {
             if (e.key === 'Escape') {
+                e.preventDefault();
+                e.stopPropagation();
                 hideGate();
                 return;
             }

@@ -370,8 +370,8 @@ header {
     display: block;
 }
 
-/* Keep the hidden admin gesture reachable inside the mobile header's
-   pointer-transparent motion layer. Manipulation prevents double-tap zoom. */
+/* Only the moving artwork receives taps. The button's layout box stays
+   expanded while the artwork retracts, and must not cover the navigation. */
 #admin-gate-trigger {
     display: block;
     width: 100%;
@@ -382,14 +382,18 @@ header {
     border-radius: 0;
     background: transparent;
     box-shadow: none;
-    pointer-events: auto;
+    pointer-events: none;
     touch-action: manipulation;
     -webkit-touch-callout: none;
     -webkit-user-select: none;
     user-select: none;
 }
 
-#admin-gate-trigger .header-image { margin: 0 auto; }
+#admin-gate-trigger .header-image {
+    margin: 0 auto;
+    pointer-events: auto;
+    touch-action: manipulation;
+}
 
 .popup {
     display: flex;
@@ -6013,7 +6017,10 @@ body.has-community-composer-collapse .dwl-icons-pill {
     .main-screen .button-group {
         translate: 0 calc(-1 * var(--header-travel) * var(--header-progress));
     }
-    .main-screen header { pointer-events: none; }
+    /* Scrollers reserve transparent space under the expanded banner.
+       Keep the artwork above that space; the later navigation shares this
+       level, so its buttons still win wherever the two visually overlap. */
+    .main-screen header { pointer-events: none; z-index: 10; }
 }
 @media (max-width:600px) and (min-height:501px) {
     /* Same control and motion, with a readable size below the lace. */
