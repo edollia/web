@@ -5,10 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="robots" content="noindex, nofollow">
     <meta name="referrer" content="strict-origin-when-cross-origin">
-    <meta name="doll-build" content="2026.10.18.5">
+    <meta name="doll-build" content="2026.10.23.1">
     <title>Lia Admin</title>
     <link rel="icon" type="image/png" href="/favicon.png">
-    <link rel="stylesheet" href="../admin.css?v=7.4&r=2026.10.18.5">
+    <link rel="stylesheet" href="../admin.css?v=7.4&r=2026.10.23.1">
 </head>
 <body>
     <svg class="admin-icon-sprite" aria-hidden="true">
@@ -60,7 +60,7 @@
                     <input aria-label="Admin passcode" id="admin-passcode" type="password" inputmode="numeric" autocomplete="off" maxlength="8" placeholder="passcode">
                     <button type="submit">Continue</button>
                 </form>
-                <p class="admin-status" id="gate-status"></p>
+                <p class="admin-status" id="gate-status" role="status" aria-live="polite"></p>
             </div>
         </section>
 
@@ -73,7 +73,7 @@
                     <input aria-label="Password" id="admin-password" type="password" autocomplete="current-password" placeholder="password">
                     <button type="submit">Log in</button>
                 </form>
-                <p class="admin-status" id="login-status"></p>
+                <p class="admin-status" id="login-status" role="status" aria-live="polite"></p>
             </div>
         </section>
 
@@ -1199,8 +1199,8 @@
         });
     }
     </script>
-    <script src="../admin-rooms.js?v=5.2&r=2026.10.18.3"></script>
+    <script src="../admin-rooms.js?v=5.3&r=2026.10.23.1"></script>
     <script src="../social-card-media-config.js?v=11&r=2026.10.11.6"></script>
-    <script src="../admin.js?v=7.3&r=2026.10.18.5"></script>
+    <script src="../admin.js?v=7.4&r=2026.10.23.1"></script>
 </body>
 </html>

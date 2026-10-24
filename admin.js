@@ -55,6 +55,9 @@ function cachePublicSiteSettings(settings) {
 }
 
 async function hashPin(pin) {
+    if (!globalThis.crypto?.subtle) {
+        throw new Error('Open the dashboard over HTTPS to check your passcode.');
+    }
     const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(pin));
     return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
@@ -241,6 +244,7 @@ const adminListSelections = new Map(
         .map(([listId]) => [listId, { ids: new Set(), snapshotCutoff: '' }])
 );
 const adminQuestionDrafts = new Map();
+const adminQuestionSaves = new Map();
 const adminListLoadTokens = new Map();
 const adminListErrors = new Map();
 let wishlistSearchTimer = null;
@@ -390,8 +394,18 @@ function updateAdminSaveState() {
     indicator.title = label;
 }
 
+let adminGateOpen = false;
 function hasGateAccess() {
-    return sessionStorage.getItem('doll_admin_gate') === 'open';
+    try { return adminGateOpen || sessionStorage.getItem('doll_admin_gate') === 'open'; }
+    catch { return adminGateOpen; }
+}
+
+function setGateAccess(open) {
+    adminGateOpen = open;
+    try {
+        if (open) sessionStorage.setItem('doll_admin_gate', 'open');
+        else sessionStorage.removeItem('doll_admin_gate');
+    } catch { /* The passcode still works for this page when storage is blocked. */ }
 }
 
 function parseAdminDate(value) {
@@ -2870,10 +2884,16 @@ async function runAction(button) {
         }
 
         if (action === 'save-question') {
-            const answer = card.querySelector('textarea')?.value.trim() || null;
+            const submittedDraft = card.querySelector('textarea')?.value || '';
+            const answer = submittedDraft.trim() || null;
+            adminQuestionSaves.set(String(id), submittedDraft);
             const { error } = await adminClient.from('questions').update({ answer }).eq('id', id);
             if (error) throw error;
-            adminQuestionDrafts.delete(String(id));
+            // Input stays editable during the request. Keep a later draft
+            // when this older snapshot completes and the list is rebuilt.
+            if (!adminQuestionDrafts.has(String(id)) || adminQuestionDrafts.get(String(id)) === submittedDraft) {
+                adminQuestionDrafts.delete(String(id));
+            }
             mutationCompleted = true;
             mutationLabel = 'reply saved';
         }
@@ -2918,7 +2938,9 @@ async function runAction(button) {
         await refreshAdminListSet(refreshLists, {
             refreshWishlistMeta: isWishlistPositionAction
         });
-        setStatus(els.adminStatus, `${mutationLabel} ✓`);
+        setStatus(els.adminStatus, action === 'save-question' && adminQuestionDrafts.has(String(id))
+            ? 'Reply saved; newer edits are still unsaved.'
+            : `${mutationLabel} ✓`);
     } catch (error) {
         if (mutationCompleted) {
             let reloadFailed = false;
@@ -2947,6 +2969,7 @@ async function runAction(button) {
         }
     } finally {
         button.disabled = false;
+        if (action === 'save-question') adminQuestionSaves.delete(String(id));
         if (isWishlistPositionAction) wishlistActionBusy = false;
         if (isSubmissionAction) submissionMutationBusy = false;
     }
@@ -3179,6 +3202,14 @@ function scheduleAutoSave() {
         return;
     }
     autoSaveTimer = setTimeout(saveLinkSettingsNow, 700);
+}
+
+async function finishPendingSettings() {
+    clearTimeout(autoSaveTimer);
+    autoSaveTimer = null;
+    await settingsSaveTail;
+    if (settingsDraftDirty && !(await saveLinkSettingsNow())) return false;
+    return !settingsDraftDirty && settingsSavePending === 0 && !adminSettingsSaveError;
 }
 
 function resetLinkSettings() {
@@ -4743,18 +4774,32 @@ async function init() {
         setStatus(els.gateStatus, message);
         setStatus(els.loginStatus, message);
     }
+    let passcodeInFlight = false;
     els.passcodeForm.addEventListener('submit', async e => {
         e.preventDefault();
-        const entered = await hashPin(els.passcode.value.trim());
-        if (entered !== ADMIN_PASSCODE_HASH) {
-            setStatus(els.gateStatus, 'Incorrect passcode.');
-            els.passcode.select();
-            return;
-        }
+        if (passcodeInFlight) return;
+        passcodeInFlight = true;
+        const button = els.passcodeForm.querySelector('button[type="submit"]');
+        button.disabled = true;
+        try {
+            const entered = await hashPin(els.passcode.value.trim());
+            if (entered !== ADMIN_PASSCODE_HASH) {
+                setStatus(els.gateStatus, 'Incorrect passcode.');
+                els.passcode.select();
+                return;
+            }
 
-        sessionStorage.setItem('doll_admin_gate', 'open');
-        showPanel(els.loginPanel);
-        els.email.focus();
+            setGateAccess(true);
+            els.passcode.value = '';
+            setStatus(els.gateStatus, '');
+            showPanel(els.loginPanel);
+            els.email.focus();
+        } catch (error) {
+            setStatus(els.gateStatus, error.message || 'Could not check the passcode. Please try again.');
+        } finally {
+            passcodeInFlight = false;
+            button.disabled = false;
+        }
     });
 
     els.loginForm.addEventListener('submit', handleLogin);
@@ -4767,8 +4812,21 @@ async function init() {
     els.logout.addEventListener('click', async () => {
         els.logout.closest('details')?.removeAttribute('open');
         if (els.logout.disabled) return;
+        if (submissionMutationBusy || wishlistActionBusy || window.roomsHasPendingActions?.()
+            || document.querySelector('[data-social-video].is-busy')) {
+            setStatus(els.adminStatus, 'Wait for the current action to finish before logging out.');
+            return;
+        }
+        if (adminQuestionDrafts.size && !confirmDangerAction('Log out and discard unsaved replies?')) return;
         els.logout.disabled = true;
+        // Keep a new edit/action from starting between the final save and
+        // sign-out. Restore interaction if either operation fails.
+        els.dashboardPanel.inert = true;
         try {
+            if (!(await finishPendingSettings())) {
+                setStatus(els.adminStatus, 'Could not finish saving. You are still logged in; check your changes and try again.');
+                return;
+            }
             const { error } = await withAdminDeadline(adminClient.auth.signOut());
             if (error) throw error;
             clearTimeout(wishlistSearchTimer);
@@ -4777,12 +4835,14 @@ async function init() {
             if (window.roomsSignOut) {
                 await withAdminDeadline(window.roomsSignOut(), 5000).catch(err => console.error('rooms signOut:', err));
             }
-            sessionStorage.removeItem('doll_admin_gate');
+            setGateAccess(false);
+            adminQuestionDrafts.clear();
             showPanel(els.gatePanel);
         } catch (error) {
             setStatus(els.adminStatus, error.message || 'Could not sign out. Please try again.');
         } finally {
             els.logout.disabled = false;
+            els.dashboardPanel.inert = false;
         }
     });
 
@@ -4808,7 +4868,12 @@ async function init() {
         list.addEventListener('input', event => {
             const textarea = event.target.closest('textarea[data-answer-for]');
             if (!textarea) return;
-            adminQuestionDrafts.set(String(textarea.dataset.answerFor), textarea.value);
+            const id = String(textarea.dataset.answerFor);
+            const saved = (state.adminListItems[list.id] || []).find(item => String(item.id) === id)?.answer || '';
+            // During a write either the old or submitted answer can become
+            // the committed value. Keep every edit until its result is known.
+            if (!adminQuestionSaves.has(id) && textarea.value === saved) adminQuestionDrafts.delete(id);
+            else adminQuestionDrafts.set(id, textarea.value);
         });
         list.addEventListener('paste', event => {
             const textarea = event.target.closest('textarea[data-answer-for]');
@@ -4893,6 +4958,14 @@ async function init() {
     window.addEventListener('focus', inspectPendingSocialVideoPickers);
     document.addEventListener('visibilitychange', () => {
         if (!document.hidden) inspectPendingSocialVideoPickers();
+        // Mobile may suspend this page before the debounce timer runs.
+        else if (settingsDraftDirty && !settingsSavePending && linkSettingsHydrated) void saveLinkSettingsNow();
+    });
+    window.addEventListener('beforeunload', event => {
+        if (els.dashboardPanel.classList.contains('hidden')) return;
+        if (!settingsDraftDirty && !settingsSavePending && !adminQuestionDrafts.size && !submissionMutationBusy && !wishlistActionBusy) return;
+        event.preventDefault();
+        event.returnValue = '';
     });
     els.runHealthCheck?.addEventListener('click', runSiteHealthCheck);
     els.staticSeoCheck?.addEventListener('click', checkStaticSeoStatus);

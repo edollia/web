@@ -1056,39 +1056,51 @@ document.addEventListener("DOMContentLoaded", async function() {
     }
 
     function initAdminGate() {
-        const headerImage = document.querySelector('.header-image');
+        const trigger = document.getElementById('admin-gate-trigger');
         const gate = document.getElementById('admin-gate');
         const form = document.getElementById('admin-gate-form');
         const input = document.getElementById('admin-gate-code');
         const error = document.getElementById('admin-gate-error');
         const closeButton = document.getElementById('admin-gate-close');
-        if (!headerImage || !gate || !form || !input) return;
+        if (!trigger || !gate || !form || !input) return;
 
         const adminCode = '7769';
         let tapCount = 0;
         let tapResetTimer = null;
         let gateReturnFocus = null;
+        const mainScreen = document.getElementById('main-screen');
+        let mainScreenWasInert = false;
 
         function showGate() {
+            if (gate.classList.contains('show')) return;
             gateReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+            mainScreenWasInert = mainScreen?.inert || false;
+            if (mainScreen) mainScreen.inert = true;
             gate.classList.add('show');
             gate.setAttribute('aria-hidden', 'false');
             // Inert while closed, so Tab can't wander into the invisible gate.
             gate.inert = false;
             input.value = '';
             if (error) error.textContent = '';
-            window.setTimeout(() => input.focus(), 80);
+            // iOS opens its keyboard only while focus belongs to this gesture.
+            input.focus({ preventScroll: true });
         }
 
         function hideGate() {
             gate.classList.remove('show');
             gate.setAttribute('aria-hidden', 'true');
             gate.inert = true;
+            if (mainScreen) mainScreen.inert = mainScreenWasInert;
             gateReturnFocus?.focus?.({ preventScroll: true });
             gateReturnFocus = null;
         }
 
-        headerImage.addEventListener('click', function() {
+        trigger.addEventListener('click', function(event) {
+            // Keyboard and assistive activation need only one press.
+            if (event.detail === 0) {
+                showGate();
+                return;
+            }
             tapCount++;
             clearTimeout(tapResetTimer);
             tapResetTimer = setTimeout(() => {

@@ -23,6 +23,7 @@ let roomsPanelLoaded = false, roomsVisible = false, roomsViewGeneration = 0, roo
 let roomsListGeneration = 0, roomsInspectGeneration = 0, roomsBansGeneration = 0, roomsLockdownGeneration = 0;
 let roomsInspectSlug = '', roomsRetry = null, roomsLoading = 0, roomsFailure = '';
 const roomsMutations = new Set();
+window.roomsHasPendingActions = () => roomsMutations.size > 0;
 const roomsElement = id => document.getElementById(id);
 const roomsCurrent = generation => generation === roomsViewGeneration && roomsVisible;
 function updateRoomsStatus() {
