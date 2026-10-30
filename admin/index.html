@@ -652,6 +652,49 @@
                             </div>
                         </details>
 
+                        <details class="admin-link-card" data-link-card="email">
+                            <summary>
+                                <div class="admin-link-card-title">
+                                    <span class="admin-link-icon admin-link-icon--social" aria-hidden="true"><img src="../social-icons/email.png" alt="" width="192" height="192"></span>
+                                    <div>
+                                        <strong>Email</strong>
+                                        <small id="email-state">hidden</small>
+                                    </div>
+                                </div>
+                                <div class="admin-link-card-actions">
+                                    <button class="soft admin-link-open" type="button" data-link-open="email">Open link</button>
+                                    <label class="admin-switch">
+                                        <input id="email-enabled" type="checkbox">
+                                        <span></span>
+                                    </label>
+                                </div>
+                            </summary>
+                            <div class="admin-link-card-body">
+                                <input id="email-url" type="hidden">
+                                <label class="admin-url-field admin-username-field">
+                                    <span>email address <small>opens the visitor’s email app</small></span>
+                                    <input id="email-username" type="email" maxlength="80" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="you@example.com">
+                                </label>
+                                <div class="admin-card-video-control" data-social-video="email">
+                                    <div class="admin-card-video-heading">
+                                        <span>animated card background</span>
+                                        <small data-video-status aria-live="polite">no background</small>
+                                    </div>
+                                    <video data-video-preview muted loop playsinline controls preload="metadata" hidden></video>
+                                    <img data-image-preview alt="" hidden>
+                                    <div class="admin-card-video-actions">
+                                        <label class="admin-video-picker">
+                                            <input data-video-file type="file" accept="video/*,image/gif,.mp4,.m4v,.mov,.webm,.gif">
+                                            <span>choose media</span>
+                                        </label>
+                                        <button class="soft" type="button" data-video-upload="email" disabled>upload</button>
+                                        <button class="soft" type="button" data-video-remove="email" disabled>remove</button>
+                                    </div>
+                                    <small class="admin-card-video-note">MP4, M4V, MOV, WebM, or GIF · max 20 MB</small>
+                                </div>
+                            </div>
+                        </details>
+
                         <details class="admin-link-card" data-link-card="x">
                             <summary>
                                 <div class="admin-link-card-title">
@@ -931,7 +974,7 @@
                         <details class="admin-link-card" data-link-card="throne_link">
                             <summary>
                                 <div class="admin-link-card-title">
-                                    <span class="admin-link-icon admin-link-icon--social" aria-hidden="true"><img src="../social-icons/throne.png?v=2026.10.11.6" alt="" width="192" height="192"></span>
+                                    <span class="admin-link-icon admin-link-icon--social" aria-hidden="true"><img src="../social-icons/throne-v3.png" alt="" width="192" height="192"></span>
                                     <div>
                                         <strong>Throne</strong>
                                         <small id="throne-link-state">visible</small>
@@ -1200,7 +1243,7 @@
     }
     </script>
     <script src="../admin-rooms.js?v=5.3&r=2026.10.23.1"></script>
-    <script src="../social-card-media-config.js?v=11&r=2026.10.11.6"></script>
-    <script src="../admin.js?v=7.4&r=2026.10.23.1"></script>
+    <script src="../social-card-media-config.js?v=16&r=2026.10.30.5"></script>
+    <script src="../admin.js?v=7.5&r=2026.10.30.1"></script>
 </body>
 </html>

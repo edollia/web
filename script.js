@@ -1,5 +1,5 @@
 document.addEventListener("DOMContentLoaded", async function() {
-    const DEFAULT_SOCIAL_CARD_ORDER = ['snapchat', 'instagram', 'kofi', 'telegram', 'x', 'tiktok', 'twitch', 'discord', 'onlyfans', 'spotify', 'throne_link'];
+    const DEFAULT_SOCIAL_CARD_ORDER = ['snapchat', 'instagram', 'kofi', 'telegram', 'email', 'x', 'tiktok', 'twitch', 'discord', 'onlyfans', 'spotify', 'throne_link'];
     const SOCIAL_CARD_KEYS = [...DEFAULT_SOCIAL_CARD_ORDER];
     // One shared switch is loaded by both the public site and Admin. Fail
     // closed to GitHub mode if that tiny config script is ever unavailable;
@@ -303,6 +303,11 @@ document.addEventListener("DOMContentLoaded", async function() {
         kofi_enabled: true,
         kofi_card_video_url: '',
         kofi_card_video_path: '',
+        email_url: '',
+        email_username: '',
+        email_enabled: false,
+        email_card_video_url: '',
+        email_card_video_path: '',
         telegram_url: 'https://t.me/wuufles',
         telegram_username: 'wuufles',
         telegram_enabled: true,
@@ -2225,6 +2230,11 @@ document.addEventListener("DOMContentLoaded", async function() {
             kofi_enabled: readBooleanSetting(settings, 'kofi_enabled'),
             kofi_card_video_url: String(settings.kofi_card_video_url || ''),
             kofi_card_video_path: String(settings.kofi_card_video_path || ''),
+            email_url: String(settings.email_url || ''),
+            email_username: readSocialUsernameSetting(settings, 'email'),
+            email_enabled: readBooleanSetting(settings, 'email_enabled'),
+            email_card_video_url: String(settings.email_card_video_url || ''),
+            email_card_video_path: String(settings.email_card_video_path || ''),
             telegram_url: String(settings.telegram_url || DEFAULT_LINK_SETTINGS.telegram_url),
             telegram_username: readSocialUsernameSetting(settings, 'telegram'),
             telegram_enabled: readBooleanSetting(settings, 'telegram_enabled'),
@@ -4290,6 +4300,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     const snapchatOption = document.getElementById('snapchat-option');
     const instagramOption = document.getElementById('instagram-option');
     const telegramOption = document.getElementById('telegram-option');
+    const emailOption = document.getElementById('email-option');
     const xOption = document.getElementById('x-option');
     const tiktokOption = document.getElementById('tiktok-option');
     const twitchOption = document.getElementById('twitch-option');
@@ -4417,6 +4428,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         { key: 'instagram', option: instagramOption, label: 'Instagram', withAt: true },
         { key: 'kofi', option: donateOption, label: 'Ko-fi' },
         { key: 'telegram', option: telegramOption, label: 'Telegram' },
+        { key: 'email', option: emailOption, label: 'Email' },
         { key: 'x', option: xOption, label: 'X', withAt: true },
         { key: 'tiktok', option: tiktokOption, label: 'TikTok', withAt: true },
         { key: 'twitch', option: twitchOption, label: 'Twitch', withAt: true },
@@ -5098,7 +5110,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     }
 
     function isPublicLinkEnabled(key) {
-        return siteLinkSettings[`${key}_enabled`] !== false;
+        return siteLinkSettings[`${key}_enabled`] !== false && (key !== 'email' || /^mailto:[^@\s]+@[^@\s]+\.[^@\s]+$/i.test(getPublicLink(key) || ''));
     }
 
     function updateSocialCardDisplay(option, key, platformLabel, withAt = false) {
@@ -5132,7 +5144,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             const pageDescription = siteLinkSettings.seo_description || DEFAULT_LINK_SETTINGS.seo_description;
             const siteTagline = siteLinkSettings.site_tagline || DEFAULT_LINK_SETTINGS.site_tagline;
             const sameAs = [...new Set([...SOCIAL_CARD_KEYS, 'throne']
-                .filter(isPublicLinkEnabled)
+                .filter(key => key !== 'email' && isPublicLinkEnabled(key))
                 .map(getPublicLink)
                 .filter(Boolean))];
 
@@ -6441,7 +6453,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             // on this page, then a real destination link opens. Reserving an
             // empty tab synchronously made iPhone switch to about:blank for the
             // full animation plus the destination's network startup.
-            popSocialCardThen(option, () => openSocialDestinationInNewTab(destination, {
+            popSocialCardThen(option, () => key === 'email' ? window.location.assign(destination) : openSocialDestinationInNewTab(destination, {
                 appHandoff: ['snapchat', 'telegram', 'twitch'].includes(key),
             }));
         }));

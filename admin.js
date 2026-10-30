@@ -3,7 +3,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 const ADMIN_UID = '1b12f04e-c1a9-42c5-bd3a-04b6186245c3';
 const ADMIN_PASSCODE_HASH = 'ce157a63c5af6bc69d076f5cc7acd1c18a8b44933f907e682f24914a63e9939e';
 const SOCIAL_CARD_VIDEO_BUCKET = 'social-card-videos';
-const DEFAULT_SOCIAL_CARD_ORDER = ['snapchat', 'instagram', 'kofi', 'telegram', 'x', 'tiktok', 'twitch', 'discord', 'onlyfans', 'spotify', 'throne_link'];
+const DEFAULT_SOCIAL_CARD_ORDER = ['snapchat', 'instagram', 'kofi', 'telegram', 'email', 'x', 'tiktok', 'twitch', 'discord', 'onlyfans', 'spotify', 'throne_link'];
 const SOCIAL_CARD_KEYS = [...DEFAULT_SOCIAL_CARD_ORDER];
 const SOCIAL_CARD_VIDEO_KEYS = [...SOCIAL_CARD_KEYS];
 const SOCIAL_CARD_MEDIA_CONFIG = window.DOLL_SOCIAL_CARD_MEDIA || Object.freeze({
@@ -19,6 +19,7 @@ const SOCIAL_USERNAME_URL_BUILDERS = Object.freeze({
     snapchat: username => `https://www.snapchat.com/add/${encodeURIComponent(username)}`,
     instagram: username => `https://www.instagram.com/${encodeURIComponent(username)}`,
     kofi: username => `https://ko-fi.com/${encodeURIComponent(username)}`,
+    email: username => `mailto:${username}`,
     telegram: username => `https://t.me/${encodeURIComponent(username)}`,
     x: username => `https://x.com/${encodeURIComponent(username)}`,
     tiktok: username => `https://www.tiktok.com/@${encodeURIComponent(username)}`,
@@ -78,6 +79,11 @@ const DEFAULT_LINK_SETTINGS = {
     kofi_enabled: true,
     kofi_card_video_url: '',
     kofi_card_video_path: '',
+    email_url: '',
+    email_username: '',
+    email_enabled: false,
+    email_card_video_url: '',
+    email_card_video_path: '',
     telegram_url: 'https://t.me/wuufles',
     telegram_username: 'wuufles',
     telegram_enabled: true,
@@ -289,6 +295,10 @@ const els = {
     kofiUsername: document.getElementById('kofi-username'),
     kofiState: document.getElementById('kofi-state'),
     kofiUrlPreview: document.getElementById('kofi-url-preview'),
+    emailEnabled: document.getElementById('email-enabled'),
+    emailUrl: document.getElementById('email-url'),
+    emailUsername: document.getElementById('email-username'),
+    emailState: document.getElementById('email-state'),
     telegramEnabled: document.getElementById('telegram-enabled'),
     telegramUrl: document.getElementById('telegram-url'),
     telegramUsername: document.getElementById('telegram-username'),
@@ -783,6 +793,7 @@ function getSocialUsernameControls() {
         { key: 'snapchat', username: els.snapchatUsername, url: els.snapchatUrl },
         { key: 'instagram', username: els.instagramUsername, url: els.instagramUrl },
         { key: 'kofi', username: els.kofiUsername, url: els.kofiUrl },
+        { key: 'email', username: els.emailUsername, url: els.emailUrl },
         { key: 'telegram', username: els.telegramUsername, url: els.telegramUrl },
         { key: 'x', username: els.xUsername, url: els.xUrl },
         { key: 'tiktok', username: els.tiktokUsername, url: els.tiktokUrl },
@@ -797,8 +808,8 @@ function getSocialUsernameControls() {
 function syncSocialUrlFromUsername(key, usernameInput, urlInput) {
     const username = normalizeSocialUsername(usernameInput?.value);
     const buildUrl = SOCIAL_USERNAME_URL_BUILDERS[key];
-    if (!username || !buildUrl || !urlInput) return false;
-    const nextUrl = buildUrl(username);
+    if (!buildUrl || !urlInput || (!username && key !== 'email')) return false;
+    const nextUrl = username ? buildUrl(username) : '';
     if (urlInput.value === nextUrl) return false;
     urlInput.value = nextUrl;
     return true;
@@ -822,6 +833,11 @@ function normalizeLinkSettings(value) {
         kofi_enabled: readBooleanSetting(settings, 'kofi_enabled'),
         kofi_card_video_url: String(settings.kofi_card_video_url || ''),
         kofi_card_video_path: String(settings.kofi_card_video_path || ''),
+        email_url: String(settings.email_url || ''),
+        email_username: readSocialUsernameSetting(settings, 'email'),
+        email_enabled: readBooleanSetting(settings, 'email_enabled'),
+        email_card_video_url: String(settings.email_card_video_url || ''),
+        email_card_video_path: String(settings.email_card_video_path || ''),
         telegram_url: String(settings.telegram_url || DEFAULT_LINK_SETTINGS.telegram_url),
         telegram_username: readSocialUsernameSetting(settings, 'telegram'),
         telegram_enabled: readBooleanSetting(settings, 'telegram_enabled'),
@@ -993,9 +1009,13 @@ function renderLinkSettings({ preserveDraft = false } = {}) {
     if (els.kofiUsername) els.kofiUsername.value = settings.kofi_username ?? '';
     if (els.kofiState) els.kofiState.textContent = settings.kofi_enabled !== false ? 'visible' : 'hidden';
     if (els.kofiUrlPreview) els.kofiUrlPreview.textContent = settings.kofi_url || DEFAULT_LINK_SETTINGS.kofi_url;
+    if (els.emailEnabled) els.emailEnabled.checked = settings.email_enabled === true;
+    if (els.emailUrl) els.emailUrl.value = settings.email_url || '';
+    if (els.emailUsername) els.emailUsername.value = settings.email_username || '';
     if (els.telegramEnabled) els.telegramEnabled.checked = settings.telegram_enabled !== false;
     if (els.telegramUrl) els.telegramUrl.value = settings.telegram_url || '';
     if (els.telegramUsername) els.telegramUsername.value = settings.telegram_username ?? '';
+    if (els.emailState) els.emailState.textContent = settings.email_enabled && /^mailto:[^@\s]+@[^@\s]+\.[^@\s]+$/i.test(settings.email_url || '') ? 'visible' : 'hidden';
     if (els.telegramState) els.telegramState.textContent = settings.telegram_enabled !== false ? 'visible' : 'hidden';
     if (els.xEnabled) els.xEnabled.checked = settings.x_enabled !== false;
     if (els.xUrl) els.xUrl.value = settings.x_url || '';
@@ -1076,6 +1096,11 @@ function getDraftLinkSettings() {
         kofi_enabled: els.kofiEnabled?.checked !== false,
         kofi_card_video_url: state.linkSettings.kofi_card_video_url || '',
         kofi_card_video_path: state.linkSettings.kofi_card_video_path || '',
+        email_url: els.emailUrl?.value.trim() || '',
+        email_username: getDraftSocialUsername('email', els.emailUsername),
+        email_enabled: els.emailEnabled?.checked === true,
+        email_card_video_url: state.linkSettings.email_card_video_url || '',
+        email_card_video_path: state.linkSettings.email_card_video_path || '',
         telegram_url: els.telegramUrl?.value.trim() || state.linkSettings.telegram_url || DEFAULT_LINK_SETTINGS.telegram_url,
         telegram_username: getDraftSocialUsername('telegram', els.telegramUsername),
         telegram_enabled: els.telegramEnabled?.checked !== false,
@@ -1149,7 +1174,7 @@ function getSubmissionsStateLabel(settings) {
 function syncLinkDraftLabels(settings = getDraftLinkSettings()) {
     SOCIAL_CARD_KEYS.forEach(key => {
         const subtitle = document.querySelector(`[data-link-card="${key}"] .admin-social-subtitle`);
-        if (subtitle) { const username = String(settings[`${key}_username`] || ''); subtitle.textContent = username ? '@' + username.replace(/^@/, '') : ''; }
+        if (subtitle) { const username = String(settings[`${key}_username`] || ''); subtitle.textContent = username ? (key === 'email' ? username : '@' + username.replace(/^@/, '')) : ''; }
     });
     const entrance = document.getElementById('admin-entrance-preview');
     if (entrance) { entrance.dataset.mode = settings.entrance_mode === 'bubbles' ? 'bubbles' : 'paw'; entrance.querySelector('strong').textContent = settings.entrance_mode === 'bubbles' ? 'Pop the bubbles' : 'Press the paw'; }
@@ -1158,6 +1183,7 @@ function syncLinkDraftLabels(settings = getDraftLinkSettings()) {
     if (els.instagramState) els.instagramState.textContent = settings.instagram_enabled !== false ? 'visible' : 'hidden';
     if (els.kofiState) els.kofiState.textContent = settings.kofi_enabled !== false ? 'visible' : 'hidden';
     if (els.kofiUrlPreview) els.kofiUrlPreview.textContent = settings.kofi_url || DEFAULT_LINK_SETTINGS.kofi_url;
+    if (els.emailState) els.emailState.textContent = settings.email_enabled && /^mailto:[^@\s]+@[^@\s]+\.[^@\s]+$/i.test(settings.email_url || '') ? 'visible' : 'hidden';
     if (els.telegramState) els.telegramState.textContent = settings.telegram_enabled !== false ? 'visible' : 'hidden';
     if (els.xState) els.xState.textContent = settings.x_enabled !== false ? 'visible' : 'hidden';
     if (els.tiktokState) els.tiktokState.textContent = settings.tiktok_enabled !== false ? 'visible' : 'hidden';
@@ -1192,6 +1218,7 @@ function syncLinkDraftLabels(settings = getDraftLinkSettings()) {
     [...SOCIAL_CARD_KEYS, 'wishes', 'maintenance', 'submissions'].forEach(key => {
         const settingKey = key === 'wishes' ? 'throne' : key.replace('-', '_');
         let disabled = settings[`${settingKey}_enabled`] === false;
+        if (key === 'email') disabled = disabled || !/^mailto:[^@\s]+@[^@\s]+\.[^@\s]+$/i.test(settings.email_url || '');
         if (key === 'submissions') {
             disabled = settings.drawings_enabled === false && settings.questions_enabled === false;
         }
@@ -2975,6 +3002,13 @@ async function runAction(button) {
     }
 }
 
+function cleanEmailUrl(value) {
+    const address = String(value || '').trim();
+    if (!address) return '';
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(address)) throw new Error('Enter a valid email address');
+    return `mailto:${address}`;
+}
+
 function cleanUrl(value, label) {
     const cleanValue = String(value || '').trim();
     if (!cleanValue) throw new Error(`${label} link is missing`);
@@ -3022,6 +3056,11 @@ async function persistLatestLinkSettings(requestId, { overrides = null, onCommit
             kofi_enabled: els.kofiEnabled?.checked !== false,
             kofi_card_video_url: String(state.linkSettings.kofi_card_video_url || ''),
             kofi_card_video_path: String(state.linkSettings.kofi_card_video_path || ''),
+            email_url: cleanEmailUrl(els.emailUsername?.value ?? state.linkSettings.email_username),
+            email_username: getDraftSocialUsername('email', els.emailUsername),
+            email_enabled: els.emailEnabled?.checked === true,
+            email_card_video_url: String(state.linkSettings.email_card_video_url || ''),
+            email_card_video_path: String(state.linkSettings.email_card_video_path || ''),
             telegram_url: cleanUrl(els.telegramUrl?.value ?? state.linkSettings.telegram_url, 'Telegram'),
             telegram_username: getDraftSocialUsername('telegram', els.telegramUsername),
             telegram_enabled: els.telegramEnabled?.checked !== false,
@@ -3704,7 +3743,7 @@ const ADMIN_PANEL_COMMANDS = [
     { panel: 'site-panel', target: '[data-link-card="first-visit-tour"]', icon: 'eye', title: 'first-visit tour', description: 'preview the dood, ask, and links guide', keywords: 'onboarding settings' },
     { panel: 'site-panel', target: '[data-link-card="submissions"]', icon: 'edit', title: 'Submissions', description: 'independent dood and ask controls', keywords: 'submissions safety settings' },
     { panel: 'site-panel', target: '[data-link-card="homepage-note"]', icon: 'note', title: 'homepage paper note', description: 'edit and preview the fitted note', keywords: 'settings text' },
-    { panel: 'links-panel', target: '.admin-link-grid', icon: 'drag', title: 'link card order', description: 'drag to arrange the cards in Links', keywords: 'snapchat instagram kofi telegram x tiktok twitch discord onlyfans spotify throne' },
+    { panel: 'links-panel', target: '.admin-link-grid', icon: 'drag', title: 'link card order', description: 'drag to arrange the cards in Links', keywords: 'snapchat instagram kofi telegram email x tiktok twitch discord onlyfans spotify throne' },
     { panel: 'links-panel', target: '[data-link-card="snapchat"]', icon: 'media', title: 'social card media', description: 'preview the backgrounds currently on your site', keywords: 'video gif mov mp4 storage' },
     { panel: 'links-panel', target: '[data-link-card="throne_link"]', icon: 'wishlist', title: 'Throne link card', description: 'destination, username, visibility, and background', keywords: 'throne public links banner' },
     { panel: 'wishlist-panel', target: '[data-link-card="wishes"]', icon: 'wishlist', title: 'Wishes menu', description: 'Throne sync source, menu visibility, and layout', keywords: 'throne wishlist custom display' },
