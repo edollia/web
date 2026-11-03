@@ -305,6 +305,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         kofi_card_video_path: '',
         email_url: '',
         email_username: '',
+        email_display_name: 'doll.gg',
         email_enabled: false,
         email_card_video_url: '',
         email_card_video_path: '',
@@ -2232,6 +2233,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             kofi_card_video_path: String(settings.kofi_card_video_path || ''),
             email_url: String(settings.email_url || ''),
             email_username: readSocialUsernameSetting(settings, 'email'),
+            email_display_name: Object.prototype.hasOwnProperty.call(settings, 'email_display_name') ? String(settings.email_display_name ?? '').trim().slice(0, 80) : DEFAULT_LINK_SETTINGS.email_display_name,
             email_enabled: readBooleanSetting(settings, 'email_enabled'),
             email_card_video_url: String(settings.email_card_video_url || ''),
             email_card_video_path: String(settings.email_card_video_path || ''),
@@ -5115,7 +5117,7 @@ document.addEventListener("DOMContentLoaded", async function() {
 
     function updateSocialCardDisplay(option, key, platformLabel, withAt = false) {
         if (!option) return;
-        const handle = normalizeSocialUsername(siteLinkSettings[`${key}_username`]);
+        const handle = key === 'email' ? siteLinkSettings.email_display_name : normalizeSocialUsername(siteLinkSettings[`${key}_username`]);
         const small = option.querySelector('.social-link-copy small');
         if (small) {
             small.textContent = handle ? (withAt ? `@${handle}` : handle) : '';

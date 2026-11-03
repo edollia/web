@@ -81,6 +81,7 @@ const DEFAULT_LINK_SETTINGS = {
     kofi_card_video_path: '',
     email_url: '',
     email_username: '',
+    email_display_name: 'doll.gg',
     email_enabled: false,
     email_card_video_url: '',
     email_card_video_path: '',
@@ -298,6 +299,7 @@ const els = {
     emailEnabled: document.getElementById('email-enabled'),
     emailUrl: document.getElementById('email-url'),
     emailUsername: document.getElementById('email-username'),
+    emailDisplayName: document.getElementById('email-display-name'),
     emailState: document.getElementById('email-state'),
     telegramEnabled: document.getElementById('telegram-enabled'),
     telegramUrl: document.getElementById('telegram-url'),
@@ -835,6 +837,7 @@ function normalizeLinkSettings(value) {
         kofi_card_video_path: String(settings.kofi_card_video_path || ''),
         email_url: String(settings.email_url || ''),
         email_username: readSocialUsernameSetting(settings, 'email'),
+        email_display_name: Object.prototype.hasOwnProperty.call(settings, 'email_display_name') ? String(settings.email_display_name ?? '').trim().slice(0, 80) : DEFAULT_LINK_SETTINGS.email_display_name,
         email_enabled: readBooleanSetting(settings, 'email_enabled'),
         email_card_video_url: String(settings.email_card_video_url || ''),
         email_card_video_path: String(settings.email_card_video_path || ''),
@@ -1011,7 +1014,8 @@ function renderLinkSettings({ preserveDraft = false } = {}) {
     if (els.kofiUrlPreview) els.kofiUrlPreview.textContent = settings.kofi_url || DEFAULT_LINK_SETTINGS.kofi_url;
     if (els.emailEnabled) els.emailEnabled.checked = settings.email_enabled === true;
     if (els.emailUrl) els.emailUrl.value = settings.email_url || '';
-    if (els.emailUsername) els.emailUsername.value = settings.email_username || '';
+    if (els.emailUsername) els.emailUsername.value = settings.email_url.replace(/^mailto:/i, '') || settings.email_username || '';
+    if (els.emailDisplayName) els.emailDisplayName.value = settings.email_display_name;
     if (els.telegramEnabled) els.telegramEnabled.checked = settings.telegram_enabled !== false;
     if (els.telegramUrl) els.telegramUrl.value = settings.telegram_url || '';
     if (els.telegramUsername) els.telegramUsername.value = settings.telegram_username ?? '';
@@ -1098,6 +1102,7 @@ function getDraftLinkSettings() {
         kofi_card_video_path: state.linkSettings.kofi_card_video_path || '',
         email_url: els.emailUrl?.value.trim() || '',
         email_username: getDraftSocialUsername('email', els.emailUsername),
+        email_display_name: String(els.emailDisplayName?.value ?? state.linkSettings.email_display_name).trim().slice(0, 80),
         email_enabled: els.emailEnabled?.checked === true,
         email_card_video_url: state.linkSettings.email_card_video_url || '',
         email_card_video_path: state.linkSettings.email_card_video_path || '',
@@ -1174,7 +1179,7 @@ function getSubmissionsStateLabel(settings) {
 function syncLinkDraftLabels(settings = getDraftLinkSettings()) {
     SOCIAL_CARD_KEYS.forEach(key => {
         const subtitle = document.querySelector(`[data-link-card="${key}"] .admin-social-subtitle`);
-        if (subtitle) { const username = String(settings[`${key}_username`] || ''); subtitle.textContent = username ? (key === 'email' ? username : '@' + username.replace(/^@/, '')) : ''; }
+        if (subtitle) { const username = String(key === 'email' ? settings.email_display_name : settings[`${key}_username`] || ''); subtitle.textContent = username ? (key === 'email' ? username : '@' + username.replace(/^@/, '')) : ''; }
     });
     const entrance = document.getElementById('admin-entrance-preview');
     if (entrance) { entrance.dataset.mode = settings.entrance_mode === 'bubbles' ? 'bubbles' : 'paw'; entrance.querySelector('strong').textContent = settings.entrance_mode === 'bubbles' ? 'Pop the bubbles' : 'Press the paw'; }
@@ -3058,6 +3063,7 @@ async function persistLatestLinkSettings(requestId, { overrides = null, onCommit
             kofi_card_video_path: String(state.linkSettings.kofi_card_video_path || ''),
             email_url: cleanEmailUrl(els.emailUsername?.value ?? state.linkSettings.email_username),
             email_username: getDraftSocialUsername('email', els.emailUsername),
+            email_display_name: String(els.emailDisplayName?.value ?? state.linkSettings.email_display_name).trim().slice(0, 80),
             email_enabled: els.emailEnabled?.checked === true,
             email_card_video_url: String(state.linkSettings.email_card_video_url || ''),
             email_card_video_path: String(state.linkSettings.email_card_video_path || ''),
@@ -5055,6 +5061,7 @@ async function init() {
         els.snapchatUrl,
         els.instagramUrl,
         els.kofiUrl,
+        els.emailDisplayName,
         els.telegramUrl,
         els.xUrl,
         els.tiktokUrl,
