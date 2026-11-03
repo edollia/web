@@ -3182,26 +3182,47 @@ body.has-social-panel-open .site-brand-footer {
     height: 48px;
     max-width: none;
     object-fit: contain;
+    transform: scale(0.934);
 }
 
+/* Normalize the visible artwork's longest side to about 35.5px. The PNGs
+   have different transparent margins, so their image boxes need different
+   scales; uniform scaling preserves the shape of each icon. */
 #snapchat-option .social-link-icon img {
-    transform: scale(0.96) translateY(0.5px);
+    transform: scale(0.938) translateY(0.5px);
 }
 
 #instagram-option .social-link-icon img {
-    transform: scale(0.98);
+    transform: scale(0.984);
 }
 
 #throne-option .social-link-icon img {
-    transform: translateY(-0.9px) scale(1.14);
+    transform: translateY(-0.9px) scale(1.124);
 }
 
 #telegram-option .social-link-icon img {
-    transform: scale(0.91);
+    transform: scale(0.922);
 }
 
 #x-option .social-link-icon img {
-    transform: scale(0.94);
+    transform: scale(1.021);
+}
+
+#email-option .social-link-icon img {
+    transform: scale(0.92);
+}
+
+#tiktok-option .social-link-icon img,
+#discord-option .social-link-icon img {
+    transform: scale(0.99);
+}
+
+#spotify-option .social-link-icon img {
+    transform: scale(0.984);
+}
+
+#onlyfans-option .social-link-icon img {
+    transform: scale(1.008);
 }
 
 /* OnlyFans' wide mark carries less dark edge per square than the compact
