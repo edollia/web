@@ -15,6 +15,89 @@
     let fullWebsiteHintCycle = 0;
     let throneReturnFocus = null;
     let overlayGeneration = 0;
+    const inertElements = new Set();
+    let backgroundObserver = null;
+
+    function lockBackground() {
+        const locks = window.__dollModalInertLocks ||= new Map();
+        const lockSiblings = () => Array.from(document.body.children).forEach(element => {
+            if (element === overlay) return;
+            let lock = locks.get(element);
+            if (!lock) {
+                lock = { original: element.inert, owners: new Set() };
+                locks.set(element, lock);
+            }
+            lock.owners.add(overlay);
+            inertElements.add(element);
+            element.inert = true;
+        });
+        lockSiblings();
+        backgroundObserver?.disconnect();
+        backgroundObserver = new MutationObserver(lockSiblings);
+        backgroundObserver.observe(document.body, { childList: true });
+    }
+
+    function unlockBackground() {
+        backgroundObserver?.disconnect();
+        backgroundObserver = null;
+        const locks = window.__dollModalInertLocks;
+        inertElements.forEach(element => {
+            const lock = locks?.get(element);
+            if (!lock) return;
+            lock.owners.delete(overlay);
+            if (!lock.owners.size) {
+                element.inert = lock.original;
+                locks.delete(element);
+            }
+        });
+        inertElements.clear();
+    }
+
+    function canRestoreFocus(element) {
+        if (!(element instanceof HTMLElement) || !element.isConnected || element.tabIndex < 0
+            || element.closest('[inert], [hidden], [aria-hidden="true"]')) return false;
+        const style = getComputedStyle(element);
+        return element.getClientRects().length > 0 && style.display !== 'none'
+            && style.visibility !== 'hidden' && style.opacity !== '0';
+    }
+
+    function restoreFocus() {
+        const target = throneReturnFocus;
+        throneReturnFocus = null;
+        if (canRestoreFocus(target)) {
+            target.focus({ preventScroll: true });
+            return;
+        }
+        requestAnimationFrame(() => {
+            if (overlay?.classList.contains('show')) return;
+            const target = [document.querySelector('.support-menu-button.open'),
+                document.getElementById('support-menu-button'), document.getElementById('dwl-icons-pill'),
+                document.getElementById('socials-button'), document.getElementById('site-brand-button')]
+                .find(canRestoreFocus);
+            target?.focus({ preventScroll: true });
+        });
+    }
+
+    function setSurfaceHidden(surface, hidden) {
+        const element = typeof surface === 'string' ? overlay?.querySelector(surface) : surface;
+        if (!element) return;
+        element.classList.toggle('hidden', hidden);
+        element.inert = hidden;
+        element.setAttribute('aria-hidden', String(hidden));
+    }
+
+    function retryWishlist() {
+        window.clearTimeout(openVeilTimer);
+        window.clearTimeout(backNavigationSafetyTimer);
+        backNavigationActive = false;
+        overlay.querySelector('.doll-throne-iframe')?.remove();
+        iframeLoaded = false;
+        setSurfaceHidden('.doll-throne-fallback', true);
+        ensureIframe();
+        showOpeningVeil();
+        showFallbackIfNeeded();
+        scheduleFullWebsiteHint();
+    }
 
     function playSound(type) {
         if (typeof window.dollPlayUiSound === 'function') {
@@ -144,7 +227,8 @@
 
             .doll-throne-close,
             .doll-throne-back,
-            .doll-throne-popout {
+            .doll-throne-popout,
+            .doll-throne-retry {
                 z-index: 8;
                 display: grid;
                 place-items: center;
@@ -185,7 +269,8 @@
             }
 
             .doll-throne-back,
-            .doll-throne-popout {
+            .doll-throne-popout,
+            .doll-throne-retry {
                 position: static;
                 height: 30px;
                 border-radius: 999px;
@@ -212,10 +297,16 @@
                 transform: translateX(2px) rotate(45deg);
             }
 
-            .doll-throne-popout {
+            .doll-throne-popout,
+            .doll-throne-retry {
                 min-width: 106px;
                 padding: 0 13px;
                 white-space: nowrap;
+            }
+
+            .doll-throne-retry {
+                min-width: 55px;
+                padding: 0 10px;
             }
 
             .doll-throne-close:active {
@@ -223,7 +314,8 @@
             }
 
             .doll-throne-back:active,
-            .doll-throne-popout:active {
+            .doll-throne-popout:active,
+            .doll-throne-retry:active {
                 transform: scale(0.96);
             }
 
@@ -273,6 +365,7 @@
             .doll-throne-loading.hidden,
             .doll-throne-fallback.hidden {
                 opacity: 0;
+                visibility: hidden;
                 pointer-events: none;
             }
 
@@ -514,7 +607,6 @@
 
     function openFullWishlist() {
         playSound('link');
-        hideFullWebsiteHint();
         window.open(wishlistUrl, '_blank', 'noopener,noreferrer');
     }
 
@@ -528,7 +620,9 @@
             '[tabindex]:not([tabindex="-1"])'
         ].join(','))).filter(element => {
             const style = window.getComputedStyle(element);
-            return style.display !== 'none'
+            return !element.hasAttribute('data-throne-focus-boundary') && element.tabIndex >= 0
+                && !element.closest('[inert], [hidden], [aria-hidden="true"]')
+                && style.display !== 'none'
                 && style.visibility !== 'hidden'
                 && element.getClientRects().length > 0;
         });
@@ -540,7 +634,10 @@
         if (!focusable.length) return;
         const first = focusable[0];
         const last = focusable[focusable.length - 1];
-        if (event.shiftKey && document.activeElement === first) {
+        if (!overlay.contains(document.activeElement) || document.activeElement === overlay) {
+            event.preventDefault();
+            (event.shiftKey ? last : first).focus({ preventScroll: true });
+        } else if (event.shiftKey && document.activeElement === first) {
             event.preventDefault();
             last.focus({ preventScroll: true });
         } else if (!event.shiftKey && document.activeElement === last) {
@@ -568,8 +665,10 @@
 
     function scheduleFullWebsiteHint() {
         hideFullWebsiteHint();
-        fullWebsiteHintCycle = 0;
-        queueFullWebsiteHint(10000);
+        const hint = overlay?.querySelector('.doll-throne-hint');
+        if (!hint) return;
+        hint.textContent = 'If Throne stays blank, retry or open the full site.';
+        hint.classList.add('show');
     }
 
     function queueFullWebsiteHint(delay) {
@@ -594,13 +693,13 @@
         window.clearTimeout(openVeilTimer);
         iframe?.classList.remove('loaded');
         loading?.classList.add('soft');
-        loading?.classList.remove('hidden');
+        setSurfaceHidden(loading, false);
 
         openVeilTimer = window.setTimeout(function() {
             if (!overlay?.classList.contains('show')) return;
             if (!iframeLoaded) return;
             iframe?.classList.add('loaded');
-            loading?.classList.add('hidden');
+            setSurfaceHidden(loading, true);
             loading?.classList.remove('soft');
         }, 850);
     }
@@ -614,21 +713,24 @@
         overlay.setAttribute('aria-hidden', 'true');
         overlay.setAttribute('data-nosnippet', '');
         overlay.setAttribute('tabindex', '-1');
+        overlay.inert = true;
         overlay.innerHTML = `
+            <span tabindex="0" data-throne-focus-boundary="start" aria-hidden="true" style="position:absolute;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none;"></span>
             <div class="doll-throne-scrim" data-throne-close></div>
-            <section class="doll-throne-frame" role="dialog" aria-label="Wishlist">
+            <section class="doll-throne-frame" role="dialog" aria-modal="true" aria-label="Wishlist">
                 <div class="doll-throne-controls">
                     <button type="button" class="doll-throne-back" aria-label="Back"></button>
+                    <button type="button" class="doll-throne-retry">retry</button>
                     <button type="button" class="doll-throne-popout">full website</button>
                     <button type="button" class="doll-throne-close" aria-label="Close"><span>&times;</span></button>
                 </div>
-                <div class="doll-throne-hint">Apple Pay checkout: full site</div>
+                <div class="doll-throne-hint" role="status">If Throne stays blank, retry or open the full site.</div>
                 <div class="doll-throne-iframe-wrap"></div>
-                <div class="doll-throne-loading">
+                <div class="doll-throne-loading" role="status">
                     <div class="doll-throne-loader-mark"><img src="site-images/wishlist.png" alt=""></div>
                     <p>opening wishlist...</p>
                 </div>
-                <div class="doll-throne-fallback hidden">
+                <div class="doll-throne-fallback hidden" inert aria-hidden="true">
                     <div class="doll-throne-loader-mark"><img src="site-images/wishlist.png" alt=""></div>
                     <p>checkout works best on the full throne website.</p>
                     <button type="button" data-throne-retry>try again</button>
@@ -638,6 +740,7 @@
                     <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><i></i><i></i><i></i><i></i>
                 </div>
             </section>
+            <span tabindex="0" data-throne-focus-boundary="end" aria-hidden="true" style="position:absolute;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none;"></span>
         `;
 
         document.body.appendChild(overlay);
@@ -647,14 +750,15 @@
         overlay.querySelector('.doll-throne-back').addEventListener('click', goBackInWishlist);
         overlay.querySelector('.doll-throne-popout').addEventListener('click', openFullWishlist);
         overlay.querySelector('[data-throne-full]').addEventListener('click', openFullWishlist);
-        overlay.querySelector('[data-throne-retry]').addEventListener('click', () => {
-            window.clearTimeout(openVeilTimer);
-            overlay.querySelector('.doll-throne-iframe')?.remove();
-            iframeLoaded = false;
-            overlay.querySelector('.doll-throne-fallback')?.classList.add('hidden');
-            ensureIframe();
-            showOpeningVeil();
-            showFallbackIfNeeded();
+        overlay.querySelector('[data-throne-retry]').addEventListener('click', retryWishlist);
+        overlay.querySelector('.doll-throne-retry').addEventListener('click', retryWishlist);
+        overlay.querySelectorAll('[data-throne-focus-boundary]').forEach(boundary => {
+            boundary.addEventListener('focus', () => {
+                if (!overlay.classList.contains('show')) return;
+                const controls = getFocusableElements(overlay).filter(element => element.tagName !== 'IFRAME');
+                const target = boundary.dataset.throneFocusBoundary === 'start' ? controls.at(-1) : controls[0];
+                (target || overlay).focus({ preventScroll: true });
+            });
         });
     }
 
@@ -669,7 +773,7 @@
         window.clearTimeout(backNavigationSafetyTimer);
         iframe.classList.remove('loaded');
         loading?.classList.add('soft');
-        loading?.classList.remove('hidden');
+        setSurfaceHidden(loading, false);
 
         try {
             iframe.contentWindow.history.back();
@@ -693,7 +797,7 @@
             const iframe = overlay?.querySelector('.doll-throne-iframe');
             const loading = overlay?.querySelector('.doll-throne-loading');
             iframe?.classList.add('loaded');
-            loading?.classList.add('hidden');
+            setSurfaceHidden(loading, true);
             loading?.classList.remove('soft');
             backNavigationActive = false;
             window.clearTimeout(backNavigationSafetyTimer);
@@ -718,6 +822,9 @@
         iframe.referrerPolicy = 'strict-origin-when-cross-origin';
         iframe.src = wishlistUrl;
         iframe.addEventListener('load', function() {
+            if (!iframe.isConnected) return;
+            // A cross-origin load can also be an error document. Keep recovery
+            // controls and the neutral hint available after revealing the frame.
             iframeLoaded = true;
             if (backNavigationActive) {
                 finishBackNavigation();
@@ -729,17 +836,17 @@
                 if (generation !== overlayGeneration || !iframe.isConnected
                     || !overlay?.classList.contains('show')) return;
                 iframe.classList.add('loaded');
-                overlay.querySelector('.doll-throne-loading')?.classList.add('hidden');
+                setSurfaceHidden('.doll-throne-loading', true);
                 overlay.querySelector('.doll-throne-loading')?.classList.remove('soft');
-                overlay.querySelector('.doll-throne-fallback')?.classList.add('hidden');
+                setSurfaceHidden('.doll-throne-fallback', true);
             }, 700);
         });
         iframe.addEventListener('error', function() {
             if (!iframe.isConnected || !overlay?.classList.contains('show')) return;
             iframeLoaded = false;
             window.clearTimeout(openVeilTimer);
-            overlay.querySelector('.doll-throne-loading')?.classList.add('hidden');
-            overlay.querySelector('.doll-throne-fallback')?.classList.remove('hidden');
+            setSurfaceHidden('.doll-throne-loading', true);
+            setSurfaceHidden('.doll-throne-fallback', false);
         });
         wrapper.appendChild(iframe);
     }
@@ -748,9 +855,14 @@
         window.clearTimeout(fallbackTimer);
         fallbackTimer = window.setTimeout(function() {
             if (!overlay?.classList.contains('show')) return;
-            if (iframeLoaded) return;
-            overlay.querySelector('.doll-throne-loading')?.classList.add('hidden');
-            overlay.querySelector('.doll-throne-fallback')?.classList.remove('hidden');
+            if (iframeLoaded) {
+                const hint = overlay.querySelector('.doll-throne-hint');
+                hint.textContent = 'Having trouble? Retry or open the full site.';
+                hint.classList.add('show');
+                return;
+            }
+            setSurfaceHidden('.doll-throne-loading', true);
+            setSurfaceHidden('.doll-throne-fallback', false);
         }, 4500);
     }
 
@@ -762,8 +874,10 @@
         window.clearTimeout(unloadIframeTimer);
         ensureIframe();
         overlay.setAttribute('aria-hidden', 'false');
+        overlay.inert = false;
+        lockBackground();
         document.body.classList.add('has-throne-overlay-open');
-        overlay.querySelector('.doll-throne-fallback')?.classList.add('hidden');
+        setSurfaceHidden('.doll-throne-fallback', true);
         showOpeningVeil();
         window.requestAnimationFrame(function() {
             if (generation !== overlayGeneration) return;
@@ -785,9 +899,10 @@
         playSound('tap');
         overlay.classList.remove('show');
         overlay.setAttribute('aria-hidden', 'true');
+        overlay.inert = true;
+        unlockBackground();
         document.body.classList.remove('has-throne-overlay-open');
-        throneReturnFocus?.focus?.({ preventScroll: true });
-        throneReturnFocus = null;
+        restoreFocus();
         window.clearTimeout(fallbackTimer);
         window.clearTimeout(openVeilTimer);
         hideFullWebsiteHint();
@@ -798,6 +913,12 @@
             iframeLoaded = false;
         }, 900);
     }
+
+    document.addEventListener('focusin', function(event) {
+        if (overlay?.classList.contains('show') && !overlay.contains(event.target)) {
+            overlay.querySelector('.doll-throne-close')?.focus({ preventScroll: true });
+        }
+    });
 
     document.addEventListener('keydown', function(event) {
         if (event.key === 'Escape' && overlay?.classList.contains('show')) {

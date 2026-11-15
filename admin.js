@@ -3,9 +3,10 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 const ADMIN_UID = '1b12f04e-c1a9-42c5-bd3a-04b6186245c3';
 const ADMIN_PASSCODE_HASH = 'ce157a63c5af6bc69d076f5cc7acd1c18a8b44933f907e682f24914a63e9939e';
 const SOCIAL_CARD_VIDEO_BUCKET = 'social-card-videos';
-const DEFAULT_SOCIAL_CARD_ORDER = ['snapchat', 'instagram', 'kofi', 'telegram', 'email', 'x', 'tiktok', 'twitch', 'discord', 'onlyfans', 'spotify', 'throne_link'];
+const DEFAULT_SOCIAL_CARD_ORDER = ['snapchat', 'instagram', 'kofi', 'solana', 'telegram', 'email', 'x', 'tiktok', 'twitch', 'discord', 'onlyfans', 'spotify', 'throne_link'];
 const SOCIAL_CARD_KEYS = [...DEFAULT_SOCIAL_CARD_ORDER];
-const SOCIAL_CARD_VIDEO_KEYS = [...SOCIAL_CARD_KEYS];
+const SOCIAL_CARD_URL_KEYS = SOCIAL_CARD_KEYS.filter(key => key !== 'solana');
+const SOCIAL_CARD_VIDEO_KEYS = [...SOCIAL_CARD_URL_KEYS];
 const SOCIAL_CARD_MEDIA_CONFIG = window.DOLL_SOCIAL_CARD_MEDIA || Object.freeze({
     mode: 'github',
     localVideos: Object.freeze({})
@@ -64,6 +65,7 @@ async function hashPin(pin) {
 }
 const WISHLIST_VIEW_MODES = ['grid', 'list', 'masonry'];
 const DEFAULT_LINK_SETTINGS = {
+    ...window.DollSolana.defaults,
     snapchat_url: 'https://www.snapchat.com/add/dumidoll',
     snapchat_username: 'dumidoll',
     snapchat_enabled: true,
@@ -196,6 +198,7 @@ const adminClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY
     }
 });
 
+let committedSolanaSettings = { ...window.DollSolana.defaults };
 let autoSaveTimer = null;
 let settingsDraftDirty = false;
 let settingsSaveTail = Promise.resolve();
@@ -296,6 +299,12 @@ const els = {
     kofiUsername: document.getElementById('kofi-username'),
     kofiState: document.getElementById('kofi-state'),
     kofiUrlPreview: document.getElementById('kofi-url-preview'),
+    solanaEnabled: document.getElementById('solana-enabled'),
+    solanaAddress: document.getElementById('solana-wallet-address'),
+    solanaCaption: document.getElementById('solana-caption'),
+    solanaState: document.getElementById('solana-state'),
+    solanaError: document.getElementById('solana-address-error'),
+    solanaPreview: document.getElementById('solana-preview'),
     emailEnabled: document.getElementById('email-enabled'),
     emailUrl: document.getElementById('email-url'),
     emailUsername: document.getElementById('email-username'),
@@ -496,11 +505,27 @@ function getDrawingSrc(imageData) {
     return `data:image/png;base64,${cleanData}`;
 }
 
+function renderAdminIp(value) {
+    const address = String(value ?? '').trim();
+    const octets = address.split('.');
+    const ipv4 = octets.length === 4 && octets.every(octet =>
+        /^(?:0|[1-9]\d{0,2})$/.test(octet) && Number(octet) <= 255);
+    let ipv6 = false;
+    if (address.includes(':') && /^[0-9a-f:.]+$/i.test(address)) {
+        try {
+            const host = new URL(`https://[${address}]/`).hostname;
+            ipv6 = host.startsWith('[') && host.endsWith(']');
+        } catch (error) {}
+    }
+    if (!ipv4 && !ipv6) return escapeHtml(address || 'unknown');
+    return `<a class="admin-ip-link" href="https://ipinfo.io/${encodeURIComponent(address)}" target="_blank" rel="noopener noreferrer" aria-label="Look up IP address ${escapeHtml(address)}">${escapeHtml(address)}</a>`;
+}
+
 function renderMeta(item) {
     return `
         <div class="admin-meta">
             ${renderTimestamp(item.created_at)}
-            <span>ip: ${escapeHtml(item.ip_address || 'unknown')}</span>
+            <span>ip: ${renderAdminIp(item.ip_address)}</span>
             <span>id: ${escapeHtml(item.id)}</span>
         </div>
     `;
@@ -510,7 +535,7 @@ function renderShortMeta(item) {
     return `
         <div class="admin-meta compact">
             ${renderTimestamp(item.created_at, true)}
-            <span>ip: ${escapeHtml(item.ip_address || 'unknown')}</span>
+            <span>ip: ${renderAdminIp(item.ip_address)}</span>
         </div>
     `;
 }
@@ -522,7 +547,9 @@ function renderStats(linkSettings = state.linkSettings) {
     const publishedQuestions = state.adminListTotals['published-questions-list'] || 0;
     const publicLinkKeys = SOCIAL_CARD_KEYS;
     const activeLinks = publicLinkKeys
-        .filter(key => linkSettings[`${key}_enabled`] !== false).length;
+        .filter(key => key === 'solana'
+            ? linkSettings.solana_enabled === true && window.DollSolana.isValidAddress(linkSettings.solana_wallet_address)
+            : linkSettings[`${key}_enabled`] !== false).length;
     if (els.reviewTabCount) els.reviewTabCount.textContent = String(pendingDrawings + pendingQuestions);
     if (els.publishedTabCount) els.publishedTabCount.textContent = String(publishedDrawings + publishedQuestions);
     if (els.linksTabCount) els.linksTabCount.textContent = `${activeLinks}/${publicLinkKeys.length}`;
@@ -753,7 +780,12 @@ function normalizeSocialCardOrder(value) {
     const valid = requested.filter((key, index) =>
         SOCIAL_CARD_KEYS.includes(key) && requested.indexOf(key) === index
     );
-    return [...valid, ...SOCIAL_CARD_KEYS.filter(key => !valid.includes(key))];
+    const order = [...valid, ...SOCIAL_CARD_KEYS.filter(key => !valid.includes(key))];
+    if (!valid.includes('solana')) {
+        order.splice(order.indexOf('solana'), 1);
+        order.splice(order.indexOf('kofi') + 1, 0, 'solana');
+    }
+    return order;
 }
 
 function normalizeSocialUsername(value) {
@@ -820,6 +852,7 @@ function syncSocialUrlFromUsername(key, usernameInput, urlInput) {
 function normalizeLinkSettings(value) {
     const settings = value && typeof value === 'object' ? value : {};
     return {
+        ...window.DollSolana.normalize(settings),
         snapchat_url: String(settings.snapchat_url || DEFAULT_LINK_SETTINGS.snapchat_url),
         snapchat_username: readSocialUsernameSetting(settings, 'snapchat'),
         snapchat_enabled: readBooleanSetting(settings, 'snapchat_enabled'),
@@ -1012,6 +1045,9 @@ function renderLinkSettings({ preserveDraft = false } = {}) {
     if (els.kofiUsername) els.kofiUsername.value = settings.kofi_username ?? '';
     if (els.kofiState) els.kofiState.textContent = settings.kofi_enabled !== false ? 'visible' : 'hidden';
     if (els.kofiUrlPreview) els.kofiUrlPreview.textContent = settings.kofi_url || DEFAULT_LINK_SETTINGS.kofi_url;
+    if (els.solanaEnabled) els.solanaEnabled.checked = settings.solana_enabled === true;
+    if (els.solanaAddress) els.solanaAddress.value = settings.solana_wallet_address;
+    if (els.solanaCaption) els.solanaCaption.value = settings.solana_caption;
     if (els.emailEnabled) els.emailEnabled.checked = settings.email_enabled === true;
     if (els.emailUrl) els.emailUrl.value = settings.email_url || '';
     if (els.emailUsername) els.emailUsername.value = settings.email_url.replace(/^mailto:/i, '') || settings.email_username || '';
@@ -1083,8 +1119,33 @@ function renderLinkSettings({ preserveDraft = false } = {}) {
     renderLinkPreview();
 }
 
+function getDraftSolanaSettings() {
+    return window.DollSolana.normalize({
+        solana_enabled: els.solanaEnabled?.checked === true,
+        solana_wallet_address: els.solanaAddress?.value ?? state.linkSettings.solana_wallet_address,
+        solana_heading: state.linkSettings.solana_heading,
+        solana_caption: els.solanaCaption?.value ?? state.linkSettings.solana_caption
+    });
+}
+
+function renderSolanaValidation(settings = getDraftSolanaSettings()) {
+    const invalid = Boolean(settings.solana_wallet_address)
+        && !window.DollSolana.isValidAddress(settings.solana_wallet_address);
+    els.solanaAddress?.setAttribute('aria-invalid', String(invalid));
+    if (els.solanaError) {
+        els.solanaError.hidden = !invalid;
+        els.solanaError.textContent = invalid
+            ? 'Enter a valid Solana wallet address. Your previous receiving details are kept until this is fixed.'
+            : '';
+    }
+    if (els.solanaState) els.solanaState.textContent = invalid ? 'check address'
+        : !settings.solana_enabled ? 'hidden' : settings.solana_wallet_address ? 'visible' : 'add address';
+    return !invalid;
+}
+
 function getDraftLinkSettings() {
     return {
+        ...getDraftSolanaSettings(),
         snapchat_url: els.snapchatUrl?.value.trim() || state.linkSettings.snapchat_url || DEFAULT_LINK_SETTINGS.snapchat_url,
         snapchat_username: getDraftSocialUsername('snapchat', els.snapchatUsername),
         snapchat_enabled: els.snapchatEnabled?.checked !== false,
@@ -1179,6 +1240,7 @@ function getSubmissionsStateLabel(settings) {
 function syncLinkDraftLabels(settings = getDraftLinkSettings()) {
     SOCIAL_CARD_KEYS.forEach(key => {
         const subtitle = document.querySelector(`[data-link-card="${key}"] .admin-social-subtitle`);
+        if (key === 'solana') { if (subtitle) subtitle.textContent = settings.solana_caption; return; }
         if (subtitle) { const username = String(key === 'email' ? settings.email_display_name : settings[`${key}_username`] || ''); subtitle.textContent = username ? (key === 'email' ? username : '@' + username.replace(/^@/, '')) : ''; }
     });
     const entrance = document.getElementById('admin-entrance-preview');
@@ -1223,6 +1285,7 @@ function syncLinkDraftLabels(settings = getDraftLinkSettings()) {
     [...SOCIAL_CARD_KEYS, 'wishes', 'maintenance', 'submissions'].forEach(key => {
         const settingKey = key === 'wishes' ? 'throne' : key.replace('-', '_');
         let disabled = settings[`${settingKey}_enabled`] === false;
+        if (key === 'solana') disabled = disabled || !window.DollSolana.isValidAddress(settings.solana_wallet_address);
         if (key === 'email') disabled = disabled || !/^mailto:[^@\s]+@[^@\s]+\.[^@\s]+$/i.test(settings.email_url || '');
         if (key === 'submissions') {
             disabled = settings.drawings_enabled === false && settings.questions_enabled === false;
@@ -1230,6 +1293,7 @@ function syncLinkDraftLabels(settings = getDraftLinkSettings()) {
         document.querySelector(`[data-link-card="${key}"]`)?.classList.toggle('is-disabled', disabled);
     });
     document.querySelector('[data-link-card="rooms-master"]')?.classList.toggle('is-disabled', settings.rooms_enabled === false);
+    renderSolanaValidation(settings);
     renderStats(settings);
     renderStaticSeoStatus(settings);
 }
@@ -2607,6 +2671,7 @@ async function loadAdminData({ preserveDrafts = true } = {}) {
             || settingsSaveRevision !== settingsRevisionAtStart
         );
         if (linkSettingsResult.data?.value) {
+            committedSolanaSettings = window.DollSolana.normalize(linkSettingsResult.data.value);
             cachePublicSiteSettings(normalizeLinkSettings(linkSettingsResult.data.value));
         }
         if (!preserveLiveLinkDraft) {
@@ -3045,7 +3110,10 @@ async function persistLatestLinkSettings(requestId, { overrides = null, onCommit
     }
     let nextSettings;
     try {
+        const solanaDraft = getDraftSolanaSettings();
+        const solanaSettings = renderSolanaValidation(solanaDraft) ? solanaDraft : committedSolanaSettings;
         nextSettings = {
+            ...solanaSettings,
             snapchat_url: cleanUrl(els.snapchatUrl?.value ?? state.linkSettings.snapchat_url, 'Snapchat'),
             snapchat_username: getDraftSocialUsername('snapchat', els.snapchatUsername),
             snapchat_enabled: els.snapchatEnabled?.checked !== false,
@@ -3157,6 +3225,7 @@ async function persistLatestLinkSettings(requestId, { overrides = null, onCommit
         return false;
     }
 
+    committedSolanaSettings = window.DollSolana.normalize(nextSettings);
     cachePublicSiteSettings(nextSettings);
 
     if (typeof onCommitted === 'function') {
@@ -3264,7 +3333,8 @@ function resetLinkSettings() {
     }
     if (!confirmDangerAction('Reset all link destinations, usernames, visibility, and link order to their defaults? Other site settings and backgrounds are kept.')) return;
     const next = { ...getDraftLinkSettings(), social_card_order: [...DEFAULT_SOCIAL_CARD_ORDER] };
-    SOCIAL_CARD_KEYS.forEach(key => ['url', 'username', 'enabled'].forEach(field => {
+    next.solana_enabled = DEFAULT_LINK_SETTINGS.solana_enabled;
+    SOCIAL_CARD_URL_KEYS.forEach(key => ['url', 'username', 'enabled'].forEach(field => {
         next[`${key}_${field}`] = DEFAULT_LINK_SETTINGS[`${key}_${field}`];
     }));
     state.linkSettings = next;
@@ -3365,7 +3435,14 @@ async function runSiteHealthCheck() {
         },
         {
             label: 'share image',
-            run: async () => (await adminFetchWithDeadline('../site-images/thumbnail-stripes.png?v=2026.10.17.7', { method: 'HEAD', cache: 'no-store' })).ok
+            run: async () => (await adminFetchWithDeadline('../site-images/share-stripes.jpg?v=2026.11.14.v2.8', { method: 'HEAD', cache: 'no-store' })).ok
+        },
+        {
+            label: 'share video',
+            run: async () => {
+                const response = await adminFetchWithDeadline('../site-images/share-stripes.mp4?v=2026.11.14.v2.8', { method: 'HEAD', cache: 'no-store' });
+                return response.ok && response.headers.get('content-type')?.includes('video/mp4');
+            }
         }
     ];
 
@@ -3751,6 +3828,7 @@ const ADMIN_PANEL_COMMANDS = [
     { panel: 'site-panel', target: '[data-link-card="homepage-note"]', icon: 'note', title: 'homepage paper note', description: 'edit and preview the fitted note', keywords: 'settings text' },
     { panel: 'links-panel', target: '.admin-link-grid', icon: 'drag', title: 'link card order', description: 'drag to arrange the cards in Links', keywords: 'snapchat instagram kofi telegram email x tiktok twitch discord onlyfans spotify throne' },
     { panel: 'links-panel', target: '[data-link-card="snapchat"]', icon: 'media', title: 'social card media', description: 'preview the backgrounds currently on your site', keywords: 'video gif mov mp4 storage' },
+    { panel: 'links-panel', target: '[data-link-card="solana"]', icon: 'links', title: 'Solana receiving card', description: 'wallet address, caption, visibility, and preview', keywords: 'SOL crypto receive QR wallet payment' },
     { panel: 'links-panel', target: '[data-link-card="throne_link"]', icon: 'wishlist', title: 'Throne link card', description: 'destination, username, visibility, and background', keywords: 'throne public links banner' },
     { panel: 'wishlist-panel', target: '[data-link-card="wishes"]', icon: 'wishlist', title: 'Wishes menu', description: 'Throne sync source, menu visibility, and layout', keywords: 'throne wishlist custom display' },
     { panel: 'wishlist-panel', target: '.admin-bulk-bar', icon: 'wishlist', title: 'featured wishes', description: 'sync, filter, feature, and drag public order', keywords: 'throne sold out new items' },
@@ -3837,7 +3915,9 @@ function getAdminLocalSearchResults(term) {
     const needle = term.toLowerCase();
     const tools = getAdminToolCommands().filter(command => `${command.title} ${command.description} ${command.keywords}`.toLowerCase().includes(needle)).slice(0, term ? 16 : 12).map(command => ({ ...command, kind: 'tool' }));
     const settings = getDraftLinkSettings();
-    const links = term ? SOCIAL_CARD_KEYS.filter(key => `${key} ${settings[`${key}_username`]} ${settings[`${key}_url`]}`.toLowerCase().includes(needle)).map(key => ({ kind: 'tool', panel: 'links-panel', target: `[data-link-card="${key}"]`, title: document.querySelector(`[data-link-card="${key}"] summary strong`)?.textContent || key, description: settings[`${key}_username`] || settings[`${key}_url`], icon: 'links' })) : [];
+    const links = term ? SOCIAL_CARD_KEYS.filter(key => (key === 'solana'
+        ? `solana SOL wallet QR ${settings.solana_wallet_address} ${settings.solana_caption}`
+        : `${key} ${settings[`${key}_username`]} ${settings[`${key}_url`]}`).toLowerCase().includes(needle)).map(key => ({ kind: 'tool', panel: 'links-panel', target: `[data-link-card="${key}"]`, title: document.querySelector(`[data-link-card="${key}"] summary strong`)?.textContent || key, description: key === 'solana' ? settings.solana_caption : settings[`${key}_username`] || settings[`${key}_url`], icon: 'links' })) : [];
     return { tools, links };
 }
 function renderAdminSearchResults() {
@@ -5012,6 +5092,10 @@ async function init() {
         event.preventDefault();
         event.returnValue = '';
     });
+    els.solanaPreview?.addEventListener('click', () => {
+        window.DollSolanaReceive.configure(getDraftSolanaSettings());
+        window.DollSolanaReceive.open(els.solanaPreview, { preview: true });
+    });
     els.runHealthCheck?.addEventListener('click', runSiteHealthCheck);
     els.staticSeoCheck?.addEventListener('click', checkStaticSeoStatus);
     document.querySelectorAll('[data-link-open]').forEach(button => {
@@ -5062,6 +5146,8 @@ async function init() {
         els.instagramUrl,
         els.kofiUrl,
         els.emailDisplayName,
+        els.solanaAddress,
+        els.solanaCaption,
         els.telegramUrl,
         els.xUrl,
         els.tiktokUrl,

@@ -23,16 +23,21 @@
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://doll.gg/">
     <meta property="og:site_name" content="doll.gg">
-    <meta property="og:image" content="https://doll.gg/site-images/thumbnail-stripes.png?v=2026.10.17.7">
-    <meta property="og:image:type" content="image/png">
-    <meta property="og:image:width" content="665">
-    <meta property="og:image:height" content="496">
+    <meta property="og:image" content="https://doll.gg/site-images/share-stripes.jpg?v=2026.11.14.v2.8">
+    <meta property="og:image:type" content="image/jpeg">
+    <meta property="og:image:width" content="960">
+    <meta property="og:image:height" content="716">
     <meta property="og:image:alt" content="Soft pink and white vertical stripes">
+    <meta property="og:video" content="https://doll.gg/site-images/share-stripes.mp4?v=2026.11.14.v2.8">
+    <meta property="og:video:secure_url" content="https://doll.gg/site-images/share-stripes.mp4?v=2026.11.14.v2.8">
+    <meta property="og:video:type" content="video/mp4">
+    <meta property="og:video:width" content="720">
+    <meta property="og:video:height" content="536">
 
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="Lia ⋆౨ৎ˚⟡">
     <meta name="twitter:description" content="The official doll.gg, Lia's little space.">
-    <meta name="twitter:image" content="https://doll.gg/site-images/thumbnail-stripes.png?v=2026.10.17.7">
+    <meta name="twitter:image" content="https://doll.gg/site-images/share-stripes.jpg?v=2026.11.14.v2.8">
     <meta name="twitter:image:alt" content="Soft pink and white vertical stripes">
 
     <script id="site-structured-data" type="application/ld+json">
@@ -107,9 +112,10 @@
     }
     </script>
 
-    <meta name="doll-build" content="2026.10.24.1">
+    <meta name="doll-build" content="2026.11.14.1">
     <link rel="stylesheet" href="paw-loader.css?v=2026.10.12.1">
-    <link rel="stylesheet" href="styles.css?v=13.70&r=2026.11.02.1">
+    <link rel="stylesheet" href="styles.css?v=13.71&r=2026.11.13.v2.2">
+    <link rel="stylesheet" href="solana-receive.css?v=4">
 </head>
 <body>
     <!-- Fixed edge colors let iOS Safari continue the page behind its controls. -->
@@ -285,6 +291,17 @@
                             </span>
                         </a>
                         <img src="social-icons/kofitos.png" alt="" class="social-link-mascot social-link-mascot--kofi" aria-hidden="true" width="168" height="111" decoding="async">
+                    </div>
+                    <div class="social-link-card-frame social-link-card-frame--solana site-link-hidden">
+                        <button type="button" id="solana-option" class="social-link-card solana-link-card site-link-hidden" style="width:100%" tabindex="-1" aria-hidden="true" aria-label="Open Solana receive" aria-haspopup="dialog">
+                            <span class="social-link-icon social-link-solana-icon" aria-hidden="true">
+                                <img src="social-icons/solana-wallet.svg?v=8" alt="" width="192" height="192" decoding="async">
+                            </span>
+                            <span class="social-link-copy"><strong>solana</strong><small>send a little SOL</small></span>
+                            <span class="social-link-arrow" aria-hidden="true">
+                                <svg viewBox="0 0 16 16" focusable="false"><path d="M4 12 12 4M7 4h5v5"></path></svg>
+                            </span>
+                        </button>
                     </div>
                     <a id="telegram-option" class="social-link-card" href="https://t.me/wuufles" target="_blank" rel="noopener noreferrer" tabindex="-1" aria-label="Open Telegram: wuufles">
                         <span class="social-link-icon" aria-hidden="true">
@@ -551,12 +568,15 @@
     </section>
 
     <script src="social-card-media-config.js?v=16&r=2026.10.30.5"></script>
-    <script src="throne-overlay-widget.js?v=4.0&r=2026.10.10.3"></script>
+    <script src="throne-overlay-widget.js?v=4.1&r=2026.11.13.v2.2"></script>
     <script src="wishlist-fallback.js?v=1&r=2026.07.29.7"></script>
-    <script src="throne-mockup-widget.js?v=81&r=2026.10.17.6"></script>
-    <script src="kofi-overlay-widget.js?v=5.20&r=2026.10.12.1"></script>
+    <script src="throne-mockup-widget.js?v=83&r=2026.11.13.v2.2"></script>
+    <script src="kofi-overlay-widget.js?v=5.22&r=2026.11.13.v2.2"></script>
     <script src="links-tail-idle.js?v=4&r=2026.10.17.2"></script>
-    <script src="script.js?v=10.148&r=2026.11.02.1"></script>
+    <script src="solana-config.js?v=1"></script>
+    <script src="vendor/qrcode.js?v=1"></script>
+    <script src="solana-receive-widget.js?v=4"></script>
+    <script src="script.js?v=10.151&r=2026.11.14.v2.8"></script>
     
     <!-- GoatCounter Analytics -->
     <script data-goatcounter="https://dollia.goatcounter.com/count"

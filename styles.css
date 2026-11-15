@@ -841,6 +841,37 @@ button {
     filter: drop-shadow(0 3px 6px rgba(255, 145, 195, 0.12));
 }
 
+/* A short landscape viewport needs the artwork and paws to share real
+   space; opposing transforms can push either end outside the screen. */
+@media (max-height: 300px) {
+    .loading-content {
+        gap: 4px;
+        padding: max(8px, env(safe-area-inset-top)) 18px max(8px, env(safe-area-inset-bottom));
+        transform: none;
+    }
+
+    .loading-gif {
+        width: auto;
+        height: clamp(0px, calc(100svh - 124px - env(safe-area-inset-top) - env(safe-area-inset-bottom)), 130px);
+        max-width: 100%;
+        margin: 0;
+        transform: none;
+    }
+
+    .loading-bar-container { margin-top: 0; }
+
+    .loading-slow-message {
+        position: static;
+        transform: none;
+        animation: loadingCompactMessageIn 0.42s ease both;
+    }
+
+    @keyframes loadingCompactMessageIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+    }
+}
+
 .icon-container {
     position: relative;
     isolation: isolate;

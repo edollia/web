@@ -282,7 +282,19 @@ serve(async (req) => {
         value,
         is_active: true,
       })
-      if (error && error.code !== '23505') throw error
+      if (error) {
+        if (error.code !== '23505') throw error
+        // Removed bans retain their unique key. Re-enable the exact row and
+        // renew the schema's seven-day lifetime instead of reporting a no-op.
+        const { error: reactivateError } = await sb.from('room_bans')
+          .update({ is_active: true, created_at: new Date().toISOString() })
+          .is('room_id', null)
+          .eq('type', type)
+          .eq('value', value)
+          .select('id')
+          .single()
+        if (reactivateError) throw reactivateError
+      }
       return json({ ok: true })
     }
 

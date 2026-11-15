@@ -1,0 +1,60 @@
+#solana-option { width:100%; font-family:var(--doll-hand,"Comic Sans MS","Trebuchet MS",cursive); cursor:pointer; }
+#solana-option .social-link-icon img { width:42px; height:42px; object-fit:contain; transform:none; }
+.solana-sheet {
+    --sol-ink:#785362;
+    box-sizing:border-box;
+    width:min(360px,calc(100vw - 28px));
+    max-width:none;
+    max-height:calc(100dvh - 28px);
+    margin:auto;
+    padding:21px 15px 16px;
+    overflow:visible;
+    border:1px solid #f0cbdc;
+    border-radius:19px;
+    background:linear-gradient(120deg,#fffcfd,#ffedf7);
+    box-shadow:0 13px 30px #a8608426,inset 0 1px 1px #fff;
+    color:var(--sol-ink);
+    font-family:var(--doll-hand,"Comic Sans MS","Trebuchet MS",cursive);
+    text-align:center;
+    -webkit-tap-highlight-color:transparent;
+    overscroll-behavior:contain;
+}
+.solana-sheet::backdrop { background:#f2d8e880; backdrop-filter:blur(7px); -webkit-backdrop-filter:blur(7px); }
+.solana-sheet[open] { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.08fr); column-gap:13px; align-items:center; animation:solanaSheetIn .24s cubic-bezier(.2,.8,.2,1) both; }
+.solana-sheet .solana-sheet-close { position:absolute; top:5px; right:5px; display:grid; place-items:center; width:44px; height:44px; padding:0; border:0; border-radius:6px; background:none; box-shadow:none; color:#aa748e; cursor:pointer; transition:color .15s,transform .15s; }
+.solana-sheet-close svg { display:block; width:13px; height:13px; }
+.solana-sheet-close:hover { color:#7f4867; }
+.solana-code-paper { position:relative; grid-column:1; width:100%; height:auto; aspect-ratio:1; margin:0; padding:4px; background:#fff; border:1px solid #efdbe6; border-radius:11px; box-shadow:0 1px 3px #a86b890d; }
+.solana-code { display:block; width:100%; height:100%; }
+.solana-code svg { display:block; width:100%; height:100%; }
+.solana-code path { fill:#785362; }
+.solana-sheet .solana-copy {
+    position:relative; grid-column:2; box-sizing:border-box; display:grid; grid-template-columns:minmax(0,1fr) 17px; align-items:center; gap:7px;
+    width:100%; min-height:65px; padding:8px 9px; border:1px dashed #ebcfde; border-radius:11px;
+    background:#fff8fcb8; box-shadow:none; text-align:left; color:var(--sol-ink); cursor:pointer;
+    -webkit-tap-highlight-color:transparent; transition:background .18s,border-color .18s,box-shadow .18s;
+}
+.solana-copy:hover { background:#ffedf7; border-color:#cd8caf; }
+.solana-copy:active { transform:scale(.987); }
+.solana-wallet-value { font:10.5px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace; overflow-wrap:anywhere; user-select:text; transition:opacity .14s; }
+.solana-copy-glyph { color:#ac7291; }
+.solana-copy-glyph svg { width:17px; height:17px; display:block; }
+.solana-copy-status { position:absolute; left:12px; right:36px; top:50%; transform:translateY(-50%); font:500 13px/1.4 var(--doll-hand,"Comic Sans MS","Trebuchet MS",cursive); text-align:center; opacity:0; pointer-events:none; color:#9f507d; }
+.solana-copy.is-copied { border-style:solid; border-color:#d98bb5; background:#ffe6f3; box-shadow:0 0 0 3px #f4c9df4d,inset 0 1px 0 #fff; animation:solanaCopied .42s cubic-bezier(.2,.8,.2,1); }
+.solana-copy.is-copied .solana-wallet-value { opacity:0; }
+.solana-copy.is-copied .solana-copy-status { opacity:1; }
+.solana-copy.is-error .solana-copy-status { top:auto; bottom:-16px; left:0; right:0; transform:none; opacity:1; font-size:10px; line-height:14px; }
+.solana-sheet:focus { outline:none; }
+.solana-sheet button:focus-visible { outline:2px solid #d48ab2; outline-offset:3px; }
+.solana-copy-heart { position:absolute; z-index:2; width:12px; height:12px; pointer-events:none; will-change:transform,opacity; }
+.solana-copy-heart svg { width:100%; height:100%; overflow:visible; display:block; }
+@keyframes solanaSheetIn { from { opacity:0;translate:0 5px;scale:.985; } to { opacity:1;translate:0;scale:1; } }
+@keyframes solanaCopied { 0%,100% { transform:scale(1); } 40% { transform:scale(1.022); } }
+@media(max-height:330px) {
+    .solana-sheet { width:min(380px,calc(100vw - 28px)); padding:13px 15px; }
+    .solana-code-paper { width:min(148px,calc(100dvh - 60px),100%); justify-self:center; }
+}
+@media(prefers-reduced-motion:reduce) {
+    .solana-sheet[open],.solana-copy.is-copied { animation:none; }
+    .solana-copy,.solana-wallet-value,.solana-sheet-close { transition:none; }
+}

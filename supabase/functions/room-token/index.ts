@@ -7,6 +7,7 @@
 
 import { serve }        from 'https://deno.land/std@0.208.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { getRoomsAvailability } from '../_shared/rooms-availability.ts'
 
 const ALLOWED_ORIGINS = new Set([
   'https://doll.gg', 'https://www.doll.gg',
@@ -91,6 +92,12 @@ serve(async (req) => {
     if (!roomSlug || !nickname || !sessionId) {
       return json({ error: 'missing fields' }, 400)
     }
+
+    // This master switch also applies to admins; Rooms lockdown remains a
+    // separate, narrower policy evaluated only after the feature is enabled.
+    const availability = await getRoomsAvailability()
+    if (availability === 'disabled') return json({ error: 'rooms are temporarily disabled' }, 403)
+    if (availability !== 'enabled') return json({ error: 'rooms availability is temporarily unavailable' }, 503)
 
     const ADMIN_UID = '9ea1a89e-5a00-4b91-b98c-d69a5e383df4'
 

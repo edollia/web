@@ -25,6 +25,102 @@ var kofiWidgetOverlayFloatingChatBuilder = kofiWidgetOverlayFloatingChatBuilder 
 
     var closeButtonActionBlocked = false;
     var kofiReturnFocus = null;
+    var builderHost = null;
+    var disposed = false;
+    var builderTimeouts = new Set();
+    var builderIntervals = new Set();
+    var builderCleanups = new Set();
+
+    function loadBuilderFrame(...args) {
+        const cleanup = _utils.loadKofiIframe(...args);
+        if (typeof cleanup === 'function') builderCleanups.add(cleanup);
+    }
+
+    function setBuilderTimeout(callback, delay) {
+        var timer = window.setTimeout(function() {
+            builderTimeouts.delete(timer);
+            if (!disposed && builderHost?.isConnected) callback();
+        }, delay);
+        builderTimeouts.add(timer);
+        return timer;
+    }
+
+    function disposeBuilder() {
+        disposed = true;
+        builderTimeouts.forEach(timer => window.clearTimeout(timer));
+        builderIntervals.forEach(timer => window.clearInterval(timer));
+        builderTimeouts.clear();
+        builderIntervals.clear();
+        builderCleanups.forEach(cleanup => cleanup());
+        builderCleanups.clear();
+        unlockKofiBackground();
+    }
+    var kofiInertElements = new Set();
+    var kofiInertOwner = null;
+
+    function lockKofiBackground(popup) {
+        var locks = window.__dollModalInertLocks ||= new Map();
+        kofiInertOwner = popup;
+        function lockOutside(container) {
+            Array.from(container.children).forEach(function(element) {
+                if (element === popup || element.id === 'doll-kofi-scrim') return;
+                // Widget popups can live inside their generated wrapper.
+                // Keep the ancestor path active and lock only its other branches.
+                if (element.contains(popup)) {
+                    lockOutside(element);
+                    return;
+                }
+                var lock = locks.get(element);
+                if (!lock) {
+                    lock = { original: element.inert, owners: new Set() };
+                    locks.set(element, lock);
+                }
+                lock.owners.add(popup);
+                kofiInertElements.add(element);
+                element.inert = true;
+            });
+        }
+        lockOutside(document.body);
+    }
+
+    function unlockKofiBackground() {
+        var locks = window.__dollModalInertLocks;
+        kofiInertElements.forEach(function(element) {
+            var lock = locks?.get(element);
+            if (!lock) return;
+            lock.owners.delete(kofiInertOwner);
+            if (!lock.owners.size) {
+                element.inert = lock.original;
+                locks.delete(element);
+            }
+        });
+        kofiInertElements.clear();
+        kofiInertOwner = null;
+    }
+
+    function canReturnKofiFocus(element) {
+        if (!(element instanceof HTMLElement) || element.tabIndex < 0 || !element.isConnected
+            || element.closest('[inert], [hidden], [aria-hidden="true"]')) return false;
+        var style = getComputedStyle(element);
+        return element.getClientRects().length > 0 && style.visibility !== 'hidden'
+            && style.display !== 'none' && style.opacity !== '0';
+    }
+
+    function restoreKofiFocus() {
+        var target = kofiReturnFocus;
+        kofiReturnFocus = null;
+        if (canReturnKofiFocus(target)) {
+            target.focus({ preventScroll: true });
+            return;
+        }
+        window.requestAnimationFrame(function() {
+            if (getActiveKofiPopup()) return;
+            var fallback = document.querySelector('.support-menu-button.open')
+                || document.getElementById('socials-button')
+                || document.getElementById('site-brand-button');
+            if (canReturnKofiFocus(fallback)) fallback.focus({ preventScroll: true });
+        });
+    }
 
     function getFocusableElements(container) {
         if (!container) return [];
@@ -36,7 +132,8 @@ var kofiWidgetOverlayFloatingChatBuilder = kofiWidgetOverlayFloatingChatBuilder 
             '[tabindex]:not([tabindex="-1"])'
         ].join(','))).filter(function(element) {
             var style = window.getComputedStyle(element);
-            return style.display !== 'none'
+            return !element.closest('[inert], [hidden]') && element.tabIndex >= 0
+                && style.display !== 'none'
                 && style.visibility !== 'hidden'
                 && element.getClientRects().length > 0;
         });
@@ -65,7 +162,10 @@ var kofiWidgetOverlayFloatingChatBuilder = kofiWidgetOverlayFloatingChatBuilder 
 
         var first = focusable[0];
         var last = focusable[focusable.length - 1];
-        if (event.shiftKey && document.activeElement === first) {
+        if (!popup.contains(document.activeElement) || document.activeElement === popup) {
+            event.preventDefault();
+            (event.shiftKey ? last : first).focus({ preventScroll: true });
+        } else if (event.shiftKey && document.activeElement === first) {
             event.preventDefault();
             last.focus({ preventScroll: true });
         } else if (!event.shiftKey && document.activeElement === last) {
@@ -76,6 +176,12 @@ var kofiWidgetOverlayFloatingChatBuilder = kofiWidgetOverlayFloatingChatBuilder 
 
     if (!window.__dollKofiFocusTrapBound) {
         document.addEventListener('keydown', trapKofiFocus);
+        document.addEventListener('focusin', function(event) {
+            var popup = getActiveKofiPopup();
+            if (popup && !popup.contains(event.target)) {
+                (popup.querySelector('[aria-label="Close Ko-fi"]') || popup).focus({ preventScroll: true });
+            }
+        });
         window.__dollKofiFocusTrapBound = true;
     }
    
@@ -113,6 +219,11 @@ var kofiWidgetOverlayFloatingChatBuilder = kofiWidgetOverlayFloatingChatBuilder 
         var iframe = document.getElementById(iframeId);
 
         var _timer = setInterval(function () {
+            if (disposed || !iframe.isConnected) {
+                clearInterval(_timer);
+                builderIntervals.delete(_timer);
+                return;
+            }
 
             //delay the display of the button, so that the stylesheets get time to load
             //the stylesheet load event does not appear to work reliably
@@ -120,6 +231,7 @@ var kofiWidgetOverlayFloatingChatBuilder = kofiWidgetOverlayFloatingChatBuilder 
             var doc = iframe.contentDocument || iframe.contentWindow;
             if (doc && doc.readyState == 'complete') {
                 clearInterval(_timer);
+                builderIntervals.delete(_timer);
 
                 var parentWrapper = document.getElementsByClassName(_topContainerWrapClass)[0];
                 var mobiParentWrapper = document.getElementsByClassName(_topMobiContainerWrapClass)[0];
@@ -135,6 +247,7 @@ var kofiWidgetOverlayFloatingChatBuilder = kofiWidgetOverlayFloatingChatBuilder 
                 iframe.style = 'opacity:0; pointer-events:none; height: 0px;';
             }
         }, 300);
+        builderIntervals.add(_timer);
 
         iframeContainerElement.write(buttonBody);
         iframeContainerElement.close();
@@ -181,6 +294,7 @@ var kofiWidgetOverlayFloatingChatBuilder = kofiWidgetOverlayFloatingChatBuilder 
             '</div>';
 
         var existingPlaceHolder = document.getElementById(parentElementId);
+        builderHost = existingPlaceHolder;
         existingPlaceHolder.innerHTML = iframeHtml;
 
         var iframeContainerElement = createButtonContainerIframe(iframeId, 'https://storage.ko-fi.com/cdn/scripts/floating-chat-main.css');
@@ -235,7 +349,7 @@ var kofiWidgetOverlayFloatingChatBuilder = kofiWidgetOverlayFloatingChatBuilder 
         // Set up the public controls on the next task. The old fixed 500ms
         // wait was visible on a fast card tap even though all required DOM had
         // already been written synchronously above.
-        setTimeout(function() {
+        setBuilderTimeout(function() {
             window.openKofiOverlay = function() {
                 showKofiScrim();
                 var iframeId = getContainerFrameId();
@@ -314,7 +428,7 @@ var kofiWidgetOverlayFloatingChatBuilder = kofiWidgetOverlayFloatingChatBuilder 
                 var popupId = _configManager.getValue(_myType, 'cssId') + `-${popupName}`;
                 var iframeHostId = popupId + containerSuffix;
                 if (!document.getElementById(iframeHostId)) return false;
-                _utils.loadKofiIframe(
+                loadBuilderFrame(
                     _configManager.getValue(_myType, 'pageId', true),
                     iframeHostId,
                     'width: 100%; height: 98%;'
@@ -353,6 +467,7 @@ var kofiWidgetOverlayFloatingChatBuilder = kofiWidgetOverlayFloatingChatBuilder 
             // overlay, matching the other social cards' perceived timing.
             window.preloadKofiOverlay();
         }, 0);
+        return disposeBuilder;
     };
 
     function activateKofiIframe(iframeId, selectors, heightLimits) {
@@ -377,6 +492,7 @@ var kofiWidgetOverlayFloatingChatBuilder = kofiWidgetOverlayFloatingChatBuilder 
     };
 
     function slidePopupOpen(popup, finalHeight) {
+        if (popup.dataset.kofiOpen === 'true') return;
         kofiReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
         var displayHeight = Math.min(Math.round(finalHeight * 1.4), Math.round(window.innerHeight * 0.94));
         var topOffset = 0;
@@ -385,11 +501,12 @@ var kofiWidgetOverlayFloatingChatBuilder = kofiWidgetOverlayFloatingChatBuilder 
         popup.setAttribute('aria-hidden', 'false');
         popup.style.setProperty('--kofi-height', `${displayHeight}px`);
         popup.inert = false;
+        lockKofiBackground(popup);
         var noticeMobi = document.getElementsByClassName("floating-chat-kofi-popup-iframe-notice-mobi")[0];
         var notice = document.getElementsByClassName("floating-chat-kofi-popup-iframe-notice")[0];
-        if (noticeMobi) noticeMobi.style.display = "block";
-        if (notice) notice.style.display = "block";
-        window.setTimeout(function() {
+        if (noticeMobi) noticeMobi.style.display = "none";
+        if (notice) notice.style.display = "none";
+        setBuilderTimeout(function() {
             if (popup.dataset.kofiOpen === 'true') {
                 popup.querySelector('[aria-label="Close Ko-fi"]')?.focus({ preventScroll: true });
             }
@@ -405,8 +522,8 @@ var kofiWidgetOverlayFloatingChatBuilder = kofiWidgetOverlayFloatingChatBuilder 
         updateClass(donateButton, 'open', 'closed');
         // The parent fades out; keep its contents intact until it is hidden.
         hideKofiScrim();
-        kofiReturnFocus?.focus?.({ preventScroll: true });
-        kofiReturnFocus = null;
+        unlockKofiBackground();
+        restoreKofiFocus();
     }
 
     function ensureKofiScrim() {
@@ -441,7 +558,7 @@ var kofiWidgetOverlayFloatingChatBuilder = kofiWidgetOverlayFloatingChatBuilder 
         if (!scrim) return;
         scrim.style.setProperty('opacity', '0', 'important');
         // Fade a fixed blur rather than repainting the blur radius each frame.
-        window.setTimeout(function() {
+        setBuilderTimeout(function() {
             if (scrim.style.opacity === '0') {
                 scrim.style.setProperty('pointer-events', 'none', 'important');
             }
@@ -588,6 +705,9 @@ var kofiWidgetOverlayFloatingChatBuilder = kofiWidgetOverlayFloatingChatBuilder 
         popup.id = popupId;
         popup.classList = selectors.popupClass;
         popup.setAttribute('aria-hidden', 'true');
+        popup.setAttribute('role', 'dialog');
+        popup.setAttribute('aria-modal', 'true');
+        popup.setAttribute('aria-label', 'Support Lia on Ko-fi');
         popup.setAttribute('data-nosnippet', '');
         popup.setAttribute('tabindex', '-1');
         popup.classList.add('doll-kofi-popup');
@@ -607,25 +727,8 @@ var kofiWidgetOverlayFloatingChatBuilder = kofiWidgetOverlayFloatingChatBuilder 
         ornaments.innerHTML = '<span></span><span></span><span></span><span></span><i></i><i></i><i></i>';
         popup.appendChild(ornaments);
 
-        var notice = document.createElement('div');
-        notice.classList = selectors.noticeClass;
-
-
-        var noticeText = _configManager.getValue(_myType, 'notice.text');
-        var pageId = _configManager.getValue(_myType, 'pageId', true);
-
-        noticeText = noticeText.replace("%HANDLE%", pageId);
-        var handleLink = document.createElement('a');
-        handleLink.setAttribute('href', "https://"+ noticeText);
-        handleLink.setAttribute('target', "_blank");
-        handleLink.setAttribute('rel', 'noopener noreferrer');
-        handleLink.setAttribute('class', 'kfds-text-is-link-dark');
-        var linkText = document.createTextNode(noticeText);
-        handleLink.appendChild(linkText);
-        notice.appendChild(handleLink);
-        popup.appendChild(notice);
-
-        var closer = document.createElement('div');
+        var closer = document.createElement('button');
+        closer.type = 'button';
         var closerContent = document.createElement('span');
 
         closerContent.innerHTML = _configManager.getValue(_myType, 'closer', true);
@@ -634,7 +737,7 @@ var kofiWidgetOverlayFloatingChatBuilder = kofiWidgetOverlayFloatingChatBuilder 
         closer.setAttribute('aria-label', 'Close Ko-fi');
         closer.setAttribute('role', 'button');
         closer.setAttribute('tabindex', '0');
-        closer.style = 'position:absolute!important;top:-14px!important;right:-14px!important;width:46px!important;height:46px!important;display:grid!important;place-items:center!important;border-radius:999px!important;background:rgba(255,238,247,0.96)!important;border:1px solid rgba(255,147,197,0.62)!important;box-shadow:0 12px 26px rgba(210,75,142,0.22), inset 0 1px 0 rgba(255,255,255,0.95)!important;color:#b94d84!important;font-family:Georgia, serif!important;font-size:34px!important;line-height:1!important;cursor:pointer!important;z-index:10!important;touch-action:manipulation!important;pointer-events:auto!important;user-select:none!important;-webkit-user-select:none!important;-webkit-tap-highlight-color:transparent!important;';
+        closer.style = 'padding:0!important;appearance:none!important;position:absolute!important;top:-14px!important;right:-14px!important;width:46px!important;height:46px!important;display:grid!important;place-items:center!important;border-radius:999px!important;background:rgba(255,238,247,0.96)!important;border:1px solid rgba(255,147,197,0.62)!important;box-shadow:0 12px 26px rgba(210,75,142,0.22), inset 0 1px 0 rgba(255,255,255,0.95)!important;color:#b94d84!important;font-family:Georgia, serif!important;font-size:34px!important;line-height:1!important;cursor:pointer!important;z-index:10!important;touch-action:manipulation!important;pointer-events:auto!important;user-select:none!important;-webkit-user-select:none!important;-webkit-tap-highlight-color:transparent!important;';
         closerContent.style = 'display:block!important;transform:translateY(-2px)!important;pointer-events:none!important;';
 
         closer.addEventListener('click', function (event) {
@@ -682,7 +785,7 @@ var kofiWidgetOverlayFloatingChatBuilder = kofiWidgetOverlayFloatingChatBuilder 
             var widgetPageLoadInitiated = widgetPageLoadInitiatedStates[widgetPageLoadStateIndex][1];
             if (!widgetPageLoadInitiated) {
                 var popupIFrameContainerId = popupId + selectors.popupIframeContainerIdSuffix;
-                _utils.loadKofiIframe(_configManager.getValue(_myType, 'pageId', true), popupIFrameContainerId, 'width: 100%; height: 98%;');
+                loadBuilderFrame(_configManager.getValue(_myType, 'pageId', true), popupIFrameContainerId, 'width: 100%; height: 98%;');
                 widgetPageLoadInitiatedStates[widgetPageLoadStateIndex] = [donateButton, true];
             }
 
@@ -691,7 +794,7 @@ var kofiWidgetOverlayFloatingChatBuilder = kofiWidgetOverlayFloatingChatBuilder 
             updateClass(donateButton, 'closed', 'open');
 
             closeButtonActionBlocked = true;
-            setTimeout(function () {
+            setBuilderTimeout(function () {
                 closeButtonActionBlocked = false;
             }, 1000);
 
@@ -765,9 +868,10 @@ var kofiWidgetOverlayUtilities = kofiWidgetOverlayUtilities || function () {
         const status = document.createElement('div');
         status.className = 'doll-kofi-load-state';
         status.setAttribute('role', 'status');
-        status.style.cssText = 'position:absolute;inset:0 0 44px;display:grid;place-content:center;gap:16px;text-align:center;padding:24px;background:#fff7fb;color:#b94d84;font:18px "Comic Sans MS",cursive;z-index:3;border-radius:16px;';
+        status.style.cssText = 'position:absolute;inset:0 0 64px;display:grid;place-content:center;gap:16px;text-align:center;padding:24px;background:#fff7fb;color:#b94d84;font:18px "Comic Sans MS",cursive;z-index:3;border-radius:16px;';
         const footer = document.createElement('div');
-        footer.style.cssText = 'position:absolute;bottom:0;left:0;right:0;min-height:44px;display:flex;align-items:center;justify-content:center;gap:18px;background:#fff7fb;color:#b94d84;font:16px "Comic Sans MS",cursive;z-index:3;';
+        footer.className = 'doll-kofi-recovery';
+        footer.style.cssText = 'position:absolute;bottom:0;left:0;right:0;min-height:64px;padding:6px 8px;box-sizing:border-box;display:grid;grid-template-columns:auto auto;align-content:center;align-items:center;justify-content:center;gap:4px 14px;background:#fff7fb;color:#b94d84;font:16px "Comic Sans MS",cursive;z-index:3;';
         const retry = document.createElement('button');
         retry.type = 'button';
         retry.textContent = 'retry';
@@ -778,12 +882,19 @@ var kofiWidgetOverlayUtilities = kofiWidgetOverlayUtilities || function () {
         link.rel = 'noopener noreferrer';
         link.textContent = 'open full website';
         link.style.cssText = 'color:inherit;text-decoration:underline;text-underline-offset:3px;';
-        footer.append(retry, link);
+        const hint = document.createElement('span');
+        hint.className = 'doll-kofi-recovery-hint';
+        hint.setAttribute('role', 'status');
+        hint.style.cssText = 'grid-column:1/-1;font-size:12px;line-height:1.2;text-align:center;';
+        footer.append(hint, retry, link);
         parent.append(status, footer);
         const load = () => {
             const run = ++loadRun;
             window.clearTimeout(timer);
             parent.querySelector('iframe')?.remove();
+            let receivedLoad = false;
+            let receivedError = false;
+            hint.textContent = 'If Ko-fi stays blank, retry or open the full website.';
             status.hidden = false;
             status.style.display = 'grid';
             status.setAttribute('aria-label', 'Loading Ko-fi');
@@ -792,26 +903,45 @@ var kofiWidgetOverlayUtilities = kofiWidgetOverlayUtilities || function () {
             iframe.title = 'Ko-fi support page';
             iframe.referrerPolicy = 'strict-origin-when-cross-origin';
             iframe.allow = 'payment *';
-            iframe.style.cssText = iframeStyle + ';height:calc(100% - 44px);border:0;';
+            iframe.style.cssText = iframeStyle + ';height:calc(100% - 64px);border:0;';
             const fail = () => {
                 if (run !== loadRun || !iframe.isConnected) return;
                 window.clearTimeout(timer);
+                receivedError = true;
+                status.hidden = false;
                 status.style.display = 'grid';
-                status.textContent = 'ko-fi is taking a while — retry or open the full website below';
+                status.textContent = 'Ko-fi could not load here. Retry or open the full website below.';
             };
             iframe.addEventListener('load', () => {
                 if (run !== loadRun || !iframe.isConnected) return;
-                window.clearTimeout(timer);
+                // Cross-origin load also fires for blocked/error documents.
+                // Reveal the frame without declaring success; recovery stays usable.
+                receivedLoad = true;
+                if (receivedError) return;
                 status.style.display = 'none';
                 status.hidden = true;
             });
             iframe.addEventListener('error', fail);
             iframe.src = kofiWidgetOverlayConstants.kofiRoot + pageId + '/?hidefeed=true&widget=true&embed=true';
-            parent.appendChild(iframe);
-            timer = window.setTimeout(fail, 8000);
+            // Keep the iframe before the recovery controls in keyboard order.
+            // If the browser skips its document, Tab still reaches Retry and the link.
+            parent.insertBefore(iframe, footer);
+            timer = window.setTimeout(() => {
+                if (run !== loadRun || !iframe.isConnected) return;
+                hint.textContent = 'Having trouble? Retry or open the full website.';
+                if (!receivedLoad) {
+                    status.hidden = false;
+                    status.style.display = 'grid';
+                    status.textContent = 'Ko-fi is taking a while. Retry or open the full website below.';
+                }
+            }, 8000);
         };
         retry.addEventListener('click', load);
         load();
+        return () => {
+            loadRun += 1;
+            window.clearTimeout(timer);
+        };
     };
 
     const getWindowHeightRatio = function () {
@@ -908,6 +1038,7 @@ var kofiWidgetOverlay = kofiWidgetOverlay || (function () {
     const _utils = new kofiWidgetOverlayUtilities();
     var isFirstRender = true;
     var parentButtonWrapperId = null;
+    var activeBuilderDispose = null;
 
     var _root = '';
     var _buildStrategy = {
@@ -932,7 +1063,8 @@ var kofiWidgetOverlay = kofiWidgetOverlay || (function () {
         var finalConfig = JSON.parse(JSON.stringify(kofiWidgetOverlayConfig));
 
         _utils.mergeOptions(finalConfig, config);
-        builder.write(instanceId, finalConfig, _utils);
+        activeBuilderDispose?.();
+        activeBuilderDispose = builder.write(instanceId, finalConfig, _utils);
     };
 
     const setConfigDefaults = function (config, widgetType, pId, instanceId) {
@@ -972,6 +1104,9 @@ var kofiWidgetOverlay = kofiWidgetOverlay || (function () {
 
     const reset = function () {
         if (!parentButtonWrapperId) return;
+        window.closeKofiOverlay?.();
+        activeBuilderDispose?.();
+        activeBuilderDispose = null;
         var popupPrefix = parentButtonWrapperId + '-kofi-popup-iframe';
         document.querySelectorAll('[id]').forEach(function(element) {
             if (element.id.indexOf(popupPrefix) === 0) element.remove();

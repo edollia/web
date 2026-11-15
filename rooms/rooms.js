@@ -3142,14 +3142,20 @@ function showConfirm({ title, body = '', confirmText = 'confirm', cancelText = '
           <button type="button" class="btn-primary${danger ? ' confirm-danger' : ''} confirm-ok">${escHtml(confirmText)}</button>
         </div>
       </div>`;
+    let settled = false;
     const close = (result) => {
+      if (settled) return;
+      settled = true;
       document.removeEventListener('keydown', onKey);
       overlay.remove(); wrap.remove();
       resolve(result);
     };
     const onKey = (e) => {
-      if (e.key === 'Escape') close(false);
-      else if (e.key === 'Enter') close(true);
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        close(false);
+      }
+      // Enter/Space activate the focused native button, including Cancel.
     };
     overlay.addEventListener('click', () => close(false));
     wrap.querySelector('.confirm-cancel').addEventListener('click', () => close(false));

@@ -4,17 +4,15 @@
 
 import { serve }        from 'https://deno.land/std@0.208.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { getRoomsAvailability } from '../_shared/rooms-availability.ts'
 
 const ALLOWED_ORIGINS = new Set([
   'https://doll.gg', 'https://www.doll.gg',
   'http://localhost:8421', 'http://127.0.0.1:8421',
 ])
 
-const PUBLIC_ROOM_SELECT = [
-  'id', 'slug', 'title', 'status', 'locked', 'audience_mode',
-  'host_nickname', 'host_accent', 'member_count', 'created_at', 'ended_at',
-  'participant_previews',
-].join(', ')
+// Keep the controlled projection literal so the SDK can infer returned fields.
+const PUBLIC_ROOM_SELECT = 'id, slug, title, status, locked, audience_mode, host_nickname, host_accent, member_count, created_at, ended_at, participant_previews'
 
 function buildCors(req: Request) {
   const origin = req.headers.get('Origin') ?? ''
@@ -82,6 +80,10 @@ serve(async (req) => {
     if (nickname.length < 2 || !sessionId) {
       return json({ error: 'missing host identity' }, 400)
     }
+
+    const availability = await getRoomsAvailability()
+    if (availability === 'disabled') return json({ error: 'rooms are temporarily disabled' }, 403)
+    if (availability !== 'enabled') return json({ error: 'rooms availability is temporarily unavailable' }, 503)
 
     const sb = createClient(
       Deno.env.get('SUPABASE_URL')!,

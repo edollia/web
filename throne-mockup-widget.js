@@ -163,6 +163,11 @@
     let previewItemId = null;
     let previewImageGeneration = 0;
     let previewImageReleaseTimer = 0;
+    let previewImageLoadTimer = 0;
+    let previewReturnFocus = null;
+    let previewBackgroundObserver = null;
+    const previewInertElements = new Set();
+    let wishlistWasOffline = navigator.onLine === false;
     let marqueeRuleCounter = 0;
     let titleMarqueeObserver = null;
     let imageHydrationRun = 0;
@@ -290,16 +295,27 @@
             loadingDocument.body.style.cssText = 'margin:0;min-height:100vh;display:grid;place-content:center;justify-items:center;gap:12px;background:#fff7fb;color:#b94d84;font:18px "Comic Sans MS","Trebuchet MS",cursive;text-align:center;';
             // Reuse the already-loaded shared paw rules without waiting on a
             // stylesheet request from this temporary about:blank document.
-            const pawStylesheet = Array.from(document.styleSheets).find(sheet => (
-                sheet.href && new URL(sheet.href).pathname.endsWith('/paw-loader.css')
-            ));
-            const stylesheet = loadingDocument.createElement('style');
-            stylesheet.textContent = Array.from(pawStylesheet.cssRules, rule => rule.cssText).join('\n');
-            loadingDocument.head.appendChild(stylesheet);
+            let hasPawStyles = false;
+            try {
+                const pawStylesheet = Array.from(document.styleSheets).find(sheet => (
+                    sheet.href && new URL(sheet.href).pathname.endsWith('/paw-loader.css')
+                ));
+                if (pawStylesheet) {
+                    const stylesheet = loadingDocument.createElement('style');
+                    stylesheet.textContent = Array.from(pawStylesheet.cssRules, rule => rule.cssText).join('\n');
+                    if (stylesheet.textContent) {
+                        loadingDocument.head.appendChild(stylesheet);
+                        hasPawStyles = true;
+                    }
+                }
+            } catch (error) {
+                // Optional artwork must never invalidate an already-open tab.
+            }
             const status = loadingDocument.createElement('div');
             status.setAttribute('role', 'status');
             status.setAttribute('aria-label', 'Loading checkout');
-            status.innerHTML = '<span class="loading-paw-print posts-fetch-paw" aria-hidden="true"></span>';
+            if (hasPawStyles) status.innerHTML = '<span class="loading-paw-print posts-fetch-paw" aria-hidden="true"></span>';
+            else status.textContent = 'loading checkout…';
             loadingDocument.body.replaceChildren(status);
             return tab;
         } catch (error) {
@@ -409,6 +425,7 @@
         const media = img.closest('.doll-wishlist-media');
         media?.style.setProperty('--dwl-image-ratio', `${img.naturalWidth} / ${img.naturalHeight}`);
         media?.classList.remove('dwl-media-pending', 'dwl-media-error');
+        updateProductPhotoLabel(img);
         if (isWishlistPanelVisible()) {
             imageDecodedRecency.set(img, performance.now());
         } else {
@@ -416,6 +433,36 @@
         }
         return true;
     }
+
+    function updateProductPhotoLabel(img) {
+        const media = img?.closest('.doll-wishlist-media');
+        if (!media || media.tagName !== 'BUTTON') return;
+        const name = media.dataset.photoName || 'wishlist item';
+        media.setAttribute('aria-label', `${media.classList.contains('dwl-media-error') ? 'Retry photo for' : 'Preview'} ${name}`);
+    }
+
+    function retryProductImage(img) {
+        if (!img?.isConnected || !isWishlistPanelVisible() || !img.dataset.dwlFailed) return;
+        delete img.dataset.dwlFailed;
+        img.removeAttribute('src');
+        img.closest('.doll-wishlist-media')?.classList.remove('dwl-media-error');
+        updateProductPhotoLabel(img);
+        img.dataset.dwlObservedNear = 'true';
+        queueProductImage(img, 'high');
+    }
+
+    window.addEventListener('offline', () => { wishlistWasOffline = true; });
+    window.addEventListener('online', () => {
+        if (!wishlistWasOffline) return;
+        wishlistWasOffline = false;
+        if (!isWishlistPanelVisible()) return;
+        const viewport = imageHydrationRoot?.getBoundingClientRect();
+        panel.querySelectorAll('.doll-wishlist-product-img[data-dwl-failed]').forEach(img => {
+            const rect = img.closest('.doll-wishlist-media').getBoundingClientRect();
+            if (viewport && rect.bottom > viewport.top && rect.top < viewport.bottom
+                && rect.right > viewport.left && rect.left < viewport.right) retryProductImage(img);
+        });
+    });
 
     function signalProductImageSettled(img) {
         try { img.dispatchEvent(new Event('dwl-image-settled')); } catch (error) {}
@@ -529,6 +576,7 @@
         delete img.dataset.dwlLoading;
         img.removeAttribute('src');
         img.closest('.doll-wishlist-media')?.classList.add('dwl-media-pending', 'dwl-media-error');
+        updateProductPhotoLabel(img);
         activeImageHydrations.delete(img);
         signalProductImageSettled(img);
         drainProductImageQueue();
@@ -869,9 +917,8 @@
         const productImages = getHydratableProductImages(body);
         if (!productImages.length) return;
 
-        productImages.forEach(img => {
-            delete img.dataset.dwlFailed;
-        });
+        // Keep failures stable within this opening; scrolling must not retry in a loop.
+        // Reopening replaces the loading/body DOM, so fresh photos get a new attempt.
         // Read every masonry rectangle first, then write every frozen ratio.
         // Interleaving a layout read and class/style write 30 times can force
         // repeated synchronous layouts on iPhone before the panel even opens.
@@ -956,6 +1003,7 @@
         img.loading = 'lazy';
         img.closest('.doll-wishlist-media')
             ?.classList.add('dwl-media-pending', 'dwl-media-error');
+        updateProductPhotoLabel(img);
     }
 
     function loadAndDecodeAtomicProductImage(img, run) {
@@ -1451,8 +1499,8 @@
                 pointer-events: none;
             }
             .doll-wishlist-body.dwl-images-preparing {
-                height: clamp(170px, 38vh, 300px);
-                min-height: clamp(170px, 38vh, 300px);
+                height: min(clamp(170px, 38vh, 300px), var(--panel-fill-max, 300px));
+                min-height: 0;
                 overflow: hidden !important;
             }
             .dwl-initial-image-loader {
@@ -1479,8 +1527,8 @@
                 pointer-events: none;
             }
             .dwl-wishlist-loading-only {
-                min-height: clamp(170px, 38vh, 300px);
-                height: clamp(170px, 38vh, 300px);
+                min-height: 0;
+                height: min(clamp(170px, 38vh, 300px), var(--panel-fill-max, 300px));
                 box-sizing: border-box;
                 display: grid;
                 place-items: center;
@@ -1619,6 +1667,12 @@
             }
 
             .doll-wishlist-media {
+                display: block;
+                padding: 0;
+                border: 0;
+                appearance: none;
+                font: inherit;
+                text-align: inherit;
                 position: relative;
                 width: 100%;
                 aspect-ratio: 11 / 8;
@@ -1665,16 +1719,24 @@
                     rgba(255, 214, 235, 0.72);
             }
             .doll-wishlist-media.dwl-media-error::before {
-                content: "♡";
+                content: "photo unavailable\\a try again";
+                white-space: pre-line;
+                text-align: center;
                 position: absolute;
                 inset: 0;
                 z-index: 1;
                 display: grid;
                 place-items: center;
-                color: rgba(125, 104, 113, 0.54);
+                color: #a3486e;
                 font-family: var(--dwl-cute);
-                font-size: 22px;
-                line-height: 1;
+                font-size: 12px;
+                line-height: 1.5;
+            }
+            .doll-wishlist-media:focus-visible,
+            .doll-wishlist-cart-btn:focus-visible,
+            .doll-wishlist-preview-overlay button:focus-visible {
+                outline: 2px solid #dc7ba8;
+                outline-offset: 3px;
             }
 
             /* Title and price are a plain, tight text stack — two lines,
@@ -2730,6 +2792,34 @@
                 display: flex;
                 justify-content: center;
             }
+            .doll-wishlist-preview-media.is-loading,
+            .doll-wishlist-preview-media.has-image-error {
+                width: min(76vw, 320px);
+                min-height: min(44vh, 240px);
+                align-items: center;
+            }
+            .doll-wishlist-preview-image-status {
+                position: absolute;
+                inset: 0;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                gap: 12px;
+                color: #fff;
+                font: 14px var(--dwl-cute, "Comic Sans MS", cursive);
+            }
+            .doll-wishlist-preview-image-status[hidden],
+            .doll-wishlist-preview-image-retry[hidden] { display: none; }
+            .doll-wishlist-preview-image-retry {
+                border: 1px solid #efb2ce;
+                border-radius: 12px;
+                padding: 7px 12px;
+                color: #a3486e;
+                background: #fff3f8;
+                font: inherit;
+                cursor: pointer;
+            }
             .doll-wishlist-preview-img {
                 display: block;
                 width: 100%;
@@ -2880,16 +2970,24 @@
         previewOverlay = document.createElement('div');
         previewOverlay.className = 'doll-wishlist-preview-overlay';
         previewOverlay.setAttribute('aria-hidden', 'true');
+        previewOverlay.inert = true;
+        previewOverlay.setAttribute('role', 'dialog');
+        previewOverlay.setAttribute('aria-modal', 'true');
+        previewOverlay.setAttribute('aria-labelledby', 'doll-wishlist-preview-name');
         previewOverlay.setAttribute('data-nosnippet', '');
         previewOverlay.innerHTML = `
             <button type="button" class="doll-wishlist-preview-close" aria-label="Close preview">&times;</button>
             <figure class="doll-wishlist-preview-card">
                 <div class="doll-wishlist-preview-media">
                     <img class="doll-wishlist-preview-img" src="" alt="">
+                    <div class="doll-wishlist-preview-image-status" hidden>
+                        <span role="status" aria-live="polite"></span>
+                        <button type="button" class="doll-wishlist-preview-image-retry" hidden>try photo again</button>
+                    </div>
                     <p class="doll-wishlist-preview-hint"></p>
                 </div>
                 <figcaption class="doll-wishlist-preview-caption">
-                    <span class="doll-wishlist-preview-name"></span>
+                    <span class="doll-wishlist-preview-name" id="doll-wishlist-preview-name"></span>
                     <button type="button" class="doll-wishlist-price-tag doll-wishlist-preview-price-tag">${ICON_HEART}${ICON_HEART_FILLED}<span class="dwl-price-text"></span></button>
                 </figcaption>
             </figure>
@@ -2911,11 +3009,118 @@
             e.stopPropagation();
             if (previewItemId) toggleItem(previewItemId);
         });
+        previewOverlay.querySelector('.doll-wishlist-preview-image-retry').addEventListener('click', event => {
+            event.stopPropagation();
+            const item = items.find(candidate => candidate.throne_item_id === previewItemId);
+            if (item) loadPreviewImage(item);
+        });
+        previewOverlay.addEventListener('keydown', event => {
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                event.stopPropagation();
+                closePreview();
+            } else if (event.key === 'Tab') {
+                const controls = Array.from(previewOverlay.querySelectorAll('button:not(:disabled)'))
+                    .filter(element => element.getClientRects().length && !element.hidden);
+                const index = controls.indexOf(document.activeElement);
+                if (event.shiftKey && index <= 0 || !event.shiftKey && (index < 0 || index === controls.length - 1)) {
+                    event.preventDefault();
+                    (event.shiftKey ? controls.at(-1) : controls[0])?.focus({ preventScroll: true });
+                }
+            }
+        });
+        document.addEventListener('focusin', event => {
+            if (previewOverlay.classList.contains('active') && !previewOverlay.contains(event.target)) {
+                previewOverlay.querySelector('.doll-wishlist-preview-close').focus({ preventScroll: true });
+            }
+        });
         document.body.appendChild(previewOverlay);
         return previewOverlay;
     }
 
+    function lockPreviewBackground() {
+        const locks = window.__dollModalInertLocks ||= new Map();
+        for (const element of document.body.children) {
+            if (element === previewOverlay || ['SCRIPT', 'STYLE', 'LINK'].includes(element.tagName)) continue;
+            let lock = locks.get(element);
+            if (!lock) locks.set(element, lock = { original: element.inert, owners: new Set() });
+            lock.owners.add(previewOverlay);
+            previewInertElements.add(element);
+            element.inert = true;
+        }
+    }
+
+    function unlockPreviewBackground() {
+        previewBackgroundObserver?.disconnect();
+        previewBackgroundObserver = null;
+        const locks = window.__dollModalInertLocks;
+        previewInertElements.forEach(element => {
+            const lock = locks?.get(element);
+            if (!lock) return;
+            lock.owners.delete(previewOverlay);
+            if (!lock.owners.size) {
+                element.inert = lock.original;
+                locks.delete(element);
+            }
+        });
+        previewInertElements.clear();
+    }
+
+    function focusVisibleWishlistControl(preferred) {
+        const target = [preferred, getWishlistButton(), document.getElementById('dwl-icons-pill')]
+            .find(element => {
+                if (!element?.isConnected || element.closest('[inert]')) return false;
+                const rect = element.getBoundingClientRect();
+                const style = getComputedStyle(element);
+                return rect.width > 0 && rect.height > 0 && rect.bottom > 0 && rect.top < innerHeight
+                    && style.visibility !== 'hidden' && Number(style.opacity) > 0.05;
+            });
+        target?.focus({ preventScroll: true });
+    }
+
+    function loadPreviewImage(item) {
+        releasePreviewImage();
+        const generation = previewImageGeneration;
+        const media = previewOverlay.querySelector('.doll-wishlist-preview-media');
+        const img = previewOverlay.querySelector('.doll-wishlist-preview-img');
+        const status = previewOverlay.querySelector('.doll-wishlist-preview-image-status');
+        const retry = previewOverlay.querySelector('.doll-wishlist-preview-image-retry');
+        let settled = false;
+        media.classList.add('is-loading');
+        media.classList.remove('has-image-error');
+        status.hidden = false;
+        status.querySelector('[role="status"]').textContent = 'loading photo…';
+        if (document.activeElement === retry) previewOverlay.querySelector('.doll-wishlist-preview-close').focus({ preventScroll: true });
+        retry.hidden = true;
+        const finish = loaded => {
+            if (settled || generation !== previewImageGeneration || !previewOverlay.classList.contains('active')) return;
+            settled = true;
+            window.clearTimeout(previewImageLoadTimer);
+            previewImageLoadTimer = 0;
+            img.onload = img.onerror = null;
+            media.classList.remove('is-loading');
+            media.classList.toggle('has-image-error', !loaded);
+            img.classList.toggle('is-loaded', loaded);
+            status.hidden = loaded;
+            retry.hidden = loaded;
+            status.querySelector('[role="status"]').textContent = loaded ? '' : 'this photo couldn’t load';
+            if (!loaded) img.removeAttribute('src');
+        };
+        img.onload = async () => {
+            try { if (typeof img.decode === 'function') await img.decode(); }
+            catch (error) { finish(false); return; }
+            finish(Boolean(img.naturalWidth));
+        };
+        img.onerror = () => finish(false);
+        previewImageLoadTimer = window.setTimeout(() => finish(false), 8000);
+        if (item.image_url) img.src = item.image_url;
+        else finish(false);
+        if (img.complete && img.naturalWidth) void img.onload?.();
+    }
+
     function releasePreviewImage() {
+        window.clearTimeout(previewImageLoadTimer);
+        previewImageLoadTimer = 0;
         window.clearTimeout(previewImageReleaseTimer);
         previewImageReleaseTimer = 0;
         previewImageGeneration += 1;
@@ -2928,6 +3133,8 @@
     }
 
     function schedulePreviewImageRelease() {
+        window.clearTimeout(previewImageLoadTimer);
+        previewImageLoadTimer = 0;
         window.clearTimeout(previewImageReleaseTimer);
         const releaseGeneration = ++previewImageGeneration;
         const previewImg = previewOverlay?.querySelector('.doll-wishlist-preview-img');
@@ -2944,23 +3151,13 @@
         }, 320);
     }
 
-    function openPreview(item) {
+    function openPreview(item, opener = document.activeElement) {
         if (!item) return;
         const overlay = ensurePreviewOverlay();
-        releasePreviewImage();
-        const imageGeneration = previewImageGeneration;
+        previewReturnFocus = opener;
         previewItemId = item.throne_item_id;
         overlay.querySelector('.doll-wishlist-preview-price-tag').disabled = checkoutInFlight || loadState !== 'ready';
         const fullLabel = String(item.name || '').trim() || 'wishlist item';
-        // Reveal the photo only once its OWN pixels have decoded, so a newly
-        // opened item never flashes the previously-previewed photo first.
-        const previewImg = overlay.querySelector('.doll-wishlist-preview-img');
-        previewImg.classList.remove('is-loaded');
-        previewImg.onload = () => {
-            if (imageGeneration === previewImageGeneration) previewImg.classList.add('is-loaded');
-        };
-        previewImg.src = item.image_url || '';
-        if (previewImg.complete && previewImg.naturalWidth) previewImg.classList.add('is-loaded');
         overlay.querySelector('.doll-wishlist-preview-name').textContent = fullLabel;
         window.requestAnimationFrame(() => syncPreviewTitleMarquee(overlay.querySelector('.doll-wishlist-preview-name')));
 
@@ -2991,16 +3188,27 @@
             }
         }
 
+        overlay.inert = false;
         overlay.classList.add('active');
         overlay.setAttribute('aria-hidden', 'false');
+        lockPreviewBackground();
+        previewBackgroundObserver?.disconnect();
+        previewBackgroundObserver = new MutationObserver(lockPreviewBackground);
+        previewBackgroundObserver.observe(document.body, { childList: true });
+        overlay.querySelector('.doll-wishlist-preview-close').focus({ preventScroll: true });
+        loadPreviewImage(item);
         playSound('tap');
     }
 
-    function closePreview() {
+    function closePreview({ restoreFocus = true } = {}) {
         if (!previewOverlay) return;
         const wasActive = previewOverlay.classList.contains('active');
         previewOverlay.classList.remove('active');
         previewOverlay.setAttribute('aria-hidden', 'true');
+        previewOverlay.inert = true;
+        unlockPreviewBackground();
+        if (wasActive && restoreFocus) focusVisibleWishlistControl(previewReturnFocus);
+        previewReturnFocus = null;
         // A full-size product image can be much larger than its thumbnail.
         // Preserve it only long enough for the visible close transition.
         if (wasActive) schedulePreviewImageRelease();
@@ -3274,7 +3482,8 @@
             // pixels higher than the other two submenu pills.
             window.dollSetPanelFillMax?.(body, { reservedPad: 0, bottomGap: 0, extraReserve: belowBody });
             window.dollConfigureScrollMotion?.(shell, body, body, {
-                enabled: body.classList.contains('dwl-scroll-body'),
+                // The absolute loading cover does not participate in the staged spacer.
+                enabled: loadState === 'ready' && body.classList.contains('dwl-scroll-body'),
             });
         }
         const panelRect = panel.getBoundingClientRect();
@@ -3863,9 +4072,9 @@
         <article class="doll-wishlist-item${modeClass}${selected ? ' selected' : ''}" data-item-id="${escapeHtml(item.throne_item_id)}"${pinStyle}>
             <div class="dwl-glow" aria-hidden="true"></div>
             <div class="dwl-burst-clip" aria-hidden="true"><div class="dwl-burst"></div></div>
-            <div class="doll-wishlist-media dwl-media-pending"${imageRatioStyle(imageUrl)}>
+            <button type="button" class="doll-wishlist-media dwl-media-pending" data-photo-name="${escapeHtml(fullLabel)}" aria-label="Preview ${escapeHtml(fullLabel)}"${imageRatioStyle(imageUrl)}>
                 <img class="doll-wishlist-product-img" data-src="${escapeHtml(imageUrl)}" alt="" decoding="async" loading="lazy"${imageDimsAttr(imageUrl)}>
-            </div>
+            </button>
             <div class="doll-wishlist-info">
                 <p class="doll-wishlist-name" title="${escapeHtml(fullLabel)}">${escapeHtml(label)}</p>
                 <span class="doll-wishlist-price">${escapeHtml(formatPrice(item.price_cents))}</span>
@@ -4009,10 +4218,13 @@
         });
         body.querySelectorAll('.doll-wishlist-media').forEach(media => {
             media.addEventListener('click', () => {
-                if (media.classList.contains('dwl-media-error')) return;
+                if (media.classList.contains('dwl-media-error')) {
+                    retryProductImage(media.querySelector('.doll-wishlist-product-img'));
+                    return;
+                }
                 const id = media.closest('.doll-wishlist-item')?.dataset.itemId;
                 const item = items.find(candidate => candidate.throne_item_id === id);
-                if (item) openPreview(item);
+                if (item) openPreview(item, media);
             });
         });
         body.querySelector('.doll-wishlist-more-card')?.addEventListener('click', openInNewTab);
@@ -4386,7 +4598,8 @@
     } = {}) {
         if (run !== itemsLoadRun) return false;
         items = sanitizeWishlistItems(nextItems);
-        if (source !== 'unavailable') {
+        // Only the authoritative live catalogue may invalidate saved picks.
+        if (source === 'live') {
             const availableIds = new Set(items.map(item => item.throne_item_id));
             const retained = new Set(Array.from(selectedIds).filter(id => availableIds.has(id)));
             if (retained.size !== selectedIds.size) {
@@ -4566,8 +4779,8 @@
                 checkoutStatusMessage = 'sorry, something you picked just sold out — pick again?';
                 await loadItems();
                 if (requestRun !== checkoutRequestRun || !isWishlistPanelVisible()) return;
-                const stillValid = new Set(items.map(item => item.throne_item_id));
-                selectedIds = new Set(Array.from(selectedIds).filter(id => stillValid.has(id)));
+                // The authoritative preparation reconciles picks itself. A failed
+                // refresh leaves items empty, which must not erase saved choices.
                 renderFoot();
                 return;
             }
@@ -4774,7 +4987,8 @@
         const wasOpen = Boolean(panel?.classList.contains('active'));
         // The "full wishlist on Throne" footer link counts as inside too.
         const focusWasInside = Boolean(panel?.contains(document.activeElement)
-            || document.activeElement?.closest?.('.site-brand-footer'));
+            || document.activeElement?.closest?.('.site-brand-footer')
+            || previewOverlay?.contains(document.activeElement));
         if (panelOpenRaf) {
             window.cancelAnimationFrame(panelOpenRaf);
             panelOpenRaf = 0;
@@ -4786,7 +5000,7 @@
             itemsFetchController = null;
             cancelCheckoutRequest();
         }
-        closePreview();
+        closePreview({ restoreFocus: false });
         clearIframeFallbackWatchdog();
         stopMasonryRepacking();
         bodyRenderPending = resizePending = false;
@@ -4811,7 +5025,7 @@
         panel.inert = true;
         showNoteImage();
         if (focusWasInside) {
-            wishlistButton?.focus({ preventScroll: true });
+            focusVisibleWishlistControl(wishlistButton);
         }
         scheduleWishlistReleaseAfterExit(wasOpen);
     }

@@ -9,7 +9,7 @@
 //   LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET
 
 import { serve }        from 'https://deno.land/std@0.208.0/http/server.ts'
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const ALLOWED_ORIGINS = new Set([
   'https://doll.gg', 'https://www.doll.gg',
@@ -155,7 +155,7 @@ async function removeLiveKitParticipant(roomName: string, identity: string) {
 }
 
 async function currentServerMutedIds(
-  sb: ReturnType<typeof createClient>,
+  sb: SupabaseClient,
   roomId: string,
 ): Promise<Set<string>> {
   const { data } = await sb.from('room_moderation_events')
@@ -177,7 +177,7 @@ async function currentServerMutedIds(
 }
 
 async function syncAudiencePermissions(
-  sb: ReturnType<typeof createClient>,
+  sb: SupabaseClient,
   roomName: string,
   roomId: string,
   hostSessionId: string,
@@ -301,7 +301,17 @@ serve(async (req) => {
         value,
         is_active: true,
       })
-      if (error && error.code !== '23505') throw error
+      if (error) {
+        if (error.code !== '23505') throw error
+        const { error: reactivateError } = await sb.from('room_bans')
+          .update({ is_active: true, created_at: new Date().toISOString() })
+          .eq('room_id', room.id)
+          .eq('type', type)
+          .eq('value', value)
+          .select('id')
+          .single()
+        if (reactivateError) throw reactivateError
+      }
       if (type === 'session') {
         try {
           await removeLiveKitParticipant(roomSlug, value)

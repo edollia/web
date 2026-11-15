@@ -118,6 +118,8 @@ summary::-webkit-details-marker { display: none; }
 .admin-meta-details { font-size: 12px; color: var(--admin-muted); }
 .admin-meta-details summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; }
 .admin-meta { display: grid; gap: 4px; overflow-wrap: anywhere; font-size: 12px; color: var(--admin-muted); }
+.admin-ip-link { display: inline-flex; align-items: center; min-height: 44px; max-width: 100%; padding: 8px 10px; border-radius: 8px; background: var(--admin-soft); color: var(--admin-pink); font-size: 14px; text-decoration: underline; text-underline-offset: 3px; overflow-wrap: anywhere; }
+.admin-ip-link:focus-visible { outline: 2px solid var(--admin-pink); outline-offset: 3px; }
 .admin-time { display: flex; flex-wrap: wrap; gap: 4px; }
 .admin-time strong { font-weight: 500; }
 .admin-question { margin: 10px 12px 0; white-space: pre-wrap; overflow-wrap: anywhere; margin-bottom: 8px; }
@@ -495,3 +497,9 @@ html { scroll-padding-top: calc(var(--admin-header-height, 80px) + 16px); }
 /* Visibility already has a switch; keep social rows to name + account. */
 .has-social-order .admin-link-card-title small:not(.admin-social-subtitle) { display: none; }
 .admin-order-toolbar .admin-secondary-actions > summary, .admin-section-heading .admin-secondary-actions > summary { width: 44px; padding: 0; justify-content: center; }
+
+/* Solana receives alongside the existing social-card controls. */
+.admin-solana-card #solana-wallet-address { overflow-wrap: anywhere; }
+.admin-solana-card input[aria-invalid="true"], #admin-card-inspector #solana-wallet-address[aria-invalid="true"] { border-color: var(--admin-danger); }
+.admin-solana-error { margin: 0; color: var(--admin-danger); font-size: 14px; }
+.admin-solana-preview { align-self: start; }

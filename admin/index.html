@@ -5,10 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="robots" content="noindex, nofollow">
     <meta name="referrer" content="strict-origin-when-cross-origin">
-    <meta name="doll-build" content="2026.10.23.1">
+    <meta name="doll-build" content="2026.11.14.1">
     <title>Lia Admin</title>
     <link rel="icon" type="image/png" href="/favicon.png">
-    <link rel="stylesheet" href="../admin.css?v=7.4&r=2026.10.23.1">
+    <link rel="stylesheet" href="../admin.css?v=7.6&r=2026.11.14.v2.8">
+    <link rel="stylesheet" href="../solana-receive.css?v=4&r=2026.11.14.v2.8">
 </head>
 <body>
     <svg class="admin-icon-sprite" aria-hidden="true">
@@ -603,6 +604,37 @@
                                     </div>
                                     <small class="admin-card-video-note">MP4, M4V, MOV, WebM, or GIF · max 20 MB</small>
                                 </div>
+                            </div>
+                        </details>
+
+                        <details class="admin-link-card admin-solana-card" data-link-card="solana">
+                            <summary>
+                                <div class="admin-link-card-title">
+                                    <span class="admin-link-icon admin-link-icon--social" aria-hidden="true"><img src="../social-icons/solana-wallet.svg?v=8" alt="" width="48" height="48"></span>
+                                    <div>
+                                        <strong>Solana</strong>
+                                        <small id="solana-state">hidden</small>
+                                    </div>
+                                </div>
+                                <div class="admin-link-card-actions">
+                                    <label class="admin-switch">
+                                        <input id="solana-enabled" type="checkbox" aria-label="Show Solana receiving card">
+                                        <span></span>
+                                    </label>
+                                </div>
+                            </summary>
+                            <div class="admin-link-card-body">
+                                <label class="admin-url-field">
+                                    <span>Solana receiving address</span>
+                                    <input id="solana-wallet-address" type="text" maxlength="128" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="your Solana wallet address" aria-describedby="solana-address-help solana-address-error">
+                                </label>
+                                <p class="admin-tool-note" id="solana-address-help">Leave blank until you're ready. The card stays hidden without a valid receiving address.</p>
+                                <p class="admin-solana-error" id="solana-address-error" role="status" aria-live="polite" hidden></p>
+                                <label class="admin-url-field">
+                                    <span>card caption</span>
+                                    <input id="solana-caption" type="text" maxlength="60" placeholder="send a little SOL">
+                                </label>
+                                <button class="soft admin-solana-preview" id="solana-preview" type="button">Preview receiving card</button>
                             </div>
                         </details>
 
@@ -1246,8 +1278,11 @@
         });
     }
     </script>
+    <script src="../solana-config.js?v=1&r=2026.11.14.v2.8"></script>
+    <script src="../vendor/qrcode.js?v=1&r=2026.11.14.v2.8"></script>
+    <script src="../solana-receive-widget.js?v=4&r=2026.11.14.v2.8"></script>
     <script src="../admin-rooms.js?v=5.3&r=2026.10.23.1"></script>
     <script src="../social-card-media-config.js?v=16&r=2026.10.30.5"></script>
-    <script src="../admin.js?v=7.5&r=2026.11.02.1"></script>
+    <script src="../admin.js?v=7.9&r=2026.11.14.v2.8"></script>
 </body>
 </html>

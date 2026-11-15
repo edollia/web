@@ -1,5 +1,5 @@
 document.addEventListener("DOMContentLoaded", async function() {
-    const DEFAULT_SOCIAL_CARD_ORDER = ['snapchat', 'instagram', 'kofi', 'telegram', 'email', 'x', 'tiktok', 'twitch', 'discord', 'onlyfans', 'spotify', 'throne_link'];
+    const DEFAULT_SOCIAL_CARD_ORDER = ['snapchat', 'instagram', 'kofi', 'solana', 'telegram', 'email', 'x', 'tiktok', 'twitch', 'discord', 'onlyfans', 'spotify', 'throne_link'];
     const SOCIAL_CARD_KEYS = [...DEFAULT_SOCIAL_CARD_ORDER];
     // One shared switch is loaded by both the public site and Admin. Fail
     // closed to GitHub mode if that tiny config script is ever unavailable;
@@ -303,6 +303,10 @@ document.addEventListener("DOMContentLoaded", async function() {
         kofi_enabled: true,
         kofi_card_video_url: '',
         kofi_card_video_path: '',
+        solana_enabled: false,
+        solana_wallet_address: '',
+        solana_heading: 'a little SOL for me ♡',
+        solana_caption: 'send a little SOL',
         email_url: '',
         email_username: '',
         email_display_name: 'doll.gg',
@@ -1636,11 +1640,15 @@ document.addEventListener("DOMContentLoaded", async function() {
     const mainLoadingStartedAt = performance.now();
     const MAIN_LINKS_LOADING_BUDGET_MS = 8000;
     const MAIN_LOADING_EXIT_MS = 500;
+    const mainLoadingPreparationDeadline = mainLoadingStartedAt
+        + MAIN_LINKS_LOADING_BUDGET_MS - MAIN_LOADING_EXIT_MS;
+    const startupTimeRemaining = () => Math.max(0, mainLoadingPreparationDeadline - performance.now());
+    let mainLoadingCompletionStarted = false;
     const loadingBarContainer = document.getElementById("loading-bar-container");
     const loadingBarFill = document.getElementById("loading-bar-fill");
     const loadingSlowMessage = document.getElementById("loading-slow-message");
     const loadingProgressElement = loadingBarFill?.closest('[role="progressbar"]');
-    const loadingPawPrints = Array.from(document.querySelectorAll('.loading-paw-print'));
+    const loadingPawPrints = Array.from(loadingScreen.querySelectorAll('.loading-paw-print'));
     const prefersReducedLoadingMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     const minLoadingTime = 2000;
     const PUBLIC_DRAWINGS_PAGE_SIZE = 12;
@@ -1831,6 +1839,8 @@ document.addEventListener("DOMContentLoaded", async function() {
     }
 
     async function finishMainLoadingScreen() {
+        if (mainLoadingCompletionStarted) return;
+        mainLoadingCompletionStarted = true;
         setLoadingProgress(100);
         // Cosmetic paw/exit motion shares the startup budget; slow videos
         // must not add another animation wait after their deadline.
@@ -2231,6 +2241,15 @@ document.addEventListener("DOMContentLoaded", async function() {
             kofi_enabled: readBooleanSetting(settings, 'kofi_enabled'),
             kofi_card_video_url: String(settings.kofi_card_video_url || ''),
             kofi_card_video_path: String(settings.kofi_card_video_path || ''),
+            ...(window.DollSolana?.normalize?.(settings) || {
+                solana_enabled: settings.solana_enabled === true,
+                solana_wallet_address: typeof settings.solana_wallet_address === 'string'
+                    ? settings.solana_wallet_address.trim().slice(0, 128) : '',
+                solana_heading: String(settings.solana_heading || DEFAULT_LINK_SETTINGS.solana_heading).trim().slice(0, 32)
+                    || DEFAULT_LINK_SETTINGS.solana_heading,
+                solana_caption: String(settings.solana_caption || DEFAULT_LINK_SETTINGS.solana_caption).trim().slice(0, 60)
+                    || DEFAULT_LINK_SETTINGS.solana_caption,
+            }),
             email_url: String(settings.email_url || ''),
             email_username: readSocialUsernameSetting(settings, 'email'),
             email_display_name: Object.prototype.hasOwnProperty.call(settings, 'email_display_name') ? String(settings.email_display_name ?? '').trim().slice(0, 80) : DEFAULT_LINK_SETTINGS.email_display_name,
@@ -2329,20 +2348,20 @@ document.addEventListener("DOMContentLoaded", async function() {
             new Promise(resolve => {
                 timeoutId = window.setTimeout(() => {
                     resolve();
-                }, 3000);
+                }, Math.min(3000, startupTimeRemaining()));
             })
         ]);
         if (timeoutId) window.clearTimeout(timeoutId);
     }
 
     // The Supabase module starts downloading now, alongside the critical
-    // images, instead of after them and the 2s minimum. It is still only
-    // used (and still bounded by the same timeout) once loading finishes.
+    // images, instead of after them and the 2s minimum. Every preparation
+    // step consumes the same startup deadline, reserving the exit fade.
     const earlySupabaseModulePromise = import('https://esm.sh/@supabase/supabase-js@2');
     earlySupabaseModulePromise.catch(() => {});
 
-    // Enhanced loading logic: wait for min time, window load, AND ALL critical resources
-    Promise.all([
+    // Prepare critical resources and window load within the shared deadline.
+    Promise.race([Promise.all([
         new Promise(resolve => setTimeout(resolve, minLoadingTime)),
         verifyCurrentSiteRelease(),
         new Promise(resolve => {
@@ -2361,7 +2380,7 @@ document.addEventListener("DOMContentLoaded", async function() {
                 window.removeEventListener('load', finish);
                 resolve();
             };
-            const timeoutId = window.setTimeout(finish, 8000);
+            const timeoutId = window.setTimeout(finish, startupTimeRemaining());
             window.addEventListener('load', finish, { once: true });
         }),
         // Wait for DOM to be fully ready
@@ -2432,16 +2451,16 @@ document.addEventListener("DOMContentLoaded", async function() {
             
             updateLoadingBar(loadedCount, totalResources);
             
-            // Mobile-specific: Force completion after 8 seconds to prevent infinite loading
+            // Critical assets share the remaining startup preparation budget.
             setTimeout(() => {
                 if (loadedCount < totalResources) {
                     loadedCount = totalResources;
                     updateLoadingBar(loadedCount, totalResources);
                     resolve();
                 }
-            }, 8000);
+            }, startupTimeRemaining());
         }),
-    ]).then(async () => {
+    ]), wait(startupTimeRemaining())]).then(async () => {
         // Set up Supabase once the initial loading is complete
         setLoadingProgress(CLIENT_SETUP_PROGRESS_START);
 
@@ -2454,7 +2473,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             // other network step here already races against a timeout.
             const { createClient } = await Promise.race([
                 supabaseModulePromise,
-                wait(8000).then(() => { throw new Error('Supabase module import timed out'); })
+                wait(startupTimeRemaining()).then(() => { throw new Error('Supabase module import timed out'); })
             ]);
             window.supabase = createMainSupabaseClient(createClient);
             setLoadingProgress(89);
@@ -2695,6 +2714,42 @@ document.addEventListener("DOMContentLoaded", async function() {
         }
     }
 
+    function clampEntryBubblePositions() {
+        if (!entryBubbleField || entryBubbleField.hidden) return;
+        const viewport = window.visualViewport;
+        const left = viewport?.offsetLeft || 0;
+        const top = viewport?.offsetTop || 0;
+        const width = viewport?.width || window.innerWidth;
+        const height = viewport?.height || window.innerHeight;
+        const probe = document.createElement('span');
+        probe.style.cssText = 'position:fixed;visibility:hidden;pointer-events:none;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);';
+        document.body.appendChild(probe);
+        const style = getComputedStyle(probe);
+        const inset = side => parseFloat(style.getPropertyValue(`padding-${side}`)) || 0;
+        const safe = { top: inset('top'), right: inset('right'), bottom: inset('bottom'), left: inset('left') };
+        probe.remove();
+        entryBubbleField.querySelectorAll('.entry-bubble:not(.popping)').forEach(bubble => {
+            const availableWidth = Math.max(44, width - safe.left - safe.right);
+            const availableHeight = Math.max(44, height - safe.top - safe.bottom);
+            const size = Math.max(44, Math.min(Number(bubble.dataset.baseSize),
+                (availableWidth - 24) / 1.28, (availableHeight - 52) / 1.1));
+            const drift = Math.max(-21, Math.min(21, Number(bubble.dataset.baseDrift)));
+            // Include the widest pop (1.28x), floating drift, and upward lift.
+            const horizontal = size * 0.64 + Math.abs(drift) + 8;
+            const minX = left + safe.left + horizontal;
+            const maxX = left + width - safe.right - horizontal;
+            const minY = top + safe.top + Math.max(32, size * 0.1 + 14) + 8;
+            const maxY = top + height - safe.bottom - size * 1.1 - 8;
+            const clamp = (value, min, max) => max < min ? (min + max) / 2 : Math.max(min, Math.min(max, value));
+            bubble.style.setProperty('--bubble-size', `${size}px`);
+            bubble.style.setProperty('--bubble-x', `${clamp(left + Number(bubble.dataset.zoneX) * width, minX, maxX)}px`);
+            bubble.style.setProperty('--bubble-y', `${clamp(top + Number(bubble.dataset.zoneY) * height, minY, maxY)}px`);
+            bubble.style.setProperty('--bubble-drift', `${drift}px`);
+        });
+    }
+    window.addEventListener('resize', clampEntryBubblePositions);
+    window.visualViewport?.addEventListener('resize', clampEntryBubblePositions);
+
     function startBubbleEntrance() {
         if (!entryBubbleField || entryDismissalInProgress) return;
         clearEntryBubbles();
@@ -2720,6 +2775,10 @@ document.addEventListener("DOMContentLoaded", async function() {
             bubble.type = 'button';
             bubble.className = 'footer-play-bubble entry-bubble';
             bubble.setAttribute('aria-label', `Pop bubble ${index + 1} of ${bubbleCount}`);
+            bubble.dataset.baseSize = String(size);
+            bubble.dataset.baseDrift = String(drift);
+            bubble.dataset.zoneX = String(x / 100);
+            bubble.dataset.zoneY = String(y / 100);
             bubble.style.cssText = `--bubble-size:${size}px;--bubble-x:${x}vw;--bubble-y:${y}vh;--bubble-drift:${drift}px;--bubble-duration:${duration}s;`;
 
             bubble.addEventListener('pointerdown', event => {
@@ -2737,6 +2796,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             entryBubbleField.appendChild(bubble);
         });
 
+        clampEntryBubblePositions();
         scheduleEntryBubbleHint();
     }
 
@@ -3262,6 +3322,14 @@ document.addEventListener("DOMContentLoaded", async function() {
             group.classList.toggle('icons-pill-active', interactive);
             pill.style.pointerEvents = expectedPointerEvents;
             pill.tabIndex = expectedTabIndex;
+        }
+        const row = group.querySelector('.dwl-icons-row');
+        if (row) {
+            // Hidden icons must leave keyboard navigation with their visuals.
+            // Preserve focus in a composer or overlay when scrolling collapses it.
+            const moveFocus = interactive && row.contains(document.activeElement);
+            row.inert = interactive;
+            if (moveFocus) pill.focus({ preventScroll: true });
         }
     }
 
@@ -4296,6 +4364,13 @@ document.addEventListener("DOMContentLoaded", async function() {
 
     // ===== SOCIALS AND SUPPORT MENUS =====
     const socialsButton = document.getElementById('socials-button');
+    const SOCIAL_CARD_POP_ACTION_DELAY = 300;
+    const SOCIAL_CARD_POP_RESET_DELAY = 1080;
+    let socialCardPopPending = false;
+    let socialCardPopGeneration = 0;
+    let socialCardPopActionTimer = 0;
+    let socialCardPopResetTimer = 0;
+
     const socialLinksPanel = document.getElementById('social-links-panel');
     const socialLinksShell = socialLinksPanel?.closest('.social-links-shell');
     const socialLinksLoading = document.getElementById('social-links-loading');
@@ -4343,6 +4418,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     const actionOptions = actionMenuButton?.querySelector('.action-options');
     const publicAskButton = document.getElementById('ask-button');
     const donateOption = document.getElementById('donate-option');
+    const solanaOption = document.getElementById('solana-option');
     const socialLinksTip = document.getElementById('social-links-tip');
     const siteBrandButton = document.getElementById('site-brand-button');
     const footerBubbleField = document.getElementById('footer-bubble-field');
@@ -4429,6 +4505,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         { key: 'snapchat', option: snapchatOption, label: 'Snapchat' },
         { key: 'instagram', option: instagramOption, label: 'Instagram', withAt: true },
         { key: 'kofi', option: donateOption, label: 'Ko-fi' },
+        { key: 'solana', option: solanaOption, label: 'Solana' },
         { key: 'telegram', option: telegramOption, label: 'Telegram' },
         { key: 'email', option: emailOption, label: 'Email' },
         { key: 'x', option: xOption, label: 'X', withAt: true },
@@ -4456,7 +4533,8 @@ document.addEventListener("DOMContentLoaded", async function() {
     const socialPreviewRecency = new Map();
 
     function getSocialCardVideoEntries() {
-        return socialCardDefinitions.map(({ key, option }) => [key, option]);
+        return socialCardDefinitions.filter(({ key }) => key !== 'solana')
+            .map(({ key, option }) => [key, option]);
     }
 
     function getSocialCardVideoKey(card) {
@@ -4483,6 +4561,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     }
 
     function getSocialCardVideoUrl(key) {
+        if (key === 'solana') return '';
         if (SOCIAL_CARD_VIDEO_SOURCE_MODE === 'github') {
             return String(LOCAL_SOCIAL_CARD_VIDEOS[key] || '').trim();
         }
@@ -4953,10 +5032,13 @@ document.addEventListener("DOMContentLoaded", async function() {
 
     async function prepareInitialSocialPreviews() {
         if (siteLinkSettings.maintenance_enabled === true) return;
-        await prepareSocialAssets({
-            isCurrent: () => loadingScreen?.style.display !== 'none' && siteLinkSettings.maintenance_enabled !== true,
-            deadline: mainLoadingStartedAt + MAIN_LINKS_LOADING_BUDGET_MS - MAIN_LOADING_EXIT_MS,
-        });
+        await Promise.race([
+            prepareSocialAssets({
+                isCurrent: () => loadingScreen?.style.display !== 'none' && siteLinkSettings.maintenance_enabled !== true,
+                deadline: mainLoadingPreparationDeadline,
+            }),
+            wait(startupTimeRemaining()),
+        ]);
     }
 
     function prepareOpeningSocialPreviews(openGeneration) {
@@ -5108,10 +5190,15 @@ document.addEventListener("DOMContentLoaded", async function() {
     }
 
     function getPublicLink(key) {
+        if (key === 'solana') return '';
         return siteLinkSettings[`${key}_url`] || DEFAULT_LINK_SETTINGS[`${key}_url`];
     }
 
     function isPublicLinkEnabled(key) {
+        if (key === 'solana') {
+            return siteLinkSettings.solana_enabled === true
+                && window.DollSolana?.isValidAddress?.(siteLinkSettings.solana_wallet_address) === true;
+        }
         return siteLinkSettings[`${key}_enabled`] !== false && (key !== 'email' || /^mailto:[^@\s]+@[^@\s]+\.[^@\s]+$/i.test(getPublicLink(key) || ''));
     }
 
@@ -5146,7 +5233,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             const pageDescription = siteLinkSettings.seo_description || DEFAULT_LINK_SETTINGS.seo_description;
             const siteTagline = siteLinkSettings.site_tagline || DEFAULT_LINK_SETTINGS.site_tagline;
             const sameAs = [...new Set([...SOCIAL_CARD_KEYS, 'throne']
-                .filter(key => key !== 'email' && isPublicLinkEnabled(key))
+                .filter(key => key !== 'email' && key !== 'solana' && isPublicLinkEnabled(key))
                 .map(getPublicLink)
                 .filter(Boolean))];
 
@@ -5638,9 +5725,21 @@ document.addEventListener("DOMContentLoaded", async function() {
             ? 'Tap the note to edit it, or pull its corner to peel it off'
             : 'Pull the note corner to peel it off');
         applySocialCardOrder();
+        window.DollSolanaReceive?.configure?.(siteLinkSettings);
         socialCardDefinitions.forEach(({ key, option, label, withAt = false }) => {
             if (!option) return;
             const enabled = isPublicLinkEnabled(key);
+            if (key === 'solana') {
+                const frame = option.closest('.social-link-card-frame');
+                option.classList.toggle('site-link-hidden', !enabled);
+                frame?.classList.toggle('site-link-hidden', !enabled);
+                option.setAttribute('aria-hidden', String(!enabled));
+                option.setAttribute('tabindex', '-1');
+                option.setAttribute('aria-label', `Open Solana receive: ${siteLinkSettings.solana_caption}`);
+                const caption = option.querySelector('.social-link-copy small');
+                if (caption) caption.textContent = siteLinkSettings.solana_caption;
+                return;
+            }
             if (enabled) option.href = getPublicLink(key);
             else option.removeAttribute('href');
             // Keep a safe new-tab fallback on every native link. JavaScript
@@ -5875,6 +5974,8 @@ document.addEventListener("DOMContentLoaded", async function() {
 
     function closeSocialsMenu() {
         if (!socialsButton) return;
+        resetSocialCardPopState();
+        window.DollSolanaReceive?.close?.();
         socialOpenGeneration += 1;
         document.dispatchEvent(new Event('doll-social-assets-change'));
         const wasOpen = socialsButton.classList.contains('open');
@@ -6317,11 +6418,12 @@ document.addEventListener("DOMContentLoaded", async function() {
         }
     });
 
-    const SOCIAL_CARD_POP_ACTION_DELAY = 300;
-    const SOCIAL_CARD_POP_RESET_DELAY = 1080;
-    let socialCardPopPending = false;
 
     function resetSocialCardPopState() {
+        socialCardPopGeneration += 1;
+        window.clearTimeout(socialCardPopActionTimer);
+        window.clearTimeout(socialCardPopResetTimer);
+        socialCardPopActionTimer = socialCardPopResetTimer = 0;
         socialCardPopPending = false;
         document.querySelectorAll('.social-card-source-popping').forEach(card => {
             card.classList.remove('social-card-source-popping');
@@ -6392,6 +6494,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     function popSocialCardThen(option, action) {
         if (!option || socialCardPopPending) return false;
         socialCardPopPending = true;
+        const generation = ++socialCardPopGeneration;
         const clone = createSocialCardPopClone(option);
         option.classList.add('social-card-source-popping');
         option.setAttribute('aria-busy', 'true');
@@ -6407,14 +6510,18 @@ document.addEventListener("DOMContentLoaded", async function() {
         window.requestAnimationFrame(() => clone.classList.add('popping'));
         playUiSound('link');
 
-        window.setTimeout(() => {
+        socialCardPopActionTimer = window.setTimeout(() => {
+            socialCardPopActionTimer = 0;
+            if (generation !== socialCardPopGeneration || !socialsButton?.classList.contains('open')) return;
             try {
                 action();
             } catch (error) {
                 resetSocialCardPopState();
             }
         }, SOCIAL_CARD_POP_ACTION_DELAY);
-        window.setTimeout(resetSocialCardPopState, SOCIAL_CARD_POP_RESET_DELAY);
+        socialCardPopResetTimer = window.setTimeout(() => {
+            if (generation === socialCardPopGeneration) resetSocialCardPopState();
+        }, SOCIAL_CARD_POP_RESET_DELAY);
         return true;
     }
 
@@ -6443,8 +6550,9 @@ document.addEventListener("DOMContentLoaded", async function() {
     }
 
     socialCardDefinitions
-        .filter(({ key }) => key !== 'kofi')
+        .filter(({ key }) => key !== 'kofi' && key !== 'solana')
         .forEach(({ key, option }) => option?.addEventListener('click', function(e) {
+            if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
             e.preventDefault();
             e.stopPropagation();
             if (siteLinkSettings.maintenance_enabled === true) return;
@@ -6461,6 +6569,7 @@ document.addEventListener("DOMContentLoaded", async function() {
         }));
 
     donateOption?.addEventListener('click', function(e) {
+        if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
         e.preventDefault();
         e.stopPropagation();
         if (siteLinkSettings.maintenance_enabled === true) return;
@@ -6468,7 +6577,16 @@ document.addEventListener("DOMContentLoaded", async function() {
         popSocialCardThen(donateOption, openPreparedKofiOverlay);
     });
 
+    solanaOption?.addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.button !== 0 || siteLinkSettings.maintenance_enabled === true
+            || !isPublicLinkEnabled('solana') || socialCardPopPending) return;
+        popSocialCardThen(solanaOption, () => window.DollSolanaReceive?.open?.(solanaOption));
+    });
+
     function handleWishlistButtonActivate(e) {
+        if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
         e.preventDefault();
         e.stopPropagation();
         if (!acceptTopControlActivation(supportMenuButton)) return;
@@ -6497,6 +6615,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     addMenuActivation(supportMenuButton, handleWishlistButtonActivate);
 
     supportMenuButton?.addEventListener('keydown', function(e) {
+        if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
         if ((e.key === 'Enter' || e.key === ' ') && e.target === supportMenuButton) {
             e.preventDefault();
             supportMenuButton.click();
@@ -6576,6 +6695,7 @@ document.addEventListener("DOMContentLoaded", async function() {
 
     socialCardDefinitions.map(({ option }) => option).forEach(option => {
         option?.addEventListener('keydown', function(e) {
+            if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
             if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
                 option.click();
@@ -6668,6 +6788,10 @@ document.addEventListener("DOMContentLoaded", async function() {
     if (document.getElementById("drawing-canvas")) {
         canvas = document.getElementById("drawing-canvas");
         ctx = canvas.getContext("2d");
+        const storedDrawing = readCommunityDraft(DRAWING_DRAFT_KEY);
+        let drawingRestorePending = Boolean(storedDrawing
+            && /^data:image\/png;base64,/.test(storedDrawing.image || '')
+            && storedDrawing.image.length <= 512 * 1024);
 
         function initCanvas() {
             canvas.width = 330;
@@ -6684,6 +6808,9 @@ document.addEventListener("DOMContentLoaded", async function() {
         }
 
         function persistDrawingDraft() {
+            // Blank initialization/pagehide must not replace a PNG still decoding.
+            // A failed decode also preserves the saved image until an intentional edit.
+            if (drawingRestorePending) return;
             const image = canvas.toDataURL('image/png');
             if (image.length <= 512 * 1024) {
                 writeCommunityDraft(DRAWING_DRAFT_KEY, { image, color: currentColor, size: brushSize });
@@ -6695,7 +6822,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             if (historyIndex < drawingHistory.length - 1) {
                 drawingHistory.splice(historyIndex + 1);
             }
-            drawingHistory.push(canvas.toDataURL());
+            drawingHistory.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
             if (drawingHistory.length > MAX_DRAWING_HISTORY_STATES) {
                 drawingHistory.splice(0, drawingHistory.length - MAX_DRAWING_HISTORY_STATES);
             }
@@ -6703,89 +6830,103 @@ document.addEventListener("DOMContentLoaded", async function() {
             persistDrawingDraft();
         }
 
+        let activeDrawingTouchId = null;
+
         function getCursorPos(e) {
             const rect = canvas.getBoundingClientRect();
-            const isTouch = e.type.includes('touch');
-            const clientX = isTouch ? e.touches[0].clientX : e.clientX;
-            const clientY = isTouch ? e.touches[0].clientY : e.clientY;
+            const point = e.type.startsWith('touch')
+                ? Array.from(e.touches).find(touch => touch.identifier === activeDrawingTouchId)
+                : e;
+            if (!point) return null;
             return {
-                x: (clientX - rect.left) * (canvas.width / rect.width),
-                y: (clientY - rect.top) * (canvas.height / rect.height)
+                x: (point.clientX - rect.left) * (canvas.width / rect.width),
+                y: (point.clientY - rect.top) * (canvas.height / rect.height)
             };
         }
 
         function startDrawing(e) {
+            const touch = e.type.startsWith('touch');
+            if (isDrawing || (!touch && (e.button !== 0 || activeDrawingTouchId !== null))) return;
+            if (touch) {
+                if (e.touches.length !== 1) return;
+                activeDrawingTouchId = e.touches[0].identifier;
+            }
+            const pos = getCursorPos(e);
+            if (!pos) return;
             e.preventDefault();
             isDrawing = true;
+            drawingRestorePending = false;
             drawingRevision += 1;
-            const pos = getCursorPos(e);
             lastX = pos.x;
             lastY = pos.y;
+            // A stationary tap is a complete round brush mark, and joins
+            // subsequent movement as part of this stroke's single undo state.
+            ctx.fillStyle = currentColor;
             ctx.beginPath();
-            ctx.moveTo(lastX, lastY);
+            ctx.arc(lastX, lastY, brushSize / 2, 0, Math.PI * 2);
+            ctx.fill();
         }
 
         function draw(e) {
-            if (!isDrawing) return;
-            e.preventDefault();
-            
+            if (!isDrawing || (!e.type.startsWith('touch') && activeDrawingTouchId !== null)) return;
+            if (!e.type.startsWith('touch') && !(e.buttons & 1)) {
+                finishActiveStroke();
+                return;
+            }
             const pos = getCursorPos(e);
-            const currentX = pos.x;
-            const currentY = pos.y;
-            
+            if (!pos) return;
+            e.preventDefault();
             ctx.lineCap = "round";
             ctx.lineJoin = "round";
             ctx.strokeStyle = currentColor;
             ctx.lineWidth = brushSize;
-            
             ctx.beginPath();
             ctx.moveTo(lastX, lastY);
-            ctx.lineTo(currentX, currentY);
+            ctx.lineTo(pos.x, pos.y);
             ctx.stroke();
-            
-            lastX = currentX;
-            lastY = currentY;
+            lastX = pos.x;
+            lastY = pos.y;
         }
 
-        function stopDrawing() {
-            if (isDrawing) {
-                isDrawing = false;
-                saveState();
-            }
+        function finishActiveStroke() {
+            if (!isDrawing) return;
+            isDrawing = false;
+            activeDrawingTouchId = null;
+            saveState();
+        }
+
+        function stopDrawing(e) {
+            if (!isDrawing) return;
+            if (activeDrawingTouchId !== null) {
+                if (!e?.type.startsWith('touch')) return;
+                const ended = Array.from(e.changedTouches || [])
+                    .some(touch => touch.identifier === activeDrawingTouchId);
+                const stillActive = Array.from(e.touches || [])
+                    .some(touch => touch.identifier === activeDrawingTouchId);
+                if (!ended && stillActive) return;
+            } else if (e?.type === 'mouseup' && e.button !== 0) return;
+            finishActiveStroke();
         }
 
         function setupEventListeners() {
-            // Mouse events
             canvas.addEventListener("mousedown", startDrawing);
             canvas.addEventListener("mousemove", draw);
             canvas.addEventListener("mouseup", stopDrawing);
             canvas.addEventListener("mouseout", stopDrawing);
-
-            // Touch events
-            canvas.addEventListener("touchstart", function(e) {
-                startDrawing(e);
-            }, { passive: false });
-
-            canvas.addEventListener("touchmove", function(e) {
-                draw(e);
-            }, { passive: false });
-
+            canvas.addEventListener("touchstart", startDrawing, { passive: false });
+            canvas.addEventListener("touchmove", draw, { passive: false });
             canvas.addEventListener("touchend", stopDrawing);
             canvas.addEventListener("touchcancel", stopDrawing);
         }
 
         document.getElementById("undo-button")?.addEventListener("click", () => {
-            if (historyIndex > 0) {
+            if (historyIndex > 0 && !isDrawing) {
                 historyIndex--;
-                const revision = ++drawingRevision;
-                const img = new Image();
-                img.onload = () => {
-                    if (revision !== drawingRevision || isDrawing) return;
-                    ctx.clearRect(0, 0, canvas.width, canvas.height);
-                    ctx.drawImage(img, 0, 0);
-                    persistDrawingDraft();
-                };
-                img.src = drawingHistory[historyIndex];
+                drawingRevision += 1;
+                // Restore before the next input event; PNG decoding can finish
+                // after another stroke and lose the intended undo operation.
+                ctx.putImageData(drawingHistory[historyIndex], 0, 0);
+                persistDrawingDraft();
             }
         });
 
@@ -6828,6 +6969,8 @@ document.addEventListener("DOMContentLoaded", async function() {
         }
 
         document.getElementById("clear-canvas")?.addEventListener("click", () => {
+            finishActiveStroke();
+            drawingRestorePending = false;
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             ctx.fillStyle = "#ffffff";
             ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -6935,15 +7078,14 @@ document.addEventListener("DOMContentLoaded", async function() {
             }
         });
 
-        const storedDrawing = readCommunityDraft(DRAWING_DRAFT_KEY);
         initCanvas();
         setupEventListeners();
-        if (storedDrawing && /^data:image\/png;base64,/.test(storedDrawing.image || '')
-            && storedDrawing.image.length <= 512 * 1024) {
+        if (drawingRestorePending) {
             const revision = drawingRevision;
             const restored = new Image();
             restored.onload = () => {
-                if (revision !== drawingRevision || isDrawing) return;
+                if (revision !== drawingRevision || isDrawing || !drawingRestorePending) return;
+                drawingRestorePending = false;
                 ctx.drawImage(restored, 0, 0, canvas.width, canvas.height);
                 if (/^#[0-9a-f]{6}$/i.test(storedDrawing.color || '')) currentColor = storedDrawing.color;
                 brushSize = Math.min(20, Math.max(1, Number(storedDrawing.size) || 5));
@@ -6954,7 +7096,14 @@ document.addEventListener("DOMContentLoaded", async function() {
             };
             restored.src = storedDrawing.image;
         }
-        window.addEventListener('pagehide', persistDrawingDraft);
+        window.addEventListener('blur', finishActiveStroke);
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) finishActiveStroke();
+        });
+        window.addEventListener('pagehide', () => {
+            finishActiveStroke();
+            persistDrawingDraft();
+        });
     }
 
     function initApp() {
@@ -7332,7 +7481,8 @@ document.addEventListener("DOMContentLoaded", async function() {
         function getTenorPostId(url) {
             const hostname = url.hostname.toLowerCase().replace(/^www\./, '');
             if (hostname !== 'tenor.com') return '';
-            const pathname = decodeURIComponent(url.pathname);
+            let pathname;
+            try { pathname = decodeURIComponent(url.pathname); } catch (error) { return ''; }
             const embedMatch = pathname.match(/\/embed\/(\d+)/i);
             if (embedMatch) return embedMatch[1];
             const viewMatch = pathname.match(/-(\d+)\/?$/);
@@ -7344,7 +7494,8 @@ document.addEventListener("DOMContentLoaded", async function() {
         function getGiphyPostId(url) {
             const hostname = url.hostname.toLowerCase().replace(/^www\./, '');
             if (hostname !== 'giphy.com' && !hostname.endsWith('.giphy.com')) return '';
-            const pathname = decodeURIComponent(url.pathname).replace(/\/$/, '');
+            let pathname;
+            try { pathname = decodeURIComponent(url.pathname).replace(/\/$/, ''); } catch (error) { return ''; }
             const embedMatch = pathname.match(/\/embed\/([a-zA-Z0-9]+)/i);
             if (embedMatch) return embedMatch[1];
             const directMediaMatch = pathname.match(/\/([a-zA-Z0-9]+)\/(?:[^/]+\.gif)$/i);
@@ -7622,9 +7773,10 @@ document.addEventListener("DOMContentLoaded", async function() {
             // A keyboard user who pressed this keeps their place: focus moves
             // to the first newly pinned note once the wall re-renders.
             const hadFocus = document.activeElement === control;
-            const pinnedBefore = communityWallList
-                ? communityWallList.querySelectorAll(':scope > :not(.community-load-more)').length
-                : 0;
+            const pinnedBefore = new Set(Array.from(
+                communityWallList?.querySelectorAll('[data-submission-id]') || [],
+                item => `${item.dataset.communityType}:${item.dataset.submissionId}`
+            ));
             control.disabled = true;
             control.classList.add('is-loading');
             control.textContent = 'pinning more...';
@@ -7637,14 +7789,16 @@ document.addEventListener("DOMContentLoaded", async function() {
                     || !postsPopup?.classList.contains('active')) {
                     throw createSubmissionsAbortError();
                 }
-                postsLoadMorePromise = null;
                 await renderCurrentSubmissions(openGeneration, signal);
                 if (hadFocus && communityWallList) {
-                    const firstNew = communityWallList.querySelectorAll(':scope > :not(.community-load-more)')[pinnedBefore];
-                    if (firstNew) {
-                        if (!firstNew.hasAttribute('tabindex')) firstNew.setAttribute('tabindex', '-1');
-                        firstNew.focus({ preventScroll: true });
-                    }
+                    const firstNew = Array.from(communityWallList.querySelectorAll('[data-submission-id]'))
+                        .filter(item => !pinnedBefore.has(`${item.dataset.communityType}:${item.dataset.submissionId}`))
+                        .sort((left, right) => Number(left.getAttribute('aria-posinset'))
+                            - Number(right.getAttribute('aria-posinset')))[0];
+                    const focusTarget = firstNew || communityWallList.querySelector('.community-load-more')
+                        || communityWallList;
+                    if (!focusTarget.hasAttribute('tabindex')) focusTarget.setAttribute('tabindex', '-1');
+                    focusTarget.focus({ preventScroll: true });
                 }
             } catch (error) {
                 if (error?.name === 'AbortError') return;
@@ -7677,8 +7831,16 @@ document.addEventListener("DOMContentLoaded", async function() {
                 throw createSubmissionsAbortError();
             }
             if (deferPanelLayout()) {
-                postsPanelRenderPending = () => renderCurrentSubmissions(openGeneration, signal);
-                return;
+                // Keep callers (and their keyboard handoff) waiting for the real
+                // committed render, rather than focusing the old disabled DOM.
+                return new Promise((resolve, reject) => {
+                    const aborted = () => reject(createSubmissionsAbortError());
+                    signal.addEventListener('abort', aborted, { once: true });
+                    postsPanelRenderPending = () => {
+                        signal.removeEventListener('abort', aborted);
+                        return renderCurrentSubmissions(openGeneration, signal).then(resolve, reject);
+                    };
+                });
             }
 
             const wallScroller = communityScrollBody || postsContentEl;
@@ -7949,12 +8111,19 @@ document.addEventListener("DOMContentLoaded", async function() {
             // Add both click and touch event listeners
             likeButton.addEventListener('click', handleReactionClick);
             likeButton.addEventListener('touchstart', handleReactionClick, { passive: false });
-            // Keyboard: open the faces and move focus onto the first one.
+            // Delayed reads must not pull focus back after the visitor moved on.
             likeButton.addEventListener('keydown', async (e) => {
                 if (e.key !== 'Enter' && e.key !== ' ') return;
-                await handleReactionClick(e);
-                const firstOption = document.querySelector(`.reaction-picker[data-drawing-id="${drawingId}"] .reaction-option`);
-                firstOption?.focus({ preventScroll: true });
+                const generation = postsOpenGeneration;
+                const focusOwner = document.activeElement;
+                const opening = handleReactionClick(e);
+                const requestRun = reactionPickerRequestRun;
+                await opening;
+                if (generation !== postsOpenGeneration || requestRun !== reactionPickerRequestRun
+                    || !postsPopup?.classList.contains('active') || !likeButton.isConnected
+                    || focusOwner !== likeButton || document.activeElement !== focusOwner
+                    || currentOpenPicker?.dataset.drawingId !== drawingId) return;
+                currentOpenPicker.querySelector('.reaction-option')?.focus({ preventScroll: true });
             });
 
             // The pin must be tappable as soon as the atomically prepared
@@ -8039,6 +8208,10 @@ document.addEventListener("DOMContentLoaded", async function() {
 
         function showReactionPickerInternal(likeButton, drawingId, ipAddress, likeIconElement, currentReaction = null) {
             // Create reaction picker overlay
+            const generation = postsOpenGeneration;
+            const requestRun = reactionPickerRequestRun;
+            let entranceTimer = 0;
+            let outsideTimer = 0;
             const picker = document.createElement('div');
             picker.className = 'reaction-picker';
             picker.dataset.drawingId = drawingId;
@@ -8096,8 +8269,12 @@ document.addEventListener("DOMContentLoaded", async function() {
                 currentOpenPickerCleanup = null;
             }
             
-                            // Animate the roll transition with improved timing
-            setTimeout(() => {
+            // A close during the delay must not hide the restored pin again.
+            entranceTimer = window.setTimeout(() => {
+                entranceTimer = 0;
+                if (currentOpenPicker !== picker || !picker.isConnected
+                    || generation !== postsOpenGeneration || requestRun !== reactionPickerRequestRun
+                    || !postsPopup?.classList.contains('active')) return;
                 // Reset all other buttons first
                 const allButtons = document.querySelectorAll('.like-button');
                 allButtons.forEach(button => {
@@ -8188,21 +8365,38 @@ document.addEventListener("DOMContentLoaded", async function() {
                         return;
                     }
                     if (e.key !== 'Enter' && e.key !== ' ') return;
-                    await handleReactionOptionClick(e);
-                    likeButton.focus({ preventScroll: true });
+                    const generation = postsOpenGeneration;
+                    const requestRun = reactionPickerRequestRun;
+                    const focusOwner = document.activeElement;
+                    let focusMoved = focusOwner !== option;
+                    const trackFocus = event => { if (event.target !== focusOwner) focusMoved = true; };
+                    document.addEventListener('focusin', trackFocus);
+                    try {
+                        await handleReactionOptionClick(e);
+                    } finally {
+                        document.removeEventListener('focusin', trackFocus);
+                    }
+                    if (!focusMoved && generation === postsOpenGeneration
+                        && reactionPickerRequestRun === requestRun + 1 && !currentOpenPicker
+                        && postsPopup?.classList.contains('active') && likeButton.isConnected) {
+                        likeButton.focus({ preventScroll: true });
+                    }
                 });
             });
             
             // Close picker when clicking outside
             let outsideClickHandler = null;
             const cleanupPickerListeners = () => {
+                window.clearTimeout(entranceTimer);
+                window.clearTimeout(outsideTimer);
                 if (outsideClickHandler) {
                     document.removeEventListener('click', outsideClickHandler);
                 }
-                document.removeEventListener('scroll', scrollHandler);
+                document.removeEventListener('scroll', scrollHandler, true);
             };
 
-            setTimeout(() => {
+            outsideTimer = window.setTimeout(() => {
+                outsideTimer = 0;
                 if (currentOpenPicker !== picker) return;
                 outsideClickHandler = (e) => {
                     if (!picker.contains(e.target) && !likeButton.contains(e.target)) {
@@ -8216,7 +8410,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             const scrollHandler = () => {
                 closeReactionPicker();
             };
-            document.addEventListener('scroll', scrollHandler);
+            document.addEventListener('scroll', scrollHandler, { capture: true, passive: true });
             currentOpenPickerCleanup = cleanupPickerListeners;
         }
 
