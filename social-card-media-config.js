@@ -17,8 +17,7 @@ window.DOLL_SOCIAL_CARD_MEDIA = Object.freeze({
         twitch: '4twitch.mp4?v=2',
         // Add the email card's repository video here when supplied.
         email: '',
-        // Add the Throne link's repository MP4 here when it is supplied.
-        throne_link: ''
+        throne_link: 'throne.mp4?v=1'
     }),
     localPosters: Object.freeze({
         snapchat: 'social-icons/snapchat.png',
