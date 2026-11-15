@@ -65,6 +65,7 @@ async function hashPin(pin) {
 }
 const WISHLIST_VIEW_MODES = ['grid', 'list', 'masonry'];
 const DEFAULT_LINK_SETTINGS = {
+    ...window.DollSocialTitles.defaults,
     ...window.DollSolana.defaults,
     snapchat_url: 'https://www.snapchat.com/add/dumidoll',
     snapchat_username: 'dumidoll',
@@ -852,6 +853,7 @@ function syncSocialUrlFromUsername(key, usernameInput, urlInput) {
 function normalizeLinkSettings(value) {
     const settings = value && typeof value === 'object' ? value : {};
     return {
+        ...window.DollSocialTitles.normalize(settings),
         ...window.DollSolana.normalize(settings),
         snapchat_url: String(settings.snapchat_url || DEFAULT_LINK_SETTINGS.snapchat_url),
         snapchat_username: readSocialUsernameSetting(settings, 'snapchat'),
@@ -1032,6 +1034,9 @@ function renderLinkSettings({ preserveDraft = false } = {}) {
         renderLinkPreview();
         return;
     }
+    document.querySelectorAll('[data-social-title]').forEach(input => {
+        input.value = window.DollSocialTitles.get(settings, input.dataset.socialTitle);
+    });
     if (els.snapchatEnabled) els.snapchatEnabled.checked = settings.snapchat_enabled !== false;
     if (els.snapchatUrl) els.snapchatUrl.value = settings.snapchat_url || '';
     if (els.snapchatUsername) els.snapchatUsername.value = settings.snapchat_username ?? '';
@@ -1143,8 +1148,18 @@ function renderSolanaValidation(settings = getDraftSolanaSettings()) {
     return !invalid;
 }
 
+function getDraftSocialTitles() {
+    const draft = {};
+    SOCIAL_CARD_KEYS.forEach(key => {
+        const input = document.querySelector(`[data-social-title="${key}"]`);
+        draft[`${key}_title`] = input ? input.value : state.linkSettings[`${key}_title`];
+    });
+    return window.DollSocialTitles.normalize(draft);
+}
+
 function getDraftLinkSettings() {
     return {
+        ...getDraftSocialTitles(),
         ...getDraftSolanaSettings(),
         snapchat_url: els.snapchatUrl?.value.trim() || state.linkSettings.snapchat_url || DEFAULT_LINK_SETTINGS.snapchat_url,
         snapchat_username: getDraftSocialUsername('snapchat', els.snapchatUsername),
@@ -1239,6 +1254,12 @@ function getSubmissionsStateLabel(settings) {
 
 function syncLinkDraftLabels(settings = getDraftLinkSettings()) {
     SOCIAL_CARD_KEYS.forEach(key => {
+        const heading = document.querySelector(`[data-link-card="${key}"] summary strong`);
+        if (heading) heading.textContent = window.DollSocialTitles.get(settings, key);
+        if (document.getElementById('admin-card-inspector')?.open
+            && document.querySelector(`[data-admin-inspector-placeholder="${key}"]`)) {
+            document.getElementById('admin-card-inspector-title').textContent = `${window.DollSocialTitles.get(settings, key)} card`;
+        }
         const subtitle = document.querySelector(`[data-link-card="${key}"] .admin-social-subtitle`);
         if (key === 'solana') { if (subtitle) subtitle.textContent = settings.solana_caption; return; }
         if (subtitle) { const username = String(key === 'email' ? settings.email_display_name : settings[`${key}_username`] || ''); subtitle.textContent = username ? (key === 'email' ? username : '@' + username.replace(/^@/, '')) : ''; }
@@ -3113,6 +3134,7 @@ async function persistLatestLinkSettings(requestId, { overrides = null, onCommit
         const solanaDraft = getDraftSolanaSettings();
         const solanaSettings = renderSolanaValidation(solanaDraft) ? solanaDraft : committedSolanaSettings;
         nextSettings = {
+            ...getDraftSocialTitles(),
             ...solanaSettings,
             snapchat_url: cleanUrl(els.snapchatUrl?.value ?? state.linkSettings.snapchat_url, 'Snapchat'),
             snapchat_username: getDraftSocialUsername('snapchat', els.snapchatUsername),
@@ -3916,8 +3938,8 @@ function getAdminLocalSearchResults(term) {
     const tools = getAdminToolCommands().filter(command => `${command.title} ${command.description} ${command.keywords}`.toLowerCase().includes(needle)).slice(0, term ? 16 : 12).map(command => ({ ...command, kind: 'tool' }));
     const settings = getDraftLinkSettings();
     const links = term ? SOCIAL_CARD_KEYS.filter(key => (key === 'solana'
-        ? `solana SOL wallet QR ${settings.solana_wallet_address} ${settings.solana_caption}`
-        : `${key} ${settings[`${key}_username`]} ${settings[`${key}_url`]}`).toLowerCase().includes(needle)).map(key => ({ kind: 'tool', panel: 'links-panel', target: `[data-link-card="${key}"]`, title: document.querySelector(`[data-link-card="${key}"] summary strong`)?.textContent || key, description: key === 'solana' ? settings.solana_caption : settings[`${key}_username`] || settings[`${key}_url`], icon: 'links' })) : [];
+        ? `solana ${settings.solana_title} SOL wallet QR ${settings.solana_wallet_address} ${settings.solana_caption}`
+        : `${key} ${settings[`${key}_title`]} ${settings[`${key}_username`]} ${settings[`${key}_url`]}`).toLowerCase().includes(needle)).map(key => ({ kind: 'tool', panel: 'links-panel', target: `[data-link-card="${key}"]`, title: document.querySelector(`[data-link-card="${key}"] summary strong`)?.textContent || key, description: key === 'solana' ? settings.solana_caption : settings[`${key}_username`] || settings[`${key}_url`], icon: 'links' })) : [];
     return { tools, links };
 }
 function renderAdminSearchResults() {
@@ -5167,6 +5189,13 @@ async function init() {
         els.siteTagline
     ].forEach(input => {
         input?.addEventListener('input', () => {
+            settingsDraftDirty = true;
+            renderLinkPreview();
+            scheduleAutoSave();
+        });
+    });
+    document.querySelectorAll('[data-social-title]').forEach(input => {
+        input.addEventListener('input', () => {
             settingsDraftDirty = true;
             renderLinkPreview();
             scheduleAutoSave();

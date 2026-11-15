@@ -288,6 +288,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     }
 
     const DEFAULT_LINK_SETTINGS = {
+        ...window.DollSocialTitles.defaults,
         snapchat_url: 'https://www.snapchat.com/add/dumidoll',
         snapchat_username: 'dumidoll',
         snapchat_enabled: true,
@@ -2226,6 +2227,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     function normalizeSiteLinkSettings(value) {
         const settings = value && typeof value === 'object' ? value : {};
         return {
+            ...window.DollSocialTitles.normalize(settings),
             snapchat_url: String(settings.snapchat_url || DEFAULT_LINK_SETTINGS.snapchat_url),
             snapchat_username: readSocialUsernameSetting(settings, 'snapchat'),
             snapchat_enabled: readBooleanSetting(settings, 'snapchat_enabled'),
@@ -5729,13 +5731,16 @@ document.addEventListener("DOMContentLoaded", async function() {
         socialCardDefinitions.forEach(({ key, option, label, withAt = false }) => {
             if (!option) return;
             const enabled = isPublicLinkEnabled(key);
+            const title = window.DollSocialTitles.get(siteLinkSettings, key);
+            const heading = option.querySelector('.social-link-copy strong');
+            if (heading) heading.textContent = title;
             if (key === 'solana') {
                 const frame = option.closest('.social-link-card-frame');
                 option.classList.toggle('site-link-hidden', !enabled);
                 frame?.classList.toggle('site-link-hidden', !enabled);
                 option.setAttribute('aria-hidden', String(!enabled));
                 option.setAttribute('tabindex', '-1');
-                option.setAttribute('aria-label', `Open Solana receive: ${siteLinkSettings.solana_caption}`);
+                option.setAttribute('aria-label', `Open ${title} receive: ${siteLinkSettings.solana_caption}`);
                 const caption = option.querySelector('.social-link-copy small');
                 if (caption) caption.textContent = siteLinkSettings.solana_caption;
                 return;
@@ -5751,7 +5756,7 @@ document.addEventListener("DOMContentLoaded", async function() {
             if (cardNode !== option) cardNode.classList.toggle('site-link-hidden', !enabled);
             option.setAttribute('aria-hidden', enabled ? 'false' : 'true');
             option.setAttribute('tabindex', '-1');
-            updateSocialCardDisplay(option, key, label, withAt);
+            updateSocialCardDisplay(option, key, title === window.DollSocialTitles.defaults[`${key}_title`] ? label : title, withAt);
         });
         if (donateOption) {
             const kofiEnabled = isPublicLinkEnabled('kofi');

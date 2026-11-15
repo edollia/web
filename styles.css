@@ -3329,8 +3329,7 @@ body.has-social-panel-open .site-brand-footer {
 }
 
 @media (hover: hover) and (pointer: fine) {
-    .social-link-card:hover,
-    .social-link-card:focus-visible {
+    .social-link-card:hover {
         border-color: rgba(232, 151, 182, 0.82);
         box-shadow: var(--paper-ring), var(--paper-shadow-lift);
         outline: none;
@@ -3338,9 +3337,8 @@ body.has-social-panel-open .site-brand-footer {
     }
 }
 
-.social-link-card:focus-visible {
-    outline: 2px solid rgba(255, 148, 197, 0.5);
-    outline-offset: 2px;
+.social-link-card:focus {
+    outline: 0;
 }
 
 .social-link-card:active {
